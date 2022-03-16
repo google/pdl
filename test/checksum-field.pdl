@@ -1,0 +1,22 @@
+little_endian_packets
+
+checksum crc16: 16 "crc16"
+
+packet Undefined {
+    _checksum_start_ (crc16),
+}
+
+packet InvalidType {
+    crc16: 16,
+    _checksum_start_ (crc16),
+}
+
+packet InvalidOrder {
+    _checksum_start_ (crc16),
+    crc16: crc16,
+}
+
+packet Correct {
+    crc16: crc16,
+    _checksum_start_ (crc16),
+}

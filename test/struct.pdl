@@ -1,0 +1,52 @@
+little_endian_packets
+
+custom_field custom: 1 "custom"
+checksum checksum: 1 "checksum"
+
+enum Enum : 1 {
+    tag = 0,
+}
+
+struct Struct {
+    a: 4,
+    b: Enum,
+    c: custom,
+    d: checksum,
+}
+
+packet Packet {
+    a: 4,
+}
+
+struct RecursiveStruct_0 : RecursiveStruct_1 {
+}
+
+struct RecursiveStruct_1 : RecursiveStruct_0 {
+}
+
+struct InvalidParent : Packet {
+}
+
+struct UndeclaredParent : FooBar {
+}
+
+struct UnnecessaryConstraints (a=1) {
+}
+
+struct Undeclared : Struct (c=1) {
+}
+
+struct Redeclared : Struct (a=1, a=2) {
+}
+
+struct TypeMismatch : Struct (a=tag, b=1, c=1, d=1) {
+}
+
+struct InvalidLiteral : Struct (a=42) {
+}
+
+struct UndeclaredTag : Struct (b=undeclared_tag) {
+}
+
+struct Correct : Struct (a=1, b=tag) {
+}

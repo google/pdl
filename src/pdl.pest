@@ -1,0 +1,123 @@
+WHITESPACE = _{ " " | "\n" }
+COMMENT = { block_comment | line_comment }
+
+block_comment = { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+line_comment = { "//" ~ (!"\n" ~ ANY)* }
+
+alpha = { 'a'..'z' | 'A'..'Z' }
+digit = { '0'..'9' }
+hexdigit = { digit | 'a'..'f' | 'A'..'F' }
+alphanum = { alpha | digit | "_" }
+
+identifier = @{ alpha ~ alphanum* }
+payload_identifier = @{ "_payload_" }
+body_identifier = @{ "_body_" }
+intvalue = @{ digit+ }
+hexvalue = @{ ("0x"|"0X") ~ hexdigit+ }
+integer = @{ hexvalue | intvalue }
+string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+size_modifier = @{
+    ("+"|"-"|"*"|"/") ~ (digit|"+"|"-"|"*"|"/")+
+}
+
+endianness_declaration = { "little_endian_packets" | "big_endian_packets" }
+
+enum_tag = { identifier ~ "=" ~ integer }
+enum_tag_list = { enum_tag ~ ("," ~ enum_tag)* ~ ","? }
+enum_declaration = {
+    "enum" ~ identifier ~ ":" ~ integer ~ "{" ~
+        enum_tag_list ~
+    "}"
+}
+
+constraint = { identifier ~ "=" ~ (identifier|integer) }
+constraint_list = { constraint ~ ("," ~ constraint)* }
+
+checksum_field = { "_checksum_start_" ~ "(" ~ identifier ~ ")" }
+padding_field = { "_padding_" ~ "[" ~ integer ~ "]" }
+size_field = { "_size_" ~ "(" ~ (identifier|payload_identifier|body_identifier)  ~ ")" ~ ":" ~ integer }
+count_field = { "_count_" ~ "(" ~ identifier ~ ")" ~ ":" ~ integer }
+body_field = @{ "_body_" }
+payload_field = { "_payload_" ~ (":" ~ "[" ~ size_modifier ~ "]")? }
+fixed_field = { "_fixed_" ~ "=" ~ (
+    (integer ~ ":" ~ integer) |
+    (identifier ~ ":" ~ identifier)
+)}
+reserved_field = { "_reserved_" ~ ":" ~ integer }
+array_field = { identifier ~ ":" ~ (integer|identifier) ~
+    "[" ~ (size_modifier|integer)? ~ "]"
+}
+scalar_field = { identifier ~ ":" ~ integer }
+typedef_field = { identifier ~ ":" ~ identifier }
+group_field = { identifier ~ ("{" ~ constraint_list ~ "}")? }
+
+field = _{
+    checksum_field |
+    padding_field |
+    size_field |
+    count_field |
+    body_field |
+    payload_field |
+    fixed_field |
+    reserved_field |
+    array_field |
+    scalar_field |
+    typedef_field |
+    group_field
+}
+field_list = { field ~ ("," ~ field)* ~ ","? }
+
+packet_declaration = {
+   "packet" ~ identifier ~
+        (":" ~ identifier)? ~
+           ("(" ~ constraint_list ~ ")")? ~
+    "{" ~
+        field_list? ~
+    "}"
+}
+
+struct_declaration = {
+    "struct" ~ identifier ~
+        (":" ~ identifier)? ~
+           ("(" ~ constraint_list ~ ")")? ~
+    "{" ~
+        field_list? ~
+    "}"
+}
+
+group_declaration = {
+    "group" ~ identifier ~ "{" ~ field_list ~ "}"
+}
+
+checksum_declaration = {
+    "checksum" ~ identifier ~ ":" ~ integer ~ string
+}
+
+custom_field_declaration = {
+    "custom_field" ~ identifier ~ (":" ~ integer)? ~ string
+}
+
+test_case = { string }
+test_case_list = _{ test_case ~ ("," ~ test_case)* ~ ","? }
+test_declaration = {
+    "test" ~ identifier ~ "{" ~
+        test_case_list ~
+    "}"
+}
+
+declaration = _{
+    enum_declaration |
+    packet_declaration |
+    struct_declaration |
+    group_declaration |
+    checksum_declaration |
+    custom_field_declaration |
+    test_declaration
+}
+
+grammar = {
+    SOI ~
+    endianness_declaration? ~
+    declaration* ~
+    EOI
+}

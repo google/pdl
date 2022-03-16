@@ -1,0 +1,38 @@
+
+struct Struct_0: Struct_1 {
+}
+
+struct Struct_1: Struct_0 {
+}
+
+
+struct Packet_0: Packet_1 {
+}
+
+struct Packet_1: Packet_0 {
+}
+
+
+group Group_0 {
+    Group_1
+}
+
+struct Struct_2 {
+    Group_0
+}
+
+group Group_1 {
+    a: Struct_2
+}
+
+
+struct Struct_3: Struct_4 {
+}
+
+struct Struct_4 {
+    Group_2
+}
+
+group Group_2 {
+    a: Struct_3
+}

@@ -1,0 +1,25 @@
+little_endian_packets
+
+packet Undefined {
+    _count_ (array): 8,
+}
+
+packet InvalidType {
+    _count_ (array): 8,
+    array: 16,
+}
+
+packet InvalidOrder {
+    array: 16[],
+    _count_ (array): 8,
+}
+
+packet InvalidSize {
+    _count_ (array): 8,
+    array: 16[32],
+}
+
+packet Correct {
+    _count_ (array): 8,
+    array: 16[],
+}

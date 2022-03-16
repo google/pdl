@@ -1,0 +1,22 @@
+little_endian_packets
+
+enum Enum : 1 {
+    tag = 0,
+}
+
+packet InvalidValue {
+    _fixed_ = 1: 256,
+}
+
+packet UndeclaredEnum {
+    _fixed_ = tag : InvalidEnum,
+}
+
+packet UndeclaredTag {
+    _fixed_ = invalid_tag : Enum,
+}
+
+packet Correct {
+    _fixed_ = 1: 256,
+    _fixed_ = tag: Enum,
+}

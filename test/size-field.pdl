@@ -1,0 +1,58 @@
+little_endian_packets
+
+packet Undefined {
+    _size_ (array): 8,
+}
+
+packet UndefinedPayloadWithBody {
+    _size_ (_payload_): 8,
+    _body_,
+}
+
+packet UndefinedPayload {
+    _size_ (_payload_): 8,
+}
+
+packet UndefinedBodyWithPayload {
+    _size_ (_body_): 8,
+    _payload_,
+}
+
+packet UndefinedBody {
+    _size_ (_body_): 8,
+}
+
+packet InvalidType {
+    _size_ (array): 8,
+    array: 16,
+}
+
+packet InvalidArrayOrder {
+    array: 16[],
+    _size_ (array): 8,
+}
+
+packet InvalidPayloadOrder {
+    _payload_,
+    _size_ (_payload_): 8,
+}
+
+packet InvalidBodyOrder {
+    _body_,
+    _size_ (_body_): 8,
+}
+
+packet CorrectArray {
+    _size_ (array): 8,
+    array: 16[],
+}
+
+packet CorrectPayload {
+    _size_ (_payload_): 8,
+    _payload_,
+}
+
+packet CorrectBody {
+    _size_ (_body_): 8,
+    _body_,
+}
