@@ -21,10 +21,12 @@ use crate::lint::Lintable;
 #[derive(Debug, StructOpt)]
 #[structopt(name = "pdl-parser", about = "Packet Description Language parser tool.")]
 struct Opt {
-    #[structopt(short, long = "--version", help = "Print tool version and exit.")]
+    /// Print tool version and exit.
+    #[structopt(short, long = "--version")]
     version: bool,
 
-    #[structopt(name = "FILE", help = "Input file.")]
+    /// Input file.
+    #[structopt(name = "FILE")]
     input_file: String,
 }
 
