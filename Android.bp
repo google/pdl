@@ -8,11 +8,9 @@ package {
     default_applicable_licenses: ["system_bt_license"],
 }
 
-rust_binary_host {
-    name: "pdl",
-    srcs: [
-        "src/main.rs",
-    ],
+rust_defaults {
+    name: "pdl_defaults",
+    srcs: ["src/main.rs"],
     rustlibs: [
         "libpest",
         "libserde",
@@ -23,4 +21,15 @@ rust_binary_host {
     proc_macros: [
         "libpest_derive",
     ],
+}
+
+rust_binary_host {
+    name: "pdl",
+    defaults: ["pdl_defaults"],
+}
+
+rust_test_host {
+    name: "pdl_inline_tests",
+    defaults: ["pdl_defaults"],
+    test_suites: ["general-tests"],
 }
