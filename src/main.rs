@@ -1,15 +1,6 @@
 //! PDL parser and linter.
 
-extern crate codespan_reporting;
-extern crate pest;
-#[macro_use]
-extern crate pest_derive;
-extern crate serde;
-extern crate serde_json;
-extern crate structopt;
-
-use codespan_reporting::term;
-use codespan_reporting::term::termcolor;
+use codespan_reporting::term::{self, termcolor};
 use structopt::StructOpt;
 
 mod ast;
