@@ -1,4 +1,3 @@
-
 package {
     // See: http://go/android-license-faq
     // A large-scale-change added 'default_applicable_licenses' to import
@@ -17,6 +16,11 @@ rust_defaults {
         "libserde_json",
         "libstructopt",
         "libcodespan_reporting",
+        "libquote",
+        "libsyn",
+        "libproc_macro2",
+        "libanyhow",
+        "libtempfile",
     ],
     proc_macros: [
         "libpest_derive",
@@ -32,4 +36,8 @@ rust_test_host {
     name: "pdl_inline_tests",
     defaults: ["pdl_defaults"],
     test_suites: ["general-tests"],
+    data: [
+        "rustfmt",
+        "rustfmt.toml",
+    ],
 }
