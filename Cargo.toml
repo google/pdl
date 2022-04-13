@@ -16,4 +16,6 @@ serde = { version = "*", features = ["default", "derive", "serde_derive", "std"]
 serde_json = "*"
 structopt = "*"
 syn = "*"
+
+[dev-dependencies]
 tempfile = "*"

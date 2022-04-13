@@ -328,11 +328,22 @@ fn generate_packet_decl(
             writer
         })
         .collect::<Result<Vec<_>>>()?;
+
     let total_field_size = syn::Index::from(fields.iter().map(get_field_size).sum::<usize>());
+    let get_size_adjustment = (total_field_size.index > 0).then(|| {
+        Some(quote! {
+            let ret = ret + #total_field_size;
+        })
+    });
 
     code.push_str(&quote_block! {
         impl #data_name {
             fn conforms(bytes: &[u8]) -> bool {
+                // TODO(mgeisler): return Boolean expression directly.
+                // TODO(mgeisler): skip when total_field_size == 0.
+                if bytes.len() < #total_field_size {
+                    return false;
+                }
                 true
             }
 
@@ -351,7 +362,7 @@ fn generate_packet_decl(
 
             fn get_size(&self) -> usize {
                 let ret = 0;
-                let ret = ret + #total_field_size;
+                #get_size_adjustment
                 ret
             }
         }
@@ -490,7 +501,19 @@ pub fn generate_rust(sources: &ast::SourceDatabase, grammar: &ast::Grammar) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{assert_eq_with_diff, parse_str, rustfmt};
+    use crate::ast;
+    use crate::parser::parse_inline;
+    use crate::test_utils::{assert_eq_with_diff, rustfmt};
+
+    /// Parse a string fragment as a PDL file.
+    ///
+    /// # Panics
+    ///
+    /// Panics on parse errors.
+    pub fn parse_str(text: &str) -> ast::Grammar {
+        let mut db = ast::SourceDatabase::new();
+        parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parse error")
+    }
 
     #[test]
     fn test_generate_preamble() {
