@@ -237,26 +237,6 @@ fn parse_string(iter: &mut NodeIterator<'_>) -> Result<String, String> {
     expect(iter, Rule::string).map(|n| n.as_string())
 }
 
-fn parse_atomic_expr(iter: &mut NodeIterator<'_>, context: &Context) -> Result<ast::Expr, String> {
-    match iter.next() {
-        Some(n) if n.as_rule() == Rule::identifier => {
-            Ok(ast::Expr::Identifier { loc: n.as_loc(context), name: n.as_string() })
-        }
-        Some(n) if n.as_rule() == Rule::integer => {
-            Ok(ast::Expr::Integer { loc: n.as_loc(context), value: n.as_usize()? })
-        }
-        Some(n) => Err(format!(
-            "expected rule {:?} or {:?}, got {:?}",
-            Rule::identifier,
-            Rule::integer,
-            n.as_rule()
-        )),
-        None => {
-            Err(format!("expected rule {:?} or {:?}, got nothing", Rule::identifier, Rule::integer))
-        }
-    }
-}
-
 fn parse_size_modifier_opt(iter: &mut NodeIterator<'_>) -> Option<String> {
     maybe(iter, Rule::size_modifier).map(|n| n.as_string())
 }
@@ -283,8 +263,8 @@ fn parse_constraint(node: Node<'_>, context: &Context) -> Result<ast::Constraint
         let loc = node.as_loc(context);
         let mut children = node.children();
         let id = parse_identifier(&mut children)?;
-        let value = parse_atomic_expr(&mut children, context)?;
-        Ok(ast::Constraint { id, loc, value })
+        let (tag_id, value) = parse_identifier_or_integer(&mut children)?;
+        Ok(ast::Constraint { id, loc, value, tag_id })
     }
 }
 
