@@ -9,7 +9,7 @@ use std::iter::{Filter, Peekable};
 // TODO: use #[grammar = "pdl.pest"]
 // currently not possible because CARGO_MANIFEST_DIR is not set
 // in soong environment.
-#[derive(Parser)]
+#[derive(pest_derive::Parser)]
 #[grammar_inline = r#"
 WHITESPACE = _{ " " | "\n" }
 COMMENT = { block_comment | line_comment }

@@ -168,16 +168,6 @@ pub struct Grammar {
     pub declarations: Vec<Decl>,
 }
 
-/// Implemented for all AST elements.
-pub trait Located<'d> {
-    fn loc(&'d self) -> &'d SourceRange;
-}
-
-/// Implemented for named AST elements.
-pub trait Named<'d> {
-    fn id(&'d self) -> Option<&'d String>;
-}
-
 impl SourceLocation {
     /// Construct a new source location.
     ///
@@ -244,8 +234,34 @@ impl Grammar {
     }
 }
 
-impl<'d> Located<'d> for Field {
-    fn loc(&'d self) -> &'d SourceRange {
+impl Decl {
+    pub fn loc(&self) -> &SourceRange {
+        match self {
+            Decl::Checksum { loc, .. }
+            | Decl::CustomField { loc, .. }
+            | Decl::Enum { loc, .. }
+            | Decl::Packet { loc, .. }
+            | Decl::Struct { loc, .. }
+            | Decl::Group { loc, .. }
+            | Decl::Test { loc, .. } => loc,
+        }
+    }
+
+    pub fn id(&self) -> Option<&String> {
+        match self {
+            Decl::Test { .. } => None,
+            Decl::Checksum { id, .. }
+            | Decl::CustomField { id, .. }
+            | Decl::Enum { id, .. }
+            | Decl::Packet { id, .. }
+            | Decl::Struct { id, .. }
+            | Decl::Group { id, .. } => Some(id),
+        }
+    }
+}
+
+impl Field {
+    pub fn loc(&self) -> &SourceRange {
         match self {
             Field::Checksum { loc, .. }
             | Field::Padding { loc, .. }
@@ -261,24 +277,8 @@ impl<'d> Located<'d> for Field {
             | Field::Group { loc, .. } => loc,
         }
     }
-}
 
-impl<'d> Located<'d> for Decl {
-    fn loc(&'d self) -> &'d SourceRange {
-        match self {
-            Decl::Checksum { loc, .. }
-            | Decl::CustomField { loc, .. }
-            | Decl::Enum { loc, .. }
-            | Decl::Packet { loc, .. }
-            | Decl::Struct { loc, .. }
-            | Decl::Group { loc, .. }
-            | Decl::Test { loc, .. } => loc,
-        }
-    }
-}
-
-impl<'d> Named<'d> for Field {
-    fn id(&'d self) -> Option<&'d String> {
+    pub fn id(&self) -> Option<&String> {
         match self {
             Field::Checksum { .. }
             | Field::Padding { .. }
@@ -292,20 +292,6 @@ impl<'d> Named<'d> for Field {
             Field::Array { id, .. } | Field::Scalar { id, .. } | Field::Typedef { id, .. } => {
                 Some(id)
             }
-        }
-    }
-}
-
-impl<'d> Named<'d> for Decl {
-    fn id(&'d self) -> Option<&'d String> {
-        match self {
-            Decl::Test { .. } => None,
-            Decl::Checksum { id, .. }
-            | Decl::CustomField { id, .. }
-            | Decl::Enum { id, .. }
-            | Decl::Packet { id, .. }
-            | Decl::Struct { id, .. }
-            | Decl::Group { id, .. } => Some(id),
         }
     }
 }
