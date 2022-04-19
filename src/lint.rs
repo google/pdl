@@ -27,15 +27,7 @@ struct FieldPath<'d>(Vec<&'d Field>);
 
 /// Gather information about the full grammar declaration.
 struct Scope<'d> {
-    // Collection of Group declarations.
-    groups: HashMap<String, &'d Decl>,
-
-    // Collection of Packet declarations.
-    packets: HashMap<String, &'d Decl>,
-
-    // Collection of Enum, Struct, Checksum, and CustomField declarations.
-    // Packet and Group can not be referenced in a Typedef field and thus
-    // do not share the same namespace.
+    // Collection of Group, Packet, Enum, Struct, Checksum, and CustomField declarations.
     typedef: HashMap<String, &'d Decl>,
 
     // Collection of Packet, Struct, and Group scope declarations.
@@ -500,10 +492,11 @@ impl<'d> Scope<'d> {
                 _ => (),
             }
 
-            let (parent_id, parent_namespace, fields) = match decl {
-                Decl::Packet { parent_id, fields, .. } => (parent_id, &scope.packets, fields),
-                Decl::Struct { parent_id, fields, .. } => (parent_id, &scope.typedef, fields),
-                Decl::Group { fields, .. } => (&None, &scope.groups, fields),
+            let (parent_id, fields) = match decl {
+                Decl::Packet { parent_id, fields, .. } | Decl::Struct { parent_id, fields, .. } => {
+                    (parent_id.as_ref(), fields)
+                }
+                Decl::Group { fields, .. } => (None, fields),
                 _ => return None,
             };
 
@@ -514,7 +507,7 @@ impl<'d> Scope<'d> {
             for f in fields {
                 match f {
                     Field::Group { group_id, constraints, .. } => {
-                        match scope.groups.get(group_id) {
+                        match scope.typedef.get(group_id) {
                             None => result.push(
                                 Diagnostic::error()
                                     .with_message(format!(
@@ -523,7 +516,7 @@ impl<'d> Scope<'d> {
                                     ))
                                     .with_labels(vec![f.loc().primary()]),
                             ),
-                            Some(group_decl) => {
+                            Some(group_decl @ Decl::Group { .. }) => {
                                 // Recurse to flatten the inserted group.
                                 if let Some(rscope) = bfs(group_decl, context, scope, result) {
                                     // Inline the group fields and constraints into
@@ -531,6 +524,15 @@ impl<'d> Scope<'d> {
                                     lscope.inline(scope, rscope, f, constraints.iter(), result)
                                 }
                             }
+                            Some(_) => result.push(
+                                Diagnostic::error()
+                                    .with_message(format!(
+                                        "invalid group field identifier `{}`",
+                                        group_id
+                                    ))
+                                    .with_labels(vec![f.loc().primary()])
+                                    .with_notes(vec!["hint: expected group identifier".to_owned()]),
+                            ),
                         }
                     }
                     Field::Typedef { type_id, .. } => {
@@ -555,21 +557,32 @@ impl<'d> Scope<'d> {
             }
 
             // Iterate over parent declaration.
-            for id in parent_id {
-                match parent_namespace.get(id) {
-                    None => result.push(
-                        Diagnostic::error()
-                            .with_message(format!("undeclared parent identifier `{}`", id))
-                            .with_labels(vec![decl.loc().primary()])
-                            .with_notes(vec![format!("hint: expected {} parent", decl.kind())]),
-                    ),
-                    Some(parent_decl) => {
-                        if let Some(rscope) = bfs(parent_decl, context, scope, result) {
-                            // Import the parent fields and constraints into the current scope.
-                            lscope.inherit(scope, rscope, decl.constraints(), result)
-                        }
+            let parent = parent_id.and_then(|id| scope.typedef.get(id));
+            match (decl, parent) {
+                (Decl::Packet { parent_id: Some(_), .. }, None)
+                | (Decl::Struct { parent_id: Some(_), .. }, None) => result.push(
+                    Diagnostic::error()
+                        .with_message(format!(
+                            "undeclared parent identifier `{}`",
+                            parent_id.unwrap()
+                        ))
+                        .with_labels(vec![decl.loc().primary()])
+                        .with_notes(vec![format!("hint: expected {} parent", decl.kind())]),
+                ),
+                (Decl::Packet { .. }, Some(Decl::Struct { .. }))
+                | (Decl::Struct { .. }, Some(Decl::Packet { .. })) => result.push(
+                    Diagnostic::error()
+                        .with_message(format!("invalid parent identifier `{}`", parent_id.unwrap()))
+                        .with_labels(vec![decl.loc().primary()])
+                        .with_notes(vec![format!("hint: expected {} parent", decl.kind())]),
+                ),
+                (_, Some(parent_decl)) => {
+                    if let Some(rscope) = bfs(parent_decl, context, scope, result) {
+                        // Import the parent fields and constraints into the current scope.
+                        lscope.inherit(scope, rscope, decl.constraints(), result)
                     }
                 }
+                _ => (),
             }
 
             lscope.finalize(result);
@@ -582,7 +595,7 @@ impl<'d> Scope<'d> {
         let mut context =
             Context::<'d> { list: vec![], visited: HashMap::new(), scopes: HashMap::new() };
 
-        for decl in self.packets.values().chain(self.typedef.values()).chain(self.groups.values()) {
+        for decl in self.typedef.values() {
             bfs(decl, &mut context, self, result);
         }
 
@@ -1216,28 +1229,15 @@ impl Decl {
 
 impl Grammar {
     fn scope<'d>(&'d self, result: &mut LintDiagnostics) -> Scope<'d> {
-        let mut scope = Scope {
-            groups: HashMap::new(),
-            packets: HashMap::new(),
-            typedef: HashMap::new(),
-            scopes: HashMap::new(),
-        };
+        let mut scope = Scope { typedef: HashMap::new(), scopes: HashMap::new() };
 
         // Gather top-level declarations.
         // Validate the top-level scopes (Group, Packet, Typedef).
         //
         // TODO: switch to try_insert when stable
         for decl in &self.declarations {
-            if let Some((id, namespace)) = match decl {
-                Decl::Checksum { id, .. }
-                | Decl::CustomField { id, .. }
-                | Decl::Struct { id, .. }
-                | Decl::Enum { id, .. } => Some((id, &mut scope.typedef)),
-                Decl::Group { id, .. } => Some((id, &mut scope.groups)),
-                Decl::Packet { id, .. } => Some((id, &mut scope.packets)),
-                _ => None,
-            } {
-                if let Some(prev) = namespace.insert(id.clone(), decl) {
+            if let Some(id) = decl.id() {
+                if let Some(prev) = scope.typedef.insert(id.clone(), decl) {
                     result.err_redeclared(id, decl.kind(), decl.loc(), prev.loc())
                 }
             }
@@ -1262,5 +1262,33 @@ impl Lintable for Grammar {
             decl.lint(&scope, &mut result)
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::ast::*;
+    use crate::lint::Lintable;
+    use crate::parser::parse_inline;
+
+    macro_rules! grammar {
+        ($db:expr, $text:literal) => {
+            parse_inline($db, "stdin".to_owned(), $text.to_owned()).expect("parsing failure")
+        };
+    }
+
+    #[test]
+    fn test_packet_redeclared() {
+        let mut db = SourceDatabase::new();
+        let grammar = grammar!(
+            &mut db,
+            r#"
+        little_endian_packets
+        struct Name { }
+        packet Name { }
+        "#
+        );
+        let result = grammar.lint();
+        assert!(!result.diagnostics.is_empty());
     }
 }
