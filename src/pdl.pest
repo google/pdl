@@ -117,7 +117,7 @@ declaration = _{
 
 grammar = {
     SOI ~
-    endianness_declaration? ~
+    endianness_declaration ~
     declaration* ~
     EOI
 }

@@ -130,7 +130,7 @@ declaration = _{
 
 grammar = {
     SOI ~
-    endianness_declaration? ~
+    endianness_declaration ~
     declaration* ~
     EOI
 }
@@ -439,9 +439,7 @@ fn parse_grammar(root: Node<'_>, context: &Context) -> Result<ast::Grammar, Stri
         let loc = node.as_loc(context);
         let rule = node.as_rule();
         match rule {
-            Rule::endianness_declaration => {
-                grammar.endianness = Some(parse_endianness(node, context)?)
-            }
+            Rule::endianness_declaration => grammar.endianness = parse_endianness(node, context)?,
             Rule::checksum_declaration => {
                 let mut children = node.children();
                 let id = parse_identifier(&mut children)?;
@@ -538,4 +536,21 @@ pub fn parse_file(
         Diagnostic::error().with_message(format!("failed to read input file '{}': {}", &name, e))
     })?;
     parse_inline(sources, name, source)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn endianness_is_set() {
+        // The grammar starts out with a placeholder little-endian
+        // value. This tests that we update it while parsing.
+        let mut db = ast::SourceDatabase::new();
+        let grammar =
+            parse_inline(&mut db, String::from("stdin"), String::from("  big_endian_packets  "))
+                .unwrap();
+        assert_eq!(grammar.endianness.value, ast::EndiannessValue::BigEndian);
+        assert_ne!(grammar.endianness.loc, ast::SourceRange::default());
+    }
 }
