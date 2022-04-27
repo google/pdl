@@ -1,6 +1,6 @@
 little_endian_packets
 
-custom_field custom: 1 "custom"
+custom_field custom_field: 1 "custom"
 checksum checksum: 1 "checksum"
 
 enum Enum : 1 {

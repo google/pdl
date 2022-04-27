@@ -51,19 +51,6 @@ pub struct Endianness {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(tag = "kind")]
-pub enum Expr {
-    #[serde(rename = "identifier")]
-    Identifier { loc: SourceRange, name: String },
-    #[serde(rename = "integer")]
-    Integer { loc: SourceRange, value: usize },
-    #[serde(rename = "unary_expr")]
-    Unary { loc: SourceRange, op: String, operand: Box<Expr> },
-    #[serde(rename = "binary_expr")]
-    Binary { loc: SourceRange, op: String, operands: Box<(Expr, Expr)> },
-}
-
-#[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename = "tag")]
 pub struct Tag {
     pub id: String,
@@ -76,7 +63,8 @@ pub struct Tag {
 pub struct Constraint {
     pub id: String,
     pub loc: SourceRange,
-    pub value: Expr,
+    pub value: Option<usize>,
+    pub tag_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

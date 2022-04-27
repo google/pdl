@@ -377,15 +377,12 @@ fn lint_constraint(
     result: &mut LintDiagnostics,
 ) {
     // Validate constraint value types.
-    match (packet_scope.all_fields.get(&constraint.id), &constraint.value) {
-        (
-            Some(Field::Scalar { loc: field_loc, width, .. }),
-            Expr::Integer { value, loc: value_loc, .. },
-        ) => {
+    match (packet_scope.all_fields.get(&constraint.id), &constraint.value, &constraint.tag_id) {
+        (Some(Field::Scalar { loc: field_loc, width, .. }), Some(value), _) => {
             if bit_width(*value) > *width {
                 result.push(
                     Diagnostic::error().with_message("invalid integer literal").with_labels(vec![
-                        value_loc.primary().with_message(format!(
+                        constraint.loc.primary().with_message(format!(
                             "expected maximum value of `{}`",
                             (1 << *width) - 1
                         )),
@@ -395,29 +392,27 @@ fn lint_constraint(
             }
         }
 
-        (Some(Field::Typedef { type_id, loc: field_loc, .. }), _) => {
-            match (scope.typedef.get(type_id), &constraint.value) {
-                (Some(Decl::Enum { tags, .. }), Expr::Identifier { name, loc: name_loc, .. }) => {
-                    if !tags.iter().any(|t| &t.id == name) {
+        (Some(Field::Scalar { loc: field_loc, .. }), None, _) => {
+            result.push(Diagnostic::error().with_message("invalid literal type").with_labels(vec![
+                constraint.loc.primary().with_message("expected integer literal"),
+                field_loc.secondary().with_message("the value is used here"),
+            ]))
+        }
+
+        (Some(Field::Typedef { type_id, loc: field_loc, .. }), _, _) => {
+            match (scope.typedef.get(type_id), &constraint.tag_id) {
+                (Some(Decl::Enum { tags, .. }), Some(tag_id)) => {
+                    if !tags.iter().any(|t| &t.id == tag_id) {
                         result.push(
                             Diagnostic::error()
-                                .with_message(format!("undeclared enum tag `{}`", name))
+                                .with_message(format!("undeclared enum tag `{}`", tag_id))
                                 .with_labels(vec![
-                                    name_loc.primary(),
+                                    constraint.loc.primary(),
                                     field_loc.secondary().with_message("the value is used here"),
                                 ]),
                         )
                     }
                 }
-                (Some(Decl::Enum { .. }), _) => result.push(
-                    Diagnostic::error().with_message("invalid literal type").with_labels(vec![
-                        constraint
-                            .loc
-                            .primary()
-                            .with_message(format!("expected `{}` tag identifier", type_id)),
-                        field_loc.secondary().with_message("the value is used here"),
-                    ]),
-                ),
                 (Some(decl), _) => result.push(
                     Diagnostic::error().with_message("invalid constraint").with_labels(vec![
                         constraint.loc.primary(),
@@ -433,14 +428,18 @@ fn lint_constraint(
             }
         }
 
-        (Some(Field::Scalar { loc: field_loc, .. }), _) => {
-            result.push(Diagnostic::error().with_message("invalid literal type").with_labels(vec![
-                constraint.loc.primary().with_message("expected integer literal"),
-                field_loc.secondary().with_message("the value is used here"),
-            ]))
-        }
-        (Some(_), _) => unreachable!(),
-        (None, _) => result.push(
+        (Some(field), _, _) => result.push(
+            Diagnostic::error()
+                .with_message("invalid constraint field type")
+                .with_labels(vec![constraint.loc.primary()])
+                .with_notes(vec![format!(
+                    "`{}` has type {}, expected enum field or scalar field",
+                    constraint.id,
+                    field.kind()
+                )]),
+        ),
+
+        (None, _, _) => result.push(
             Diagnostic::error()
                 .with_message(format!("undeclared identifier `{}`", constraint.id))
                 .with_labels(vec![constraint.loc.primary()]),
