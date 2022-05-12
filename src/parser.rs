@@ -187,7 +187,7 @@ fn err_missing_rule<T>(expected: Rule) -> Result<T, String> {
     Err(format!("expected rule {:?}, got nothing", expected))
 }
 
-fn expect<'i>(iter: &mut NodeIterator<'i>, rule: Rule) -> Result<Node<'i>, String> {
+fn expect<'i>(iter: &mut impl Iterator<Item = Node<'i>>, rule: Rule) -> Result<Node<'i>, String> {
     match iter.next() {
         Some(node) if node.as_rule() == rule => Ok(node),
         Some(node) => err_unexpected_rule(rule, node.as_rule()),
@@ -233,8 +233,12 @@ fn parse_identifier_or_integer(
     }
 }
 
-fn parse_string(iter: &mut NodeIterator<'_>) -> Result<String, String> {
-    expect(iter, Rule::string).map(|n| n.as_string())
+fn parse_string<'i>(iter: &mut impl Iterator<Item = Node<'i>>) -> Result<String, String> {
+    expect(iter, Rule::string)
+        .map(|n| n.as_str())
+        .and_then(|s| s.strip_prefix('"').ok_or_else(|| "expected \" prefix".to_owned()))
+        .and_then(|s| s.strip_suffix('"').ok_or_else(|| "expected \" suffix".to_owned()))
+        .map(|s| s.to_owned())
 }
 
 fn parse_size_modifier_opt(iter: &mut NodeIterator<'_>) -> Option<String> {
@@ -532,5 +536,30 @@ mod test {
                 .unwrap();
         assert_eq!(grammar.endianness.value, ast::EndiannessValue::BigEndian);
         assert_ne!(grammar.endianness.loc, ast::SourceRange::default());
+    }
+
+    #[test]
+    fn test_parse_string_bare() {
+        let mut pairs = PDLParser::parse(Rule::string, r#""test""#).unwrap();
+
+        assert_eq!(parse_string(&mut pairs).as_deref(), Ok("test"));
+        assert_eq!(pairs.next(), None, "pairs is empty");
+    }
+
+    #[test]
+    fn test_parse_string_space() {
+        let mut pairs = PDLParser::parse(Rule::string, r#""test with space""#).unwrap();
+
+        assert_eq!(parse_string(&mut pairs).as_deref(), Ok("test with space"));
+        assert_eq!(pairs.next(), None, "pairs is empty");
+    }
+
+    #[test]
+    #[should_panic] /* This is not supported */
+    fn test_parse_string_escape() {
+        let mut pairs = PDLParser::parse(Rule::string, r#""\"test\"""#).unwrap();
+
+        assert_eq!(parse_string(&mut pairs).as_deref(), Ok(r#""test""#));
+        assert_eq!(pairs.next(), None, "pairs is empty");
     }
 }
