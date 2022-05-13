@@ -36,17 +36,8 @@ rust_test_host {
     name: "pdl_inline_tests",
     defaults: ["pdl_defaults"],
     test_suites: ["general-tests"],
-    enabled: false, // rustfmt is only available on x86.
-    arch: {
-        x86_64: {
-            enabled: true,
-        },
-    },
-    required: [
-        "rustfmt",
-    ],
     data: [
-        ":rustfmt",
+        "rustfmt",
         "rustfmt.toml",
     ],
 }
