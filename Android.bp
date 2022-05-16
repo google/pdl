@@ -47,6 +47,10 @@ rust_test_host {
     data: [
         ":rustfmt",
         ":rustfmt.toml",
+        "test/generated/preamble.rs",
+        "test/generated/packet_decl_empty.rs",
+        "test/generated/packet_decl_simple_little_endian.rs",
+        "test/generated/packet_decl_simple_big_endian.rs",
     ],
 }
 

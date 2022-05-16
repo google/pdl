@@ -556,7 +556,7 @@ mod tests {
     use super::*;
     use crate::ast;
     use crate::parser::parse_inline;
-    use crate::test_utils::{assert_eq_with_diff, rustfmt};
+    use crate::test_utils::{assert_snapshot_eq, rustfmt};
 
     /// Parse a string fragment as a PDL file.
     ///
@@ -571,8 +571,7 @@ mod tests {
     #[test]
     fn test_generate_preamble() {
         let actual_code = generate_preamble(Path::new("some/path/foo.pdl")).unwrap();
-        let expected_code = include_str!("../test/generated/preamble.rs");
-        assert_eq_with_diff(&rustfmt(expected_code), &rustfmt(&actual_code));
+        assert_snapshot_eq("test/generated/preamble.rs", &rustfmt(&actual_code));
     }
 
     #[test]
@@ -587,8 +586,7 @@ mod tests {
         let children = HashMap::new();
         let decl = &grammar.declarations[0];
         let actual_code = generate_decl(&grammar, &packets, &children, decl).unwrap();
-        let expected_code = include_str!("../test/generated/packet_decl_empty.rs");
-        assert_eq_with_diff(&rustfmt(expected_code), &rustfmt(&actual_code));
+        assert_snapshot_eq("test/generated/packet_decl_empty.rs", &rustfmt(&actual_code));
     }
 
     #[test]
@@ -607,8 +605,10 @@ mod tests {
         let children = HashMap::new();
         let decl = &grammar.declarations[0];
         let actual_code = generate_decl(&grammar, &packets, &children, decl).unwrap();
-        let expected_code = include_str!("../test/generated/packet_decl_simple_little_endian.rs");
-        assert_eq_with_diff(&rustfmt(expected_code), &rustfmt(&actual_code));
+        assert_snapshot_eq(
+            "test/generated/packet_decl_simple_little_endian.rs",
+            &rustfmt(&actual_code),
+        );
     }
 
     #[test]
@@ -627,7 +627,9 @@ mod tests {
         let children = HashMap::new();
         let decl = &grammar.declarations[0];
         let actual_code = generate_decl(&grammar, &packets, &children, decl).unwrap();
-        let expected_code = include_str!("../test/generated/packet_decl_simple_big_endian.rs");
-        assert_eq_with_diff(&rustfmt(expected_code), &rustfmt(&actual_code));
+        assert_snapshot_eq(
+            "test/generated/packet_decl_simple_big_endian.rs",
+            &rustfmt(&actual_code),
+        );
     }
 }

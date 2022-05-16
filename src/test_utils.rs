@@ -5,7 +5,9 @@
 // rest of the `pdl` crate. To make this work, avoid `use crate::`
 // statements below.
 
+use std::fs;
 use std::io::Write;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use tempfile::NamedTempFile;
 
@@ -94,4 +96,53 @@ pub fn diff(left: &str, right: &str) -> String {
 #[track_caller]
 pub fn assert_eq_with_diff(left: &str, right: &str) {
     assert!(left == right, "texts did not match, diff:\n{}\n", diff(left, right));
+}
+
+/// Compare a string with a snapshot file.
+///
+/// The `snapshot_path` is relative to the current working directory
+/// of the test binary. This depends on how you execute the tests:
+///
+/// * When using `atest`: The current working directory is a random
+///   temporary directory. You need to ensure that the snapshot file
+///   is installed into this directory. You do this by adding the
+///   snapshot to the `data` attribute of your test rule
+///
+/// * When using Cargo: The current working directory is set to
+///   `CARGO_MANIFEST_DIR`, which is where the `Cargo.toml` file is
+///   found.
+///
+/// If you run the test with Cargo and the `UPDATE_SNAPSHOTS`
+/// environment variable is set, then the `actual_content` will be
+/// written to `snapshot_path`. Otherwise the content is compared and
+/// a panic is triggered if they differ.
+#[track_caller]
+pub fn assert_snapshot_eq<P: AsRef<Path>>(snapshot_path: P, actual_content: &str) {
+    let snapshot = snapshot_path.as_ref();
+    let snapshot_content = fs::read(&snapshot).unwrap_or_else(|err| {
+        panic!("Could not read snapshot from {}: {}", snapshot.display(), err)
+    });
+    let snapshot_content = String::from_utf8(snapshot_content).expect("Snapshot was not UTF-8");
+
+    // Normal comparison if UPDATE_SNAPSHOTS is unset.
+    if std::env::var("UPDATE_SNAPSHOTS").is_err() {
+        return assert_eq_with_diff(&snapshot_content, actual_content);
+    }
+
+    // Bail out if we are not using Cargo.
+    if std::env::var("CARGO_MANIFEST_DIR").is_err() {
+        panic!("Please unset UPDATE_SNAPSHOTS if you are not using Cargo");
+    }
+
+    if actual_content != snapshot_content {
+        eprintln!(
+            "Updating snapshot {}: {} -> {} bytes",
+            snapshot.display(),
+            snapshot_content.len(),
+            actual_content.len()
+        );
+        fs::write(&snapshot_path, actual_content).unwrap_or_else(|err| {
+            panic!("Could not write snapshot to {}: {}", snapshot.display(), err)
+        });
+    }
 }

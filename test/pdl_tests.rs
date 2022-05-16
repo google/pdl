@@ -4,9 +4,12 @@ use std::process::Command;
 // The integration test in this file is not part of the pdl crate, and
 // so we cannot directly depend on anything from pdl. However, we can
 // include the test_utils.rs file directly.
+//
+// The module is public to avoid an "function is never used" error,
+// which is triggered because we don't use all test_utils functions.
 
 #[path = "../src/test_utils.rs"]
-mod test_utils;
+pub mod test_utils;
 use test_utils::{assert_eq_with_diff, find_binary, rustfmt};
 
 fn strip_blank_lines(text: &str) -> String {
