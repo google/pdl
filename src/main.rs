@@ -7,6 +7,8 @@ mod ast;
 mod generator;
 mod lint;
 mod parser;
+#[cfg(test)]
+mod test_utils;
 
 use crate::lint::Lintable;
 

@@ -500,91 +500,18 @@ pub fn generate_rust(sources: &ast::SourceDatabase, grammar: &ast::Grammar) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::parse_inline;
-    use std::io::Write;
-    use std::process::Command;
-    use std::process::Stdio;
-    use tempfile::NamedTempFile;
-
-    fn parse(text: &str) -> ast::Grammar {
-        let mut db = ast::SourceDatabase::new();
-        parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parsing failure")
-    }
-
-    fn format_with_rustfmt(unformatted: &str) -> String {
-        // We expect to find `rustfmt` as a sibling to the test
-        // executable. It ends up there when referenced using the
-        // `data` property in an Android.pb file.
-        let mut rustfmt_path = std::env::current_exe().unwrap();
-        rustfmt_path.set_file_name("rustfmt");
-        let mut rustfmt = Command::new(&rustfmt_path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap_or_else(|_| panic!("failed to start {:?}", &rustfmt_path));
-
-        let mut stdin = rustfmt.stdin.take().unwrap();
-        // Owned copy which we can move into the writing thread.
-        let unformatted = String::from(unformatted);
-        std::thread::spawn(move || {
-            stdin.write_all(unformatted.as_bytes()).expect("could not write to stdin");
-        });
-
-        let output = rustfmt.wait_with_output().expect("error executing rustfmt");
-        assert!(output.status.success(), "rustfmt failed: {}", output.status);
-        String::from_utf8(output.stdout).expect("rustfmt output was not UTF-8")
-    }
-
-    fn unified_diff(left: &str, right: &str) -> String {
-        let mut temp_left = NamedTempFile::new().unwrap();
-        temp_left.write_all(left.as_bytes()).unwrap();
-        let mut temp_right = NamedTempFile::new().unwrap();
-        temp_right.write_all(right.as_bytes()).unwrap();
-
-        // We expect `diff` to be available on PATH.
-        let output = Command::new("diff")
-            .arg("--unified")
-            .arg("--label")
-            .arg("left")
-            .arg("--label")
-            .arg("right")
-            .arg(temp_left.path())
-            .arg(temp_right.path())
-            .output()
-            .expect("failed to run diff");
-        let diff_trouble_exit_code = 2; // from diff(1)
-        assert_ne!(
-            output.status.code().unwrap(),
-            diff_trouble_exit_code,
-            "diff failed: {}",
-            output.status
-        );
-        String::from_utf8(output.stdout).expect("diff output was not UTF-8")
-    }
-
-    #[track_caller]
-    fn assert_eq_with_diff(left: &str, right: &str) {
-        assert!(
-            left == right,
-            "texts did not match, left:\n{}\n\n\
-             right:\n{}\n\n\
-             diff:\n{}\n",
-            left,
-            right,
-            unified_diff(left, right)
-        );
-    }
+    use crate::test_utils::{assert_eq_with_diff, parse_str, rustfmt};
 
     #[test]
     fn test_generate_preamble() {
         let actual_code = generate_preamble(Path::new("some/path/foo.pdl")).unwrap();
         let expected_code = include_str!("../test/generated/preamble.rs");
-        assert_eq_with_diff(&format_with_rustfmt(&actual_code), expected_code);
+        assert_eq_with_diff(&rustfmt(&actual_code), expected_code);
     }
 
     #[test]
     fn test_generate_packet_decl_empty() {
-        let grammar = parse(
+        let grammar = parse_str(
             r#"
               big_endian_packets
               packet Foo {}
@@ -595,12 +522,12 @@ mod tests {
         let decl = &grammar.declarations[0];
         let actual_code = generate_decl(&grammar, &packets, &children, decl).unwrap();
         let expected_code = include_str!("../test/generated/packet_decl_empty.rs");
-        assert_eq_with_diff(&format_with_rustfmt(&actual_code), expected_code);
+        assert_eq_with_diff(&rustfmt(&actual_code), expected_code);
     }
 
     #[test]
     fn test_generate_packet_decl_little_endian() {
-        let grammar = parse(
+        let grammar = parse_str(
             r#"
               little_endian_packets
 
@@ -615,12 +542,12 @@ mod tests {
         let decl = &grammar.declarations[0];
         let actual_code = generate_decl(&grammar, &packets, &children, decl).unwrap();
         let expected_code = include_str!("../test/generated/packet_decl_simple_little_endian.rs");
-        assert_eq_with_diff(&format_with_rustfmt(&actual_code), expected_code);
+        assert_eq_with_diff(&rustfmt(&actual_code), expected_code);
     }
 
     #[test]
     fn test_generate_packet_decl_simple_big_endian() {
-        let grammar = parse(
+        let grammar = parse_str(
             r#"
               big_endian_packets
 
@@ -635,6 +562,6 @@ mod tests {
         let decl = &grammar.declarations[0];
         let actual_code = generate_decl(&grammar, &packets, &children, decl).unwrap();
         let expected_code = include_str!("../test/generated/packet_decl_simple_big_endian.rs");
-        assert_eq_with_diff(&format_with_rustfmt(&actual_code), expected_code);
+        assert_eq_with_diff(&rustfmt(&actual_code), expected_code);
     }
 }
