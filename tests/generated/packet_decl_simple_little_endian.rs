@@ -52,7 +52,6 @@ impl FooData {
             });
         }
         let z = u32::from_le_bytes([bytes[3], bytes[4], bytes[5], 0]);
-        let z = z & 0xffffff;
         Ok(Self { x, y, z })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
@@ -61,7 +60,6 @@ impl FooData {
         let y = self.y;
         buffer[1..3].copy_from_slice(&y.to_le_bytes()[0..2]);
         let z = self.z;
-        let z = z & 0xffffff;
         buffer[3..6].copy_from_slice(&z.to_le_bytes()[0..3]);
     }
     fn get_total_size(&self) -> usize {

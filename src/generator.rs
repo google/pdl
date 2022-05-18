@@ -74,22 +74,25 @@ fn generate_preamble(path: &Path) -> String {
     code
 }
 
-/// Round up the bit width to a Rust integer size.
-fn round_bit_width(width: usize) -> usize {
-    match width {
-        8 => 8,
-        16 => 16,
-        24 | 32 => 32,
-        40 | 48 | 56 | 64 => 64,
-        _ => todo!("unsupported field width: {width}"),
+/// Get the Rust integer type for the given bit width.
+///
+/// This will round up the size to the nearest Rust integer size. PDL
+/// supports integers up to 64 bit, so it is an error to call this
+/// with a width larger than 64.
+fn rust_integer_type(width: usize) -> usize {
+    for integer_width in [8, 16, 32, 64] {
+        if width <= integer_width {
+            return integer_width;
+        }
     }
+    panic!("unsupported field width: {width}")
 }
 
 /// Generate a Rust unsigned integer type large enough to hold
 /// integers of the given bit width.
 fn type_for_width(width: usize) -> syn::Type {
-    let rounded_width = round_bit_width(width);
-    syn::parse_str(&format!("u{rounded_width}")).unwrap()
+    let integer_width = rust_integer_type(width);
+    syn::parse_str(&format!("u{integer_width}")).unwrap()
 }
 
 fn generate_field(field: &ast::Field, visibility: syn::Visibility) -> proc_macro2::TokenStream {
@@ -122,106 +125,254 @@ fn generate_field_getter(packet_name: &syn::Ident, field: &ast::Field) -> proc_m
     }
 }
 
-/// Mask and rebind the field value (if necessary).
-fn mask_field_value(field: &ast::Field) -> Option<proc_macro2::TokenStream> {
-    match field {
-        ast::Field::Scalar { id, width, .. } => {
-            let field_name = format_ident!("{id}");
-            let type_width = round_bit_width(*width);
-            if *width != type_width {
-                let mask =
-                    syn::parse_str::<syn::LitInt>(&format!("{:#x}", (1u64 << *width) - 1)).unwrap();
-                Some(quote! {
-                    let #field_name = #field_name & #mask;
-                })
-            } else {
-                None
-            }
-        }
-        _ => todo!("unsupported field: {:?}", field),
+/// Find byte indices covering `offset..offset+width` bits.
+fn get_field_range(offset: usize, width: usize) -> std::ops::Range<usize> {
+    let start = offset / 8;
+    let mut end = (offset + width) / 8;
+    if (offset + width) % 8 != 0 {
+        end += 1;
     }
+    start..end
 }
 
-fn generate_field_parser(
-    endianness_value: ast::EndiannessValue,
+fn get_chunk_width(fields: &[ast::Field]) -> usize {
+    fields.iter().map(get_field_width).sum()
+}
+
+/// Read data for a byte-aligned chunk.
+fn generate_chunk_read(
     packet_name: &str,
-    field: &ast::Field,
+    endianness_value: ast::EndiannessValue,
     offset: usize,
+    chunk: &[ast::Field],
 ) -> proc_macro2::TokenStream {
-    match field {
+    assert!(offset % 8 == 0, "Chunks must be byte-aligned, got offset: {offset}");
+    let getter = match endianness_value {
+        ast::EndiannessValue::BigEndian => format_ident!("from_be_bytes"),
+        ast::EndiannessValue::LittleEndian => format_ident!("from_le_bytes"),
+    };
+
+    // Work directly with the field name if we are reading a single
+    // field. This generates simpler code.
+    let chunk_name = match chunk {
+        [ast::Field::Scalar { id: field_name, .. }] => format_ident!("{}", field_name),
+        _ => format_ident!("chunk"),
+    };
+    let chunk_width = get_chunk_width(chunk);
+    let chunk_type = type_for_width(chunk_width);
+    let chunk_type_width = rust_integer_type(chunk_width);
+    assert!(chunk_width % 8 == 0, "Chunks must have a byte size, got width: {chunk_width}");
+
+    let range = get_field_range(offset, chunk_width);
+    let indices = range.map(syn::Index::from).collect::<Vec<_>>();
+
+    let mut field_offset = offset;
+    let mut last_field_range_end = 0;
+    // TODO(mgeisler): emit just a single length check per chunk. We
+    // could even emit a single length check per packet.
+    let length_checks = chunk.iter().map(|field| match field {
         ast::Field::Scalar { id, width, .. } => {
-            let field_name = format_ident!("{id}");
-            let type_width = round_bit_width(*width);
-            let field_type = type_for_width(*width);
+            let field_range = get_field_range(field_offset, *width);
+            field_offset += *width;
+            if field_range.end == last_field_range_end {
+                None // Suppress redundant length check.
+            } else {
+                last_field_range_end = field_range.end;
+                let range_end = syn::Index::from(field_range.end);
+                Some(quote! {
+                    if bytes.len() < #range_end {
+                        return Err(Error::InvalidLengthError {
+                            obj: #packet_name.to_string(),
+                            field: #id.to_string(),
+                            wanted: #range_end,
+                            got: bytes.len(),
+                        });
+                    }
+                })
+            }
+        }
+        _ => todo!("unsupported field: {:?}", field),
+    });
 
-            let getter = match endianness_value {
-                ast::EndiannessValue::BigEndian => format_ident!("from_be_bytes"),
-                ast::EndiannessValue::LittleEndian => format_ident!("from_le_bytes"),
-            };
+    // When the chunk_type_width is larger than chunk_width (e.g.
+    // chunk_width is 24 but chunk_type_width is 32), then we need
+    // zero padding.
+    let zero_padding_len = (chunk_type_width - chunk_width) / 8;
+    // We need the padding on the MSB side of the payload, so for
+    // big-endian, we need to padding on the left, for little-endian
+    // we need it on the right.
+    let (zero_padding_before, zero_padding_after) = match endianness_value {
+        ast::EndiannessValue::BigEndian => (vec![syn::Index::from(0); zero_padding_len], vec![]),
+        ast::EndiannessValue::LittleEndian => (vec![], vec![syn::Index::from(0); zero_padding_len]),
+    };
 
-            // We need the padding on the MSB side of the payload, so
-            // for big-endian, we need to padding on the left, for
-            // little-endian we need it on the right.
-            let padding = vec![syn::Index::from(0); (type_width - width) / 8];
-            let (padding_before, padding_after) = match endianness_value {
-                ast::EndiannessValue::BigEndian => (padding, vec![]),
-                ast::EndiannessValue::LittleEndian => (vec![], padding),
-            };
+    quote! {
+        #(#length_checks)*
+        let #chunk_name = #chunk_type::#getter([
+            #(#zero_padding_before,)* #(bytes[#indices]),* #(, #zero_padding_after)*
+        ]);
+    }
+}
 
-            let wanted_len = syn::Index::from(offset + width / 8);
-            let indices = (offset..offset + width / 8).map(syn::Index::from);
-            let mask = mask_field_value(field);
+fn generate_chunk_read_field_adjustments(fields: &[ast::Field]) -> proc_macro2::TokenStream {
+    // If there is a single field in the chunk, then we don't have to
+    // shift, mask, or cast.
+    if fields.len() == 1 {
+        return quote! {};
+    }
 
-            quote! {
-                // TODO(mgeisler): call a function instead to avoid
-                // generating so much code for this.
-                if bytes.len() < #wanted_len {
-                    return Err(Error::InvalidLengthError {
-                        obj: #packet_name.to_string(),
-                        field: #id.to_string(),
-                        wanted: #wanted_len,
-                        got: bytes.len(),
-                    });
+    let chunk_width = get_chunk_width(fields);
+    let chunk_type_width = rust_integer_type(chunk_width);
+
+    let mut field_parsers = Vec::new();
+    let mut field_offset = 0;
+    for field in fields {
+        match field {
+            ast::Field::Scalar { id, width, .. } => {
+                let field_name = format_ident!("{id}");
+                let field_type = type_for_width(*width);
+                let field_type_width = rust_integer_type(*width);
+
+                let mut field = quote! {
+                    chunk
+                };
+                if field_offset > 0 {
+                    let field_offset = syn::Index::from(field_offset);
+                    let op = syn::parse_str::<syn::BinOp>(">>").unwrap();
+                    field = quote! {
+                        (#field #op #field_offset)
+                    };
                 }
-                let #field_name = #field_type::#getter([
-                    #(#padding_before,)* #(bytes[#indices]),* #(, #padding_after)*
-                ]);
-                #mask
+
+                if *width < field_type_width {
+                    let bit_mask = mask_bits(*width);
+                    field = quote! {
+                        (#field & #bit_mask)
+                    };
+                }
+
+                if field_type_width < chunk_type_width {
+                    field = quote! {
+                        #field as #field_type;
+                    };
+                }
+
+                field_offset += width;
+                field_parsers.push(quote! {
+                    let #field_name = #field;
+                });
             }
+            _ => todo!("unsupported field: {:?}", field),
         }
-        _ => todo!("unsupported field: {:?}", field),
+    }
+
+    quote! {
+        #(#field_parsers)*
     }
 }
 
-fn generate_field_writer(
-    file: &ast::File,
-    field: &ast::Field,
+fn generate_chunk_write_field_adjustments(chunk: &[ast::Field]) -> proc_macro2::TokenStream {
+    // Work directly with the field name if we are writing a single
+    // field. This generates simpler code.
+    if let [ast::Field::Scalar { id, .. }] = chunk {
+        // If there is a single field in the chunk, then we don't have to
+        // shift, mask, or cast.
+        let field_name = format_ident!("{id}");
+        return quote! {
+            let #field_name = self.#field_name;
+        };
+    }
+
+    let chunk_width = get_chunk_width(chunk);
+    let chunk_type = type_for_width(chunk_width);
+    let chunk_type_width = rust_integer_type(chunk_width);
+
+    let mut field_parsers = Vec::new();
+    let mut field_offset = 0;
+    for field in chunk {
+        match field {
+            ast::Field::Scalar { id, width, .. } => {
+                let field_name = format_ident!("{id}");
+                let field_type_width = rust_integer_type(*width);
+
+                let mut field = quote! {
+                    self.#field_name
+                };
+
+                if field_type_width < chunk_type_width {
+                    field = quote! {
+                        (#field as #chunk_type)
+                    };
+                }
+
+                if *width < field_type_width {
+                    let bit_mask = mask_bits(*width);
+                    field = quote! {
+                        (#field & #bit_mask)
+                    };
+                }
+
+                if field_offset > 0 {
+                    let field_offset = syn::Index::from(field_offset);
+                    let op = syn::parse_str::<syn::BinOp>("<<").unwrap();
+                    field = quote! {
+                        (#field #op #field_offset)
+                    };
+                }
+
+                field_offset += width;
+                field_parsers.push(quote! {
+                    let chunk = chunk | #field;
+                });
+            }
+            _ => todo!("unsupported field: {:?}", field),
+        }
+    }
+
+    quote! {
+        let chunk = 0;
+        #(#field_parsers)*
+    }
+}
+
+/// Generate a bit-mask which masks out `n` least significant bits.
+fn mask_bits(n: usize) -> syn::LitInt {
+    syn::parse_str::<syn::LitInt>(&format!("{:#x}", (1u64 << n) - 1)).unwrap()
+}
+
+fn generate_chunk_write(
+    endianness_value: ast::EndiannessValue,
     offset: usize,
+    chunk: &[ast::Field],
 ) -> proc_macro2::TokenStream {
-    match field {
-        ast::Field::Scalar { id, width, .. } => {
-            let field_name = format_ident!("{id}");
-            let start = syn::Index::from(offset);
-            let end = syn::Index::from(offset + width / 8);
-            let byte_width = syn::Index::from(width / 8);
-            let mask = mask_field_value(field);
-            let writer = match file.endianness.value {
-                ast::EndiannessValue::BigEndian => format_ident!("to_be_bytes"),
-                ast::EndiannessValue::LittleEndian => format_ident!("to_le_bytes"),
-            };
-            quote! {
-                let #field_name = self.#field_name;
-                #mask
-                buffer[#start..#end].copy_from_slice(&#field_name.#writer()[0..#byte_width]);
-            }
-        }
-        _ => todo!("unsupported field: {:?}", field),
+    let writer = match endianness_value {
+        ast::EndiannessValue::BigEndian => format_ident!("to_be_bytes"),
+        ast::EndiannessValue::LittleEndian => format_ident!("to_le_bytes"),
+    };
+
+    // Work directly with the field name if we are writing a single
+    // field. This generates simpler code.
+    let chunk_name = match chunk {
+        [ast::Field::Scalar { id, .. }] => format_ident!("{id}"),
+        _ => format_ident!("chunk"),
+    };
+    let chunk_width = get_chunk_width(chunk);
+    assert!(chunk_width % 8 == 0, "Chunks must have a byte size, got width: {chunk_width}");
+
+    let range = get_field_range(offset, chunk_width);
+    let start = syn::Index::from(range.start);
+    let end = syn::Index::from(range.end);
+    // TODO(mgeisler): let slice = (chunk_type_width > chunk_width).then( ... )
+    let chunk_byte_width = syn::Index::from(chunk_width / 8);
+    quote! {
+        buffer[#start..#end].copy_from_slice(&#chunk_name.#writer()[0..#chunk_byte_width]);
     }
 }
 
-fn get_field_size(field: &ast::Field) -> usize {
+/// Field size in bits.
+fn get_field_width(field: &ast::Field) -> usize {
     match field {
-        ast::Field::Scalar { width, .. } => width / 8,
+        ast::Field::Scalar { width, .. } => *width,
         _ => todo!("unsupported field: {:?}", field),
     }
 }
@@ -318,14 +469,24 @@ fn generate_packet_decl(
         }
     });
 
-    // TODO(mgeisler): use the `Buf` trait instead of tracking
-    // the offset manually.
-    let mut offset = 0;
-    let field_parsers = fields.iter().map(|field| {
-        let parser = generate_field_parser(file.endianness.value, id, field, offset);
-        offset += get_field_size(field);
-        parser
+    let mut chunk_width = 0;
+    let chunks = fields.split_inclusive(|field| {
+        chunk_width += get_field_width(field);
+        chunk_width % 8 == 0
     });
+    let mut field_parsers = Vec::new();
+    let mut field_writers = Vec::new();
+    let mut offset = 0;
+    for chunk in chunks {
+        field_parsers.push(generate_chunk_read(id, file.endianness.value, offset, chunk));
+        field_parsers.push(generate_chunk_read_field_adjustments(chunk));
+
+        field_writers.push(generate_chunk_write_field_adjustments(chunk));
+        field_writers.push(generate_chunk_write(file.endianness.value, offset, chunk));
+
+        offset += get_chunk_width(chunk);
+    }
+
     let field_names = fields
         .iter()
         .map(|field| match field {
@@ -333,17 +494,15 @@ fn generate_packet_decl(
             _ => todo!("unsupported field: {:?}", field),
         })
         .collect::<Vec<_>>();
-    let mut offset = 0;
-    let field_writers = fields.iter().map(|field| {
-        let writer = generate_field_writer(file, field, offset);
-        offset += get_field_size(field);
-        writer
-    });
 
-    let total_field_size = syn::Index::from(fields.iter().map(get_field_size).sum::<usize>());
-    let get_size_adjustment = (total_field_size.index > 0).then(|| {
+    let packet_size_bits = get_chunk_width(fields);
+    if packet_size_bits % 8 != 0 {
+        panic!("packet {id} does not end on a byte boundary, size: {packet_size_bits} bits",);
+    }
+    let packet_size_bytes = syn::Index::from(packet_size_bits / 8);
+    let get_size_adjustment = (packet_size_bytes.index > 0).then(|| {
         Some(quote! {
-            let ret = ret + #total_field_size;
+            let ret = ret + #packet_size_bytes;
         })
     });
 
@@ -352,7 +511,7 @@ fn generate_packet_decl(
             fn conforms(bytes: &[u8]) -> bool {
                 // TODO(mgeisler): return Boolean expression directly.
                 // TODO(mgeisler): skip when total_field_size == 0.
-                if bytes.len() < #total_field_size {
+                if bytes.len() < #packet_size_bytes {
                     return false;
                 }
                 true
@@ -542,7 +701,7 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_packet_decl_little_endian() {
+    fn test_generate_packet_decl_simple_little_endian() {
         let file = parse_str(
             r#"
               little_endian_packets
@@ -587,6 +746,94 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_generate_packet_decl_complex_little_endian() {
+        let grammar = parse_str(
+            r#"
+              little_endian_packets
+
+              packet Foo {
+                a: 3,
+                b: 8,
+                c: 5,
+                d: 24,
+                e: 12,
+                f: 4,
+              }
+            "#,
+        );
+        let packets = HashMap::new();
+        let children = HashMap::new();
+        let decl = &grammar.declarations[0];
+        let actual_code = generate_decl(&grammar, &packets, &children, decl);
+        assert_snapshot_eq(
+            "tests/generated/packet_decl_complex_little_endian.rs",
+            &rustfmt(&actual_code),
+        );
+    }
+
+    #[test]
+    fn test_generate_packet_decl_complex_big_endian() {
+        let grammar = parse_str(
+            r#"
+              big_endian_packets
+
+              packet Foo {
+                a: 3,
+                b: 8,
+                c: 5,
+                d: 24,
+                e: 12,
+                f: 4,
+              }
+            "#,
+        );
+        let packets = HashMap::new();
+        let children = HashMap::new();
+        let decl = &grammar.declarations[0];
+        let actual_code = generate_decl(&grammar, &packets, &children, decl);
+        assert_snapshot_eq(
+            "tests/generated/packet_decl_complex_big_endian.rs",
+            &rustfmt(&actual_code),
+        );
+    }
+
+    #[test]
+    fn test_rust_integer_type() {
+        assert_eq!(rust_integer_type(0), 8);
+        assert_eq!(rust_integer_type(8), 8);
+        assert_eq!(rust_integer_type(9), 16);
+        assert_eq!(rust_integer_type(64), 64);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_rust_integer_type_panics_on_large_width() {
+        rust_integer_type(65);
+    }
+
+    #[test]
+    fn test_get_field_range() {
+        // Zero widths will give you an empty slice iff the offset is
+        // byte aligned. In both cases, the slice covers the empty
+        // width. In practice, PDL doesn't allow zero-width fields.
+        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 0), (0..0));
+        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 0), (0..1));
+        assert_eq!(get_field_range(/*offset=*/ 8, /*width=*/ 0), (1..1));
+        assert_eq!(get_field_range(/*offset=*/ 9, /*width=*/ 0), (1..2));
+
+        // Non-zero widths work as expected.
+        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 1), (0..1));
+        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 5), (0..1));
+        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 8), (0..1));
+        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 20), (0..3));
+
+        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 1), (0..1));
+        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 3), (0..1));
+        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 4), (0..2));
+        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 20), (0..4));
+    }
+
     // Assert that an expression equals the given expression.
     //
     // Both expressions are wrapped in a `main` function (so we can
@@ -609,22 +856,11 @@ mod tests {
     }
 
     #[test]
-    fn test_mask_field_value() {
+    fn test_generate_chunk_read_8bit() {
         let loc = ast::SourceRange::default();
-        let field = ast::Field::Scalar { loc, id: String::from("a"), width: 8 };
-        assert_eq!(mask_field_value(&field).map(|m| m.to_string()), None);
-
-        let field = ast::Field::Scalar { loc, id: String::from("a"), width: 24 };
-        assert_expr_eq(mask_field_value(&field).unwrap(), quote! { let a = a & 0xffffff; });
-    }
-
-    #[test]
-    fn test_generate_field_parser_no_padding() {
-        let loc = ast::SourceRange::default();
-        let field = ast::Field::Scalar { loc, id: String::from("a"), width: 8 };
-
+        let fields = &[ast::Field::Scalar { loc, id: String::from("a"), width: 8 }];
         assert_expr_eq(
-            generate_field_parser(ast::EndiannessValue::BigEndian, "Foo", &field, 10),
+            generate_chunk_read("Foo", ast::EndiannessValue::BigEndian, 80, fields),
             quote! {
                 if bytes.len() < 11 {
                     return Err(Error::InvalidLengthError {
@@ -640,12 +876,51 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_field_parser_little_endian_padding() {
-        // Test with width != type width.
+    fn test_generate_chunk_read_16bit_le() {
         let loc = ast::SourceRange::default();
-        let field = ast::Field::Scalar { loc, id: String::from("a"), width: 24 };
+        let fields = &[ast::Field::Scalar { loc, id: String::from("a"), width: 16 }];
         assert_expr_eq(
-            generate_field_parser(ast::EndiannessValue::LittleEndian, "Foo", &field, 10),
+            generate_chunk_read("Foo", ast::EndiannessValue::LittleEndian, 80, fields),
+            quote! {
+                if bytes.len() < 12 {
+                    return Err(Error::InvalidLengthError {
+                        obj: "Foo".to_string(),
+                        field: "a".to_string(),
+                        wanted: 12,
+                        got: bytes.len(),
+                    });
+                }
+                let a = u16::from_le_bytes([bytes[10], bytes[11]]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_chunk_read_16bit_be() {
+        let loc = ast::SourceRange::default();
+        let fields = &[ast::Field::Scalar { loc, id: String::from("a"), width: 16 }];
+        assert_expr_eq(
+            generate_chunk_read("Foo", ast::EndiannessValue::BigEndian, 80, fields),
+            quote! {
+                if bytes.len() < 12 {
+                    return Err(Error::InvalidLengthError {
+                        obj: "Foo".to_string(),
+                        field: "a".to_string(),
+                        wanted: 12,
+                        got: bytes.len(),
+                    });
+                }
+                let a = u16::from_be_bytes([bytes[10], bytes[11]]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_chunk_read_24bit_le() {
+        let loc = ast::SourceRange::default();
+        let fields = &[ast::Field::Scalar { loc, id: String::from("a"), width: 24 }];
+        assert_expr_eq(
+            generate_chunk_read("Foo", ast::EndiannessValue::LittleEndian, 80, fields),
             quote! {
                 if bytes.len() < 13 {
                     return Err(Error::InvalidLengthError {
@@ -656,18 +931,16 @@ mod tests {
                     });
                 }
                 let a = u32::from_le_bytes([bytes[10], bytes[11], bytes[12], 0]);
-                let a = a & 0xffffff;
             },
         );
     }
 
     #[test]
-    fn test_generate_field_parser_big_endian_padding() {
-        // Test with width != type width.
+    fn test_generate_chunk_read_24bit_be() {
         let loc = ast::SourceRange::default();
-        let field = ast::Field::Scalar { loc, id: String::from("a"), width: 24 };
+        let fields = &[ast::Field::Scalar { loc, id: String::from("a"), width: 24 }];
         assert_expr_eq(
-            generate_field_parser(ast::EndiannessValue::BigEndian, "Foo", &field, 10),
+            generate_chunk_read("Foo", ast::EndiannessValue::BigEndian, 80, fields),
             quote! {
                 if bytes.len() < 13 {
                     return Err(Error::InvalidLengthError {
@@ -678,7 +951,167 @@ mod tests {
                     });
                 }
                 let a = u32::from_be_bytes([0, bytes[10], bytes[11], bytes[12]]);
-                let a = a & 0xffffff;
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_chunk_read_multiple_fields() {
+        let loc = ast::SourceRange::default();
+        let fields = &[
+            ast::Field::Scalar { loc, id: String::from("a"), width: 16 },
+            ast::Field::Scalar { loc, id: String::from("b"), width: 24 },
+        ];
+        assert_expr_eq(
+            generate_chunk_read("Foo", ast::EndiannessValue::BigEndian, 80, fields),
+            quote! {
+                if bytes.len() < 12 {
+                    return Err(Error::InvalidLengthError {
+                        obj: "Foo".to_string(),
+                        field: "a".to_string(),
+                        wanted: 12,
+                        got: bytes.len(),
+                    });
+                }
+                if bytes.len() < 15 {
+                    return Err(Error::InvalidLengthError {
+                        obj: "Foo".to_string(),
+                        field: "b".to_string(),
+                        wanted: 15,
+                        got: bytes.len(),
+                    });
+                }
+                let chunk =
+                    u64::from_be_bytes([0, 0, 0, bytes[10], bytes[11], bytes[12], bytes[13], bytes[14]]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_chunk_read_field_adjustments_8bit() {
+        let loc = ast::SourceRange::default();
+        let fields = vec![
+            ast::Field::Scalar { loc, id: String::from("a"), width: 3 },
+            ast::Field::Scalar { loc, id: String::from("b"), width: 5 },
+        ];
+        assert_expr_eq(
+            generate_chunk_read_field_adjustments(&fields),
+            quote! {
+                let a = (chunk & 0x7);
+                let b = ((chunk >> 3) & 0x1f);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_chunk_read_field_adjustments_48bit() {
+        let loc = ast::SourceRange::default();
+        let fields = vec![
+            ast::Field::Scalar { loc, id: String::from("a"), width: 3 },
+            ast::Field::Scalar { loc, id: String::from("b"), width: 8 },
+            ast::Field::Scalar { loc, id: String::from("c"), width: 10 },
+            ast::Field::Scalar { loc, id: String::from("d"), width: 18 },
+            ast::Field::Scalar { loc, id: String::from("e"), width: 9 },
+        ];
+        assert_expr_eq(
+            generate_chunk_read_field_adjustments(&fields),
+            quote! {
+                let a = (chunk & 0x7) as u8;
+                let b = (chunk >> 3) as u8;
+                let c = ((chunk >> 11) & 0x3ff) as u16;
+                let d = ((chunk >> 21) & 0x3ffff) as u32;
+                let e = ((chunk >> 39) & 0x1ff) as u16;
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_chunk_write_8bit() {
+        let loc = ast::SourceRange::default();
+        let fields = &[ast::Field::Scalar { loc, id: String::from("a"), width: 8 }];
+        assert_expr_eq(
+            generate_chunk_write(ast::EndiannessValue::BigEndian, 80, fields),
+            quote! {
+                buffer[10..11].copy_from_slice(&a.to_be_bytes()[0..1]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_chunk_write_16bit() {
+        let loc = ast::SourceRange::default();
+        let fields = &[ast::Field::Scalar { loc, id: String::from("a"), width: 16 }];
+        assert_expr_eq(
+            generate_chunk_write(ast::EndiannessValue::BigEndian, 80, fields),
+            quote! {
+                buffer[10..12].copy_from_slice(&a.to_be_bytes()[0..2]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_chunk_write_24bit() {
+        let loc = ast::SourceRange::default();
+        let fields = &[ast::Field::Scalar { loc, id: String::from("a"), width: 24 }];
+        assert_expr_eq(
+            generate_chunk_write(ast::EndiannessValue::BigEndian, 80, fields),
+            quote! {
+                buffer[10..13].copy_from_slice(&a.to_be_bytes()[0..3]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_chunk_write_multiple_fields() {
+        let loc = ast::SourceRange::default();
+        let fields = &[
+            ast::Field::Scalar { loc, id: String::from("a"), width: 16 },
+            ast::Field::Scalar { loc, id: String::from("b"), width: 24 },
+        ];
+        assert_expr_eq(
+            generate_chunk_write(ast::EndiannessValue::BigEndian, 80, fields),
+            quote! {
+                buffer[10..15].copy_from_slice(&chunk.to_be_bytes()[0..5]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_chunk_write_field_adjustments_8bit() {
+        let loc = ast::SourceRange::default();
+        let fields = vec![
+            ast::Field::Scalar { loc, id: String::from("a"), width: 3 },
+            ast::Field::Scalar { loc, id: String::from("b"), width: 5 },
+        ];
+        assert_expr_eq(
+            generate_chunk_write_field_adjustments(&fields),
+            quote! {
+                let chunk = 0;
+                let chunk = chunk | (self.a & 0x7) ;
+                let chunk = chunk | ((self.b & 0x1f) << 3);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_chunk_write_field_adjustments_48bit() {
+        let loc = ast::SourceRange::default();
+        let fields = vec![
+            ast::Field::Scalar { loc, id: String::from("a"), width: 3 },
+            ast::Field::Scalar { loc, id: String::from("b"), width: 8 },
+            ast::Field::Scalar { loc, id: String::from("c"), width: 10 },
+            ast::Field::Scalar { loc, id: String::from("d"), width: 18 },
+            ast::Field::Scalar { loc, id: String::from("e"), width: 9 },
+        ];
+        assert_expr_eq(
+            generate_chunk_write_field_adjustments(&fields),
+            quote! {
+                let chunk = 0;
+                let chunk = chunk | ((self.a as u64) & 0x7);
+                let chunk = chunk | ((self.b as u64) << 3);
+                let chunk = chunk | (((self.c as u64) & 0x3ff) << 11);
+                let chunk = chunk | (((self.d as u64) & 0x3ffff) << 21);
+                let chunk = chunk | (((self.e as u64) & 0x1ff) << 39);
             },
         );
     }
