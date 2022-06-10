@@ -6,6 +6,22 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use tempfile::NamedTempFile;
 
+/// Search for a binary in `$PATH` or as a sibling to the current
+/// executable (typically the test binary).
+fn find_binary(name: &str) -> Option<std::path::PathBuf> {
+    let mut current_exe = std::env::current_exe().unwrap();
+    current_exe.pop();
+    let paths = std::env::var_os("PATH").unwrap();
+    for mut path in std::iter::once(current_exe).chain(std::env::split_paths(&paths)) {
+        path.push(name);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
 /// Parse a string fragment as a PDL file.
 ///
 /// # Panics
@@ -23,8 +39,7 @@ pub fn parse_str(text: &str) -> ast::Grammar {
 /// Panics if `rustfmt` cannot be found in the same directory as the
 /// test executable or if it returns a non-zero exit code.
 pub fn rustfmt(input: &str) -> String {
-    let mut rustfmt_path = std::env::current_exe().unwrap();
-    rustfmt_path.set_file_name("rustfmt");
+    let rustfmt_path = find_binary("rustfmt").expect("cannot find rustfmt");
     let mut rustfmt = Command::new(&rustfmt_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

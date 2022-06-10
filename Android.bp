@@ -10,21 +10,23 @@ package {
 rust_defaults {
     name: "pdl_defaults",
     srcs: ["src/main.rs"],
+    // LINT.IfChange
     rustlibs: [
+        "libanyhow",
+        "libcodespan_reporting",
         "libpest",
+        "libproc_macro2",
+        "libquote",
         "libserde",
         "libserde_json",
         "libstructopt",
-        "libcodespan_reporting",
-        "libquote",
         "libsyn",
-        "libproc_macro2",
-        "libanyhow",
         "libtempfile",
     ],
     proc_macros: [
         "libpest_derive",
     ],
+    // LINT.ThenChange(Cargo.toml)
 }
 
 rust_binary_host {
