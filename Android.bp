@@ -49,6 +49,5 @@ rust_test_host {
     ],
     data: [
         ":rustfmt",
-        "rustfmt.toml",
     ],
 }
