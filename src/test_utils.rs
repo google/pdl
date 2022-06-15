@@ -78,6 +78,7 @@ pub fn diff(left: &str, right: &str) -> String {
     // We expect `diff` to be available on PATH.
     let output = Command::new("diff")
         .arg("--unified")
+        .arg("--color=always")
         .arg("--label")
         .arg("left")
         .arg("--label")
