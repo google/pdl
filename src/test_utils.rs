@@ -58,7 +58,7 @@ pub fn rustfmt(input: &str) -> String {
     String::from_utf8(output.stdout).expect("rustfmt output was not UTF-8")
 }
 
-/// Compare two strings using `diff`
+/// Find the unified diff between two strings using `diff`.
 ///
 /// # Panics
 ///
