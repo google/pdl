@@ -70,3 +70,40 @@ rust_test_host {
         ":rustfmt",
     ],
 }
+
+// Generate the python parser+serializer backend for the
+// test grammar located at test/grammars/test-grammar.pdl.
+genrule {
+    name: "pdl_python_generator_test_gen",
+    cmd: "$(location :pdl) $(in) |" +
+        " $(location scripts/generate_python_backend.py)" +
+        " --output $(out) --custom-type-location test.custom_types",
+    tools: [ ":pdl" ],
+    tool_files: [
+        "scripts/generate_python_backend.py",
+        "scripts/pdl/core.py",
+        "scripts/pdl/ast.py",
+        "test/custom_types.py",
+    ],
+    srcs: [
+        "test/grammars/test-grammar.pdl",
+    ],
+    out: [
+        "pdl_test.py",
+    ],
+}
+
+// Test the generated python parser+serializer against
+// pre-generated binary inputs.
+python_test_host {
+    name: "pdl_python_generator_test",
+    main: "test/python_generator_test.py",
+    srcs: [
+        "test/python_generator_test.py",
+        "test/custom_types.py",
+        ":pdl_python_generator_test_gen",
+    ],
+    test_options: {
+        unit_test: true,
+    },
+}
