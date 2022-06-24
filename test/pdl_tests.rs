@@ -17,13 +17,18 @@ fn strip_blank_lines(text: &str) -> String {
 ///
 /// # Panics
 ///
-/// Panics if `pdl` cannot be found on `$PATH` or if it returns a
-/// non-zero exit code.
+/// Panics if `pdl` cannot be found or if it fails.
 fn pdl(code: &str) -> String {
     let tempdir = tempfile::tempdir().unwrap();
     let input = tempdir.path().join("input.pdl");
     fs::write(&input, code.as_bytes()).unwrap();
-    let pdl_path = find_binary("pdl").unwrap();
+
+    // Cargo will set `CARGO_BIN_EXE_pdl` when compiling the crate. If
+    // we're not using Cargo, we search for `pdl` using find_binary.
+    let pdl_path = match std::option_env!("CARGO_BIN_EXE_pdl") {
+        Some(pdl_path) => std::path::PathBuf::from(pdl_path),
+        None => find_binary("pdl").unwrap(),
+    };
     let output = Command::new(&pdl_path)
         .arg("--output-format")
         .arg("rust")
