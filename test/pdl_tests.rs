@@ -70,7 +70,12 @@ fn bluetooth_packetgen(code: &str) -> String {
 fn assert_equal_compilation(pdl_code: &str) {
     let old_rust = rustfmt(&bluetooth_packetgen(pdl_code));
     let new_rust = rustfmt(&pdl(pdl_code));
-    assert_eq_with_diff(&strip_blank_lines(&old_rust), &strip_blank_lines(&new_rust));
+    assert_eq_with_diff(
+        "bluetooth_packetgen output",
+        &strip_blank_lines(&old_rust),
+        "pdl output",
+        &strip_blank_lines(&new_rust),
+    );
 }
 
 #[test]
