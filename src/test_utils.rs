@@ -93,13 +93,5 @@ pub fn diff(left: &str, right: &str) -> String {
 /// Compare two strings and output a diff if they are not equal.
 #[track_caller]
 pub fn assert_eq_with_diff(left: &str, right: &str) {
-    assert!(
-        left == right,
-        "texts did not match, left:\n{}\n\n\
-             right:\n{}\n\n\
-             diff:\n{}\n",
-        left,
-        right,
-        diff(left, right)
-    );
+    assert!(left == right, "texts did not match, diff:\n{}\n", diff(left, right));
 }
