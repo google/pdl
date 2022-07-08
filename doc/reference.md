@@ -54,6 +54,53 @@ packet Brew {
 }
 ```
 
+The endianess affects how fields of fractional bit-size (hence named bit-fields) are parsed or
+serialized. Such fields are grouped together to the next byte boundary, least
+significant bit first, and then byte-swapped to the required endianess before
+being written to memory, or after being read from memory.
+
+```
+packet Coffee {
+  a: 1,
+  b: 15,
+  c: 3,
+  d: 5,
+}
+
+// Little endian layout
+//     LSB                                   MSB
+//     0    1    2    3    4    5    6    7
+//     +---------------------------------------+
+//  0  | a  |             b[6:0]               |
+//     +---------------------------------------+
+//  1  |               b[14:7]                 |
+//     +---------------------------------------+
+//  2  |       c      |             d          |
+//     +---------------------------------------+
+
+// Big endian layout
+//     LSB                                   MSB
+//     0    1    2    3    4    5    6    7
+//     +---------------------------------------+
+//  0  |               b[14:7]                 |
+//     +---------------------------------------+
+//  1  | a  |             b[6:0]               |
+//     +---------------------------------------+
+//  2  |       c      |             d          |
+//     +---------------------------------------+
+```
+
+Fields which qualify as bit-fields are:
+- [Scalar](#fields-scalar) fields
+- [Size](#fields-size) fields
+- [Count](#fields-count) fields
+- [Fixed](#fields-fixed) fields
+- [Reserved](#fields-reserved) fields
+- [Typedef](#fields-typedef) fields, when the field type is an
+  [Enum](#enum)
+
+Fields that do not qualify as bit-fields _must_ start and end on a byte boundary.
+
 ## Identifiers
 
 - Identifiers can denote a field; an enumeration tag; or a declared type.
