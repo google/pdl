@@ -1,7 +1,7 @@
 //! Various utility functions used in tests.
 
 // This file is included directly into integration tests in the
-// `test/` directory. These tests are compiled without access to the
+// `tests/` directory. These tests are compiled without access to the
 // rest of the `pdl` crate. To make this work, avoid `use crate::`
 // statements below.
 

@@ -571,7 +571,7 @@ mod tests {
     #[test]
     fn test_generate_preamble() {
         let actual_code = generate_preamble(Path::new("some/path/foo.pdl")).unwrap();
-        assert_snapshot_eq("test/generated/preamble.rs", &rustfmt(&actual_code));
+        assert_snapshot_eq("tests/generated/preamble.rs", &rustfmt(&actual_code));
     }
 
     #[test]
@@ -586,7 +586,7 @@ mod tests {
         let children = HashMap::new();
         let decl = &grammar.declarations[0];
         let actual_code = generate_decl(&grammar, &packets, &children, decl).unwrap();
-        assert_snapshot_eq("test/generated/packet_decl_empty.rs", &rustfmt(&actual_code));
+        assert_snapshot_eq("tests/generated/packet_decl_empty.rs", &rustfmt(&actual_code));
     }
 
     #[test]
@@ -606,7 +606,7 @@ mod tests {
         let decl = &grammar.declarations[0];
         let actual_code = generate_decl(&grammar, &packets, &children, decl).unwrap();
         assert_snapshot_eq(
-            "test/generated/packet_decl_simple_little_endian.rs",
+            "tests/generated/packet_decl_simple_little_endian.rs",
             &rustfmt(&actual_code),
         );
     }
@@ -628,7 +628,7 @@ mod tests {
         let decl = &grammar.declarations[0];
         let actual_code = generate_decl(&grammar, &packets, &children, decl).unwrap();
         assert_snapshot_eq(
-            "test/generated/packet_decl_simple_big_endian.rs",
+            "tests/generated/packet_decl_simple_big_endian.rs",
             &rustfmt(&actual_code),
         );
     }

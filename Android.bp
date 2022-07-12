@@ -47,16 +47,16 @@ rust_test_host {
     data: [
         ":rustfmt",
         ":rustfmt.toml",
-        "test/generated/preamble.rs",
-        "test/generated/packet_decl_empty.rs",
-        "test/generated/packet_decl_simple_little_endian.rs",
-        "test/generated/packet_decl_simple_big_endian.rs",
+        "tests/generated/preamble.rs",
+        "tests/generated/packet_decl_empty.rs",
+        "tests/generated/packet_decl_simple_little_endian.rs",
+        "tests/generated/packet_decl_simple_big_endian.rs",
     ],
 }
 
 rust_test_host {
     name: "pdl_tests",
-    srcs: ["test/pdl_tests.rs"],
+    srcs: ["tests/pdl_tests.rs"],
     test_suites: ["general-tests"],
     enabled: false, // rustfmt is only available on x86.
     arch: {
@@ -78,21 +78,21 @@ rust_test_host {
 }
 
 // Generate the python parser+serializer backend for the
-// test grammar located at test/grammars/test-grammar.pdl.
+// test grammar located at tests/grammars/test-grammar.pdl.
 genrule {
     name: "pdl_python_generator_test_gen",
     cmd: "$(location :pdl) $(in) |" +
         " $(location scripts/generate_python_backend.py)" +
-        " --output $(out) --custom-type-location test.custom_types",
+        " --output $(out) --custom-type-location tests.custom_types",
     tools: [ ":pdl" ],
     tool_files: [
         "scripts/generate_python_backend.py",
         "scripts/pdl/core.py",
         "scripts/pdl/ast.py",
-        "test/custom_types.py",
+        "tests/custom_types.py",
     ],
     srcs: [
-        "test/grammars/test-grammar.pdl",
+        "tests/grammars/test-grammar.pdl",
     ],
     out: [
         "pdl_test.py",
@@ -103,10 +103,10 @@ genrule {
 // pre-generated binary inputs.
 python_test_host {
     name: "pdl_python_generator_test",
-    main: "test/python_generator_test.py",
+    main: "tests/python_generator_test.py",
     srcs: [
-        "test/python_generator_test.py",
-        "test/custom_types.py",
+        "tests/python_generator_test.py",
+        "tests/custom_types.py",
         ":pdl_python_generator_test_gen",
     ],
     test_options: {
