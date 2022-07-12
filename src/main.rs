@@ -47,33 +47,39 @@ struct Opt {
     input_file: String,
 }
 
-fn main() {
+fn main() -> std::process::ExitCode {
     let opt = Opt::from_args();
 
     if opt.version {
         println!("Packet Description Language parser version 1.0");
-        return;
+        return std::process::ExitCode::SUCCESS;
     }
 
     let mut sources = ast::SourceDatabase::new();
     match parser::parse_file(&mut sources, opt.input_file) {
         Ok(grammar) => {
-            let _ = grammar.lint().print(&sources, termcolor::ColorChoice::Always);
+            let lint = grammar.lint();
+            if !lint.diagnostics.is_empty() {
+                lint.print(&sources, termcolor::ColorChoice::Always)
+                    .expect("Could not print lint diagnostics");
+                return std::process::ExitCode::FAILURE;
+            }
 
             match opt.output_format {
                 OutputFormat::JSON => {
                     println!("{}", serde_json::to_string_pretty(&grammar).unwrap())
                 }
-                OutputFormat::Rust => match generator::generate_rust(&sources, &grammar) {
-                    Ok(code) => println!("{}", &code),
-                    Err(err) => println!("failed to generate code: {}", err),
-                },
+                OutputFormat::Rust => {
+                    println!("{}", generator::generate_rust(&sources, &grammar))
+                }
             }
+            std::process::ExitCode::SUCCESS
         }
         Err(err) => {
             let writer = termcolor::StandardStream::stderr(termcolor::ColorChoice::Always);
             let config = term::Config::default();
-            _ = term::emit(&mut writer.lock(), &config, &sources, &err);
+            term::emit(&mut writer.lock(), &config, &sources, &err).expect("Could not print error");
+            std::process::ExitCode::FAILURE
         }
     }
 }

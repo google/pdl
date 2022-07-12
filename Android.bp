@@ -12,7 +12,6 @@ rust_defaults {
     srcs: ["src/main.rs"],
     // LINT.IfChange
     rustlibs: [
-        "libanyhow",
         "libcodespan_reporting",
         "libpest",
         "libproc_macro2",
