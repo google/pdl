@@ -687,20 +687,6 @@ fn lint_checksum(
                 // is checked.
                 None => (),
             };
-            // Check declaration order of checksum field.
-            match field_decl.and_then(|f| f.0.first()) {
-                Some(decl) if decl.loc().start > checksum_loc.start => result.push(
-                    Diagnostic::error()
-                        .with_message("invalid checksum start declaration")
-                        .with_labels(vec![
-                            checksum_loc
-                                .primary()
-                                .with_message("checksum start precedes checksum field"),
-                            decl.loc().secondary().with_message("checksum field is declared here"),
-                        ]),
-                ),
-                _ => (),
-            }
         }
         Some(field) => result.push(
             Diagnostic::error()
@@ -1289,5 +1275,24 @@ mod test {
         );
         let result = grammar.lint();
         assert!(!result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_packet_checksum_start() {
+        let mut db = SourceDatabase::new();
+        let grammar = grammar!(
+            &mut db,
+            r#"
+              little_endian_packets
+              checksum Checksum : 8 "Checksum"
+              packet P {
+                  _checksum_start_(crc),
+                  a: 16,
+                  crc: Checksum,
+              }
+            "#
+        );
+        let result = grammar.lint();
+        assert!(dbg!(result.diagnostics).is_empty());
     }
 }
