@@ -152,9 +152,17 @@ fn generate_field_parser(
                 ast::EndiannessValue::LittleEndian => format_ident!("from_le_bytes"),
             };
 
+            // We need the padding on the MSB side of the payload, so
+            // for big-endian, we need to padding on the left, for
+            // little-endian we need it on the right.
+            let padding = vec![syn::Index::from(0); (type_width - width) / 8];
+            let (padding_before, padding_after) = match endianness_value {
+                ast::EndiannessValue::BigEndian => (padding, vec![]),
+                ast::EndiannessValue::LittleEndian => (vec![], padding),
+            };
+
             let wanted_len = syn::Index::from(offset + width / 8);
             let indices = (offset..offset + width / 8).map(syn::Index::from);
-            let padding = vec![syn::Index::from(0); (type_width - width) / 8];
             let mask = if *width != type_width {
                 Some(quote! {
                     let #field_name = #field_name & 0xfff;
@@ -174,7 +182,9 @@ fn generate_field_parser(
                         got: bytes.len(),
                     });
                 }
-                let #field_name = #field_type::#getter([#(bytes[#indices]),* #(, #padding)*]);
+                let #field_name = #field_type::#getter([
+                    #(#padding_before,)* #(bytes[#indices]),* #(, #padding_after)*
+                ]);
                 #mask
             }
         }
@@ -528,7 +538,7 @@ mod tests {
     use super::*;
     use crate::ast;
     use crate::parser::parse_inline;
-    use crate::test_utils::{assert_snapshot_eq, rustfmt};
+    use crate::test_utils::{assert_eq_with_diff, assert_snapshot_eq, rustfmt};
 
     /// Parse a string fragment as a PDL file.
     ///
@@ -602,6 +612,92 @@ mod tests {
         assert_snapshot_eq(
             "tests/generated/packet_decl_simple_big_endian.rs",
             &rustfmt(&actual_code),
+        );
+    }
+
+    // Assert that an expression equals the given expression.
+    //
+    // Both expressions are wrapped in a `main` function (so we can
+    // format it with `rustfmt`) and a diff is be shown if they
+    // differ.
+    #[track_caller]
+    fn assert_expr_eq(left: proc_macro2::TokenStream, right: proc_macro2::TokenStream) {
+        let left = quote! {
+            fn main() { #left }
+        };
+        let right = quote! {
+            fn main() { #right }
+        };
+        assert_eq_with_diff(
+            "left",
+            &rustfmt(&left.to_string()),
+            "right",
+            &rustfmt(&right.to_string()),
+        );
+    }
+
+    #[test]
+    fn test_generate_field_parser_no_padding() {
+        let loc = ast::SourceRange::default();
+        let field = ast::Field::Scalar { loc, id: String::from("a"), width: 8 };
+
+        assert_expr_eq(
+            generate_field_parser(&ast::EndiannessValue::BigEndian, "Foo", &field, 10),
+            quote! {
+                if bytes.len() < 11 {
+                    return Err(Error::InvalidLengthError {
+                        obj: "Foo".to_string(),
+                        field: "a".to_string(),
+                        wanted: 11,
+                        got: bytes.len(),
+                    });
+                }
+                let a = u8::from_be_bytes([bytes[10]]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_field_parser_little_endian_padding() {
+        // Test with width != type width.
+        let loc = ast::SourceRange::default();
+        let field = ast::Field::Scalar { loc, id: String::from("a"), width: 24 };
+        assert_expr_eq(
+            generate_field_parser(&ast::EndiannessValue::LittleEndian, "Foo", &field, 10),
+            quote! {
+                if bytes.len() < 13 {
+                    return Err(Error::InvalidLengthError {
+                        obj: "Foo".to_string(),
+                        field: "a".to_string(),
+                        wanted: 13,
+                        got: bytes.len(),
+                    });
+                }
+                let a = u32::from_le_bytes([bytes[10], bytes[11], bytes[12], 0]);
+                let a = a & 0xfff;
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_field_parser_big_endian_padding() {
+        // Test with width != type width.
+        let loc = ast::SourceRange::default();
+        let field = ast::Field::Scalar { loc, id: String::from("a"), width: 24 };
+        assert_expr_eq(
+            generate_field_parser(&ast::EndiannessValue::BigEndian, "Foo", &field, 10),
+            quote! {
+                if bytes.len() < 13 {
+                    return Err(Error::InvalidLengthError {
+                        obj: "Foo".to_string(),
+                        field: "a".to_string(),
+                        wanted: 13,
+                        got: bytes.len(),
+                    });
+                }
+                let a = u32::from_be_bytes([0, bytes[10], bytes[11], bytes[12]]);
+                let a = a & 0xfff;
+            },
         );
     }
 }
