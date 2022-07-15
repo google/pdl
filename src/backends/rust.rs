@@ -1,3 +1,5 @@
+//! Rust compiler backend.
+
 // The `format-push-string` lint was briefly enabled present in Rust
 // 1.62. It is now moved the disabled "restriction" category instead.
 // See https://github.com/rust-lang/rust-clippy/issues/9077 for the
@@ -636,7 +638,7 @@ fn generate_decl(
 ///
 /// The code is not formatted, pipe it through `rustfmt` to get
 /// readable source code.
-pub fn generate_rust(sources: &ast::SourceDatabase, file: &ast::File) -> String {
+pub fn generate(sources: &ast::SourceDatabase, file: &ast::File) -> String {
     let source = sources.get(file.file).expect("could not read source");
 
     let mut children = HashMap::new();
