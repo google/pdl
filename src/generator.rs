@@ -1,7 +1,14 @@
+// The `format-push-string` lint was briefly enabled present in Rust
+// 1.62. It is now moved the disabled "restriction" category instead.
+// See https://github.com/rust-lang/rust-clippy/issues/9077 for the
+// problems with this lint.
+//
+// Remove this when we use Rust 1.63 or later.
+#![allow(clippy::format_push_string)]
+
 use crate::ast;
 use quote::{format_ident, quote};
 use std::collections::HashMap;
-use std::fmt::Write;
 use std::path::Path;
 use syn::parse_quote;
 
@@ -19,70 +26,50 @@ macro_rules! quote_block {
 fn generate_preamble(path: &Path) -> String {
     let mut code = String::new();
     let filename = path.file_name().unwrap().to_str().expect("non UTF-8 filename");
-    let _ = write!(code, "// @generated rust packets from {filename}\n\n");
+    code.push_str(&format!("// @generated rust packets from {filename}\n\n"));
 
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            use bytes::{BufMut, Bytes, BytesMut};
-            use num_derive::{FromPrimitive, ToPrimitive};
-            use num_traits::{FromPrimitive, ToPrimitive};
-            use std::convert::{TryFrom, TryInto};
-            use std::fmt;
-            use std::sync::Arc;
-            use thiserror::Error;
-        }
-    );
+    code.push_str(&quote_block! {
+        use bytes::{BufMut, Bytes, BytesMut};
+        use num_derive::{FromPrimitive, ToPrimitive};
+        use num_traits::{FromPrimitive, ToPrimitive};
+        use std::convert::{TryFrom, TryInto};
+        use std::fmt;
+        use std::sync::Arc;
+        use thiserror::Error;
+    });
 
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            type Result<T> = std::result::Result<T, Error>;
-        }
-    );
+    code.push_str(&quote_block! {
+        type Result<T> = std::result::Result<T, Error>;
+    });
 
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            #[derive(Debug, Error)]
-            pub enum Error {
-                #[error("Packet parsing failed")]
-                InvalidPacketError,
-                #[error("{field} was {value:x}, which is not known")]
-                ConstraintOutOfBounds { field: String, value: u64 },
-                #[error("when parsing {obj}.{field} needed length of {wanted} but got {got}")]
-                InvalidLengthError { obj: String, field: String, wanted: usize, got: usize },
-                #[error("Due to size restrictions a struct could not be parsed.")]
-                ImpossibleStructError,
-                #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
-                InvalidEnumValueError { obj: String, field: String, value: u64, type_: String },
-            }
+    code.push_str(&quote_block! {
+        #[derive(Debug, Error)]
+        pub enum Error {
+            #[error("Packet parsing failed")]
+            InvalidPacketError,
+            #[error("{field} was {value:x}, which is not known")]
+            ConstraintOutOfBounds { field: String, value: u64 },
+            #[error("when parsing {obj}.{field} needed length of {wanted} but got {got}")]
+            InvalidLengthError { obj: String, field: String, wanted: usize, got: usize },
+            #[error("Due to size restrictions a struct could not be parsed.")]
+            ImpossibleStructError,
+            #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
+            InvalidEnumValueError { obj: String, field: String, value: u64, type_: String },
         }
-    );
+    });
 
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            #[derive(Debug, Error)]
-            #[error("{0}")]
-            pub struct TryFromError(&'static str);
-        }
-    );
+    code.push_str(&quote_block! {
+        #[derive(Debug, Error)]
+        #[error("{0}")]
+        pub struct TryFromError(&'static str);
+    });
 
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            pub trait Packet {
-                fn to_bytes(self) -> Bytes;
-                fn to_vec(self) -> Vec<u8>;
-            }
+    code.push_str(&quote_block! {
+        pub trait Packet {
+            fn to_bytes(self) -> Bytes;
+            fn to_vec(self) -> Vec<u8>;
         }
-    );
+    });
 
     code
 }
@@ -237,33 +224,29 @@ fn generate_packet_decl(
     let child_name = format_ident!("{id}Child");
     if has_children {
         let child_data_idents = child_idents.iter().map(|ident| format_ident!("{ident}Data"));
-        let _ = write!(
-            code,
-            "{}",
-            &quote_block! {
-                #[derive(Debug)]
-                enum #data_child_ident {
-                    #(#child_idents(Arc<#child_data_idents>),)*
-                    None,
-                }
+        code.push_str(&quote_block! {
+            #[derive(Debug)]
+            enum #data_child_ident {
+                #(#child_idents(Arc<#child_data_idents>),)*
+                None,
+            }
 
-                impl #data_child_ident {
-                    fn get_total_size(&self) -> usize {
-                        // TODO(mgeisler): use Self instad of #data_child_ident.
-                        match self {
-                            #(#data_child_ident::#child_idents(value) => value.get_total_size(),)*
-                            #data_child_ident::None => 0,
-                        }
+            impl #data_child_ident {
+                fn get_total_size(&self) -> usize {
+                    // TODO(mgeisler): use Self instad of #data_child_ident.
+                    match self {
+                        #(#data_child_ident::#child_idents(value) => value.get_total_size(),)*
+                        #data_child_ident::None => 0,
                     }
                 }
-
-                #[derive(Debug)]
-                pub enum #child_name {
-                    #(#child_idents(#child_decl_packet_name),)*
-                    None,
-                }
             }
-        );
+
+            #[derive(Debug)]
+            pub enum #child_name {
+                #(#child_idents(#child_decl_packet_name),)*
+                None,
+            }
+        });
     }
 
     let data_name = format_ident!("{id}Data");
@@ -273,17 +256,13 @@ fn generate_packet_decl(
         }
     });
     let plain_fields = fields.iter().map(|field| generate_field(field, parse_quote!()));
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            #[derive(Debug)]
-            struct #data_name {
-                #(#plain_fields,)*
-                #child_field
-            }
+    code.push_str(&quote_block! {
+        #[derive(Debug)]
+        struct #data_name {
+            #(#plain_fields,)*
+            #child_field
         }
-    );
+    });
 
     let parent = parent_id.as_ref().map(|parent_id| match packets.get(parent_id.as_str()) {
         Some(ast::Decl::Packet { id, .. }) => {
@@ -297,30 +276,22 @@ fn generate_packet_decl(
     });
 
     let packet_name = format_ident!("{id}Packet");
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            #[derive(Debug, Clone)]
-            pub struct #packet_name {
-                #parent
-                #ident: Arc<#data_name>,
-            }
+    code.push_str(&quote_block! {
+        #[derive(Debug, Clone)]
+        pub struct #packet_name {
+            #parent
+            #ident: Arc<#data_name>,
         }
-    );
+    });
 
     let builder_name = format_ident!("{id}Builder");
     let pub_fields = fields.iter().map(|field| generate_field(field, parse_quote!(pub)));
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            #[derive(Debug)]
-            pub struct #builder_name {
-                #(#pub_fields,)*
-            }
+    code.push_str(&quote_block! {
+        #[derive(Debug)]
+        pub struct #builder_name {
+            #(#pub_fields,)*
         }
-    );
+    });
 
     // TODO(mgeisler): use the `Buf` trait instead of tracking
     // the offset manually.
@@ -351,69 +322,61 @@ fn generate_packet_decl(
         })
     });
 
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            impl #data_name {
-                fn conforms(bytes: &[u8]) -> bool {
-                    // TODO(mgeisler): return Boolean expression directly.
-                    // TODO(mgeisler): skip when total_field_size == 0.
-                    if bytes.len() < #total_field_size {
-                        return false;
-                    }
-                    true
+    code.push_str(&quote_block! {
+        impl #data_name {
+            fn conforms(bytes: &[u8]) -> bool {
+                // TODO(mgeisler): return Boolean expression directly.
+                // TODO(mgeisler): skip when total_field_size == 0.
+                if bytes.len() < #total_field_size {
+                    return false;
                 }
+                true
+            }
 
-                fn parse(bytes: &[u8]) -> Result<Self> {
-                    #(#field_parsers)*
-                    Ok(Self { #(#field_names),* })
-                }
+            fn parse(bytes: &[u8]) -> Result<Self> {
+                #(#field_parsers)*
+                Ok(Self { #(#field_names),* })
+            }
 
-                fn write_to(&self, buffer: &mut BytesMut) {
-                    #(#field_writers)*
-                }
+            fn write_to(&self, buffer: &mut BytesMut) {
+                #(#field_writers)*
+            }
 
-                fn get_total_size(&self) -> usize {
-                    self.get_size()
-                }
+            fn get_total_size(&self) -> usize {
+                self.get_size()
+            }
 
-                fn get_size(&self) -> usize {
-                    let ret = 0;
-                    #get_size_adjustment
-                    ret
-                }
+            fn get_size(&self) -> usize {
+                let ret = 0;
+                #get_size_adjustment
+                ret
             }
         }
-    );
+    });
 
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            impl Packet for #packet_name {
-                fn to_bytes(self) -> Bytes {
-                    let mut buffer = BytesMut::new();
-                    buffer.resize(self.#ident.get_total_size(), 0);
-                    self.#ident.write_to(&mut buffer);
-                    buffer.freeze()
-                }
-                fn to_vec(self) -> Vec<u8> {
-                    self.to_bytes().to_vec()
-                }
+    code.push_str(&quote_block! {
+        impl Packet for #packet_name {
+            fn to_bytes(self) -> Bytes {
+                let mut buffer = BytesMut::new();
+                buffer.resize(self.#ident.get_total_size(), 0);
+                self.#ident.write_to(&mut buffer);
+                buffer.freeze()
             }
-            impl From<#packet_name> for Bytes {
-                fn from(packet: #packet_name) -> Self {
-                    packet.to_bytes()
-                }
-            }
-            impl From<#packet_name> for Vec<u8> {
-                fn from(packet: #packet_name) -> Self {
-                    packet.to_vec()
-                }
+            fn to_vec(self) -> Vec<u8> {
+                self.to_bytes().to_vec()
             }
         }
-    );
+        impl From<#packet_name> for Bytes {
+            fn from(packet: #packet_name) -> Self {
+                packet.to_bytes()
+            }
+        }
+        impl From<#packet_name> for Vec<u8> {
+            fn from(packet: #packet_name) -> Self {
+                packet.to_vec()
+            }
+        }
+    });
 
     let specialize = has_children.then(|| {
         quote! {
@@ -428,47 +391,39 @@ fn generate_packet_decl(
         }
     });
     let field_getters = fields.iter().map(|field| generate_field_getter(&ident, field));
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            impl #packet_name {
-                pub fn parse(bytes: &[u8]) -> Result<Self> {
-                    Ok(Self::new(Arc::new(#data_name::parse(bytes)?)).unwrap())
-                }
-
-                #specialize
-
-                fn new(root: Arc<#data_name>) -> std::result::Result<Self, &'static str> {
-                    let #ident = root;
-                    Ok(Self { #ident })
-                }
-
-                #(#field_getters)*
+    code.push_str(&quote_block! {
+        impl #packet_name {
+            pub fn parse(bytes: &[u8]) -> Result<Self> {
+                Ok(Self::new(Arc::new(#data_name::parse(bytes)?)).unwrap())
             }
+
+            #specialize
+
+            fn new(root: Arc<#data_name>) -> std::result::Result<Self, &'static str> {
+                let #ident = root;
+                Ok(Self { #ident })
+            }
+
+            #(#field_getters)*
         }
-    );
+    });
 
     let child = has_children.then(|| {
         quote! {
             child: #data_child_ident::None,
         }
     });
-    let _ = write!(
-        code,
-        "{}",
-        &quote_block! {
-            impl #builder_name {
-                pub fn build(self) -> #packet_name {
-                    let #ident = Arc::new(#data_name {
-                        #(#field_names: self.#field_names,)*
-                        #child
-                    });
-                    #packet_name::new(#ident).unwrap()
-                }
+    code.push_str(&quote_block! {
+        impl #builder_name {
+            pub fn build(self) -> #packet_name {
+                let #ident = Arc::new(#data_name {
+                    #(#field_names: self.#field_names,)*
+                    #child
+                });
+                #packet_name::new(#ident).unwrap()
             }
         }
-    );
+    });
 
     code
 }
