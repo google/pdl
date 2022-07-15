@@ -183,7 +183,7 @@ fn generate_field_parser(
 }
 
 fn generate_field_writer(
-    grammar: &ast::Grammar,
+    file: &ast::File,
     field: &ast::Field,
     offset: usize,
 ) -> proc_macro2::TokenStream {
@@ -194,7 +194,7 @@ fn generate_field_writer(
             let start = syn::Index::from(offset);
             let end = syn::Index::from(offset + bit_width / 8);
             let byte_width = syn::Index::from(bit_width / 8);
-            let writer = match grammar.endianness.value {
+            let writer = match file.endianness.value {
                 ast::EndiannessValue::BigEndian => format_ident!("to_be_bytes"),
                 ast::EndiannessValue::LittleEndian => format_ident!("to_le_bytes"),
             };
@@ -216,7 +216,7 @@ fn get_field_size(field: &ast::Field) -> usize {
 
 /// Generate code for an `ast::Decl::Packet` enum value.
 fn generate_packet_decl(
-    grammar: &ast::Grammar,
+    file: &ast::File,
     packets: &HashMap<&str, &ast::Decl>,
     child_ids: &[&str],
     id: &str,
@@ -326,7 +326,7 @@ fn generate_packet_decl(
     // the offset manually.
     let mut offset = 0;
     let field_parsers = fields.iter().map(|field| {
-        let parser = generate_field_parser(&grammar.endianness.value, id, field, offset);
+        let parser = generate_field_parser(&file.endianness.value, id, field, offset);
         offset += get_field_size(field);
         parser
     });
@@ -339,7 +339,7 @@ fn generate_packet_decl(
         .collect::<Vec<_>>();
     let mut offset = 0;
     let field_writers = fields.iter().map(|field| {
-        let writer = generate_field_writer(grammar, field, offset);
+        let writer = generate_field_writer(file, field, offset);
         offset += get_field_size(field);
         writer
     });
@@ -474,7 +474,7 @@ fn generate_packet_decl(
 }
 
 fn generate_decl(
-    grammar: &ast::Grammar,
+    file: &ast::File,
     packets: &HashMap<&str, &ast::Decl>,
     children: &HashMap<&str, Vec<&str>>,
     decl: &ast::Decl,
@@ -482,7 +482,7 @@ fn generate_decl(
     let empty: Vec<&str> = vec![];
     match decl {
         ast::Decl::Packet { id, fields, parent_id, .. } => generate_packet_decl(
-            grammar,
+            file,
             packets,
             children.get(id.as_str()).unwrap_or(&empty),
             id,
@@ -493,16 +493,16 @@ fn generate_decl(
     }
 }
 
-/// Generate Rust code from `grammar`.
+/// Generate Rust code from an AST.
 ///
 /// The code is not formatted, pipe it through `rustfmt` to get
 /// readable source code.
-pub fn generate_rust(sources: &ast::SourceDatabase, grammar: &ast::Grammar) -> String {
-    let source = sources.get(grammar.file).expect("could not read source");
+pub fn generate_rust(sources: &ast::SourceDatabase, file: &ast::File) -> String {
+    let source = sources.get(file.file).expect("could not read source");
 
     let mut children = HashMap::new();
     let mut packets = HashMap::new();
-    for decl in &grammar.declarations {
+    for decl in &file.declarations {
         if let ast::Decl::Packet { id, parent_id, .. } = decl {
             packets.insert(id.as_str(), decl);
             if let Some(parent_id) = parent_id {
@@ -515,8 +515,8 @@ pub fn generate_rust(sources: &ast::SourceDatabase, grammar: &ast::Grammar) -> S
 
     code.push_str(&generate_preamble(Path::new(source.name())));
 
-    for decl in &grammar.declarations {
-        code.push_str(&generate_decl(grammar, &packets, &children, decl));
+    for decl in &file.declarations {
+        code.push_str(&generate_decl(file, &packets, &children, decl));
         code.push_str("\n\n");
     }
 
@@ -535,7 +535,7 @@ mod tests {
     /// # Panics
     ///
     /// Panics on parse errors.
-    pub fn parse_str(text: &str) -> ast::Grammar {
+    pub fn parse_str(text: &str) -> ast::File {
         let mut db = ast::SourceDatabase::new();
         parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parse error")
     }
@@ -548,7 +548,7 @@ mod tests {
 
     #[test]
     fn test_generate_packet_decl_empty() {
-        let grammar = parse_str(
+        let file = parse_str(
             r#"
               big_endian_packets
               packet Foo {}
@@ -556,14 +556,14 @@ mod tests {
         );
         let packets = HashMap::new();
         let children = HashMap::new();
-        let decl = &grammar.declarations[0];
-        let actual_code = generate_decl(&grammar, &packets, &children, decl);
+        let decl = &file.declarations[0];
+        let actual_code = generate_decl(&file, &packets, &children, decl);
         assert_snapshot_eq("tests/generated/packet_decl_empty.rs", &rustfmt(&actual_code));
     }
 
     #[test]
     fn test_generate_packet_decl_little_endian() {
-        let grammar = parse_str(
+        let file = parse_str(
             r#"
               little_endian_packets
 
@@ -575,8 +575,8 @@ mod tests {
         );
         let packets = HashMap::new();
         let children = HashMap::new();
-        let decl = &grammar.declarations[0];
-        let actual_code = generate_decl(&grammar, &packets, &children, decl);
+        let decl = &file.declarations[0];
+        let actual_code = generate_decl(&file, &packets, &children, decl);
         assert_snapshot_eq(
             "tests/generated/packet_decl_simple_little_endian.rs",
             &rustfmt(&actual_code),
@@ -585,7 +585,7 @@ mod tests {
 
     #[test]
     fn test_generate_packet_decl_simple_big_endian() {
-        let grammar = parse_str(
+        let file = parse_str(
             r#"
               big_endian_packets
 
@@ -597,8 +597,8 @@ mod tests {
         );
         let packets = HashMap::new();
         let children = HashMap::new();
-        let decl = &grammar.declarations[0];
-        let actual_code = generate_decl(&grammar, &packets, &children, decl);
+        let decl = &file.declarations[0];
+        let actual_code = generate_decl(&file, &packets, &children, decl);
         assert_snapshot_eq(
             "tests/generated/packet_decl_simple_big_endian.rs",
             &rustfmt(&actual_code),

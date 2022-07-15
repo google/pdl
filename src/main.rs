@@ -57,8 +57,8 @@ fn main() -> std::process::ExitCode {
 
     let mut sources = ast::SourceDatabase::new();
     match parser::parse_file(&mut sources, opt.input_file) {
-        Ok(grammar) => {
-            let lint = grammar.lint();
+        Ok(file) => {
+            let lint = file.lint();
             if !lint.diagnostics.is_empty() {
                 lint.print(&sources, termcolor::ColorChoice::Always)
                     .expect("Could not print lint diagnostics");
@@ -67,10 +67,10 @@ fn main() -> std::process::ExitCode {
 
             match opt.output_format {
                 OutputFormat::JSON => {
-                    println!("{}", serde_json::to_string_pretty(&grammar).unwrap())
+                    println!("{}", serde_json::to_string_pretty(&file).unwrap())
                 }
                 OutputFormat::Rust => {
-                    println!("{}", generator::generate_rust(&sources, &grammar))
+                    println!("{}", generator::generate_rust(&sources, &file))
                 }
             }
             std::process::ExitCode::SUCCESS

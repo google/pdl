@@ -16,7 +16,7 @@ def desugar_field_(field: Field, constraints: Dict[str, Constraint]) -> List[Fie
         return [FixedField(kind='fixed_field', loc=field.loc, enum_id=field.type_id, tag_id=tag_id)]
 
     elif isinstance(field, GroupField):
-        group = field.parent.grammar.group_scope[field.group_id]
+        group = field.parent.file.group_scope[field.group_id]
         constraints = dict([(c.id, c) for c in field.constraints])
         fields = []
         for f in group.fields:
@@ -27,14 +27,14 @@ def desugar_field_(field: Field, constraints: Dict[str, Constraint]) -> List[Fie
         return [field]
 
 
-def desugar(grammar: Grammar):
+def desugar(file: File):
     """Inline group fields.
     Constrained fields are transformed into fixed fields.
-    Group declarations are removed from the grammar object.
-    **The original grammar object is modified inline.**"""
+    Group declarations are removed from the file object.
+    **The original file object is modified inline.**"""
 
     declarations = []
-    for d in grammar.declarations:
+    for d in file.declarations:
         if isinstance(d, GroupDeclaration):
             continue
 
@@ -46,8 +46,8 @@ def desugar(grammar: Grammar):
 
         declarations.append(d)
 
-    grammar.declarations = declarations
-    grammar.group_scope = {}
+    file.declarations = declarations
+    file.group_scope = {}
 
 
 def get_packet_field(packet: Union[PacketDeclaration, StructDeclaration], id: str) -> Optional[Field]:
@@ -57,10 +57,10 @@ def get_packet_field(packet: Union[PacketDeclaration, StructDeclaration], id: st
         if getattr(f, 'id', None) == id:
             return f
     if isinstance(packet, PacketDeclaration) and packet.parent_id:
-        parent = packet.grammar.packet_scope[packet.parent_id]
+        parent = packet.file.packet_scope[packet.parent_id]
         return get_packet_field(parent, id)
     elif isinstance(packet, StructDeclaration) and packet.parent_id:
-        parent = packet.grammar.typedef_scope[packet.parent_id]
+        parent = packet.file.typedef_scope[packet.parent_id]
         return get_packet_field(parent, id)
     else:
         return None
@@ -74,7 +74,7 @@ def get_derived_packets(decl: Union[PacketDeclaration, StructDeclaration]
     are traversed."""
 
     children = []
-    for d in decl.grammar.declarations:
+    for d in decl.file.declarations:
         if type(d) is type(decl) and d.parent_id == decl.id:
             if (len(d.fields) == 1 and isinstance(d.fields[0], (PayloadField, BodyField))):
                 children.extend([(d.constraints + sub_constraints, sub_child)

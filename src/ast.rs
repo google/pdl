@@ -148,7 +148,7 @@ pub enum Decl {
 }
 
 #[derive(Debug, Serialize)]
-pub struct Grammar {
+pub struct File {
     pub version: String,
     pub file: FileId,
     pub comments: Vec<Comment>,
@@ -210,9 +210,9 @@ impl ops::Add<SourceRange> for SourceRange {
     }
 }
 
-impl Grammar {
-    pub fn new(file: FileId) -> Grammar {
-        Grammar {
+impl File {
+    pub fn new(file: FileId) -> File {
+        File {
             version: "1,0".to_owned(),
             comments: vec![],
             // The endianness is mandatory, so this default value will

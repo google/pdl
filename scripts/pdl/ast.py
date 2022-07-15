@@ -94,7 +94,7 @@ class FixedField(Field):
 
     @property
     def type(self) -> Optional['Declaration']:
-        return self.parent.grammar.typedef_scope[self.enum_id] if self.enum_id else None
+        return self.parent.file.typedef_scope[self.enum_id] if self.enum_id else None
 
 
 @node('reserved_field')
@@ -112,7 +112,7 @@ class ArrayField(Field):
 
     @property
     def type(self) -> Optional['Declaration']:
-        return self.parent.grammar.typedef_scope[self.type_id] if self.type_id else None
+        return self.parent.file.typedef_scope[self.type_id] if self.type_id else None
 
 
 @node('scalar_field')
@@ -128,7 +128,7 @@ class TypedefField(Field):
 
     @property
     def type(self) -> 'Declaration':
-        return self.parent.grammar.typedef_scope[self.type_id]
+        return self.parent.file.typedef_scope[self.type_id]
 
 
 @node('group_field')
@@ -139,7 +139,7 @@ class GroupField(Field):
 
 @dataclass
 class Declaration(Node):
-    grammar: 'Grammar' = field(init=False)
+    file: 'File' = field(init=False)
 
     def __post_init__(self):
         if hasattr(self, 'fields'):
@@ -182,7 +182,7 @@ class PacketDeclaration(Declaration):
 
     @property
     def parent(self) -> Optional['PacketDeclaration']:
-        return self.grammar.packet_scope[self.parent_id] if self.parent_id else None
+        return self.file.packet_scope[self.parent_id] if self.parent_id else None
 
 
 @node('struct_declaration')
@@ -194,7 +194,7 @@ class StructDeclaration(Declaration):
 
     @property
     def parent(self) -> Optional['StructDeclaration']:
-        return self.grammar.typedef_scope[self.parent_id] if self.parent_id else None
+        return self.file.typedef_scope[self.parent_id] if self.parent_id else None
 
 
 @node('group_declaration')
@@ -204,7 +204,7 @@ class GroupDeclaration(Declaration):
 
 
 @dataclass
-class Grammar:
+class File:
     endianness: EndiannessDeclaration
     declarations: List[Declaration]
     packet_scope: Dict[str, Declaration] = field(init=False)
@@ -218,7 +218,7 @@ class Grammar:
 
         # Construct the toplevel declaration scopes.
         for d in self.declarations:
-            d.grammar = self
+            d.file = self
             if isinstance(d, PacketDeclaration):
                 self.packet_scope[d.id] = d
             elif isinstance(d, GroupDeclaration):
@@ -227,11 +227,11 @@ class Grammar:
                 self.typedef_scope[d.id] = d
 
     @staticmethod
-    def from_json(obj: object) -> 'Grammar':
-        """Import a Grammar exported as JSON object by the PDL parser."""
+    def from_json(obj: object) -> 'File':
+        """Import a File exported as JSON object by the PDL parser."""
         endianness = convert_(obj['endianness'])
         declarations = convert_(obj['declarations'])
-        return Grammar(endianness, declarations)
+        return File(endianness, declarations)
 
     @property
     def byteorder(self) -> str:

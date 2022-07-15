@@ -477,7 +477,7 @@ def generate_packet_parser(packet: ast.Declaration) -> List[str]:
     """Generate the parse() function for a toplevel Packet or Struct
        declaration."""
 
-    parser = FieldParser(byteorder=packet.grammar.byteorder)
+    parser = FieldParser(byteorder=packet.file.byteorder)
     for f in packet.fields:
         parser.parse(f)
     parser.done()
@@ -513,7 +513,7 @@ def generate_derived_packet_parser(packet: ast.Declaration) -> List[str]:
     """Generate the parse() function for a derived Packet or Struct
        declaration."""
     print(f"Parsing packet {packet.id}", file=sys.stderr)
-    parser = FieldParser(byteorder=packet.grammar.byteorder)
+    parser = FieldParser(byteorder=packet.file.byteorder)
     for f in packet.fields:
         parser.parse(f)
     parser.done()
@@ -617,13 +617,13 @@ def generate_checksum_declaration_check(decl: ast.ChecksumDeclaration) -> str:
 
 def run(input: argparse.FileType, output: argparse.FileType, custom_type_location: Optional[str]):
     #    with open(input) as pdl_json:
-    grammar = ast.Grammar.from_json(json.load(input))
+    file = ast.File.from_json(json.load(input))
 
-    core.desugar(grammar)
+    core.desugar(file)
 
     custom_types = []
     custom_type_checks = ""
-    for d in grammar.declarations:
+    for d in file.declarations:
         if isinstance(d, ast.CustomFieldDeclaration):
             custom_types.append(d.id)
             custom_type_checks += generate_custom_field_declaration_check(d)
@@ -639,7 +639,7 @@ def run(input: argparse.FileType, output: argparse.FileType, custom_type_locatio
     output.write(generate_prelude())
     output.write(custom_type_checks)
 
-    for d in grammar.declarations:
+    for d in file.declarations:
         if isinstance(d, ast.EnumDeclaration):
             output.write(generate_enum_declaration(d))
         elif isinstance(d, (ast.PacketDeclaration, ast.StructDeclaration)):

@@ -115,7 +115,7 @@ declaration = _{
     test_declaration
 }
 
-grammar = {
+file = {
     SOI ~
     endianness_declaration ~
     declaration* ~

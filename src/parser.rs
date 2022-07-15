@@ -128,7 +128,7 @@ declaration = _{
     test_declaration
 }
 
-grammar = {
+file = {
     SOI ~
     endianness_declaration ~
     declaration* ~
@@ -396,9 +396,9 @@ fn parse_field_list_opt<'i>(
         .map_or(Ok(vec![]), |n| n.children().map(|n| parse_field(n, context)).collect())
 }
 
-fn parse_grammar(root: Node<'_>, context: &Context) -> Result<ast::Grammar, String> {
+fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String> {
     let mut toplevel_comments = vec![];
-    let mut grammar = ast::Grammar::new(context.0);
+    let mut file = ast::File::new(context.0);
 
     let mut comment_start = vec![];
     for token in root.clone().tokens() {
@@ -406,7 +406,7 @@ fn parse_grammar(root: Node<'_>, context: &Context) -> Result<ast::Grammar, Stri
             Token::Start { rule: Rule::COMMENT, pos } => comment_start.push(pos),
             Token::End { rule: Rule::COMMENT, pos } => {
                 let start_pos = comment_start.pop().unwrap();
-                grammar.comments.push(ast::Comment {
+                file.comments.push(ast::Comment {
                     loc: ast::SourceRange {
                         file: context.0,
                         start: ast::SourceLocation::new(start_pos.pos(), context.1),
@@ -423,27 +423,27 @@ fn parse_grammar(root: Node<'_>, context: &Context) -> Result<ast::Grammar, Stri
         let loc = node.as_loc(context);
         let rule = node.as_rule();
         match rule {
-            Rule::endianness_declaration => grammar.endianness = parse_endianness(node, context)?,
+            Rule::endianness_declaration => file.endianness = parse_endianness(node, context)?,
             Rule::checksum_declaration => {
                 let mut children = node.children();
                 let id = parse_identifier(&mut children)?;
                 let width = parse_integer(&mut children)?;
                 let function = parse_string(&mut children)?;
-                grammar.declarations.push(ast::Decl::Checksum { id, loc, function, width })
+                file.declarations.push(ast::Decl::Checksum { id, loc, function, width })
             }
             Rule::custom_field_declaration => {
                 let mut children = node.children();
                 let id = parse_identifier(&mut children)?;
                 let width = parse_integer_opt(&mut children)?;
                 let function = parse_string(&mut children)?;
-                grammar.declarations.push(ast::Decl::CustomField { id, loc, function, width })
+                file.declarations.push(ast::Decl::CustomField { id, loc, function, width })
             }
             Rule::enum_declaration => {
                 let mut children = node.children();
                 let id = parse_identifier(&mut children)?;
                 let width = parse_integer(&mut children)?;
                 let tags = parse_enum_tag_list(&mut children, context)?;
-                grammar.declarations.push(ast::Decl::Enum { id, loc, width, tags })
+                file.declarations.push(ast::Decl::Enum { id, loc, width, tags })
             }
             Rule::packet_declaration => {
                 let mut children = node.children();
@@ -451,7 +451,7 @@ fn parse_grammar(root: Node<'_>, context: &Context) -> Result<ast::Grammar, Stri
                 let parent_id = parse_identifier_opt(&mut children)?;
                 let constraints = parse_constraint_list_opt(&mut children, context)?;
                 let fields = parse_field_list_opt(&mut children, context)?;
-                grammar.declarations.push(ast::Decl::Packet {
+                file.declarations.push(ast::Decl::Packet {
                     id,
                     loc,
                     parent_id,
@@ -465,7 +465,7 @@ fn parse_grammar(root: Node<'_>, context: &Context) -> Result<ast::Grammar, Stri
                 let parent_id = parse_identifier_opt(&mut children)?;
                 let constraints = parse_constraint_list_opt(&mut children, context)?;
                 let fields = parse_field_list_opt(&mut children, context)?;
-                grammar.declarations.push(ast::Decl::Struct {
+                file.declarations.push(ast::Decl::Struct {
                     id,
                     loc,
                     parent_id,
@@ -477,26 +477,27 @@ fn parse_grammar(root: Node<'_>, context: &Context) -> Result<ast::Grammar, Stri
                 let mut children = node.children();
                 let id = parse_identifier(&mut children)?;
                 let fields = parse_field_list(&mut children, context)?;
-                grammar.declarations.push(ast::Decl::Group { id, loc, fields })
+                file.declarations.push(ast::Decl::Group { id, loc, fields })
             }
             Rule::test_declaration => {}
             Rule::EOI => (),
             _ => unreachable!(),
         }
     }
-    grammar.comments.append(&mut toplevel_comments);
-    Ok(grammar)
+    file.comments.append(&mut toplevel_comments);
+    Ok(file)
 }
 
-/// Parse a PDL grammar text.
-/// The grammar is added to the compilation database under the
-/// provided name.
+/// Parse PDL source code from a string.
+///
+/// The file is added to the compilation database under the provided
+/// name.
 pub fn parse_inline(
     sources: &mut ast::SourceDatabase,
     name: String,
     source: String,
-) -> Result<ast::Grammar, Diagnostic<ast::FileId>> {
-    let root = PDLParser::parse(Rule::grammar, &source)
+) -> Result<ast::File, Diagnostic<ast::FileId>> {
+    let root = PDLParser::parse(Rule::file, &source)
         .map_err(|e| {
             Diagnostic::error()
                 .with_message(format!("failed to parse input file '{}': {}", &name, e))
@@ -505,17 +506,18 @@ pub fn parse_inline(
         .unwrap();
     let line_starts: Vec<_> = files::line_starts(&source).collect();
     let file = sources.add(name, source.clone());
-    parse_grammar(root, &(file, &line_starts)).map_err(|e| Diagnostic::error().with_message(e))
+    parse_toplevel(root, &(file, &line_starts)).map_err(|e| Diagnostic::error().with_message(e))
 }
 
 /// Parse a new source file.
-/// The source file is fully read and added to the compilation database.
-/// Returns the constructed AST, or a descriptive error message in case
-/// of syntax error.
+///
+/// The source file is fully read and added to the compilation
+/// database. Returns the constructed AST, or a descriptive error
+/// message in case of syntax error.
 pub fn parse_file(
     sources: &mut ast::SourceDatabase,
     name: String,
-) -> Result<ast::Grammar, Diagnostic<ast::FileId>> {
+) -> Result<ast::File, Diagnostic<ast::FileId>> {
     let source = std::fs::read_to_string(&name).map_err(|e| {
         Diagnostic::error().with_message(format!("failed to read input file '{}': {}", &name, e))
     })?;
@@ -528,14 +530,14 @@ mod test {
 
     #[test]
     fn endianness_is_set() {
-        // The grammar starts out with a placeholder little-endian
-        // value. This tests that we update it while parsing.
+        // The file starts out with a placeholder little-endian value.
+        // This tests that we update it while parsing.
         let mut db = ast::SourceDatabase::new();
-        let grammar =
+        let file =
             parse_inline(&mut db, String::from("stdin"), String::from("  big_endian_packets  "))
                 .unwrap();
-        assert_eq!(grammar.endianness.value, ast::EndiannessValue::BigEndian);
-        assert_ne!(grammar.endianness.loc, ast::SourceRange::default());
+        assert_eq!(file.endianness.value, ast::EndiannessValue::BigEndian);
+        assert_ne!(file.endianness.loc, ast::SourceRange::default());
     }
 
     #[test]
