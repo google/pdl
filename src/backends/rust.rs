@@ -14,66 +14,17 @@ use std::collections::HashMap;
 use std::path::Path;
 use syn::parse_quote;
 
+mod preamble;
+
 /// Generate a block of code.
 ///
 /// Like `quote!`, but the code block will be followed by an empty
 /// line of code. This makes the generated code more readable.
+#[macro_export]
 macro_rules! quote_block {
     ($($tt:tt)*) => {
-        format!("{}\n\n", quote!($($tt)*))
+        format!("{}\n\n", ::quote::quote!($($tt)*))
     }
-}
-
-/// Generate the file preamble.
-fn generate_preamble(path: &Path) -> String {
-    let mut code = String::new();
-    let filename = path.file_name().unwrap().to_str().expect("non UTF-8 filename");
-    code.push_str(&format!("// @generated rust packets from {filename}\n\n"));
-
-    code.push_str(&quote_block! {
-        use bytes::{BufMut, Bytes, BytesMut};
-        use num_derive::{FromPrimitive, ToPrimitive};
-        use num_traits::{FromPrimitive, ToPrimitive};
-        use std::convert::{TryFrom, TryInto};
-        use std::fmt;
-        use std::sync::Arc;
-        use thiserror::Error;
-    });
-
-    code.push_str(&quote_block! {
-        type Result<T> = std::result::Result<T, Error>;
-    });
-
-    code.push_str(&quote_block! {
-        #[derive(Debug, Error)]
-        pub enum Error {
-            #[error("Packet parsing failed")]
-            InvalidPacketError,
-            #[error("{field} was {value:x}, which is not known")]
-            ConstraintOutOfBounds { field: String, value: u64 },
-            #[error("when parsing {obj}.{field} needed length of {wanted} but got {got}")]
-            InvalidLengthError { obj: String, field: String, wanted: usize, got: usize },
-            #[error("Due to size restrictions a struct could not be parsed.")]
-            ImpossibleStructError,
-            #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
-            InvalidEnumValueError { obj: String, field: String, value: u64, type_: String },
-        }
-    });
-
-    code.push_str(&quote_block! {
-        #[derive(Debug, Error)]
-        #[error("{0}")]
-        pub struct TryFromError(&'static str);
-    });
-
-    code.push_str(&quote_block! {
-        pub trait Packet {
-            fn to_bytes(self) -> Bytes;
-            fn to_vec(self) -> Vec<u8>;
-        }
-    });
-
-    code
 }
 
 /// Get the Rust integer type for the given bit width.
@@ -654,7 +605,7 @@ pub fn generate(sources: &ast::SourceDatabase, file: &ast::File) -> String {
 
     let mut code = String::new();
 
-    code.push_str(&generate_preamble(Path::new(source.name())));
+    code.push_str(&preamble::generate(Path::new(source.name())));
 
     for decl in &file.declarations {
         code.push_str(&generate_decl(file, &packets, &children, decl));
@@ -679,12 +630,6 @@ mod tests {
     pub fn parse_str(text: &str) -> ast::File {
         let mut db = ast::SourceDatabase::new();
         parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parse error")
-    }
-
-    #[test]
-    fn test_generate_preamble() {
-        let actual_code = generate_preamble(Path::new("some/path/foo.pdl"));
-        assert_snapshot_eq("tests/generated/preamble.rs", &rustfmt(&actual_code));
     }
 
     #[test]
