@@ -9,11 +9,15 @@ def desugar_field_(field: Field, constraints: Dict[str, Constraint]) -> List[Fie
 
     if isinstance(field, ScalarField) and field.id in constraints:
         value = constraints[field.id].value
-        return [FixedField(kind='fixed_field', loc=field.loc, width=field.width, value=value)]
+        fixed = FixedField(kind='fixed_field', loc=field.loc, width=field.width, value=value)
+        fixed.parent = field.parent
+        return [fixed]
 
     elif isinstance(field, TypedefField) and field.id in constraints:
         tag_id = constraints[field.id].tag_id
-        return [FixedField(kind='fixed_field', loc=field.loc, enum_id=field.type_id, tag_id=tag_id)]
+        fixed = FixedField(kind='fixed_field', loc=field.loc, enum_id=field.type_id, tag_id=tag_id)
+        fixed.parent = field.parent
+        return [fixed]
 
     elif isinstance(field, GroupField):
         group = field.parent.file.group_scope[field.group_id]
@@ -167,6 +171,35 @@ def get_array_element_size(field: ArrayField) -> Optional[int]:
     None is returned instead."""
 
     return field.width or get_declaration_size(field.type)
+
+
+def get_field_offset_from_start(field: Field) -> Optional[int]:
+    """Return the field bit offset from the start of the parent packet, if it
+    can be statically computed. If the offset is variable None is returned
+    instead."""
+    offset = 0
+    field_index = field.parent.fields.index(field)
+    for f in field.parent.fields[:field_index]:
+        size = get_field_size(f)
+        if size is None:
+            return None
+
+        offset += size
+    return offset
+
+
+def get_field_offset_from_end(field: Field) -> Optional[int]:
+    """Return the field bit offset from the end of the parent packet, if it
+    can be statically computed. If the offset is variable None is returned
+    instead. The selected field size is not counted towards the offset."""
+    offset = 0
+    field_index = field.parent.fields.index(field)
+    for f in field.parent.fields[field_index + 1:]:
+        size = get_field_size(f)
+        if size is None:
+            return None
+        offset += size
+    return offset
 
 
 def is_bit_field(field: Field) -> bool:
