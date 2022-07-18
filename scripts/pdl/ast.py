@@ -241,7 +241,7 @@ class File:
 def convert_(obj: object) -> object:
     if obj is None:
         return None
-    if isinstance(obj, int) or isinstance(obj, str):
+    if isinstance(obj, (int, str)):
         return obj
     if isinstance(obj, list):
         return [convert_(elt) for elt in obj]

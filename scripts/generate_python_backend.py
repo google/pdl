@@ -447,7 +447,7 @@ class FieldParser:
             self.parse_typedef_field_(field)
 
         # Payload and body fields.
-        elif (isinstance(field, ast.PayloadField) or isinstance(field, ast.BodyField)):
+        elif isinstance(field, (ast.PayloadField, ast.BodyField)):
             self.parse_payload_field_(field)
 
         # Checksum fields.
