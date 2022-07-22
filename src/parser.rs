@@ -29,9 +29,7 @@ intvalue = @{ digit+ }
 hexvalue = @{ ("0x"|"0X") ~ hexdigit+ }
 integer = @{ hexvalue | intvalue }
 string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
-size_modifier = @{
-    ("+"|"-"|"*"|"/") ~ (digit|"+"|"-"|"*"|"/")+
-}
+size_modifier = @{ "+" ~ intvalue }
 
 endianness_declaration = { "little_endian_packets" | "big_endian_packets" }
 

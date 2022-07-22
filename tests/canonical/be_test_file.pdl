@@ -303,15 +303,7 @@ packet Packet_Array_Field_UnsizedElement_ConstantSize {
 packet Packet_Array_Field_UnsizedElement_SizeModifier {
     _size_(array) : 4,
     _reserved_: 4,
-    array: UnsizedStruct[+8*2],
-}
-
-// The parser must support complex size modifiers on arrays whose size is
-// specified by a count field.
-packet Packet_Array_Field_UnsizedElement_CountModifier {
-    _count_(array) : 4,
-    _reserved_: 4,
-    array: UnsizedStruct[-8*2],
+    array: UnsizedStruct[+2],
 }
 
 // Packet inheritance
@@ -616,19 +608,8 @@ packet Struct_Array_Field_UnsizedElement_ConstantSize {
 struct Struct_Array_Field_UnsizedElement_SizeModifier_ {
     _size_(array) : 4,
     _reserved_: 4,
-    array: UnsizedStruct[+8*2],
+    array: UnsizedStruct[+2],
 }
 packet Struct_Array_Field_UnsizedElement_SizeModifier {
     s: Struct_Array_Field_UnsizedElement_SizeModifier_,
-}
-
-// The parser must support complex size modifiers on arrays whose size is
-// specified by a count field.
-struct Struct_Array_Field_UnsizedElement_CountModifier_ {
-    _count_(array) : 4,
-    _reserved_: 4,
-    array: UnsizedStruct[-8*2],
-}
-packet Struct_Array_Field_UnsizedElement_CountModifier {
-    s: Struct_Array_Field_UnsizedElement_CountModifier_,
 }
