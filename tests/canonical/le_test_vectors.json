@@ -144,6 +144,29 @@
     ]
   },
   {
+    "packet": "Packet_Payload_Field_SizeModifier",
+    "tests": [
+      {
+        "packed": "02",
+        "unpacked": {
+          "payload": []
+        }
+      },
+      {
+        "packed": "070001020304",
+        "unpacked": {
+          "payload": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ]
+        }
+      }
+    ]
+  },
+  {
     "packet": "Packet_Payload_Field_UnknownSize",
     "tests": [
       {
@@ -593,6 +616,7 @@
     "packet": "ScalarParent",
     "tests": [
       {
+        "packet": "ScalarChild_A",
         "packed": "0001da",
         "unpacked": {
           "a": 0,
@@ -600,6 +624,7 @@
         }
       },
       {
+        "packet": "ScalarChild_B",
         "packed": "0102dcde",
         "unpacked": {
           "a": 1,
@@ -607,6 +632,7 @@
         }
       },
       {
+        "packet": "AliasedChild_A",
         "packed": "0201d8",
         "unpacked": {
           "a": 2,
@@ -614,6 +640,7 @@
         }
       },
       {
+        "packet": "AliasedChild_B",
         "packed": "03020ae7",
         "unpacked": {
           "a": 3,
@@ -623,9 +650,52 @@
     ]
   },
   {
+    "packet": "PartialParent5",
+    "tests": [
+      {
+        "packet": "PartialChild5_A",
+        "packed": "409d",
+        "unpacked": {
+          "a": 0,
+          "b": 1258
+        }
+      },
+      {
+        "packet": "PartialChild5_B",
+        "packed": "a1434b84",
+        "unpacked": {
+          "a": 1,
+          "c": 69360157
+        }
+      }
+    ]
+  },
+  {
+    "packet": "PartialParent12",
+    "tests": [
+      {
+        "packet": "PartialChild12_A",
+        "packed": "02c0",
+        "unpacked": {
+          "a": 2,
+          "d": 12
+        }
+      },
+      {
+        "packet": "PartialChild12_B",
+        "packed": "030035e9",
+        "unpacked": {
+          "a": 3,
+          "e": 955216
+        }
+      }
+    ]
+  },
+  {
     "packet": "EnumParent",
     "tests": [
       {
+        "packet": "EnumChild_A",
         "packed": "bbaa01dd",
         "unpacked": {
           "a": 43707,
@@ -633,6 +703,7 @@
         }
       },
       {
+        "packet": "EnumChild_B",
         "packed": "ddcc02f7de",
         "unpacked": {
           "a": 52445,

@@ -5,7 +5,7 @@ from typing import Tuple
 @dataclass
 class SizedCustomField:
 
-    def __init__(self, value: int):
+    def __init__(self, value: int = 0):
         self.value = value
 
     def parse(span: bytes) -> Tuple['SizedCustomField', bytes]:
@@ -23,7 +23,7 @@ class SizedCustomField:
 @dataclass
 class UnsizedCustomField:
 
-    def __init__(self, value: int):
+    def __init__(self, value: int = 0):
         self.value = value
 
     def parse(span: bytes) -> Tuple['UnsizedCustomField', bytes]:
