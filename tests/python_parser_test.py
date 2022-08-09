@@ -25,7 +25,7 @@ FILES_TO_TEST = [
     'packets/link_layer_packets.pdl',
 ]
 
-test_dir = os.path.dirname(__file__)
+test_dir = os.path.dirname(os.path.dirname(__file__))
 pdl_bin = os.path.join(test_dir, 'pdl')
 pypdl_bin = os.path.join(test_dir, 'pypdl')
 

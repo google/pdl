@@ -33,6 +33,12 @@ rust_binary_host {
     defaults: ["pdl_defaults"],
 }
 
+python_binary_host {
+    name: "pypdl",
+    main: "scripts/pdl/parser.py",
+    srcs: ["scripts/pdl/parser.py"],
+}
+
 rust_test_host {
     name: "pdl_inline_tests",
     defaults: ["pdl_defaults"],
@@ -138,4 +144,18 @@ python_test_host {
     test_options: {
         unit_test: true,
     },
+}
+
+// Test the python parser against the rust parser
+// on selected PDL source files.
+python_test_host {
+    name: "pdl_python_parser_test",
+    main: "tests/python_parser_test.py",
+    srcs: ["tests/python_parser_test.py"],
+    data: [
+        ":pdl",
+        ":pypdl",
+        ":BluetoothHciPackets",
+        ":RootCanalLinkLayerPackets",
+    ],
 }
