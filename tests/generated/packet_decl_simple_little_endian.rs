@@ -2,6 +2,7 @@
 struct FooData {
     x: u8,
     y: u16,
+    z: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -13,11 +14,12 @@ pub struct FooPacket {
 pub struct FooBuilder {
     pub x: u8,
     pub y: u16,
+    pub z: u32,
 }
 
 impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
-        if bytes.len() < 3 {
+        if bytes.len() < 6 {
             return false;
         }
         true
@@ -41,20 +43,33 @@ impl FooData {
             });
         }
         let y = u16::from_le_bytes([bytes[1], bytes[2]]);
-        Ok(Self { x, y })
+        if bytes.len() < 6 {
+            return Err(Error::InvalidLengthError {
+                obj: "Foo".to_string(),
+                field: "z".to_string(),
+                wanted: 6,
+                got: bytes.len(),
+            });
+        }
+        let z = u32::from_le_bytes([bytes[3], bytes[4], bytes[5], 0]);
+        let z = z & 0xffffff;
+        Ok(Self { x, y, z })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         let x = self.x;
         buffer[0..1].copy_from_slice(&x.to_le_bytes()[0..1]);
         let y = self.y;
         buffer[1..3].copy_from_slice(&y.to_le_bytes()[0..2]);
+        let z = self.z;
+        let z = z & 0xffffff;
+        buffer[3..6].copy_from_slice(&z.to_le_bytes()[0..3]);
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
     }
     fn get_size(&self) -> usize {
         let ret = 0;
-        let ret = ret + 3;
+        let ret = ret + 6;
         ret
     }
 }
@@ -95,11 +110,14 @@ impl FooPacket {
     pub fn get_y(&self) -> u16 {
         self.foo.as_ref().y
     }
+    pub fn get_z(&self) -> u32 {
+        self.foo.as_ref().z
+    }
 }
 
 impl FooBuilder {
     pub fn build(self) -> FooPacket {
-        let foo = Arc::new(FooData { x: self.x, y: self.y });
+        let foo = Arc::new(FooData { x: self.x, y: self.y, z: self.z });
         FooPacket::new(foo).unwrap()
     }
 }
