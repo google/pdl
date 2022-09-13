@@ -54,10 +54,11 @@ packet Brew {
 }
 ```
 
-The endianess affects how fields of fractional bit-size (hence named bit-fields) are parsed or
-serialized. Such fields are grouped together to the next byte boundary, least
-significant bit first, and then byte-swapped to the required endianess before
-being written to memory, or after being read from memory.
+The endianess affects how fields of fractional byte sizes (hence named
+bit-fields) are parsed or serialized. Such fields are grouped together to the
+next byte boundary, least significant bit first, and then byte-swapped to the
+required endianess before being written to memory, or after being read from
+memory.
 
 ```
 packet Coffee {
