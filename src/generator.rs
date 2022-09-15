@@ -143,7 +143,7 @@ fn mask_field_value(field: &ast::Field) -> Option<proc_macro2::TokenStream> {
 }
 
 fn generate_field_parser(
-    endianness_value: &ast::EndiannessValue,
+    endianness_value: ast::EndiannessValue,
     packet_name: &str,
     field: &ast::Field,
     offset: usize,
@@ -322,7 +322,7 @@ fn generate_packet_decl(
     // the offset manually.
     let mut offset = 0;
     let field_parsers = fields.iter().map(|field| {
-        let parser = generate_field_parser(&file.endianness.value, id, field, offset);
+        let parser = generate_field_parser(file.endianness.value, id, field, offset);
         offset += get_field_size(field);
         parser
     });
@@ -611,7 +611,7 @@ mod tests {
     #[test]
     fn test_mask_field_value() {
         let loc = ast::SourceRange::default();
-        let field = ast::Field::Scalar { loc: loc.clone(), id: String::from("a"), width: 8 };
+        let field = ast::Field::Scalar { loc, id: String::from("a"), width: 8 };
         assert_eq!(mask_field_value(&field).map(|m| m.to_string()), None);
 
         let field = ast::Field::Scalar { loc, id: String::from("a"), width: 24 };
@@ -624,7 +624,7 @@ mod tests {
         let field = ast::Field::Scalar { loc, id: String::from("a"), width: 8 };
 
         assert_expr_eq(
-            generate_field_parser(&ast::EndiannessValue::BigEndian, "Foo", &field, 10),
+            generate_field_parser(ast::EndiannessValue::BigEndian, "Foo", &field, 10),
             quote! {
                 if bytes.len() < 11 {
                     return Err(Error::InvalidLengthError {
@@ -645,7 +645,7 @@ mod tests {
         let loc = ast::SourceRange::default();
         let field = ast::Field::Scalar { loc, id: String::from("a"), width: 24 };
         assert_expr_eq(
-            generate_field_parser(&ast::EndiannessValue::LittleEndian, "Foo", &field, 10),
+            generate_field_parser(ast::EndiannessValue::LittleEndian, "Foo", &field, 10),
             quote! {
                 if bytes.len() < 13 {
                     return Err(Error::InvalidLengthError {
@@ -667,7 +667,7 @@ mod tests {
         let loc = ast::SourceRange::default();
         let field = ast::Field::Scalar { loc, id: String::from("a"), width: 24 };
         assert_expr_eq(
-            generate_field_parser(&ast::EndiannessValue::BigEndian, "Foo", &field, 10),
+            generate_field_parser(ast::EndiannessValue::BigEndian, "Foo", &field, 10),
             quote! {
                 if bytes.len() < 13 {
                     return Err(Error::InvalidLengthError {
