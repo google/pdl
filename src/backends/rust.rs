@@ -14,8 +14,11 @@ use std::collections::HashMap;
 use std::path::Path;
 use syn::parse_quote;
 
+mod field;
 mod preamble;
 mod types;
+
+use field::Field;
 
 /// Generate a block of code.
 ///
@@ -29,9 +32,9 @@ macro_rules! quote_block {
 }
 
 fn generate_field(field: &ast::Field, visibility: syn::Visibility) -> proc_macro2::TokenStream {
+    let field_name = Field::from(field).get_ident();
     match field {
-        ast::Field::Scalar { id, width, .. } => {
-            let field_name = format_ident!("{id}");
+        ast::Field::Scalar { width, .. } => {
             let field_type = types::Integer::new(*width);
             quote! {
                 #visibility #field_name: #field_type
@@ -42,11 +45,11 @@ fn generate_field(field: &ast::Field, visibility: syn::Visibility) -> proc_macro
 }
 
 fn generate_field_getter(packet_name: &syn::Ident, field: &ast::Field) -> proc_macro2::TokenStream {
+    let field_name = Field::from(field).get_ident();
     match field {
         ast::Field::Scalar { id, width, .. } => {
             // TODO(mgeisler): refactor with generate_field above.
             let getter_name = format_ident!("get_{id}");
-            let field_name = format_ident!("{id}");
             let field_type = types::Integer::new(*width);
             quote! {
                 pub fn #getter_name(&self) -> #field_type {
@@ -69,7 +72,7 @@ fn get_field_range(offset: usize, width: usize) -> std::ops::Range<usize> {
 }
 
 fn get_chunk_width(fields: &[ast::Field]) -> usize {
-    fields.iter().map(get_field_width).sum()
+    fields.iter().map(|field| Field::from(field).get_width()).sum()
 }
 
 /// Read data for a byte-aligned chunk.
@@ -159,9 +162,9 @@ fn generate_chunk_read_field_adjustments(fields: &[ast::Field]) -> proc_macro2::
     let mut field_parsers = Vec::new();
     let mut field_offset = 0;
     for field in fields {
+        let field_name = Field::from(field).get_ident();
         match field {
-            ast::Field::Scalar { id, width, .. } => {
-                let field_name = format_ident!("{id}");
+            ast::Field::Scalar { width, .. } => {
                 let field_type = types::Integer::new(*width);
 
                 let mut field = quote! {
@@ -299,14 +302,6 @@ fn generate_chunk_write(
     }
 }
 
-/// Field size in bits.
-fn get_field_width(field: &ast::Field) -> usize {
-    match field {
-        ast::Field::Scalar { width, .. } => *width,
-        _ => todo!("unsupported field: {:?}", field),
-    }
-}
-
 /// Generate code for an `ast::Decl::Packet` enum value.
 fn generate_packet_decl(
     file: &ast::File,
@@ -401,7 +396,7 @@ fn generate_packet_decl(
 
     let mut chunk_width = 0;
     let chunks = fields.split_inclusive(|field| {
-        chunk_width += get_field_width(field);
+        chunk_width += Field::from(field).get_width();
         chunk_width % 8 == 0
     });
     let mut field_parsers = Vec::new();
@@ -417,13 +412,7 @@ fn generate_packet_decl(
         offset += get_chunk_width(chunk);
     }
 
-    let field_names = fields
-        .iter()
-        .map(|field| match field {
-            ast::Field::Scalar { id, .. } => format_ident!("{id}"),
-            _ => todo!("unsupported field: {:?}", field),
-        })
-        .collect::<Vec<_>>();
+    let field_names = fields.iter().map(|field| Field::from(field).get_ident()).collect::<Vec<_>>();
 
     let packet_size_bits = get_chunk_width(fields);
     if packet_size_bits % 8 != 0 {
