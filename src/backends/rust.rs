@@ -31,19 +31,6 @@ macro_rules! quote_block {
     }
 }
 
-fn generate_field(field: &ast::Field, visibility: syn::Visibility) -> proc_macro2::TokenStream {
-    let field_name = Field::from(field).get_ident();
-    match field {
-        ast::Field::Scalar { width, .. } => {
-            let field_type = types::Integer::new(*width);
-            quote! {
-                #visibility #field_name: #field_type
-            }
-        }
-        _ => todo!("unsupported field: {:?}", field),
-    }
-}
-
 fn generate_field_getter(packet_name: &syn::Ident, field: &ast::Field) -> proc_macro2::TokenStream {
     let field_name = Field::from(field).get_ident();
     match field {
@@ -356,7 +343,7 @@ fn generate_packet_decl(
             child: #data_child_ident,
         }
     });
-    let plain_fields = fields.iter().map(|field| generate_field(field, parse_quote!()));
+    let plain_fields = fields.iter().map(|field| Field::from(field).generate_decl(parse_quote!()));
     code.push_str(&quote_block! {
         #[derive(Debug)]
         struct #data_name {
@@ -386,7 +373,7 @@ fn generate_packet_decl(
     });
 
     let builder_name = format_ident!("{id}Builder");
-    let pub_fields = fields.iter().map(|field| generate_field(field, parse_quote!(pub)));
+    let pub_fields = fields.iter().map(|field| Field::from(field).generate_decl(parse_quote!(pub)));
     code.push_str(&quote_block! {
         #[derive(Debug)]
         pub struct #builder_name {
