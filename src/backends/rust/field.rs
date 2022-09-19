@@ -30,6 +30,17 @@ impl ScalarField {
             #visibility #field_name: #field_type
         }
     }
+
+    fn generate_getter(&self, packet_name: &syn::Ident) -> proc_macro2::TokenStream {
+        let field_name = self.get_ident();
+        let getter_name = format_ident!("get_{}", self.id);
+        let field_type = types::Integer::new(self.width);
+        quote! {
+            pub fn #getter_name(&self) -> #field_type {
+                self.#packet_name.as_ref().#field_name
+            }
+        }
+    }
 }
 
 /// Projection of [`ast::Field`] with the bits needed for the Rust
@@ -64,6 +75,12 @@ impl Field {
     pub fn generate_decl(&self, visibility: syn::Visibility) -> proc_macro2::TokenStream {
         match self {
             Field::Scalar(field) => field.generate_decl(visibility),
+        }
+    }
+
+    pub fn generate_getter(&self, packet_name: &syn::Ident) -> proc_macro2::TokenStream {
+        match self {
+            Field::Scalar(field) => field.generate_getter(packet_name),
         }
     }
 }

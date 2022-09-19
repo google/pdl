@@ -31,23 +31,6 @@ macro_rules! quote_block {
     }
 }
 
-fn generate_field_getter(packet_name: &syn::Ident, field: &ast::Field) -> proc_macro2::TokenStream {
-    let field_name = Field::from(field).get_ident();
-    match field {
-        ast::Field::Scalar { id, width, .. } => {
-            // TODO(mgeisler): refactor with generate_field above.
-            let getter_name = format_ident!("get_{id}");
-            let field_type = types::Integer::new(*width);
-            quote! {
-                pub fn #getter_name(&self) -> #field_type {
-                    self.#packet_name.as_ref().#field_name
-                }
-            }
-        }
-        _ => todo!("unsupported field: {:?}", field),
-    }
-}
-
 /// Find byte indices covering `offset..offset+width` bits.
 fn get_field_range(offset: usize, width: usize) -> std::ops::Range<usize> {
     let start = offset / 8;
@@ -480,7 +463,7 @@ fn generate_packet_decl(
             }
         }
     });
-    let field_getters = fields.iter().map(|field| generate_field_getter(&ident, field));
+    let field_getters = fields.iter().map(|field| Field::from(field).generate_getter(&ident));
     code.push_str(&quote_block! {
         impl #packet_name {
             pub fn parse(bytes: &[u8]) -> Result<Self> {
