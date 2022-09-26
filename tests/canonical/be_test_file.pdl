@@ -206,14 +206,6 @@ packet Packet_Struct_Field {
     b: UnsizedStruct,
 }
 
-// The parser must be able to handle padding fields.
-// The parser should generate a static size guard.
-packet Packet_Padding_Field {
-    a: 8,
-    _padding_ [1],
-    b: 8,
-}
-
 // The parser must be able to handle custom fields of constant size.
 // The parser should generate a static size guard.
 packet Packet_Custom_Field_ConstantSize {
@@ -304,6 +296,21 @@ packet Packet_Array_Field_UnsizedElement_SizeModifier {
     _size_(array) : 4,
     _reserved_: 4,
     array: UnsizedStruct[+2],
+}
+
+// The parser must be able to handle arrays with padded size.
+packet Packet_Array_Field_SizedElement_VariableSize_Padded {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: 16[],
+    _padding_ [16],
+}
+
+// The parser must be able to handle arrays with padded size.
+packet Packet_Array_Field_UnsizedElement_VariableCount_Padded {
+    _count_(array) : 8,
+    array: UnsizedStruct[],
+    _padding_ [16],
 }
 
 // Packet inheritance
@@ -472,17 +479,6 @@ packet Struct_Struct_Field {
     b: UnsizedStruct,
 }
 
-// The parser must be able to handle padding fields.
-// The parser should generate a static size guard.
-struct Struct_Padding_Field_ {
-    a: 8,
-    _padding_ [1],
-    b: 8,
-}
-packet Struct_Padding_Field {
-    s: Struct_Padding_Field_,
-}
-
 // The parser must be able to handle custom fields of constant size.
 // The parser should generate a static size guard.
 struct Struct_Custom_Field_ConstantSize_ {
@@ -612,4 +608,25 @@ struct Struct_Array_Field_UnsizedElement_SizeModifier_ {
 }
 packet Struct_Array_Field_UnsizedElement_SizeModifier {
     s: Struct_Array_Field_UnsizedElement_SizeModifier_,
+}
+
+// The parser must be able to handle arrays with padded size.
+struct Struct_Array_Field_SizedElement_VariableSize_Padded_ {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: 16[],
+    _padding_ [16],
+}
+packet Struct_Array_Field_SizedElement_VariableSize_Padded {
+    s: Struct_Array_Field_SizedElement_VariableSize_Padded_,
+}
+
+// The parser must be able to handle arrays with padded size.
+struct Struct_Array_Field_UnsizedElement_VariableCount_Padded_ {
+    _count_(array) : 8,
+    array: UnsizedStruct[],
+    _padding_ [16],
+}
+packet Struct_Array_Field_UnsizedElement_VariableCount_Padded {
+    s: Struct_Array_Field_UnsizedElement_VariableCount_Padded_,
 }

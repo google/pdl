@@ -308,8 +308,8 @@ fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> 
             ast::Field::Checksum { loc, field_id }
         }
         Rule::padding_field => {
-            let width = parse_integer(&mut children)?;
-            ast::Field::Padding { loc, width }
+            let size = parse_integer(&mut children)?;
+            ast::Field::Padding { loc, size }
         }
         Rule::size_field => {
             let field_id = match children.next() {

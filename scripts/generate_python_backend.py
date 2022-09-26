@@ -177,6 +177,8 @@ class FieldParser:
         """Parse the selected array field."""
         array_size = core.get_array_field_size(field)
         element_width = core.get_array_element_size(field)
+        padded_size = field.padded_size
+
         if element_width:
             if element_width % 8 != 0:
                 raise Exception('Array element size is not a multiple of 8')
@@ -201,6 +203,12 @@ class FieldParser:
         # Apply the size modifier.
         if field.size_modifier and size:
             self.append_(f"{size} = {size} - {field.size_modifier}")
+
+        # Parse from the padded array if padding is present.
+        if padded_size:
+            self.check_size_(padded_size)
+            self.append_(f"remaining_span = span[{padded_size}:]")
+            self.append_(f"span = span[:{padded_size}]")
 
         # The element width is not known, but the array full octet size
         # is known by size field. Parse elements item by item as a vector.
@@ -262,6 +270,10 @@ class FieldParser:
             self.append_(f"fields['{field.id}'] = {field.id}")
             if size is not None:
                 self.append_(f"span = span[{size}:]")
+
+        # Drop the padding
+        if padded_size:
+            self.append_(f"span = remaining_span")
 
     def parse_bit_field_(self, field: ast.Field):
         """Parse the selected field as a bit field.
@@ -346,7 +358,7 @@ class FieldParser:
 
         if self.shift != 0:
             raise Exception('Padding field does not start on an octet boundary')
-        self.offset += field.width
+        self.offset += field.size
 
     def parse_payload_field_(self, field: Union[ast.BodyField, ast.PayloadField]):
         """Parse body and payload fields."""
@@ -535,6 +547,9 @@ class FieldSerializer:
 
     def serialize_array_field_(self, field: ast.ArrayField):
         """Serialize the selected array field."""
+        if field.padded_size:
+            self.append_(f"_{field.id}_start = len(_span)")
+
         if field.width == 8:
             self.append_(f"_span.extend(self.{field.id})")
         else:
@@ -542,6 +557,9 @@ class FieldSerializer:
             self.indent_()
             self.serialize_array_element_(field)
             self.unindent_()
+
+        if field.padded_size:
+            self.append_(f"_span.extend([0] * ({field.padded_size} - len(_span) + _{field.id}_start))")
 
     def serialize_bit_field_(self, field: ast.Field):
         """Serialize the selected field as a bit field.

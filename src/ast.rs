@@ -73,7 +73,7 @@ pub enum Field {
     #[serde(rename = "checksum_field")]
     Checksum { loc: SourceRange, field_id: String },
     #[serde(rename = "padding_field")]
-    Padding { loc: SourceRange, width: usize },
+    Padding { loc: SourceRange, size: usize },
     #[serde(rename = "size_field")]
     Size { loc: SourceRange, field_id: String, width: usize },
     #[serde(rename = "count_field")]

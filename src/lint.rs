@@ -3,6 +3,7 @@ use codespan_reporting::files;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor;
 use std::collections::HashMap;
+use std::ptr;
 
 use crate::ast::*;
 
@@ -345,6 +346,19 @@ impl<'d> PacketScope<'d> {
                 )
             }
         }
+    }
+
+    /// Return the field immediately preceding the selected field, or None
+    /// if no such field exists.
+    fn get_preceding_field(&self, searched_field: &FieldPath) -> Option<&FieldPath> {
+        let mut preceding_field: Option<&FieldPath> = None;
+        for field in self.fields.iter() {
+            if ptr::eq(field, searched_field) {
+                break;
+            }
+            preceding_field = Some(field);
+        }
+        preceding_field
     }
 
     /// Cleanup scope after processing all fields.
@@ -996,6 +1010,42 @@ fn lint_array(
     }
 }
 
+// Helper for linting padding fields.
+fn lint_padding(
+    _scope: &Scope,
+    packet_scope: &PacketScope,
+    path: &FieldPath,
+    _size: usize,
+    result: &mut LintDiagnostics,
+) {
+    // The padding field must follow an array field.
+
+    let padding_loc = path.loc();
+
+    match packet_scope.get_preceding_field(path).map(|f| f.0.last().unwrap()) {
+        None => result.push(
+            Diagnostic::error()
+                .with_message("padding field cannot be the first field of a packet")
+                .with_labels(vec![padding_loc.primary()])
+                .with_notes(vec![
+                    "hint: padding fields must be placed after an array field".to_owned()
+                ]),
+        ),
+        Some(Field::Array { .. }) => (),
+        Some(preceding_field) => result.push(
+            Diagnostic::error()
+                .with_message(format!(
+                    "padding field cannot be placed after {} field",
+                    preceding_field.kind()
+                ))
+                .with_labels(vec![padding_loc.primary(), preceding_field.loc().secondary()])
+                .with_notes(vec![
+                    "hint: padding fields must be placed after an array field".to_owned()
+                ]),
+        ),
+    }
+}
+
 // Helper for linting typedef fields.
 fn lint_typedef(
     scope: &Scope,
@@ -1059,8 +1109,8 @@ fn lint_field(
             lint_array(scope, packet_scope, field, width, type_id, size_modifier, size, result)
         }
         Field::Typedef { type_id, .. } => lint_typedef(scope, packet_scope, field, type_id, result),
-        Field::Padding { .. }
-        | Field::Reserved { .. }
+        Field::Padding { size, .. } => lint_padding(scope, packet_scope, field, *size, result),
+        Field::Reserved { .. }
         | Field::Scalar { .. }
         | Field::Body { .. }
         | Field::Payload { .. } => (),
@@ -1256,43 +1306,81 @@ mod test {
     use crate::lint::Lintable;
     use crate::parser::parse_inline;
 
-    macro_rules! parse {
-        ($db:expr, $text:literal) => {
-            parse_inline($db, "stdin".to_owned(), $text.to_owned()).expect("parsing failure")
+    macro_rules! lint_success {
+        ($name:ident, $text:literal) => {
+            #[test]
+            fn $name() {
+                let mut db = SourceDatabase::new();
+                let file = parse_inline(&mut db, "stdin".to_owned(), $text.to_owned())
+                    .expect("parsing failure");
+                assert!(file.lint().diagnostics.is_empty());
+            }
         };
     }
 
-    #[test]
-    fn test_packet_redeclared() {
-        let mut db = SourceDatabase::new();
-        let file = parse!(
-            &mut db,
-            r#"
+    macro_rules! lint_failure {
+        ($name:ident, $text:literal) => {
+            #[test]
+            fn $name() {
+                let mut db = SourceDatabase::new();
+                let file = parse_inline(&mut db, "stdin".to_owned(), $text.to_owned())
+                    .expect("parsing failure");
+                assert!(!file.lint().diagnostics.is_empty());
+            }
+        };
+    }
+
+    lint_failure!(
+        test_packet_redeclared,
+        r#"
         little_endian_packets
         struct Name { }
         packet Name { }
         "#
-        );
-        let result = file.lint();
-        assert!(!result.diagnostics.is_empty());
-    }
+    );
 
-    #[test]
-    fn test_packet_checksum_start() {
-        let mut db = SourceDatabase::new();
-        let file = parse!(
-            &mut db,
-            r#"
-              little_endian_packets
-              checksum Checksum : 8 "Checksum"
-              packet P {
-                  _checksum_start_(crc),
-                  a: 16,
-                  crc: Checksum,
-              }
-            "#
-        );
-        let result = file.lint();
-        assert!(dbg!(result.diagnostics).is_empty());
-    }
+    lint_success!(
+        test_packet_checksum_start,
+        r#"
+        little_endian_packets
+        checksum Checksum : 8 "Checksum"
+        packet P {
+          _checksum_start_(crc),
+          a: 16,
+          crc: Checksum,
+        }
+        "#
+    );
+
+    lint_failure!(
+        test_padding_cannot_be_first_field,
+        r#"
+        little_endian_packets
+        struct Test {
+            _padding_[10],
+        }
+        "#
+    );
+
+    lint_failure!(
+        test_padding_cannot_follow_scalar_field,
+        r#"
+        little_endian_packets
+        struct Test {
+            scalar: 8,
+            _padding_[10],
+        }
+        "#
+    );
+
+    lint_success!(
+        test_padding,
+        r#"
+        little_endian_packets
+        struct Test {
+            array: 8[],
+            _padding_[10],
+        }
+        "#
+    );
 }

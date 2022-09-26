@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Union, Tuple
 from .ast import *
 
 
-def desugar_field_(field: Field, constraints: Dict[str, Constraint]) -> List[Field]:
+def desugar_field_(field: Field, previous: Field, constraints: Dict[str, Constraint]) -> List[Field]:
     """Inline group and constrained fields.
     Constrained fields are transformed into fixed fields.
     Group fields are inlined and recursively desugared."""
@@ -12,6 +12,10 @@ def desugar_field_(field: Field, constraints: Dict[str, Constraint]) -> List[Fie
         fixed = FixedField(kind='fixed_field', loc=field.loc, width=field.width, value=value)
         fixed.parent = field.parent
         return [fixed]
+
+    elif isinstance(field, PaddingField):
+        previous.padded_size = field.size
+        return []
 
     elif isinstance(field, TypedefField) and field.id in constraints:
         tag_id = constraints[field.id].tag_id
@@ -24,7 +28,8 @@ def desugar_field_(field: Field, constraints: Dict[str, Constraint]) -> List[Fie
         constraints = dict([(c.id, c) for c in field.constraints])
         fields = []
         for f in group.fields:
-            fields.extend(desugar_field_(f, constraints))
+            fields.extend(desugar_field_(f, previous, constraints))
+            previous = f
         return fields
 
     else:
@@ -45,7 +50,7 @@ def desugar(file: File):
         if isinstance(d, (PacketDeclaration, StructDeclaration)):
             fields = []
             for f in d.fields:
-                fields.extend(desugar_field_(f, {}))
+                fields.extend(desugar_field_(f, fields[-1] if len(fields) > 0 else None, {}))
             d.fields = fields
 
         declarations.append(d)

@@ -59,7 +59,7 @@ class ChecksumField(Field):
 
 @node('padding_field')
 class PaddingField(Field):
-    width: int
+    size: int
 
 
 @node('size_field')
@@ -109,6 +109,7 @@ class ArrayField(Field):
     type_id: Optional[str]
     size_modifier: Optional[str]
     size: Optional[int]
+    padded_size: Optional[int] = field(init=False, default=None)
 
     @property
     def type(self) -> Optional['Declaration']:

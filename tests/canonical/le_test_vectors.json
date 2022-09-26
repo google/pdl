@@ -383,18 +383,6 @@
     ]
   },
   {
-    "packet": "Packet_Padding_Field",
-    "tests": [
-      {
-        "packed": "7e007f",
-        "unpacked": {
-          "a": 126,
-          "b": 127
-        }
-      }
-    ]
-  },
-  {
     "packet": "Packet_Array_Field_ScalarElement",
     "tests": [
       {
@@ -607,6 +595,31 @@
                 217
               ]
             }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_SizedElement_VariableSize_Padded",
+    "tests": [
+      {
+        "packed": "0000000000000000000000000000000000",
+        "unpacked": {
+          "array": []
+        }
+      },
+      {
+        "packed": "0e010003020504070609080b0a0d0c0000",
+        "unpacked": {
+          "array": [
+            1,
+            515,
+            1029,
+            1543,
+            2057,
+            2571,
+            3085
           ]
         }
       }
@@ -939,20 +952,6 @@
     ]
   },
   {
-    "packet": "Struct_Padding_Field",
-    "tests": [
-      {
-        "packed": "2f0030",
-        "unpacked": {
-          "s": {
-            "a": 47,
-            "b": 48
-          }
-        }
-      }
-    ]
-  },
-  {
     "packet": "Struct_Array_Field_ScalarElement",
     "tests": [
       {
@@ -1184,6 +1183,35 @@
                   138
                 ]
               }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Array_Field_SizedElement_VariableSize_Padded",
+    "tests": [
+      {
+        "packed": "0000000000000000000000000000000000",
+        "unpacked": {
+          "s": {
+            "array": []
+          }
+        }
+      },
+      {
+        "packed": "0e010003020504070609080b0a0d0c0000",
+        "unpacked": {
+          "s": {
+            "array": [
+              1,
+              515,
+              1029,
+              1543,
+              2057,
+              2571,
+              3085
             ]
           }
         }
