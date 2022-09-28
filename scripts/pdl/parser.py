@@ -67,8 +67,8 @@ def parse_fields(data):
                 'field_id': m['field_id'],
             })
         elif name == '_padding_':
-            m = re.match(rule(fr' \[ {g(integer, "width")} \]'), rest)
-            fields.append({'kind': 'padding_field', 'width': int(m['width'], 0)})
+            m = re.match(rule(fr' \[ {g(integer, "size")} \]'), rest)
+            fields.append({'kind': 'padding_field', 'size': int(m['size'], 0)})
         elif name == '_size_':
             m = re.match(rule(fr' \( {g(identifier, "field_id")} \) : {g(integer, "width")}'), rest)
             fields.append({'kind': 'size_field', 'field_id': m['field_id'], 'width': int(m['width'], 0)})
