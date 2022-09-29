@@ -4,7 +4,7 @@ use codespan_reporting::term::{self, termcolor};
 use structopt::StructOpt;
 
 mod ast;
-mod generator;
+mod backends;
 mod lint;
 mod parser;
 #[cfg(test)]
@@ -67,10 +67,10 @@ fn main() -> std::process::ExitCode {
 
             match opt.output_format {
                 OutputFormat::JSON => {
-                    println!("{}", serde_json::to_string_pretty(&file).unwrap())
+                    println!("{}", backends::json::generate(&file).unwrap())
                 }
                 OutputFormat::Rust => {
-                    println!("{}", generator::generate_rust(&sources, &file))
+                    println!("{}", backends::rust::generate(&sources, &file))
                 }
             }
             std::process::ExitCode::SUCCESS

@@ -1,3 +1,5 @@
+//! Rust compiler backend.
+
 // The `format-push-string` lint was briefly enabled present in Rust
 // 1.62. It is now moved the disabled "restriction" category instead.
 // See https://github.com/rust-lang/rust-clippy/issues/9077 for the
@@ -12,94 +14,25 @@ use std::collections::HashMap;
 use std::path::Path;
 use syn::parse_quote;
 
+mod preamble;
+mod types;
+
 /// Generate a block of code.
 ///
 /// Like `quote!`, but the code block will be followed by an empty
 /// line of code. This makes the generated code more readable.
+#[macro_export]
 macro_rules! quote_block {
     ($($tt:tt)*) => {
-        format!("{}\n\n", quote!($($tt)*))
+        format!("{}\n\n", ::quote::quote!($($tt)*))
     }
-}
-
-/// Generate the file preamble.
-fn generate_preamble(path: &Path) -> String {
-    let mut code = String::new();
-    let filename = path.file_name().unwrap().to_str().expect("non UTF-8 filename");
-    code.push_str(&format!("// @generated rust packets from {filename}\n\n"));
-
-    code.push_str(&quote_block! {
-        use bytes::{BufMut, Bytes, BytesMut};
-        use num_derive::{FromPrimitive, ToPrimitive};
-        use num_traits::{FromPrimitive, ToPrimitive};
-        use std::convert::{TryFrom, TryInto};
-        use std::fmt;
-        use std::sync::Arc;
-        use thiserror::Error;
-    });
-
-    code.push_str(&quote_block! {
-        type Result<T> = std::result::Result<T, Error>;
-    });
-
-    code.push_str(&quote_block! {
-        #[derive(Debug, Error)]
-        pub enum Error {
-            #[error("Packet parsing failed")]
-            InvalidPacketError,
-            #[error("{field} was {value:x}, which is not known")]
-            ConstraintOutOfBounds { field: String, value: u64 },
-            #[error("when parsing {obj}.{field} needed length of {wanted} but got {got}")]
-            InvalidLengthError { obj: String, field: String, wanted: usize, got: usize },
-            #[error("Due to size restrictions a struct could not be parsed.")]
-            ImpossibleStructError,
-            #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
-            InvalidEnumValueError { obj: String, field: String, value: u64, type_: String },
-        }
-    });
-
-    code.push_str(&quote_block! {
-        #[derive(Debug, Error)]
-        #[error("{0}")]
-        pub struct TryFromError(&'static str);
-    });
-
-    code.push_str(&quote_block! {
-        pub trait Packet {
-            fn to_bytes(self) -> Bytes;
-            fn to_vec(self) -> Vec<u8>;
-        }
-    });
-
-    code
-}
-
-/// Get the Rust integer type for the given bit width.
-///
-/// This will round up the size to the nearest Rust integer size. PDL
-/// supports integers up to 64 bit, so it is an error to call this
-/// with a width larger than 64.
-fn rust_integer_type(width: usize) -> usize {
-    for integer_width in [8, 16, 32, 64] {
-        if width <= integer_width {
-            return integer_width;
-        }
-    }
-    panic!("unsupported field width: {width}")
-}
-
-/// Generate a Rust unsigned integer type large enough to hold
-/// integers of the given bit width.
-fn type_for_width(width: usize) -> syn::Type {
-    let integer_width = rust_integer_type(width);
-    syn::parse_str(&format!("u{integer_width}")).unwrap()
 }
 
 fn generate_field(field: &ast::Field, visibility: syn::Visibility) -> proc_macro2::TokenStream {
     match field {
         ast::Field::Scalar { id, width, .. } => {
             let field_name = format_ident!("{id}");
-            let field_type = type_for_width(*width);
+            let field_type = types::Integer::new(*width);
             quote! {
                 #visibility #field_name: #field_type
             }
@@ -114,7 +47,7 @@ fn generate_field_getter(packet_name: &syn::Ident, field: &ast::Field) -> proc_m
             // TODO(mgeisler): refactor with generate_field above.
             let getter_name = format_ident!("get_{id}");
             let field_name = format_ident!("{id}");
-            let field_type = type_for_width(*width);
+            let field_type = types::Integer::new(*width);
             quote! {
                 pub fn #getter_name(&self) -> #field_type {
                     self.#packet_name.as_ref().#field_name
@@ -159,8 +92,7 @@ fn generate_chunk_read(
         _ => format_ident!("chunk"),
     };
     let chunk_width = get_chunk_width(chunk);
-    let chunk_type = type_for_width(chunk_width);
-    let chunk_type_width = rust_integer_type(chunk_width);
+    let chunk_type = types::Integer::new(chunk_width);
     assert!(chunk_width % 8 == 0, "Chunks must have a byte size, got width: {chunk_width}");
 
     let range = get_field_range(offset, chunk_width);
@@ -194,10 +126,10 @@ fn generate_chunk_read(
         _ => todo!("unsupported field: {:?}", field),
     });
 
-    // When the chunk_type_width is larger than chunk_width (e.g.
-    // chunk_width is 24 but chunk_type_width is 32), then we need
+    // When the chunk_type.width is larger than chunk_width (e.g.
+    // chunk_width is 24 but chunk_type.width is 32), then we need
     // zero padding.
-    let zero_padding_len = (chunk_type_width - chunk_width) / 8;
+    let zero_padding_len = (chunk_type.width - chunk_width) / 8;
     // We need the padding on the MSB side of the payload, so for
     // big-endian, we need to padding on the left, for little-endian
     // we need it on the right.
@@ -222,7 +154,7 @@ fn generate_chunk_read_field_adjustments(fields: &[ast::Field]) -> proc_macro2::
     }
 
     let chunk_width = get_chunk_width(fields);
-    let chunk_type_width = rust_integer_type(chunk_width);
+    let chunk_type = types::Integer::new(chunk_width);
 
     let mut field_parsers = Vec::new();
     let mut field_offset = 0;
@@ -230,8 +162,7 @@ fn generate_chunk_read_field_adjustments(fields: &[ast::Field]) -> proc_macro2::
         match field {
             ast::Field::Scalar { id, width, .. } => {
                 let field_name = format_ident!("{id}");
-                let field_type = type_for_width(*width);
-                let field_type_width = rust_integer_type(*width);
+                let field_type = types::Integer::new(*width);
 
                 let mut field = quote! {
                     chunk
@@ -244,14 +175,14 @@ fn generate_chunk_read_field_adjustments(fields: &[ast::Field]) -> proc_macro2::
                     };
                 }
 
-                if *width < field_type_width {
+                if *width < field_type.width {
                     let bit_mask = mask_bits(*width);
                     field = quote! {
                         (#field & #bit_mask)
                     };
                 }
 
-                if field_type_width < chunk_type_width {
+                if field_type.width < chunk_type.width {
                     field = quote! {
                         #field as #field_type;
                     };
@@ -284,8 +215,7 @@ fn generate_chunk_write_field_adjustments(chunk: &[ast::Field]) -> proc_macro2::
     }
 
     let chunk_width = get_chunk_width(chunk);
-    let chunk_type = type_for_width(chunk_width);
-    let chunk_type_width = rust_integer_type(chunk_width);
+    let chunk_type = types::Integer::new(chunk_width);
 
     let mut field_parsers = Vec::new();
     let mut field_offset = 0;
@@ -293,19 +223,19 @@ fn generate_chunk_write_field_adjustments(chunk: &[ast::Field]) -> proc_macro2::
         match field {
             ast::Field::Scalar { id, width, .. } => {
                 let field_name = format_ident!("{id}");
-                let field_type_width = rust_integer_type(*width);
+                let field_type = types::Integer::new(*width);
 
                 let mut field = quote! {
                     self.#field_name
                 };
 
-                if field_type_width < chunk_type_width {
+                if field_type.width < chunk_type.width {
                     field = quote! {
                         (#field as #chunk_type)
                     };
                 }
 
-                if *width < field_type_width {
+                if *width < field_type.width {
                     let bit_mask = mask_bits(*width);
                     field = quote! {
                         (#field & #bit_mask)
@@ -636,7 +566,7 @@ fn generate_decl(
 ///
 /// The code is not formatted, pipe it through `rustfmt` to get
 /// readable source code.
-pub fn generate_rust(sources: &ast::SourceDatabase, file: &ast::File) -> String {
+pub fn generate(sources: &ast::SourceDatabase, file: &ast::File) -> String {
     let source = sources.get(file.file).expect("could not read source");
 
     let mut children = HashMap::new();
@@ -652,7 +582,7 @@ pub fn generate_rust(sources: &ast::SourceDatabase, file: &ast::File) -> String 
 
     let mut code = String::new();
 
-    code.push_str(&generate_preamble(Path::new(source.name())));
+    code.push_str(&preamble::generate(Path::new(source.name())));
 
     for decl in &file.declarations {
         code.push_str(&generate_decl(file, &packets, &children, decl));
@@ -677,12 +607,6 @@ mod tests {
     pub fn parse_str(text: &str) -> ast::File {
         let mut db = ast::SourceDatabase::new();
         parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parse error")
-    }
-
-    #[test]
-    fn test_generate_preamble() {
-        let actual_code = generate_preamble(Path::new("some/path/foo.pdl"));
-        assert_snapshot_eq("tests/generated/preamble.rs", &rustfmt(&actual_code));
     }
 
     #[test]
@@ -796,20 +720,6 @@ mod tests {
             "tests/generated/packet_decl_complex_big_endian.rs",
             &rustfmt(&actual_code),
         );
-    }
-
-    #[test]
-    fn test_rust_integer_type() {
-        assert_eq!(rust_integer_type(0), 8);
-        assert_eq!(rust_integer_type(8), 8);
-        assert_eq!(rust_integer_type(9), 16);
-        assert_eq!(rust_integer_type(64), 64);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_rust_integer_type_panics_on_large_width() {
-        rust_integer_type(65);
     }
 
     #[test]
