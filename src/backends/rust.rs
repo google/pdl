@@ -112,31 +112,6 @@ pub fn mask_bits(n: usize) -> syn::LitInt {
     syn::parse_str::<syn::LitInt>(&format!("{:#x}", (1u64 << n) - 1)).unwrap()
 }
 
-fn generate_chunk_write(
-    endianness_value: ast::EndiannessValue,
-    offset: usize,
-    chunk: &[ast::Field],
-) -> proc_macro2::TokenStream {
-    let writer = match endianness_value {
-        ast::EndiannessValue::BigEndian => format_ident!("to_be_bytes"),
-        ast::EndiannessValue::LittleEndian => format_ident!("to_le_bytes"),
-    };
-
-    let chunk_fields = chunk.iter().map(Field::from).collect::<Vec<_>>();
-    let chunk_width = Chunk::new(&chunk_fields).get_width();
-    let chunk_name = Chunk::new(&chunk_fields).get_name();
-    assert!(chunk_width % 8 == 0, "Chunks must have a byte size, got width: {chunk_width}");
-
-    let range = get_field_range(offset, chunk_width);
-    let start = syn::Index::from(range.start);
-    let end = syn::Index::from(range.end);
-    // TODO(mgeisler): let slice = (chunk_type_width > chunk_width).then( ... )
-    let chunk_byte_width = syn::Index::from(chunk_width / 8);
-    quote! {
-        buffer[#start..#end].copy_from_slice(&#chunk_name.#writer()[0..#chunk_byte_width]);
-    }
-}
-
 /// Generate code for an `ast::Decl::Packet` enum value.
 fn generate_packet_decl(
     file: &ast::File,
@@ -246,7 +221,7 @@ fn generate_packet_decl(
         ));
 
         field_writers.push(generate_chunk_write_field_adjustments(chunk));
-        field_writers.push(generate_chunk_write(file.endianness.value, offset, chunk));
+        field_writers.push(Chunk::new(&chunk_fields).generate_write(file.endianness.value, offset));
 
         offset += Chunk::new(&chunk_fields).get_width();
     }
@@ -571,57 +546,6 @@ mod tests {
         assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 3), (0..1));
         assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 4), (0..2));
         assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 20), (0..4));
-    }
-
-    #[test]
-    fn test_generate_chunk_write_8bit() {
-        let loc = ast::SourceRange::default();
-        let fields = &[ast::Field::Scalar { loc, id: String::from("a"), width: 8 }];
-        assert_expr_eq(
-            generate_chunk_write(ast::EndiannessValue::BigEndian, 80, fields),
-            quote! {
-                buffer[10..11].copy_from_slice(&a.to_be_bytes()[0..1]);
-            },
-        );
-    }
-
-    #[test]
-    fn test_generate_chunk_write_16bit() {
-        let loc = ast::SourceRange::default();
-        let fields = &[ast::Field::Scalar { loc, id: String::from("a"), width: 16 }];
-        assert_expr_eq(
-            generate_chunk_write(ast::EndiannessValue::BigEndian, 80, fields),
-            quote! {
-                buffer[10..12].copy_from_slice(&a.to_be_bytes()[0..2]);
-            },
-        );
-    }
-
-    #[test]
-    fn test_generate_chunk_write_24bit() {
-        let loc = ast::SourceRange::default();
-        let fields = &[ast::Field::Scalar { loc, id: String::from("a"), width: 24 }];
-        assert_expr_eq(
-            generate_chunk_write(ast::EndiannessValue::BigEndian, 80, fields),
-            quote! {
-                buffer[10..13].copy_from_slice(&a.to_be_bytes()[0..3]);
-            },
-        );
-    }
-
-    #[test]
-    fn test_generate_chunk_write_multiple_fields() {
-        let loc = ast::SourceRange::default();
-        let fields = &[
-            ast::Field::Scalar { loc, id: String::from("a"), width: 16 },
-            ast::Field::Scalar { loc, id: String::from("b"), width: 24 },
-        ];
-        assert_expr_eq(
-            generate_chunk_write(ast::EndiannessValue::BigEndian, 80, fields),
-            quote! {
-                buffer[10..15].copy_from_slice(&chunk.to_be_bytes()[0..5]);
-            },
-        );
     }
 
     #[test]

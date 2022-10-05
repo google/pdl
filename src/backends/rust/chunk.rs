@@ -141,6 +141,30 @@ impl Chunk<'_> {
             #(#field_parsers)*
         }
     }
+
+    pub fn generate_write(
+        &self,
+        endianness_value: ast::EndiannessValue,
+        offset: usize,
+    ) -> proc_macro2::TokenStream {
+        let writer = match endianness_value {
+            ast::EndiannessValue::BigEndian => format_ident!("to_be_bytes"),
+            ast::EndiannessValue::LittleEndian => format_ident!("to_le_bytes"),
+        };
+
+        let chunk_width = self.get_width();
+        let chunk_name = self.get_name();
+        assert!(chunk_width % 8 == 0, "Chunks must have a byte size, got width: {chunk_width}");
+
+        let range = get_field_range(offset, chunk_width);
+        let start = syn::Index::from(range.start);
+        let end = syn::Index::from(range.end);
+        // TODO(mgeisler): let slice = (chunk_type_width > chunk_width).then( ... )
+        let chunk_byte_width = syn::Index::from(chunk_width / 8);
+        quote! {
+            buffer[#start..#end].copy_from_slice(&#chunk_name.#writer()[0..#chunk_byte_width]);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -317,6 +341,57 @@ mod tests {
                 let c = ((chunk >> 11) & 0x3ff) as u16;
                 let d = ((chunk >> 21) & 0x3ffff) as u32;
                 let e = ((chunk >> 39) & 0x1ff) as u16;
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_write_8bit() {
+        let fields = [Field::Scalar(ScalarField { id: String::from("a"), width: 8 })];
+        let chunk = Chunk::new(&fields);
+        assert_expr_eq(
+            chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
+            quote! {
+                buffer[10..11].copy_from_slice(&a.to_be_bytes()[0..1]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_write_16bit() {
+        let fields = [Field::Scalar(ScalarField { id: String::from("a"), width: 16 })];
+        let chunk = Chunk::new(&fields);
+        assert_expr_eq(
+            chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
+            quote! {
+                buffer[10..12].copy_from_slice(&a.to_be_bytes()[0..2]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_write_24bit() {
+        let fields = [Field::Scalar(ScalarField { id: String::from("a"), width: 24 })];
+        let chunk = Chunk::new(&fields);
+        assert_expr_eq(
+            chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
+            quote! {
+                buffer[10..13].copy_from_slice(&a.to_be_bytes()[0..3]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_write_multiple_fields() {
+        let fields = [
+            Field::Scalar(ScalarField { id: String::from("a"), width: 16 }),
+            Field::Scalar(ScalarField { id: String::from("b"), width: 24 }),
+        ];
+        let chunk = Chunk::new(&fields);
+        assert_expr_eq(
+            chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
+            quote! {
+                buffer[10..15].copy_from_slice(&chunk.to_be_bytes()[0..5]);
             },
         );
     }
