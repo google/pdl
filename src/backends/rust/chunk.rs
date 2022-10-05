@@ -161,8 +161,36 @@ impl Chunk<'_> {
         let end = syn::Index::from(range.end);
         // TODO(mgeisler): let slice = (chunk_type_width > chunk_width).then( ... )
         let chunk_byte_width = syn::Index::from(chunk_width / 8);
+        let write_adjustments = self.generate_write_adjustments();
         quote! {
+            #write_adjustments
             buffer[#start..#end].copy_from_slice(&#chunk_name.#writer()[0..#chunk_byte_width]);
+        }
+    }
+
+    fn generate_write_adjustments(&self) -> proc_macro2::TokenStream {
+        if let [field] = self.fields {
+            // If there is a single field in the chunk, then we don't have to
+            // shift, mask, or cast.
+            let field_name = field.get_ident();
+            return quote! {
+                let #field_name = self.#field_name;
+            };
+        }
+
+        let chunk_width = self.get_width();
+        let chunk_type = Integer::new(chunk_width);
+
+        let mut field_parsers = Vec::new();
+        let mut field_offset = 0;
+        for field in self.fields {
+            field_parsers.push(field.generate_write_adjustment(field_offset, chunk_type));
+            field_offset += field.get_width();
+        }
+
+        quote! {
+            let chunk = 0;
+            #(#field_parsers)*
         }
     }
 }
@@ -352,6 +380,7 @@ mod tests {
         assert_expr_eq(
             chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
             quote! {
+                let a = self.a;
                 buffer[10..11].copy_from_slice(&a.to_be_bytes()[0..1]);
             },
         );
@@ -364,6 +393,7 @@ mod tests {
         assert_expr_eq(
             chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
             quote! {
+                let a = self.a;
                 buffer[10..12].copy_from_slice(&a.to_be_bytes()[0..2]);
             },
         );
@@ -376,6 +406,7 @@ mod tests {
         assert_expr_eq(
             chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
             quote! {
+                let a = self.a;
                 buffer[10..13].copy_from_slice(&a.to_be_bytes()[0..3]);
             },
         );
@@ -391,7 +422,50 @@ mod tests {
         assert_expr_eq(
             chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
             quote! {
+                let chunk = 0;
+                let chunk = chunk | (self.a as u64);
+                let chunk = chunk | (((self.b as u64) & 0xffffff) << 16);
                 buffer[10..15].copy_from_slice(&chunk.to_be_bytes()[0..5]);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_write_adjustments_8bit() {
+        let fields = vec![
+            Field::Scalar(ScalarField { id: String::from("a"), width: 3 }),
+            Field::Scalar(ScalarField { id: String::from("b"), width: 5 }),
+        ];
+        let chunk = Chunk::new(&fields);
+        assert_expr_eq(
+            chunk.generate_write_adjustments(),
+            quote! {
+                let chunk = 0;
+                let chunk = chunk | (self.a & 0x7) ;
+                let chunk = chunk | ((self.b & 0x1f) << 3);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_write_adjustments_48bit() {
+        let fields = vec![
+            Field::Scalar(ScalarField { id: String::from("a"), width: 3 }),
+            Field::Scalar(ScalarField { id: String::from("b"), width: 8 }),
+            Field::Scalar(ScalarField { id: String::from("c"), width: 10 }),
+            Field::Scalar(ScalarField { id: String::from("d"), width: 18 }),
+            Field::Scalar(ScalarField { id: String::from("e"), width: 9 }),
+        ];
+        let chunk = Chunk::new(&fields);
+        assert_expr_eq(
+            chunk.generate_write_adjustments(),
+            quote! {
+                let chunk = 0;
+                let chunk = chunk | ((self.a as u64) & 0x7);
+                let chunk = chunk | ((self.b as u64) << 3);
+                let chunk = chunk | (((self.c as u64) & 0x3ff) << 11);
+                let chunk = chunk | (((self.d as u64) & 0x3ffff) << 21);
+                let chunk = chunk | (((self.e as u64) & 0x1ff) << 39);
             },
         );
     }

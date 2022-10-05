@@ -86,6 +86,44 @@ impl ScalarField {
             let #field_name = #field;
         }
     }
+
+    fn generate_write_adjustment(
+        &self,
+        offset: usize,
+        chunk_type: types::Integer,
+    ) -> proc_macro2::TokenStream {
+        let field_name = self.get_ident();
+        let field_type = self.get_type();
+
+        let mut field = quote! {
+            self.#field_name
+        };
+
+        if field_type.width < chunk_type.width {
+            field = quote! {
+                (#field as #chunk_type)
+            };
+        }
+
+        if self.width < field_type.width {
+            let bit_mask = mask_bits(self.width);
+            field = quote! {
+                (#field & #bit_mask)
+            };
+        }
+
+        if offset > 0 {
+            let field_offset = syn::Index::from(offset);
+            let op = syn::parse_str::<syn::BinOp>("<<").unwrap();
+            field = quote! {
+                (#field #op #field_offset)
+            };
+        }
+
+        quote! {
+            let chunk = chunk | #field;
+        }
+    }
 }
 
 /// Projection of [`ast::Field`] with the bits needed for the Rust
@@ -142,6 +180,16 @@ impl Field {
     ) -> proc_macro2::TokenStream {
         match self {
             Field::Scalar(field) => field.generate_read_adjustment(offset, chunk_type),
+        }
+    }
+
+    pub fn generate_write_adjustment(
+        &self,
+        offset: usize,
+        chunk_type: types::Integer,
+    ) -> proc_macro2::TokenStream {
+        match self {
+            Field::Scalar(field) => field.generate_write_adjustment(offset, chunk_type),
         }
     }
 }

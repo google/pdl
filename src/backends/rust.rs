@@ -43,70 +43,6 @@ pub fn get_field_range(offset: usize, width: usize) -> std::ops::Range<usize> {
     start..end
 }
 
-fn generate_chunk_write_field_adjustments(chunk: &[ast::Field]) -> proc_macro2::TokenStream {
-    // Work directly with the field name if we are writing a single
-    // field. This generates simpler code.
-    if let [ast::Field::Scalar { id, .. }] = chunk {
-        // If there is a single field in the chunk, then we don't have to
-        // shift, mask, or cast.
-        let field_name = format_ident!("{id}");
-        return quote! {
-            let #field_name = self.#field_name;
-        };
-    }
-
-    let chunk_fields = chunk.iter().map(Field::from).collect::<Vec<_>>();
-    let chunk_width = Chunk::new(&chunk_fields).get_width();
-    let chunk_type = types::Integer::new(chunk_width);
-
-    let mut field_parsers = Vec::new();
-    let mut field_offset = 0;
-    for field in chunk {
-        match field {
-            ast::Field::Scalar { id, width, .. } => {
-                let field_name = format_ident!("{id}");
-                let field_type = types::Integer::new(*width);
-
-                let mut field = quote! {
-                    self.#field_name
-                };
-
-                if field_type.width < chunk_type.width {
-                    field = quote! {
-                        (#field as #chunk_type)
-                    };
-                }
-
-                if *width < field_type.width {
-                    let bit_mask = mask_bits(*width);
-                    field = quote! {
-                        (#field & #bit_mask)
-                    };
-                }
-
-                if field_offset > 0 {
-                    let field_offset = syn::Index::from(field_offset);
-                    let op = syn::parse_str::<syn::BinOp>("<<").unwrap();
-                    field = quote! {
-                        (#field #op #field_offset)
-                    };
-                }
-
-                field_offset += width;
-                field_parsers.push(quote! {
-                    let chunk = chunk | #field;
-                });
-            }
-            _ => todo!("unsupported field: {:?}", field),
-        }
-    }
-
-    quote! {
-        let chunk = 0;
-        #(#field_parsers)*
-    }
-}
-
 /// Generate a bit-mask which masks out `n` least significant bits.
 pub fn mask_bits(n: usize) -> syn::LitInt {
     syn::parse_str::<syn::LitInt>(&format!("{:#x}", (1u64 << n) - 1)).unwrap()
@@ -214,16 +150,10 @@ fn generate_packet_decl(
     let mut offset = 0;
     for chunk in chunks {
         let chunk_fields = chunk.iter().map(Field::from).collect::<Vec<_>>();
-        field_parsers.push(Chunk::new(&chunk_fields).generate_read(
-            id,
-            file.endianness.value,
-            offset,
-        ));
-
-        field_writers.push(generate_chunk_write_field_adjustments(chunk));
-        field_writers.push(Chunk::new(&chunk_fields).generate_write(file.endianness.value, offset));
-
-        offset += Chunk::new(&chunk_fields).get_width();
+        let chunk = Chunk::new(&chunk_fields);
+        field_parsers.push(chunk.generate_read(id, file.endianness.value, offset));
+        field_writers.push(chunk.generate_write(file.endianness.value, offset));
+        offset += chunk.get_width();
     }
 
     let field_names = fields.iter().map(|field| Field::from(field).get_ident()).collect::<Vec<_>>();
@@ -401,7 +331,7 @@ mod tests {
     use super::*;
     use crate::ast;
     use crate::parser::parse_inline;
-    use crate::test_utils::{assert_expr_eq, assert_snapshot_eq, rustfmt};
+    use crate::test_utils::{assert_snapshot_eq, rustfmt};
 
     /// Parse a string fragment as a PDL file.
     ///
@@ -546,45 +476,5 @@ mod tests {
         assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 3), (0..1));
         assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 4), (0..2));
         assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 20), (0..4));
-    }
-
-    #[test]
-    fn test_generate_chunk_write_field_adjustments_8bit() {
-        let loc = ast::SourceRange::default();
-        let fields = vec![
-            ast::Field::Scalar { loc, id: String::from("a"), width: 3 },
-            ast::Field::Scalar { loc, id: String::from("b"), width: 5 },
-        ];
-        assert_expr_eq(
-            generate_chunk_write_field_adjustments(&fields),
-            quote! {
-                let chunk = 0;
-                let chunk = chunk | (self.a & 0x7) ;
-                let chunk = chunk | ((self.b & 0x1f) << 3);
-            },
-        );
-    }
-
-    #[test]
-    fn test_generate_chunk_write_field_adjustments_48bit() {
-        let loc = ast::SourceRange::default();
-        let fields = vec![
-            ast::Field::Scalar { loc, id: String::from("a"), width: 3 },
-            ast::Field::Scalar { loc, id: String::from("b"), width: 8 },
-            ast::Field::Scalar { loc, id: String::from("c"), width: 10 },
-            ast::Field::Scalar { loc, id: String::from("d"), width: 18 },
-            ast::Field::Scalar { loc, id: String::from("e"), width: 9 },
-        ];
-        assert_expr_eq(
-            generate_chunk_write_field_adjustments(&fields),
-            quote! {
-                let chunk = 0;
-                let chunk = chunk | ((self.a as u64) & 0x7);
-                let chunk = chunk | ((self.b as u64) << 3);
-                let chunk = chunk | (((self.c as u64) & 0x3ff) << 11);
-                let chunk = chunk | (((self.d as u64) & 0x3ffff) << 21);
-                let chunk = chunk | (((self.e as u64) & 0x1ff) << 39);
-            },
-        );
     }
 }
