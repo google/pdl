@@ -5,6 +5,7 @@
 // rest of the `pdl` crate. To make this work, avoid `use crate::`
 // statements below.
 
+use quote::quote;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -100,6 +101,21 @@ pub fn assert_eq_with_diff(left_label: &str, left: &str, right_label: &str, righ
         "texts did not match, diff:\n{}\n",
         diff(left_label, left, right_label, right)
     );
+}
+
+// Assert that an expression equals the given expression.
+//
+// Both expressions are wrapped in a `main` function (so we can format
+// it with `rustfmt`) and a diff is be shown if they differ.
+#[track_caller]
+pub fn assert_expr_eq(left: proc_macro2::TokenStream, right: proc_macro2::TokenStream) {
+    let left = quote! {
+        fn main() { #left }
+    };
+    let right = quote! {
+        fn main() { #right }
+    };
+    assert_eq_with_diff("left", &rustfmt(&left.to_string()), "right", &rustfmt(&right.to_string()));
 }
 
 /// Check that `haystack` contains `needle`.
