@@ -14,10 +14,12 @@ use std::collections::HashMap;
 use std::path::Path;
 use syn::parse_quote;
 
+mod chunk;
 mod field;
 mod preamble;
 mod types;
 
+use chunk::Chunk;
 use field::Field;
 
 /// Generate a block of code.
@@ -41,10 +43,6 @@ fn get_field_range(offset: usize, width: usize) -> std::ops::Range<usize> {
     start..end
 }
 
-fn get_chunk_width(fields: &[ast::Field]) -> usize {
-    fields.iter().map(|field| Field::from(field).get_width()).sum()
-}
-
 /// Read data for a byte-aligned chunk.
 fn generate_chunk_read(
     packet_name: &str,
@@ -64,7 +62,8 @@ fn generate_chunk_read(
         [ast::Field::Scalar { id: field_name, .. }] => format_ident!("{}", field_name),
         _ => format_ident!("chunk"),
     };
-    let chunk_width = get_chunk_width(chunk);
+    let chunk_fields = chunk.iter().map(Field::from).collect::<Vec<_>>();
+    let chunk_width = Chunk::new(&chunk_fields).get_width();
     let chunk_type = types::Integer::new(chunk_width);
     assert!(chunk_width % 8 == 0, "Chunks must have a byte size, got width: {chunk_width}");
 
@@ -126,7 +125,8 @@ fn generate_chunk_read_field_adjustments(fields: &[ast::Field]) -> proc_macro2::
         return quote! {};
     }
 
-    let chunk_width = get_chunk_width(fields);
+    let chunk_fields = fields.iter().map(Field::from).collect::<Vec<_>>();
+    let chunk_width = Chunk::new(&chunk_fields).get_width();
     let chunk_type = types::Integer::new(chunk_width);
 
     let mut field_parsers = Vec::new();
@@ -187,7 +187,8 @@ fn generate_chunk_write_field_adjustments(chunk: &[ast::Field]) -> proc_macro2::
         };
     }
 
-    let chunk_width = get_chunk_width(chunk);
+    let chunk_fields = chunk.iter().map(Field::from).collect::<Vec<_>>();
+    let chunk_width = Chunk::new(&chunk_fields).get_width();
     let chunk_type = types::Integer::new(chunk_width);
 
     let mut field_parsers = Vec::new();
@@ -259,7 +260,8 @@ fn generate_chunk_write(
         [ast::Field::Scalar { id, .. }] => format_ident!("{id}"),
         _ => format_ident!("chunk"),
     };
-    let chunk_width = get_chunk_width(chunk);
+    let chunk_fields = chunk.iter().map(Field::from).collect::<Vec<_>>();
+    let chunk_width = Chunk::new(&chunk_fields).get_width();
     assert!(chunk_width % 8 == 0, "Chunks must have a byte size, got width: {chunk_width}");
 
     let range = get_field_range(offset, chunk_width);
@@ -379,12 +381,14 @@ fn generate_packet_decl(
         field_writers.push(generate_chunk_write_field_adjustments(chunk));
         field_writers.push(generate_chunk_write(file.endianness.value, offset, chunk));
 
-        offset += get_chunk_width(chunk);
+        let chunk_fields = chunk.iter().map(Field::from).collect::<Vec<_>>();
+        offset += Chunk::new(&chunk_fields).get_width();
     }
 
     let field_names = fields.iter().map(|field| Field::from(field).get_ident()).collect::<Vec<_>>();
 
-    let packet_size_bits = get_chunk_width(fields);
+    let chunk_fields = fields.iter().map(Field::from).collect::<Vec<_>>();
+    let packet_size_bits = Chunk::new(&chunk_fields).get_width();
     if packet_size_bits % 8 != 0 {
         panic!("packet {id} does not end on a byte boundary, size: {packet_size_bits} bits",);
     }
