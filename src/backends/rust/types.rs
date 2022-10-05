@@ -1,6 +1,7 @@
 //! Utility functions for dealing with Rust integer types.
 
 /// A Rust integer type such as `u8`.
+#[derive(Copy, Clone)]
 pub struct Integer {
     pub width: usize,
 }

@@ -109,11 +109,36 @@ impl Chunk<'_> {
             }
         };
 
+        let read_adjustments = self.generate_read_adjustments();
+
         quote! {
             #(#length_checks)*
             let #chunk_name = #chunk_type::#getter([
                 #(#zero_padding_before,)* #(bytes[#indices]),* #(, #zero_padding_after)*
             ]);
+            #read_adjustments
+        }
+    }
+
+    fn generate_read_adjustments(&self) -> proc_macro2::TokenStream {
+        // If there is a single field in the chunk, then we don't have to
+        // shift, mask, or cast.
+        if self.fields.len() == 1 {
+            return quote! {};
+        }
+
+        let chunk_width = self.get_width();
+        let chunk_type = Integer::new(chunk_width);
+
+        let mut field_parsers = Vec::new();
+        let mut field_offset = 0;
+        for field in self.fields {
+            field_parsers.push(field.generate_read_adjustment(field_offset, chunk_type));
+            field_offset += field.get_width();
+        }
+
+        quote! {
+            #(#field_parsers)*
         }
     }
 }
@@ -252,6 +277,46 @@ mod tests {
                 }
                 let chunk =
                     u64::from_be_bytes([0, 0, 0, bytes[10], bytes[11], bytes[12], bytes[13], bytes[14]]);
+                let a = chunk as u16;
+                let b = ((chunk >> 16) & 0xffffff) as u32;
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_read_adjustments_8bit() {
+        let fields = vec![
+            Field::Scalar(ScalarField { id: String::from("a"), width: 3 }),
+            Field::Scalar(ScalarField { id: String::from("b"), width: 5 }),
+        ];
+        let chunk = Chunk::new(&fields);
+        assert_expr_eq(
+            chunk.generate_read_adjustments(),
+            quote! {
+                let a = (chunk & 0x7);
+                let b = ((chunk >> 3) & 0x1f);
+            },
+        );
+    }
+
+    #[test]
+    fn test_generate_read_adjustments_48bit() {
+        let fields = vec![
+            Field::Scalar(ScalarField { id: String::from("a"), width: 3 }),
+            Field::Scalar(ScalarField { id: String::from("b"), width: 8 }),
+            Field::Scalar(ScalarField { id: String::from("c"), width: 10 }),
+            Field::Scalar(ScalarField { id: String::from("d"), width: 18 }),
+            Field::Scalar(ScalarField { id: String::from("e"), width: 9 }),
+        ];
+        let chunk = Chunk::new(&fields);
+        assert_expr_eq(
+            chunk.generate_read_adjustments(),
+            quote! {
+                let a = (chunk & 0x7) as u8;
+                let b = (chunk >> 3) as u8;
+                let c = ((chunk >> 11) & 0x3ff) as u16;
+                let d = ((chunk >> 21) & 0x3ffff) as u32;
+                let e = ((chunk >> 39) & 0x1ff) as u16;
             },
         );
     }
