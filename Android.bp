@@ -33,12 +33,6 @@ rust_binary_host {
     defaults: ["pdl_defaults"],
 }
 
-python_binary_host {
-    name: "pypdl",
-    main: "scripts/pdl/parser.py",
-    srcs: ["scripts/pdl/parser.py"],
-}
-
 rust_test_host {
     name: "pdl_inline_tests",
     defaults: ["pdl_defaults"],
@@ -82,17 +76,6 @@ rust_test_host {
         ":rustfmt",
         ":rustfmt.toml",
     ],
-}
-
-// Python generator.
-python_binary_host {
-    name: "pdl_python_generator",
-    main: "scripts/generate_python_backend.py",
-    srcs: [
-        "scripts/generate_python_backend.py",
-        "scripts/pdl/ast.py",
-        "scripts/pdl/core.py",
-    ]
 }
 
 // Defaults for PDL python backend generation.
@@ -146,6 +129,7 @@ genrule {
 // pre-generated binary inputs.
 python_test_host {
     name: "pdl_python_generator_test",
+    defaults: ["modern_python_path_defaults"],
     main: "tests/python_generator_test.py",
     srcs: [
         "tests/python_generator_test.py",
@@ -163,12 +147,18 @@ python_test_host {
     test_options: {
         unit_test: true,
     },
+    version: {
+        py3: {
+            embedded_launcher: true,
+        },
+    },
 }
 
 // Test the python parser against the rust parser
 // on selected PDL source files.
 python_test_host {
     name: "pdl_python_parser_test",
+    defaults: ["modern_python_path_defaults"],
     main: "tests/python_parser_test.py",
     srcs: ["tests/python_parser_test.py"],
     data: [

@@ -1,0 +1,27 @@
+package {
+    // See: http://go/android-license-faq
+    // A large-scale-change added 'default_applicable_licenses' to import
+    // all of the 'license_kinds' from "system_bt_license"
+    // to get the below license kinds:
+    //   SPDX-license-identifier-Apache-2.0
+    default_applicable_licenses: ["system_bt_license"],
+}
+
+python_binary_host {
+    name: "pypdl",
+    defaults: ["modern_python_path_defaults"],
+    main: "pdl/parser.py",
+    srcs: ["pdl/parser.py"],
+}
+
+// Python generator.
+python_binary_host {
+    name: "pdl_python_generator",
+    defaults: ["modern_python_path_defaults"],
+    main: "generate_python_backend.py",
+    srcs: [
+        "generate_python_backend.py",
+        "pdl/ast.py",
+        "pdl/core.py",
+    ]
+}

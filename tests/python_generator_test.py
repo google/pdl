@@ -11,6 +11,7 @@ import json
 import typing
 import typing_extensions
 import unittest
+from importlib import resources
 
 # (le|be)_pdl_test are the names of the modules generated from the canonical
 # little endian and big endian test grammars. The purpose of this module
@@ -68,7 +69,7 @@ class PacketParserTest(unittest.TestCase):
        vectors in canonical/(le|be)_test_vectors.json"""
 
     def testLittleEndian(self):
-        with open('tests/canonical/le_test_vectors.json') as f:
+        with resources.files('tests.canonical').joinpath('le_test_vectors.json').open('r') as f:
             reference = json.load(f)
 
         for item in reference:
@@ -87,7 +88,7 @@ class PacketParserTest(unittest.TestCase):
                     match_object(self, result, test['unpacked'])
 
     def testBigEndian(self):
-        with open('tests/canonical/be_test_vectors.json') as f:
+        with resources.files('tests.canonical').joinpath('be_test_vectors.json').open('r') as f:
             reference = json.load(f)
 
         for item in reference:
@@ -111,7 +112,7 @@ class PacketSerializerTest(unittest.TestCase):
        vectors in canonical/(le|be)_test_vectors.json"""
 
     def testLittleEndian(self):
-        with open('tests/canonical/le_test_vectors.json') as f:
+        with resources.files('tests.canonical').joinpath('le_test_vectors.json').open('r') as f:
             reference = json.load(f)
 
         for item in reference:
@@ -131,7 +132,7 @@ class PacketSerializerTest(unittest.TestCase):
                     self.assertEqual(result, bytes.fromhex(test['packed']))
 
     def testBigEndian(self):
-        with open('tests/canonical/be_test_vectors.json') as f:
+        with resources.files('tests.canonical').joinpath('be_test_vectors.json').open('r') as f:
             reference = json.load(f)
 
         for item in reference:
