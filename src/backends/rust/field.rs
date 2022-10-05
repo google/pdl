@@ -6,8 +6,8 @@ use crate::backends::rust::types;
 /// Like [`ast::Field::Scalar`].
 #[derive(Debug, Clone)]
 pub struct ScalarField {
-    id: String,
-    width: usize,
+    pub id: String,
+    pub width: usize,
 }
 
 impl ScalarField {
@@ -17,6 +17,10 @@ impl ScalarField {
 
     fn get_width(&self) -> usize {
         self.width
+    }
+
+    fn get_id(&self) -> &str {
+        &self.id
     }
 
     fn get_ident(&self) -> proc_macro2::Ident {
@@ -63,6 +67,12 @@ impl Field {
     pub fn get_width(&self) -> usize {
         match self {
             Field::Scalar(field) => field.get_width(),
+        }
+    }
+
+    pub fn get_id(&self) -> &str {
+        match self {
+            Field::Scalar(field) => field.get_id(),
         }
     }
 
