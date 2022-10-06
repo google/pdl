@@ -1,7 +1,7 @@
 //! PDL parser and linter.
 
+use clap::Parser;
 use codespan_reporting::term::{self, termcolor};
-use structopt::StructOpt;
 
 mod ast;
 mod backends;
@@ -30,20 +30,20 @@ impl std::str::FromStr for OutputFormat {
     }
 }
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "pdl-parser", about = "Packet Description Language parser tool.")]
+#[derive(Parser, Debug)]
+#[clap(name = "pdl-parser", about = "Packet Description Language parser tool.")]
 struct Opt {
     /// Print tool version and exit.
-    #[structopt(short, long = "--version")]
+    #[clap(short, long = "--version")]
     version: bool,
 
     /// Generate output in this format ("json" or "rust"). The output
     /// will be printed on stdout in both cases.
-    #[structopt(short, long = "--output-format", name = "FORMAT", default_value = "JSON")]
+    #[clap(short, long = "--output-format", name = "FORMAT", default_value = "JSON")]
     output_format: OutputFormat,
 
     /// Input file.
-    #[structopt(name = "FILE")]
+    #[clap(name = "FILE")]
     input_file: String,
 }
 

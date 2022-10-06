@@ -18,7 +18,7 @@ rust_defaults {
         "libquote",
         "libserde",
         "libserde_json",
-        "libstructopt",
+        "libclap",
         "libsyn",
         "libtempfile",
     ],
