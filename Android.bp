@@ -34,7 +34,7 @@ rust_binary_host {
 }
 
 rust_test_host {
-    name: "pdl_inline_tests",
+    name: "pdl_tests",
     defaults: ["pdl_defaults"],
     srcs: ["src/main.rs"],
     test_suites: ["general-tests"],
@@ -53,25 +53,6 @@ rust_test_host {
         "tests/generated/packet_decl_simple_big_endian.rs",
         "tests/generated/packet_decl_simple_little_endian.rs",
         "tests/generated/preamble.rs",
-    ],
-}
-
-rust_test_host {
-    name: "pdl_tests",
-    defaults: ["pdl_defaults"],
-    srcs: ["tests/pdl_tests.rs"],
-    test_suites: ["general-tests"],
-    enabled: false, // rustfmt is only available on x86.
-    arch: {
-        x86_64: {
-            enabled: true,
-        },
-    },
-    data: [
-        ":bluetooth_packetgen",
-        ":pdl",
-        ":rustfmt",
-        ":rustfmt.toml",
     ],
 }
 
