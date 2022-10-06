@@ -62,6 +62,113 @@ rust_test_host {
     ],
 }
 
+genrule_defaults {
+    name: "pdl_rust_generator_defaults",
+    tools: [
+        ":pdl",
+        ":rustfmt",
+    ],
+}
+
+// Generate the Rust parser+serializer backends.
+genrule {
+    name: "pdl_le_backend",
+    defaults: ["pdl_rust_generator_defaults"],
+    cmd: "$(location :pdl) --output-format rust $(in) | $(location :rustfmt) > $(out)",
+    srcs: ["tests/canonical/le_rust_test_file.pdl"],
+    out: ["le_backend.rs"],
+}
+
+genrule {
+    name: "pdl_be_backend",
+    defaults: ["pdl_rust_generator_defaults"],
+    cmd: "$(location :pdl) --output-format rust $(in) | $(location :rustfmt) > $(out)",
+    srcs: ["tests/canonical/be_rust_test_file.pdl"],
+    out: ["be_backend.rs"],
+}
+
+rust_defaults {
+    name: "pdl_backend_defaults",
+    rustlibs: [
+        "libbytes",
+        "libnum_traits",
+        "libtempfile",
+        "libthiserror",
+    ],
+    proc_macros: ["libnum_derive"],
+    clippy_lints: "none",
+    lints: "none",
+}
+
+rust_library_host {
+    name: "libpdl_le_backend",
+    crate_name: "pdl_le_backend",
+    srcs: [":pdl_le_backend"],
+    defaults: ["pdl_backend_defaults"],
+}
+
+rust_library_host {
+    name: "libpdl_be_backend",
+    crate_name: "pdl_be_backend",
+    srcs: [":pdl_be_backend"],
+    defaults: ["pdl_backend_defaults"],
+}
+
+rust_binary_host {
+    name: "pdl_generate_tests",
+    srcs: ["src/bin/generate-canonical-tests.rs"],
+    rustlibs: [
+        "libproc_macro2",
+        "libquote",
+        "libserde",
+        "libserde_json",
+        "libsyn",
+        "libtempfile",
+    ],
+}
+
+genrule_defaults {
+    name: "pdl_rust_generator_src_defaults",
+    tools: [
+        ":pdl_generate_tests",
+        ":rustfmt",
+    ],
+}
+
+genrule {
+    name: "pdl_rust_generator_tests_le_src",
+    cmd: "$(location :pdl_generate_tests) $(in) pdl_le_backend | $(location :rustfmt) > $(out)",
+    srcs: ["tests/canonical/le_test_vectors.json"],
+    out: ["le_canonical.rs"],
+    defaults: ["pdl_rust_generator_src_defaults"],
+}
+
+genrule {
+    name: "pdl_rust_generator_tests_be_src",
+    cmd: "$(location :pdl_generate_tests) $(in) pdl_be_backend | $(location :rustfmt) > $(out)",
+    srcs: ["tests/canonical/be_test_vectors.json"],
+    out: ["be_canonical.rs"],
+    defaults: ["pdl_rust_generator_src_defaults"],
+}
+
+rust_test_host {
+    name: "pdl_rust_generator_tests_le",
+    srcs: [":pdl_rust_generator_tests_le_src"],
+    test_suites: ["general-tests"],
+    rustlibs: ["libpdl_le_backend"],
+    clippy_lints: "none",
+    lints: "none",
+}
+
+rust_test_host {
+    name: "pdl_rust_generator_tests_be",
+    srcs: [":pdl_rust_generator_tests_be_src"],
+    test_suites: ["general-tests"],
+    rustlibs: ["libpdl_be_backend"],
+    clippy_lints: "none",
+    lints: "none",
+}
+
 // Defaults for PDL python backend generation.
 genrule_defaults {
     name: "pdl_python_generator_defaults",

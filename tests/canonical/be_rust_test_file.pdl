@@ -1,0 +1,10 @@
+big_endian_packets
+
+// Packet bit fields
+
+// The parser must be able to handle bit fields with scalar values
+// up to 64 bits wide.  The parser should generate a static size guard.
+packet Packet_Scalar_Field {
+    a: 7,
+    c: 57,
+}

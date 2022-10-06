@@ -18,3 +18,7 @@ syn = "1.0.102"
 
 [dev-dependencies]
 tempfile = "3.3.0"
+bytes = "1.2.1"
+num-derive = "0.3.3"
+num-traits = "0.2.15"
+thiserror = "1.0.37"
