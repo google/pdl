@@ -16,8 +16,8 @@ pub enum Error {
     InvalidPacketError,
     #[error("{field} was {value:x}, which is not known")]
     ConstraintOutOfBounds { field: String, value: u64 },
-    #[error("when parsing {obj}.{field} needed length of {wanted} but got {got}")]
-    InvalidLengthError { obj: String, field: String, wanted: usize, got: usize },
+    #[error("when parsing {obj} needed length of {wanted} but got {got}")]
+    InvalidLengthError { obj: String, wanted: usize, got: usize },
     #[error("Due to size restrictions a struct could not be parsed.")]
     ImpossibleStructError,
     #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]

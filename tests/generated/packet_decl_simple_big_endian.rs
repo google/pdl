@@ -28,7 +28,6 @@ impl FooData {
         if bytes.len() < 1 {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
-                field: "x".to_string(),
                 wanted: 1,
                 got: bytes.len(),
             });
@@ -37,7 +36,6 @@ impl FooData {
         if bytes.len() < 3 {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
-                field: "y".to_string(),
                 wanted: 3,
                 got: bytes.len(),
             });
@@ -46,7 +44,6 @@ impl FooData {
         if bytes.len() < 6 {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
-                field: "z".to_string(),
                 wanted: 6,
                 got: bytes.len(),
             });

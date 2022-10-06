@@ -20,10 +20,6 @@ impl ScalarField {
         self.width
     }
 
-    fn get_id(&self) -> &str {
-        &self.id
-    }
-
     fn get_ident(&self) -> proc_macro2::Ident {
         format_ident!("{}", self.id)
     }
@@ -146,12 +142,6 @@ impl Field {
     pub fn get_width(&self) -> usize {
         match self {
             Field::Scalar(field) => field.get_width(),
-        }
-    }
-
-    pub fn get_id(&self) -> &str {
-        match self {
-            Field::Scalar(field) => field.get_id(),
         }
     }
 
