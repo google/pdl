@@ -6,15 +6,15 @@ edition = "2021"
 [workspace]
 
 [dependencies]
-codespan-reporting = "*"
-pest = "*"
-pest_derive = "*"
-proc-macro2 = "*"
-quote = "*"
-serde = { version = "*", features = ["default", "derive", "serde_derive", "std"] }
-serde_json = "*"
-clap = { version = "*", features = ["derive"] }
-syn = "*"
+codespan-reporting = "0.11.1"
+pest = "2.4.0"
+pest_derive = "2.4.0"
+proc-macro2 = "1.0.46"
+quote = "1.0.21"
+serde = { version = "1.0.145", features = ["default", "derive", "serde_derive", "std"] }
+serde_json = "1.0.86"
+clap = { version = "3.2.22", features = ["derive"] }
+syn = "1.0.102"
 
 [dev-dependencies]
-tempfile = "*"
+tempfile = "3.3.0"
