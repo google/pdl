@@ -15,7 +15,8 @@ def desugar_field_(field: Field, previous: Field, constraints: Dict[str, Constra
 
     elif isinstance(field, PaddingField):
         previous.padded_size = field.size
-        return []
+        field.padded_field = previous
+        return [field]
 
     elif isinstance(field, TypedefField) and field.id in constraints:
         tag_id = constraints[field.id].tag_id
@@ -124,7 +125,7 @@ def get_packet_ancestor(
     if decl.parent_id is None:
         return decl
     else:
-        return get_packet_ancestor(decl.grammar.packet_scope[decl.parent_id])
+        return get_packet_ancestor(decl.file.packet_scope[decl.parent_id])
 
 
 def get_derived_packets(decl: Union[PacketDeclaration, StructDeclaration]
@@ -158,7 +159,11 @@ def get_field_size(field: Field, skip_payload: bool = False) -> Optional[int]:
         return field.width or field.type.width
 
     elif isinstance(field, PaddingField):
-        return field.width * 8
+        # Padding field width is added to the padded field size.
+        return 0
+
+    elif isinstance(field, ArrayField) and field.padded_size is not None:
+        return field.padded_size * 8
 
     elif isinstance(field, ArrayField) and field.size is not None:
         element_width = field.width or get_declaration_size(field.type)
@@ -189,6 +194,8 @@ def get_declaration_size(decl: Declaration, skip_payload: bool = False) -> Optio
     elif isinstance(decl, (PacketDeclaration, StructDeclaration)):
         parent = decl.parent
         packet_size = get_declaration_size(parent, skip_payload=True) if parent else 0
+        if packet_size is None:
+            return None
         for f in decl.fields:
             field_size = get_field_size(f, skip_payload=skip_payload)
             if field_size is None:

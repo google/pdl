@@ -155,7 +155,7 @@ class FieldParser:
     def parse_array_element_dynamic_(self, field: ast.ArrayField, span: str):
         """Parse a single array field element of variable size."""
         if isinstance(field.type, ast.StructDeclaration):
-            self.append_(f"    element, span = {field.type_id}.parse({span})")
+            self.append_(f"    element, {span} = {field.type_id}.parse({span})")
             self.append_(f"    {field.id}.append(element)")
         else:
             raise Exception(f'Unexpected array element type {field.type_id} {field.width}')
@@ -353,13 +353,6 @@ class FieldParser:
                 self.unchecked_append_(f"fields['{field.id}'] = {field.type_id}.parse_all({span})")
             self.offset = end_offset
 
-    def parse_padding_field_(self, field: ast.PaddingField):
-        """Parse a padding field. The value is ignored."""
-
-        if self.shift != 0:
-            raise Exception('Padding field does not start on an octet boundary')
-        self.offset += field.size
-
     def parse_payload_field_(self, field: Union[ast.BodyField, ast.PayloadField]):
         """Parse body and payload fields."""
 
@@ -483,7 +476,7 @@ class FieldParser:
 
         # Padding fields.
         elif isinstance(field, ast.PaddingField):
-            self.parse_padding_field_(field)
+            pass
 
         # Array fields.
         elif isinstance(field, ast.ArrayField):
@@ -666,13 +659,6 @@ class FieldSerializer:
         else:
             self.append_(f"_span.extend(self.{field.id}.serialize())")
 
-    def serialize_padding_field_(self, field: ast.PaddingField):
-        """Serialize a padding field. The value is zero."""
-
-        if self.shift != 0:
-            raise Exception('Padding field does not start on an octet boundary')
-        self.append_(f"_span.extend([0] * {field.width})")
-
     def serialize_payload_field_(self, field: Union[ast.BodyField, ast.PayloadField]):
         """Serialize body and payload fields."""
 
@@ -714,7 +700,7 @@ class FieldSerializer:
 
         # Padding fields.
         elif isinstance(field, ast.PaddingField):
-            self.serialize_padding_field_(field)
+            pass
 
         # Array fields.
         elif isinstance(field, ast.ArrayField):
