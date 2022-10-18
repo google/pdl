@@ -3,6 +3,62 @@
     "packet": "Packet_Scalar_Field",
     "tests": [
       {
+        "packed": "0000000000000000",
+        "unpacked": {
+          "a": 0,
+          "c": 0
+        }
+      },
+      {
+        "packed": "80ffffffffffffff",
+        "unpacked": {
+          "a": 0,
+          "c": 144115188075855871
+        }
+      },
+      {
+        "packed": "8003830282018100",
+        "unpacked": {
+          "a": 0,
+          "c": 283686952306183
+        }
+      },
+      {
+        "packed": "7f00000000000000",
+        "unpacked": {
+          "a": 127,
+          "c": 0
+        }
+      },
+      {
+        "packed": "ffffffffffffffff",
+        "unpacked": {
+          "a": 127,
+          "c": 144115188075855871
+        }
+      },
+      {
+        "packed": "ff03830282018100",
+        "unpacked": {
+          "a": 127,
+          "c": 283686952306183
+        }
+      },
+      {
+        "packed": "0000000000000000",
+        "unpacked": {
+          "a": 0,
+          "c": 0
+        }
+      },
+      {
+        "packed": "80ffffffffffffff",
+        "unpacked": {
+          "a": 0,
+          "c": 144115188075855871
+        }
+      },
+      {
         "packed": "8003830282018100",
         "unpacked": {
           "a": 0,
@@ -15,10 +71,38 @@
     "packet": "Packet_Enum_Field",
     "tests": [
       {
+        "packed": "0100000000000000",
+        "unpacked": {
+          "a": 1,
+          "c": 0
+        }
+      },
+      {
+        "packed": "81ffffffffffffff",
+        "unpacked": {
+          "a": 1,
+          "c": 144115188075855871
+        }
+      },
+      {
         "packed": "810e0d0c0b0a0908",
         "unpacked": {
           "a": 1,
           "c": 4523477106694685
+        }
+      },
+      {
+        "packed": "0200000000000000",
+        "unpacked": {
+          "a": 2,
+          "c": 0
+        }
+      },
+      {
+        "packed": "82ffffffffffffff",
+        "unpacked": {
+          "a": 2,
+          "c": 144115188075855871
         }
       },
       {
@@ -34,6 +118,62 @@
     "packet": "Packet_Reserved_Field",
     "tests": [
       {
+        "packed": "0000000000000000",
+        "unpacked": {
+          "a": 0,
+          "c": 0
+        }
+      },
+      {
+        "packed": "00feffffffffffff",
+        "unpacked": {
+          "a": 0,
+          "c": 36028797018963967
+        }
+      },
+      {
+        "packed": "002c151413121110",
+        "unpacked": {
+          "a": 0,
+          "c": 2261184477268630
+        }
+      },
+      {
+        "packed": "7f00000000000000",
+        "unpacked": {
+          "a": 127,
+          "c": 0
+        }
+      },
+      {
+        "packed": "7ffeffffffffffff",
+        "unpacked": {
+          "a": 127,
+          "c": 36028797018963967
+        }
+      },
+      {
+        "packed": "7f2c151413121110",
+        "unpacked": {
+          "a": 127,
+          "c": 2261184477268630
+        }
+      },
+      {
+        "packed": "0700000000000000",
+        "unpacked": {
+          "a": 7,
+          "c": 0
+        }
+      },
+      {
+        "packed": "07feffffffffffff",
+        "unpacked": {
+          "a": 7,
+          "c": 36028797018963967
+        }
+      },
+      {
         "packed": "072c151413121110",
         "unpacked": {
           "a": 7,
@@ -45,6 +185,50 @@
   {
     "packet": "Packet_Size_Field",
     "tests": [
+      {
+        "packed": "0000000000000000",
+        "unpacked": {
+          "a": 0,
+          "b": []
+        }
+      },
+      {
+        "packed": "07000000000000001f102122232425",
+        "unpacked": {
+          "a": 0,
+          "b": [
+            31,
+            16,
+            33,
+            34,
+            35,
+            36,
+            37
+          ]
+        }
+      },
+      {
+        "packed": "f8ffffffffffffff",
+        "unpacked": {
+          "a": 2305843009213693951,
+          "b": []
+        }
+      },
+      {
+        "packed": "ffffffffffffffff1f102122232425",
+        "unpacked": {
+          "a": 2305843009213693951,
+          "b": [
+            31,
+            16,
+            33,
+            34,
+            35,
+            36,
+            37
+          ]
+        }
+      },
       {
         "packed": "f00e8e0d8d0c8c0b",
         "unpacked": {
@@ -73,6 +257,50 @@
     "packet": "Packet_Count_Field",
     "tests": [
       {
+        "packed": "0000000000000000",
+        "unpacked": {
+          "a": 0,
+          "b": []
+        }
+      },
+      {
+        "packed": "07000000000000002c2f2e31303332",
+        "unpacked": {
+          "a": 0,
+          "b": [
+            44,
+            47,
+            46,
+            49,
+            48,
+            51,
+            50
+          ]
+        }
+      },
+      {
+        "packed": "f8ffffffffffffff",
+        "unpacked": {
+          "a": 2305843009213693951,
+          "b": []
+        }
+      },
+      {
+        "packed": "ffffffffffffffff2c2f2e31303332",
+        "unpacked": {
+          "a": 2305843009213693951,
+          "b": [
+            44,
+            47,
+            46,
+            49,
+            48,
+            51,
+            50
+          ]
+        }
+      },
+      {
         "packed": "c8b2a29282726222",
         "unpacked": {
           "a": 309708581267330649,
@@ -100,6 +328,18 @@
     "packet": "Packet_FixedScalar_Field",
     "tests": [
       {
+        "packed": "0700000000000000",
+        "unpacked": {
+          "b": 0
+        }
+      },
+      {
+        "packed": "87ffffffffffffff",
+        "unpacked": {
+          "b": 144115188075855871
+        }
+      },
+      {
         "packed": "877572706e6c6a34",
         "unpacked": {
           "b": 29507425461658859
@@ -110,6 +350,18 @@
   {
     "packet": "Packet_FixedEnum_Field",
     "tests": [
+      {
+        "packed": "0100000000000000",
+        "unpacked": {
+          "b": 0
+        }
+      },
+      {
+        "packed": "81ffffffffffffff",
+        "unpacked": {
+          "b": 144115188075855871
+        }
+      },
       {
         "packed": "010501fdf8f4f038",
         "unpacked": {
@@ -153,14 +405,14 @@
         }
       },
       {
-        "packed": "070001020304",
+        "packed": "074a4b4c4d4e",
         "unpacked": {
           "payload": [
-            0,
-            1,
-            2,
-            3,
-            4
+            74,
+            75,
+            76,
+            77,
+            78
           ]
         }
       }
@@ -170,23 +422,63 @@
     "packet": "Packet_Payload_Field_UnknownSize",
     "tests": [
       {
-        "packed": "784a",
+        "packed": "0000",
         "unpacked": {
           "payload": [],
-          "a": 19064
+          "a": 0
         }
       },
       {
-        "packed": "4a4b4c4d4e784a",
+        "packed": "ffff",
+        "unpacked": {
+          "payload": [],
+          "a": 65535
+        }
+      },
+      {
+        "packed": "a552",
+        "unpacked": {
+          "payload": [],
+          "a": 21157
+        }
+      },
+      {
+        "packed": "4f485152530000",
         "unpacked": {
           "payload": [
-            74,
-            75,
-            76,
-            77,
-            78
+            79,
+            72,
+            81,
+            82,
+            83
           ],
-          "a": 19064
+          "a": 0
+        }
+      },
+      {
+        "packed": "4f48515253ffff",
+        "unpacked": {
+          "payload": [
+            79,
+            72,
+            81,
+            82,
+            83
+          ],
+          "a": 65535
+        }
+      },
+      {
+        "packed": "4f48515253a552",
+        "unpacked": {
+          "payload": [
+            79,
+            72,
+            81,
+            82,
+            83
+          ],
+          "a": 21157
         }
       }
     ]
@@ -195,22 +487,62 @@
     "packet": "Packet_Payload_Field_UnknownSize_Terminal",
     "tests": [
       {
-        "packed": "8a52",
+        "packed": "0000",
         "unpacked": {
-          "a": 21130,
+          "a": 0,
           "payload": []
         }
       },
       {
-        "packed": "8a525354555657",
+        "packed": "000050595a5b5c",
         "unpacked": {
-          "a": 21130,
+          "a": 0,
           "payload": [
-            83,
-            84,
-            85,
-            86,
-            87
+            80,
+            89,
+            90,
+            91,
+            92
+          ]
+        }
+      },
+      {
+        "packed": "ffff",
+        "unpacked": {
+          "a": 65535,
+          "payload": []
+        }
+      },
+      {
+        "packed": "ffff50595a5b5c",
+        "unpacked": {
+          "a": 65535,
+          "payload": [
+            80,
+            89,
+            90,
+            91,
+            92
+          ]
+        }
+      },
+      {
+        "packed": "b752",
+        "unpacked": {
+          "a": 21175,
+          "payload": []
+        }
+      },
+      {
+        "packed": "b75250595a5b5c",
+        "unpacked": {
+          "a": 21175,
+          "payload": [
+            80,
+            89,
+            90,
+            91,
+            92
           ]
         }
       }
@@ -226,16 +558,16 @@
         }
       },
       {
-        "packed": "0750595a5b5c5d5e",
+        "packed": "075d5e5f58616263",
         "unpacked": {
           "payload": [
-            80,
-            89,
-            90,
-            91,
-            92,
             93,
-            94
+            94,
+            95,
+            88,
+            97,
+            98,
+            99
           ]
         }
       }
@@ -245,23 +577,63 @@
     "packet": "Packet_Body_Field_UnknownSize",
     "tests": [
       {
-        "packed": "2563",
+        "packed": "0000",
         "unpacked": {
           "payload": [],
-          "a": 25381
+          "a": 0
         }
       },
       {
-        "packed": "5f586162632563",
+        "packed": "ffff",
+        "unpacked": {
+          "payload": [],
+          "a": 65535
+        }
+      },
+      {
+        "packed": "4a6b",
+        "unpacked": {
+          "payload": [],
+          "a": 27466
+        }
+      },
+      {
+        "packed": "64656667600000",
         "unpacked": {
           "payload": [
-            95,
-            88,
-            97,
-            98,
-            99
+            100,
+            101,
+            102,
+            103,
+            96
           ],
-          "a": 25381
+          "a": 0
+        }
+      },
+      {
+        "packed": "6465666760ffff",
+        "unpacked": {
+          "payload": [
+            100,
+            101,
+            102,
+            103,
+            96
+          ],
+          "a": 65535
+        }
+      },
+      {
+        "packed": "64656667604a6b",
+        "unpacked": {
+          "payload": [
+            100,
+            101,
+            102,
+            103,
+            96
+          ],
+          "a": 27466
         }
       }
     ]
@@ -270,22 +642,62 @@
     "packet": "Packet_Body_Field_UnknownSize_Terminal",
     "tests": [
       {
-        "packed": "3763",
+        "packed": "0000",
         "unpacked": {
-          "a": 25399,
+          "a": 0,
           "payload": []
         }
       },
       {
-        "packed": "376360696a6b6c",
+        "packed": "00006d6e6f6871",
         "unpacked": {
-          "a": 25399,
+          "a": 0,
           "payload": [
-            96,
-            105,
-            106,
-            107,
-            108
+            109,
+            110,
+            111,
+            104,
+            113
+          ]
+        }
+      },
+      {
+        "packed": "ffff",
+        "unpacked": {
+          "a": 65535,
+          "payload": []
+        }
+      },
+      {
+        "packed": "ffff6d6e6f6871",
+        "unpacked": {
+          "a": 65535,
+          "payload": [
+            109,
+            110,
+            111,
+            104,
+            113
+          ]
+        }
+      },
+      {
+        "packed": "5c6b",
+        "unpacked": {
+          "a": 27484,
+          "payload": []
+        }
+      },
+      {
+        "packed": "5c6b6d6e6f6871",
+        "unpacked": {
+          "a": 27484,
+          "payload": [
+            109,
+            110,
+            111,
+            104,
+            113
           ]
         }
       }
@@ -313,11 +725,75 @@
     "packet": "Packet_Checksum_Field_FromStart",
     "tests": [
       {
-        "packed": "6e6b786bbc",
+        "packed": "0000000000",
         "unpacked": {
-          "a": 27502,
-          "b": 27512,
-          "crc": 188
+          "a": 0,
+          "b": 0,
+          "crc": 0
+        }
+      },
+      {
+        "packed": "0000fffffe",
+        "unpacked": {
+          "a": 0,
+          "b": 65535,
+          "crc": 254
+        }
+      },
+      {
+        "packed": "0000a57318",
+        "unpacked": {
+          "a": 0,
+          "b": 29605,
+          "crc": 24
+        }
+      },
+      {
+        "packed": "ffff0000fe",
+        "unpacked": {
+          "a": 65535,
+          "b": 0,
+          "crc": 254
+        }
+      },
+      {
+        "packed": "fffffffffc",
+        "unpacked": {
+          "a": 65535,
+          "b": 65535,
+          "crc": 252
+        }
+      },
+      {
+        "packed": "ffffa57316",
+        "unpacked": {
+          "a": 65535,
+          "b": 29605,
+          "crc": 22
+        }
+      },
+      {
+        "packed": "9373000006",
+        "unpacked": {
+          "a": 29587,
+          "b": 0,
+          "crc": 6
+        }
+      },
+      {
+        "packed": "9373ffff04",
+        "unpacked": {
+          "a": 29587,
+          "b": 65535,
+          "crc": 4
+        }
+      },
+      {
+        "packed": "9373a5731e",
+        "unpacked": {
+          "a": 29587,
+          "b": 29605,
+          "crc": 30
         }
       }
     ]
@@ -326,27 +802,219 @@
     "packet": "Packet_Checksum_Field_FromEnd",
     "tests": [
       {
-        "packed": "00b773c173",
+        "packed": "0000000000",
         "unpacked": {
           "payload": [],
           "crc": 0,
-          "a": 29623,
-          "b": 29633
+          "a": 0,
+          "b": 0
         }
       },
       {
-        "packed": "71727374753fb773c173",
+        "packed": "000000ffff",
+        "unpacked": {
+          "payload": [],
+          "crc": 0,
+          "a": 0,
+          "b": 65535
+        }
+      },
+      {
+        "packed": "000000ee7b",
+        "unpacked": {
+          "payload": [],
+          "crc": 0,
+          "a": 0,
+          "b": 31726
+        }
+      },
+      {
+        "packed": "00ffff0000",
+        "unpacked": {
+          "payload": [],
+          "crc": 0,
+          "a": 65535,
+          "b": 0
+        }
+      },
+      {
+        "packed": "00ffffffff",
+        "unpacked": {
+          "payload": [],
+          "crc": 0,
+          "a": 65535,
+          "b": 65535
+        }
+      },
+      {
+        "packed": "00ffffee7b",
+        "unpacked": {
+          "payload": [],
+          "crc": 0,
+          "a": 65535,
+          "b": 31726
+        }
+      },
+      {
+        "packed": "00dc7b0000",
+        "unpacked": {
+          "payload": [],
+          "crc": 0,
+          "a": 31708,
+          "b": 0
+        }
+      },
+      {
+        "packed": "00dc7bffff",
+        "unpacked": {
+          "payload": [],
+          "crc": 0,
+          "a": 31708,
+          "b": 65535
+        }
+      },
+      {
+        "packed": "00dc7bee7b",
+        "unpacked": {
+          "payload": [],
+          "crc": 0,
+          "a": 31708,
+          "b": 31726
+        }
+      },
+      {
+        "packed": "767770797a5000000000",
         "unpacked": {
           "payload": [
-            113,
-            114,
-            115,
-            116,
-            117
+            118,
+            119,
+            112,
+            121,
+            122
           ],
-          "crc": 63,
-          "a": 29623,
-          "b": 29633
+          "crc": 80,
+          "a": 0,
+          "b": 0
+        }
+      },
+      {
+        "packed": "767770797a500000ffff",
+        "unpacked": {
+          "payload": [
+            118,
+            119,
+            112,
+            121,
+            122
+          ],
+          "crc": 80,
+          "a": 0,
+          "b": 65535
+        }
+      },
+      {
+        "packed": "767770797a500000ee7b",
+        "unpacked": {
+          "payload": [
+            118,
+            119,
+            112,
+            121,
+            122
+          ],
+          "crc": 80,
+          "a": 0,
+          "b": 31726
+        }
+      },
+      {
+        "packed": "767770797a50ffff0000",
+        "unpacked": {
+          "payload": [
+            118,
+            119,
+            112,
+            121,
+            122
+          ],
+          "crc": 80,
+          "a": 65535,
+          "b": 0
+        }
+      },
+      {
+        "packed": "767770797a50ffffffff",
+        "unpacked": {
+          "payload": [
+            118,
+            119,
+            112,
+            121,
+            122
+          ],
+          "crc": 80,
+          "a": 65535,
+          "b": 65535
+        }
+      },
+      {
+        "packed": "767770797a50ffffee7b",
+        "unpacked": {
+          "payload": [
+            118,
+            119,
+            112,
+            121,
+            122
+          ],
+          "crc": 80,
+          "a": 65535,
+          "b": 31726
+        }
+      },
+      {
+        "packed": "767770797a50dc7b0000",
+        "unpacked": {
+          "payload": [
+            118,
+            119,
+            112,
+            121,
+            122
+          ],
+          "crc": 80,
+          "a": 31708,
+          "b": 0
+        }
+      },
+      {
+        "packed": "767770797a50dc7bffff",
+        "unpacked": {
+          "payload": [
+            118,
+            119,
+            112,
+            121,
+            122
+          ],
+          "crc": 80,
+          "a": 31708,
+          "b": 65535
+        }
+      },
+      {
+        "packed": "767770797a50dc7bee7b",
+        "unpacked": {
+          "payload": [
+            118,
+            119,
+            112,
+            121,
+            122
+          ],
+          "crc": 80,
+          "a": 31708,
+          "b": 31726
         }
       }
     ]
@@ -355,10 +1023,10 @@
     "packet": "Packet_Struct_Field",
     "tests": [
       {
-        "packed": "7a00",
+        "packed": "0000",
         "unpacked": {
           "a": {
-            "a": 122
+            "a": 0
           },
           "b": {
             "array": []
@@ -366,16 +1034,68 @@
         }
       },
       {
-        "packed": "7a037b7c7d",
+        "packed": "0003788182",
         "unpacked": {
           "a": {
-            "a": 122
+            "a": 0
           },
           "b": {
             "array": [
-              123,
-              124,
-              125
+              120,
+              129,
+              130
+            ]
+          }
+        }
+      },
+      {
+        "packed": "ff00",
+        "unpacked": {
+          "a": {
+            "a": 255
+          },
+          "b": {
+            "array": []
+          }
+        }
+      },
+      {
+        "packed": "ff03788182",
+        "unpacked": {
+          "a": {
+            "a": 255
+          },
+          "b": {
+            "array": [
+              120,
+              129,
+              130
+            ]
+          }
+        }
+      },
+      {
+        "packed": "7f00",
+        "unpacked": {
+          "a": {
+            "a": 127
+          },
+          "b": {
+            "array": []
+          }
+        }
+      },
+      {
+        "packed": "7f03788182",
+        "unpacked": {
+          "a": {
+            "a": 127
+          },
+          "b": {
+            "array": [
+              120,
+              129,
+              130
             ]
           }
         }
@@ -386,13 +1106,13 @@
     "packet": "Packet_Array_Field_ScalarElement",
     "tests": [
       {
-        "packed": "017c138425843784",
+        "packed": "1c842e8438844a8c",
         "unpacked": {
           "array": [
-            31745,
-            33811,
-            33829,
-            33847
+            33820,
+            33838,
+            33848,
+            35914
           ]
         }
       }
@@ -418,20 +1138,20 @@
     "packet": "Packet_Array_Field_SizedStructElement",
     "tests": [
       {
-        "packed": "80898a8b",
+        "packed": "00ff8b00",
         "unpacked": {
           "array": [
             {
-              "a": 128
+              "a": 0
             },
             {
-              "a": 137
-            },
-            {
-              "a": 138
+              "a": 255
             },
             {
               "a": 139
+            },
+            {
+              "a": 0
             }
           ]
         }
@@ -442,7 +1162,7 @@
     "packet": "Packet_Array_Field_UnsizedStructElement",
     "tests": [
       {
-        "packed": "00038c8d8e00038f8891",
+        "packed": "00038d8e8f0003889192",
         "unpacked": {
           "array": [
             {
@@ -450,9 +1170,9 @@
             },
             {
               "array": [
-                140,
                 141,
-                142
+                142,
+                143
               ]
             },
             {
@@ -460,9 +1180,9 @@
             },
             {
               "array": [
-                143,
                 136,
-                145
+                145,
+                146
               ]
             }
           ]
@@ -480,11 +1200,9 @@
         }
       },
       {
-        "packed": "0f9394a594b794c194d39ce59cf79c019d13a525a537a541a553ad65ad77ad",
+        "packed": "0fb794c194d39ce59cf79c019d13a525a537a541a553ad65ad77ad81ad93b5",
         "unpacked": {
           "array": [
-            38035,
-            38053,
             38071,
             38081,
             40147,
@@ -497,7 +1215,9 @@
             42305,
             44371,
             44389,
-            44407
+            44407,
+            44417,
+            46483
           ]
         }
       }
@@ -513,16 +1233,16 @@
         }
       },
       {
-        "packed": "0e81ad93b5a5b5b7b5c1b5d3bde5bd",
+        "packed": "0ea5b5b7b5c1b5d3bde5bdf7bd01be",
         "unpacked": {
           "array": [
-            44417,
-            46483,
             46501,
             46519,
             46529,
             48595,
-            48613
+            48613,
+            48631,
+            48641
           ]
         }
       }
@@ -532,18 +1252,157 @@
     "packet": "Packet_Array_Field_SizedElement_ConstantSize",
     "tests": [
       {
-        "packed": "f7bd01be13c625c637c641c653ce65ce",
+        "packed": "13c625c637c641c653ce65ce77ce81ce",
         "unpacked": {
           "array": [
-            48631,
-            48641,
             50707,
             50725,
             50743,
             50753,
             52819,
-            52837
+            52837,
+            52855,
+            52865
           ]
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_UnsizedElement_VariableCount",
+    "tests": [
+      {
+        "packed": "0f0003d2d3d40003d5d6d70003d0d9da0003dbdcdd0003dedfd80003e1e2e30003e4e5e600",
+        "unpacked": {
+          "array": [
+            {
+              "array": []
+            },
+            {
+              "array": [
+                210,
+                211,
+                212
+              ]
+            },
+            {
+              "array": []
+            },
+            {
+              "array": [
+                213,
+                214,
+                215
+              ]
+            },
+            {
+              "array": []
+            },
+            {
+              "array": [
+                208,
+                217,
+                218
+              ]
+            },
+            {
+              "array": []
+            },
+            {
+              "array": [
+                219,
+                220,
+                221
+              ]
+            },
+            {
+              "array": []
+            },
+            {
+              "array": [
+                222,
+                223,
+                216
+              ]
+            },
+            {
+              "array": []
+            },
+            {
+              "array": [
+                225,
+                226,
+                227
+              ]
+            },
+            {
+              "array": []
+            },
+            {
+              "array": [
+                228,
+                229,
+                230
+              ]
+            },
+            {
+              "array": []
+            }
+          ]
+        }
+      },
+      {
+        "packed": "00",
+        "unpacked": {
+          "array": []
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_UnsizedElement_VariableSize",
+    "tests": [
+      {
+        "packed": "0f0003eaebec0003edeeef0003e8f1f2",
+        "unpacked": {
+          "array": [
+            {
+              "array": []
+            },
+            {
+              "array": [
+                234,
+                235,
+                236
+              ]
+            },
+            {
+              "array": []
+            },
+            {
+              "array": [
+                237,
+                238,
+                239
+              ]
+            },
+            {
+              "array": []
+            },
+            {
+              "array": [
+                232,
+                241,
+                242
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "packed": "00",
+        "unpacked": {
+          "array": []
         }
       }
     ]
@@ -552,7 +1411,7 @@
     "packet": "Packet_Array_Field_UnsizedElement_ConstantSize",
     "tests": [
       {
-        "packed": "0003cecfc80003d1d2d30003d4d5d60003d7d0d9",
+        "packed": "0003f6f7f00003f9fafb0003fcfdfe0003f80102",
         "unpacked": {
           "array": [
             {
@@ -560,9 +1419,9 @@
             },
             {
               "array": [
-                206,
-                207,
-                200
+                246,
+                247,
+                240
               ]
             },
             {
@@ -570,9 +1429,9 @@
             },
             {
               "array": [
-                209,
-                210,
-                211
+                249,
+                250,
+                251
               ]
             },
             {
@@ -580,9 +1439,9 @@
             },
             {
               "array": [
-                212,
-                213,
-                214
+                252,
+                253,
+                254
               ]
             },
             {
@@ -590,12 +1449,53 @@
             },
             {
               "array": [
-                215,
-                208,
-                217
+                248,
+                1,
+                2
               ]
             }
           ]
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_UnsizedElement_SizeModifier",
+    "tests": [
+      {
+        "packed": "0d00030607000003090a0b00",
+        "unpacked": {
+          "array": [
+            {
+              "array": []
+            },
+            {
+              "array": [
+                6,
+                7,
+                0
+              ]
+            },
+            {
+              "array": []
+            },
+            {
+              "array": [
+                9,
+                10,
+                11
+              ]
+            },
+            {
+              "array": []
+            }
+          ]
+        }
+      },
+      {
+        "packed": "02",
+        "unpacked": {
+          "array": []
         }
       }
     ]
@@ -610,17 +1510,68 @@
         }
       },
       {
-        "packed": "0e010003020504070609080b0a0d0c0000",
+        "packed": "0e78088a109c10ae10b810ca18dc180000",
         "unpacked": {
           "array": [
-            1,
-            515,
-            1029,
-            1543,
-            2057,
-            2571,
-            3085
+            2168,
+            4234,
+            4252,
+            4270,
+            4280,
+            6346,
+            6364
           ]
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_UnsizedElement_VariableCount_Padded",
+    "tests": [
+      {
+        "packed": "0700031d1e1f0003182122000323242500",
+        "unpacked": {
+          "array": [
+            {
+              "array": []
+            },
+            {
+              "array": [
+                29,
+                30,
+                31
+              ]
+            },
+            {
+              "array": []
+            },
+            {
+              "array": [
+                24,
+                33,
+                34
+              ]
+            },
+            {
+              "array": []
+            },
+            {
+              "array": [
+                35,
+                36,
+                37
+              ]
+            },
+            {
+              "array": []
+            }
+          ]
+        }
+      },
+      {
+        "packed": "0000000000000000000000000000000000",
+        "unpacked": {
+          "array": []
         }
       }
     ]
@@ -629,78 +1580,100 @@
     "packet": "ScalarParent",
     "tests": [
       {
-        "packet": "ScalarChild_A",
-        "packed": "0001da",
+        "packed": "000100",
         "unpacked": {
           "a": 0,
-          "b": 218
-        }
+          "b": 0
+        },
+        "packet": "ScalarChild_A"
       },
       {
-        "packet": "ScalarChild_B",
-        "packed": "0102dcde",
-        "unpacked": {
-          "a": 1,
-          "c": 57052
-        }
-      },
-      {
-        "packet": "AliasedChild_A",
-        "packed": "0201d8",
-        "unpacked": {
-          "a": 2,
-          "b": 216
-        }
-      },
-      {
-        "packet": "AliasedChild_B",
-        "packed": "03020ae7",
-        "unpacked": {
-          "a": 3,
-          "c": 59146
-        }
-      }
-    ]
-  },
-  {
-    "packet": "PartialParent5",
-    "tests": [
-      {
-        "packet": "PartialChild5_A",
-        "packed": "409d",
+        "packed": "0001ff",
         "unpacked": {
           "a": 0,
-          "b": 1258
-        }
+          "b": 255
+        },
+        "packet": "ScalarChild_A"
       },
       {
-        "packet": "PartialChild5_B",
-        "packed": "a1434b84",
+        "packed": "000129",
+        "unpacked": {
+          "a": 0,
+          "b": 41
+        },
+        "packet": "ScalarChild_A"
+      },
+      {
+        "packed": "01020000",
         "unpacked": {
           "a": 1,
-          "c": 69360157
-        }
-      }
-    ]
-  },
-  {
-    "packet": "PartialParent12",
-    "tests": [
-      {
-        "packet": "PartialChild12_A",
-        "packed": "02c0",
-        "unpacked": {
-          "a": 2,
-          "d": 12
-        }
+          "c": 0
+        },
+        "packet": "ScalarChild_B"
       },
       {
-        "packet": "PartialChild12_B",
-        "packed": "030035e9",
+        "packed": "0102ffff",
+        "unpacked": {
+          "a": 1,
+          "c": 65535
+        },
+        "packet": "ScalarChild_B"
+      },
+      {
+        "packed": "01025329",
+        "unpacked": {
+          "a": 1,
+          "c": 10579
+        },
+        "packet": "ScalarChild_B"
+      },
+      {
+        "packed": "020100",
+        "unpacked": {
+          "a": 2,
+          "b": 0
+        },
+        "packet": "AliasedChild_A"
+      },
+      {
+        "packed": "0201ff",
+        "unpacked": {
+          "a": 2,
+          "b": 255
+        },
+        "packet": "AliasedChild_A"
+      },
+      {
+        "packed": "02012f",
+        "unpacked": {
+          "a": 2,
+          "b": 47
+        },
+        "packet": "AliasedChild_A"
+      },
+      {
+        "packed": "03020000",
         "unpacked": {
           "a": 3,
-          "e": 955216
-        }
+          "c": 0
+        },
+        "packet": "AliasedChild_B"
+      },
+      {
+        "packed": "0302ffff",
+        "unpacked": {
+          "a": 3,
+          "c": 65535
+        },
+        "packet": "AliasedChild_B"
+      },
+      {
+        "packed": "03028129",
+        "unpacked": {
+          "a": 3,
+          "c": 10625
+        },
+        "packet": "AliasedChild_B"
       }
     ]
   },
@@ -708,20 +1681,158 @@
     "packet": "EnumParent",
     "tests": [
       {
-        "packet": "EnumChild_A",
-        "packed": "bbaa01dd",
+        "packed": "bbaa0100",
         "unpacked": {
           "a": 43707,
-          "b": 221
-        }
+          "b": 0
+        },
+        "packet": "EnumChild_A"
       },
       {
-        "packet": "EnumChild_B",
-        "packed": "ddcc02f7de",
+        "packed": "bbaa01ff",
+        "unpacked": {
+          "a": 43707,
+          "b": 255
+        },
+        "packet": "EnumChild_A"
+      },
+      {
+        "packed": "bbaa012c",
+        "unpacked": {
+          "a": 43707,
+          "b": 44
+        },
+        "packet": "EnumChild_A"
+      },
+      {
+        "packed": "ddcc020000",
         "unpacked": {
           "a": 52445,
-          "c": 57079
-        }
+          "c": 0
+        },
+        "packet": "EnumChild_B"
+      },
+      {
+        "packed": "ddcc02ffff",
+        "unpacked": {
+          "a": 52445,
+          "c": 65535
+        },
+        "packet": "EnumChild_B"
+      },
+      {
+        "packed": "ddcc026e29",
+        "unpacked": {
+          "a": 52445,
+          "c": 10606
+        },
+        "packet": "EnumChild_B"
+      }
+    ]
+  },
+  {
+    "packet": "PartialParent5",
+    "tests": [
+      {
+        "packed": "0000",
+        "unpacked": {
+          "a": 0,
+          "b": 0
+        },
+        "packet": "PartialChild5_A"
+      },
+      {
+        "packed": "e0ff",
+        "unpacked": {
+          "a": 0,
+          "b": 2047
+        },
+        "packet": "PartialChild5_A"
+      },
+      {
+        "packed": "4036",
+        "unpacked": {
+          "a": 0,
+          "b": 434
+        },
+        "packet": "PartialChild5_A"
+      },
+      {
+        "packed": "01000000",
+        "unpacked": {
+          "a": 1,
+          "c": 0
+        },
+        "packet": "PartialChild5_B"
+      },
+      {
+        "packed": "e1ffffff",
+        "unpacked": {
+          "a": 1,
+          "c": 134217727
+        },
+        "packet": "PartialChild5_B"
+      },
+      {
+        "packed": "410dcd0c",
+        "unpacked": {
+          "a": 1,
+          "c": 6711402
+        },
+        "packet": "PartialChild5_B"
+      }
+    ]
+  },
+  {
+    "packet": "PartialParent12",
+    "tests": [
+      {
+        "packed": "0200",
+        "unpacked": {
+          "a": 2,
+          "d": 0
+        },
+        "packet": "PartialChild12_A"
+      },
+      {
+        "packed": "02f0",
+        "unpacked": {
+          "a": 2,
+          "d": 15
+        },
+        "packet": "PartialChild12_A"
+      },
+      {
+        "packed": "02b0",
+        "unpacked": {
+          "a": 2,
+          "d": 11
+        },
+        "packet": "PartialChild12_A"
+      },
+      {
+        "packed": "03000000",
+        "unpacked": {
+          "a": 3,
+          "e": 0
+        },
+        "packet": "PartialChild12_B"
+      },
+      {
+        "packed": "03f0ffff",
+        "unpacked": {
+          "a": 3,
+          "e": 1048575
+        },
+        "packet": "PartialChild12_B"
+      },
+      {
+        "packed": "0310e726",
+        "unpacked": {
+          "a": 3,
+          "e": 159345
+        },
+        "packet": "PartialChild12_B"
       }
     ]
   },
@@ -729,20 +1840,56 @@
     "packet": "Struct_Enum_Field",
     "tests": [
       {
-        "packed": "81443f372f271fe7",
+        "packed": "0100000000000000",
         "unpacked": {
           "s": {
             "a": 1,
-            "c": 130109945552993929
+            "c": 0
           }
         }
       },
       {
-        "packed": "82443f372f271fe7",
+        "packed": "81ffffffffffffff",
+        "unpacked": {
+          "s": {
+            "a": 1,
+            "c": 144115188075855871
+          }
+        }
+      },
+      {
+        "packed": "017e7c7a78767438",
+        "unpacked": {
+          "s": {
+            "a": 1,
+            "c": 31781301744105724
+          }
+        }
+      },
+      {
+        "packed": "0200000000000000",
         "unpacked": {
           "s": {
             "a": 2,
-            "c": 130109945552993929
+            "c": 0
+          }
+        }
+      },
+      {
+        "packed": "82ffffffffffffff",
+        "unpacked": {
+          "s": {
+            "a": 2,
+            "c": 144115188075855871
+          }
+        }
+      },
+      {
+        "packed": "027e7c7a78767438",
+        "unpacked": {
+          "s": {
+            "a": 2,
+            "c": 31781301744105724
           }
         }
       }
@@ -752,11 +1899,83 @@
     "packet": "Struct_Reserved_Field",
     "tests": [
       {
-        "packed": "72827f776f675fef",
+        "packed": "0000000000000000",
         "unpacked": {
           "s": {
-            "a": 114,
-            "c": 33688708645109697
+            "a": 0,
+            "c": 0
+          }
+        }
+      },
+      {
+        "packed": "00feffffffffffff",
+        "unpacked": {
+          "s": {
+            "a": 0,
+            "c": 36028797018963967
+          }
+        }
+      },
+      {
+        "packed": "008e8c8a88868440",
+        "unpacked": {
+          "s": {
+            "a": 0,
+            "c": 9080055930373703
+          }
+        }
+      },
+      {
+        "packed": "7f00000000000000",
+        "unpacked": {
+          "s": {
+            "a": 127,
+            "c": 0
+          }
+        }
+      },
+      {
+        "packed": "7ffeffffffffffff",
+        "unpacked": {
+          "s": {
+            "a": 127,
+            "c": 36028797018963967
+          }
+        }
+      },
+      {
+        "packed": "7f8e8c8a88868440",
+        "unpacked": {
+          "s": {
+            "a": 127,
+            "c": 9080055930373703
+          }
+        }
+      },
+      {
+        "packed": "2100000000000000",
+        "unpacked": {
+          "s": {
+            "a": 33,
+            "c": 0
+          }
+        }
+      },
+      {
+        "packed": "21feffffffffffff",
+        "unpacked": {
+          "s": {
+            "a": 33,
+            "c": 36028797018963967
+          }
+        }
+      },
+      {
+        "packed": "218e8c8a88868440",
+        "unpacked": {
+          "s": {
+            "a": 33,
+            "c": 9080055930373703
           }
         }
       }
@@ -766,27 +1985,79 @@
     "packet": "Struct_Size_Field",
     "tests": [
       {
-        "packed": "c0dfdbd7d3cfcbf3",
+        "packed": "0000000000000000",
         "unpacked": {
           "s": {
-            "a": 2195920410031913976,
+            "a": 0,
             "b": []
           }
         }
       },
       {
-        "packed": "c7dfdbd7d3cfcbf3f9fafbfcfdfe80",
+        "packed": "070000000000000050515253545556",
         "unpacked": {
           "s": {
-            "a": 2195920410031913976,
+            "a": 0,
             "b": [
-              249,
-              250,
-              251,
-              252,
-              253,
-              254,
-              128
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86
+            ]
+          }
+        }
+      },
+      {
+        "packed": "f8ffffffffffffff",
+        "unpacked": {
+          "s": {
+            "a": 2305843009213693951,
+            "b": []
+          }
+        }
+      },
+      {
+        "packed": "ffffffffffffffff50515253545556",
+        "unpacked": {
+          "s": {
+            "a": 2305843009213693951,
+            "b": [
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86
+            ]
+          }
+        }
+      },
+      {
+        "packed": "784e4d4c4b4a4948",
+        "unpacked": {
+          "s": {
+            "a": 651097016411728335,
+            "b": []
+          }
+        }
+      },
+      {
+        "packed": "7f4e4d4c4b4a494850515253545556",
+        "unpacked": {
+          "s": {
+            "a": 651097016411728335,
+            "b": [
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86
             ]
           }
         }
@@ -797,27 +2068,79 @@
     "packet": "Struct_Count_Field",
     "tests": [
       {
-        "packed": "c003830282018100",
+        "packed": "0000000000000000",
         "unpacked": {
           "s": {
-            "a": 4538991236898936,
+            "a": 0,
             "b": []
           }
         }
       },
       {
-        "packed": "c703830282018100090a0b0c0d0e0f",
+        "packed": "07000000000000005f5c6162636065",
         "unpacked": {
           "s": {
-            "a": 4538991236898936,
+            "a": 0,
             "b": [
-              9,
-              10,
-              11,
-              12,
-              13,
-              14,
-              15
+              95,
+              92,
+              97,
+              98,
+              99,
+              96,
+              101
+            ]
+          }
+        }
+      },
+      {
+        "packed": "f8ffffffffffffff",
+        "unpacked": {
+          "s": {
+            "a": 2305843009213693951,
+            "b": []
+          }
+        }
+      },
+      {
+        "packed": "ffffffffffffffff5f5c6162636065",
+        "unpacked": {
+          "s": {
+            "a": 2305843009213693951,
+            "b": [
+              95,
+              92,
+              97,
+              98,
+              99,
+              96,
+              101
+            ]
+          }
+        }
+      },
+      {
+        "packed": "b08b6b4b2b0beb4a",
+        "unpacked": {
+          "s": {
+            "a": 674802607363813750,
+            "b": []
+          }
+        }
+      },
+      {
+        "packed": "b78b6b4b2b0beb4a5f5c6162636065",
+        "unpacked": {
+          "s": {
+            "a": 674802607363813750,
+            "b": [
+              95,
+              92,
+              97,
+              98,
+              99,
+              96,
+              101
             ]
           }
         }
@@ -828,10 +2151,26 @@
     "packet": "Struct_FixedScalar_Field",
     "tests": [
       {
-        "packed": "075b413121110101",
+        "packed": "0700000000000000",
         "unpacked": {
           "s": {
-            "b": 565296119317174
+            "b": 0
+          }
+        }
+      },
+      {
+        "packed": "87ffffffffffffff",
+        "unpacked": {
+          "s": {
+            "b": 144115188075855871
+          }
+        }
+      },
+      {
+        "packed": "07aea9a5a19d9965",
+        "unpacked": {
+          "s": {
+            "b": 57195749897360220
           }
         }
       }
@@ -841,10 +2180,26 @@
     "packet": "Struct_FixedEnum_Field",
     "tests": [
       {
-        "packed": "818e63432303e302",
+        "packed": "0100000000000000",
         "unpacked": {
           "s": {
-            "b": 1625105138894621
+            "b": 0
+          }
+        }
+      },
+      {
+        "packed": "81ffffffffffffff",
+        "unpacked": {
+          "s": {
+            "b": 144115188075855871
+          }
+        }
+      },
+      {
+        "packed": "81918b837b736b6b",
+        "unpacked": {
+          "s": {
+            "b": 60471932491339555
           }
         }
       }
@@ -876,12 +2231,92 @@
     "packet": "Struct_Checksum_Field_FromStart",
     "tests": [
       {
-        "packed": "9f072108cf",
+        "packed": "0000000000",
         "unpacked": {
           "s": {
-            "a": 1951,
-            "b": 2081,
-            "crc": 207
+            "a": 0,
+            "b": 0,
+            "crc": 0
+          }
+        }
+      },
+      {
+        "packed": "0000fffffe",
+        "unpacked": {
+          "s": {
+            "a": 0,
+            "b": 65535,
+            "crc": 254
+          }
+        }
+      },
+      {
+        "packed": "00006777de",
+        "unpacked": {
+          "s": {
+            "a": 0,
+            "b": 30567,
+            "crc": 222
+          }
+        }
+      },
+      {
+        "packed": "ffff0000fe",
+        "unpacked": {
+          "s": {
+            "a": 65535,
+            "b": 0,
+            "crc": 254
+          }
+        }
+      },
+      {
+        "packed": "fffffffffc",
+        "unpacked": {
+          "s": {
+            "a": 65535,
+            "b": 65535,
+            "crc": 252
+          }
+        }
+      },
+      {
+        "packed": "ffff6777dc",
+        "unpacked": {
+          "s": {
+            "a": 65535,
+            "b": 30567,
+            "crc": 220
+          }
+        }
+      },
+      {
+        "packed": "45770000bc",
+        "unpacked": {
+          "s": {
+            "a": 30533,
+            "b": 0,
+            "crc": 188
+          }
+        }
+      },
+      {
+        "packed": "4577ffffba",
+        "unpacked": {
+          "s": {
+            "a": 30533,
+            "b": 65535,
+            "crc": 186
+          }
+        }
+      },
+      {
+        "packed": "457767779a",
+        "unpacked": {
+          "s": {
+            "a": 30533,
+            "b": 30567,
+            "crc": 154
           }
         }
       }
@@ -891,30 +2326,254 @@
     "packet": "Struct_Checksum_Field_FromEnd",
     "tests": [
       {
-        "packed": "00e8096a0a",
+        "packed": "0000000000",
         "unpacked": {
           "s": {
             "payload": [],
             "crc": 0,
-            "a": 2536,
-            "b": 2666
+            "a": 0,
+            "b": 0
           }
         }
       },
       {
-        "packed": "2223242526b4e8096a0a",
+        "packed": "000000ffff",
+        "unpacked": {
+          "s": {
+            "payload": [],
+            "crc": 0,
+            "a": 0,
+            "b": 65535
+          }
+        }
+      },
+      {
+        "packed": "000000f077",
+        "unpacked": {
+          "s": {
+            "payload": [],
+            "crc": 0,
+            "a": 0,
+            "b": 30704
+          }
+        }
+      },
+      {
+        "packed": "00ffff0000",
+        "unpacked": {
+          "s": {
+            "payload": [],
+            "crc": 0,
+            "a": 65535,
+            "b": 0
+          }
+        }
+      },
+      {
+        "packed": "00ffffffff",
+        "unpacked": {
+          "s": {
+            "payload": [],
+            "crc": 0,
+            "a": 65535,
+            "b": 65535
+          }
+        }
+      },
+      {
+        "packed": "00fffff077",
+        "unpacked": {
+          "s": {
+            "payload": [],
+            "crc": 0,
+            "a": 65535,
+            "b": 30704
+          }
+        }
+      },
+      {
+        "packed": "00de770000",
+        "unpacked": {
+          "s": {
+            "payload": [],
+            "crc": 0,
+            "a": 30686,
+            "b": 0
+          }
+        }
+      },
+      {
+        "packed": "00de77ffff",
+        "unpacked": {
+          "s": {
+            "payload": [],
+            "crc": 0,
+            "a": 30686,
+            "b": 65535
+          }
+        }
+      },
+      {
+        "packed": "00de77f077",
+        "unpacked": {
+          "s": {
+            "payload": [],
+            "crc": 0,
+            "a": 30686,
+            "b": 30704
+          }
+        }
+      },
+      {
+        "packed": "78797a7b7c6200000000",
         "unpacked": {
           "s": {
             "payload": [
-              34,
-              35,
-              36,
-              37,
-              38
+              120,
+              121,
+              122,
+              123,
+              124
             ],
-            "crc": 180,
-            "a": 2536,
-            "b": 2666
+            "crc": 98,
+            "a": 0,
+            "b": 0
+          }
+        }
+      },
+      {
+        "packed": "78797a7b7c620000ffff",
+        "unpacked": {
+          "s": {
+            "payload": [
+              120,
+              121,
+              122,
+              123,
+              124
+            ],
+            "crc": 98,
+            "a": 0,
+            "b": 65535
+          }
+        }
+      },
+      {
+        "packed": "78797a7b7c620000f077",
+        "unpacked": {
+          "s": {
+            "payload": [
+              120,
+              121,
+              122,
+              123,
+              124
+            ],
+            "crc": 98,
+            "a": 0,
+            "b": 30704
+          }
+        }
+      },
+      {
+        "packed": "78797a7b7c62ffff0000",
+        "unpacked": {
+          "s": {
+            "payload": [
+              120,
+              121,
+              122,
+              123,
+              124
+            ],
+            "crc": 98,
+            "a": 65535,
+            "b": 0
+          }
+        }
+      },
+      {
+        "packed": "78797a7b7c62ffffffff",
+        "unpacked": {
+          "s": {
+            "payload": [
+              120,
+              121,
+              122,
+              123,
+              124
+            ],
+            "crc": 98,
+            "a": 65535,
+            "b": 65535
+          }
+        }
+      },
+      {
+        "packed": "78797a7b7c62fffff077",
+        "unpacked": {
+          "s": {
+            "payload": [
+              120,
+              121,
+              122,
+              123,
+              124
+            ],
+            "crc": 98,
+            "a": 65535,
+            "b": 30704
+          }
+        }
+      },
+      {
+        "packed": "78797a7b7c62de770000",
+        "unpacked": {
+          "s": {
+            "payload": [
+              120,
+              121,
+              122,
+              123,
+              124
+            ],
+            "crc": 98,
+            "a": 30686,
+            "b": 0
+          }
+        }
+      },
+      {
+        "packed": "78797a7b7c62de77ffff",
+        "unpacked": {
+          "s": {
+            "payload": [
+              120,
+              121,
+              122,
+              123,
+              124
+            ],
+            "crc": 98,
+            "a": 30686,
+            "b": 65535
+          }
+        }
+      },
+      {
+        "packed": "78797a7b7c62de77f077",
+        "unpacked": {
+          "s": {
+            "payload": [
+              120,
+              121,
+              122,
+              123,
+              124
+            ],
+            "crc": 98,
+            "a": 30686,
+            "b": 30704
           }
         }
       }
@@ -924,10 +2583,10 @@
     "packet": "Struct_Struct_Field",
     "tests": [
       {
-        "packed": "2b00",
+        "packed": "0000",
         "unpacked": {
           "a": {
-            "a": 43
+            "a": 0
           },
           "b": {
             "array": []
@@ -935,16 +2594,68 @@
         }
       },
       {
-        "packed": "2b032c2d2e",
+        "packed": "0003828384",
         "unpacked": {
           "a": {
-            "a": 43
+            "a": 0
           },
           "b": {
             "array": [
-              44,
-              45,
-              46
+              130,
+              131,
+              132
+            ]
+          }
+        }
+      },
+      {
+        "packed": "ff00",
+        "unpacked": {
+          "a": {
+            "a": 255
+          },
+          "b": {
+            "array": []
+          }
+        }
+      },
+      {
+        "packed": "ff03828384",
+        "unpacked": {
+          "a": {
+            "a": 255
+          },
+          "b": {
+            "array": [
+              130,
+              131,
+              132
+            ]
+          }
+        }
+      },
+      {
+        "packed": "8100",
+        "unpacked": {
+          "a": {
+            "a": 129
+          },
+          "b": {
+            "array": []
+          }
+        }
+      },
+      {
+        "packed": "8103828384",
+        "unpacked": {
+          "a": {
+            "a": 129
+          },
+          "b": {
+            "array": [
+              130,
+              131,
+              132
             ]
           }
         }
@@ -955,14 +2666,14 @@
     "packet": "Struct_Array_Field_ScalarElement",
     "tests": [
       {
-        "packed": "720cf40c760df80d",
+        "packed": "568878889a88bc88",
         "unpacked": {
           "s": {
             "array": [
-              3186,
-              3316,
-              3446,
-              3576
+              34902,
+              34936,
+              34970,
+              35004
             ]
           }
         }
@@ -991,21 +2702,21 @@
     "packet": "Struct_Array_Field_SizedStructElement",
     "tests": [
       {
-        "packed": "393a3b3c",
+        "packed": "00ff8d00",
         "unpacked": {
           "s": {
             "array": [
               {
-                "a": 57
+                "a": 0
               },
               {
-                "a": 58
+                "a": 255
               },
               {
-                "a": 59
+                "a": 141
               },
               {
-                "a": 60
+                "a": 0
               }
             ]
           }
@@ -1017,7 +2728,7 @@
     "packet": "Struct_Array_Field_UnsizedStructElement",
     "tests": [
       {
-        "packed": "00033d3e3f0003004142",
+        "packed": "00038f80910003929394",
         "unpacked": {
           "s": {
             "array": [
@@ -1026,9 +2737,9 @@
               },
               {
                 "array": [
-                  61,
-                  62,
-                  63
+                  143,
+                  128,
+                  145
                 ]
               },
               {
@@ -1036,9 +2747,9 @@
               },
               {
                 "array": [
-                  0,
-                  65,
-                  66
+                  146,
+                  147,
+                  148
                 ]
               }
             ]
@@ -1059,25 +2770,25 @@
         }
       },
       {
-        "packed": "0fc4504651c8514a52cc524e53d0535254d4545655d8555a56dc565e57e057",
+        "packed": "0f8999ab99cd99ef99019a23aa45aa67aa89aaabaacdaaefaa01ab23bb45bb",
         "unpacked": {
           "s": {
             "array": [
-              20676,
-              20806,
-              20936,
-              21066,
-              21196,
-              21326,
-              21456,
-              21586,
-              21716,
-              21846,
-              21976,
-              22106,
-              22236,
-              22366,
-              22496
+              39305,
+              39339,
+              39373,
+              39407,
+              39425,
+              43555,
+              43589,
+              43623,
+              43657,
+              43691,
+              43725,
+              43759,
+              43777,
+              47907,
+              47941
             ]
           }
         }
@@ -1096,17 +2807,17 @@
         }
       },
       {
-        "packed": "0e6258e4586659e8596a5aec5a6e5b",
+        "packed": "0e67bb89bbabbbcdbbefbb01bc23cc",
         "unpacked": {
           "s": {
             "array": [
-              22626,
-              22756,
-              22886,
-              23016,
-              23146,
-              23276,
-              23406
+              47975,
+              48009,
+              48043,
+              48077,
+              48111,
+              48129,
+              52259
             ]
           }
         }
@@ -1117,19 +2828,166 @@
     "packet": "Struct_Array_Field_SizedElement_ConstantSize",
     "tests": [
       {
-        "packed": "f05b725cf45c765df85d7a5efc5e7e5f",
+        "packed": "45cc67cc89ccabcccdccefcc01cd23dd",
         "unpacked": {
           "s": {
             "array": [
-              23536,
-              23666,
-              23796,
-              23926,
-              24056,
-              24186,
-              24316,
-              24446
+              52293,
+              52327,
+              52361,
+              52395,
+              52429,
+              52463,
+              52481,
+              56611
             ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Array_Field_UnsizedElement_VariableCount",
+    "tests": [
+      {
+        "packed": "0f0003d4d5d60003d7d8d90003dadbdc0003dddedf0003d0e1e20003e3e4e50003e6e7e800",
+        "unpacked": {
+          "s": {
+            "array": [
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  212,
+                  213,
+                  214
+                ]
+              },
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  215,
+                  216,
+                  217
+                ]
+              },
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  218,
+                  219,
+                  220
+                ]
+              },
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  221,
+                  222,
+                  223
+                ]
+              },
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  208,
+                  225,
+                  226
+                ]
+              },
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  227,
+                  228,
+                  229
+                ]
+              },
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  230,
+                  231,
+                  232
+                ]
+              },
+              {
+                "array": []
+              }
+            ]
+          }
+        }
+      },
+      {
+        "packed": "00",
+        "unpacked": {
+          "s": {
+            "array": []
+          }
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Array_Field_UnsizedElement_VariableSize",
+    "tests": [
+      {
+        "packed": "0f0003ecedee0003efe0f10003f2f3f4",
+        "unpacked": {
+          "s": {
+            "array": [
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  236,
+                  237,
+                  238
+                ]
+              },
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  239,
+                  224,
+                  241
+                ]
+              },
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  242,
+                  243,
+                  244
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "packed": "00",
+        "unpacked": {
+          "s": {
+            "array": []
           }
         }
       }
@@ -1139,7 +2997,7 @@
     "packet": "Struct_Array_Field_UnsizedElement_ConstantSize",
     "tests": [
       {
-        "packed": "00037f408100038283840003858687000388898a",
+        "packed": "0003f8f9fa0003fbfcfd0003fef0010003020304",
         "unpacked": {
           "s": {
             "array": [
@@ -1148,9 +3006,9 @@
               },
               {
                 "array": [
-                  127,
-                  64,
-                  129
+                  248,
+                  249,
+                  250
                 ]
               },
               {
@@ -1158,9 +3016,9 @@
               },
               {
                 "array": [
-                  130,
-                  131,
-                  132
+                  251,
+                  252,
+                  253
                 ]
               },
               {
@@ -1168,9 +3026,9 @@
               },
               {
                 "array": [
-                  133,
-                  134,
-                  135
+                  254,
+                  240,
+                  1
                 ]
               },
               {
@@ -1178,12 +3036,57 @@
               },
               {
                 "array": [
-                  136,
-                  137,
-                  138
+                  2,
+                  3,
+                  4
                 ]
               }
             ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Array_Field_UnsizedElement_SizeModifier",
+    "tests": [
+      {
+        "packed": "0d000308090a00030b0c0d00",
+        "unpacked": {
+          "s": {
+            "array": [
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  8,
+                  9,
+                  10
+                ]
+              },
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  11,
+                  12,
+                  13
+                ]
+              },
+              {
+                "array": []
+              }
+            ]
+          }
+        }
+      },
+      {
+        "packed": "02",
+        "unpacked": {
+          "s": {
+            "array": []
           }
         }
       }
@@ -1201,18 +3104,73 @@
         }
       },
       {
-        "packed": "0e010003020504070609080b0a0d0c0000",
+        "packed": "0e12113411561178119a11bc11de110000",
         "unpacked": {
           "s": {
             "array": [
-              1,
-              515,
-              1029,
-              1543,
-              2057,
-              2571,
-              3085
+              4370,
+              4404,
+              4438,
+              4472,
+              4506,
+              4540,
+              4574
             ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Array_Field_UnsizedElement_VariableCount_Padded",
+    "tests": [
+      {
+        "packed": "0700031f10210003222324000325262700",
+        "unpacked": {
+          "s": {
+            "array": [
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  31,
+                  16,
+                  33
+                ]
+              },
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  34,
+                  35,
+                  36
+                ]
+              },
+              {
+                "array": []
+              },
+              {
+                "array": [
+                  37,
+                  38,
+                  39
+                ]
+              },
+              {
+                "array": []
+              }
+            ]
+          }
+        }
+      },
+      {
+        "packed": "0000000000000000000000000000000000",
+        "unpacked": {
+          "s": {
+            "array": []
           }
         }
       }
