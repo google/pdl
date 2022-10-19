@@ -129,7 +129,6 @@ genrule {
 // pre-generated binary inputs.
 python_test_host {
     name: "pdl_python_generator_test",
-    defaults: ["modern_python_path_defaults"],
     main: "tests/python_generator_test.py",
     srcs: [
         "tests/python_generator_test.py",
@@ -158,7 +157,6 @@ python_test_host {
 // on selected PDL source files.
 python_test_host {
     name: "pdl_python_parser_test",
-    defaults: ["modern_python_path_defaults"],
     main: "tests/python_parser_test.py",
     srcs: ["tests/python_parser_test.py"],
     data: [
