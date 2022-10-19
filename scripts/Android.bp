@@ -9,7 +9,6 @@ package {
 
 python_binary_host {
     name: "pypdl",
-    defaults: ["modern_python_path_defaults"],
     main: "pdl/parser.py",
     srcs: ["pdl/parser.py"],
 }
@@ -17,7 +16,6 @@ python_binary_host {
 // Python generator.
 python_binary_host {
     name: "pdl_python_generator",
-    defaults: ["modern_python_path_defaults"],
     main: "generate_python_backend.py",
     srcs: [
         "generate_python_backend.py",
