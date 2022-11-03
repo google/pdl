@@ -11,13 +11,13 @@ rust_defaults {
     name: "pdl_defaults",
     // LINT.IfChange
     rustlibs: [
+        "libclap",
         "libcodespan_reporting",
         "libpest",
         "libproc_macro2",
         "libquote",
         "libserde",
         "libserde_json",
-        "libclap",
         "libsyn",
         "libtempfile",
     ],
@@ -47,12 +47,12 @@ rust_test_host {
     data: [
         ":rustfmt",
         ":rustfmt.toml",
-        "tests/generated/preamble.rs",
-        "tests/generated/packet_decl_empty.rs",
-        "tests/generated/packet_decl_simple_little_endian.rs",
-        "tests/generated/packet_decl_simple_big_endian.rs",
-        "tests/generated/packet_decl_complex_little_endian.rs",
         "tests/generated/packet_decl_complex_big_endian.rs",
+        "tests/generated/packet_decl_complex_little_endian.rs",
+        "tests/generated/packet_decl_empty.rs",
+        "tests/generated/packet_decl_simple_big_endian.rs",
+        "tests/generated/packet_decl_simple_little_endian.rs",
+        "tests/generated/preamble.rs",
     ],
 }
 
@@ -88,7 +88,7 @@ genrule_defaults {
 // little endian test file located at tests/canonical/le_test_file.pdl.
 genrule {
     name: "pdl_python_generator_le_test_gen",
-    defaults: [ "pdl_python_generator_defaults" ],
+    defaults: ["pdl_python_generator_defaults"],
     cmd: "$(location :pdl) $(in) |" +
         " $(location :pdl_python_generator)" +
         " --output $(out) --custom-type-location tests.custom_types",
@@ -107,7 +107,7 @@ genrule {
 // big endian test file located at tests/canonical/be_test_file.pdl.
 genrule {
     name: "pdl_python_generator_be_test_gen",
-    defaults: [ "pdl_python_generator_defaults" ],
+    defaults: ["pdl_python_generator_defaults"],
     cmd: "$(location :pdl) $(in) |" +
         " $(location :pdl_python_generator)" +
         " --output $(out) --custom-type-location tests.custom_types",
@@ -128,14 +128,14 @@ python_test_host {
     name: "pdl_python_generator_test",
     main: "tests/python_generator_test.py",
     srcs: [
-        "tests/python_generator_test.py",
-        "tests/custom_types.py",
-        ":pdl_python_generator_le_test_gen",
         ":pdl_python_generator_be_test_gen",
+        ":pdl_python_generator_le_test_gen",
+        "tests/custom_types.py",
+        "tests/python_generator_test.py",
     ],
     data: [
-        "tests/canonical/le_test_vectors.json",
         "tests/canonical/be_test_vectors.json",
+        "tests/canonical/le_test_vectors.json",
     ],
     libs: [
         "typing_extensions",
@@ -157,9 +157,9 @@ python_test_host {
     main: "tests/python_parser_test.py",
     srcs: ["tests/python_parser_test.py"],
     data: [
-        ":pdl",
-        ":pypdl",
         ":BluetoothHciPackets",
         ":RootCanalLinkLayerPackets",
+        ":pdl",
+        ":pypdl",
     ],
 }
