@@ -599,7 +599,7 @@ class FieldSerializer:
                 self.append_(f"    raise Exception(\"Invalid payload length\")")
                 array_size = "_size"
             elif isinstance(value_field, ast.ArrayField) and value_field.width:
-                array_size = f"(len(self.{value_field.id}) * {int(value_field.width / 8)})"
+                array_size = f"(len(self.{value_field.id}) * {int(value_field.width / 8)}{size_modifier})"
             elif isinstance(value_field, ast.ArrayField):
                 self.append_(f"_size = sum([elt.size for elt in self.{value_field.id}]){size_modifier}")
                 array_size = "_size"
@@ -791,7 +791,7 @@ def generate_packet_parser(packet: ast.Declaration) -> List[str]:
         # is given for specialization.
         for _, child in children:
             specialization.append("try:")
-            specialization.append(f"    return {child.id}.parse(fields, payload)")
+            specialization.append(f"    return {child.id}.parse(fields.copy(), payload)")
             specialization.append("except Exception as exn:")
             specialization.append("    pass")
 
@@ -880,22 +880,23 @@ def generate_packet_declaration(packet: ast.Declaration) -> str:
     field_decls = []
     for f in packet.fields:
         if isinstance(f, ast.ScalarField):
-            field_decls.append(f"{f.id}: int = 0")
+            field_decls.append(f"{f.id}: int = field(kw_only=True, default=0)")
         elif isinstance(f, ast.TypedefField):
             if isinstance(f.type, ast.EnumDeclaration):
-                field_decls.append(f"{f.id}: {f.type_id} = {f.type_id}.{f.type.tags[0].id}")
+                field_decls.append(
+                    f"{f.id}: {f.type_id} = field(kw_only=True, default={f.type_id}.{f.type.tags[0].id})")
             elif isinstance(f.type, ast.ChecksumDeclaration):
-                field_decls.append(f"{f.id}: int = 0")
+                field_decls.append(f"{f.id}: int = field(kw_only=True, default=0)")
             elif isinstance(f.type, (ast.StructDeclaration, ast.CustomFieldDeclaration)):
-                field_decls.append(f"{f.id}: {f.type_id} = field(default_factory={f.type_id})")
+                field_decls.append(f"{f.id}: {f.type_id} = field(kw_only=True, default_factory={f.type_id})")
             else:
                 raise Exception("Unsupported typedef field type")
         elif isinstance(f, ast.ArrayField) and f.width == 8:
-            field_decls.append(f"{f.id}: bytearray = field(default_factory=bytearray)")
+            field_decls.append(f"{f.id}: bytearray = field(kw_only=True, default_factory=bytearray)")
         elif isinstance(f, ast.ArrayField) and f.width:
-            field_decls.append(f"{f.id}: List[int] = field(default_factory=list)")
+            field_decls.append(f"{f.id}: List[int] = field(kw_only=True, default_factory=list)")
         elif isinstance(f, ast.ArrayField) and f.type_id:
-            field_decls.append(f"{f.id}: List[{f.type_id}] = field(default_factory=list)")
+            field_decls.append(f"{f.id}: List[{f.type_id}] = field(kw_only=True, default_factory=list)")
 
     if packet.parent_id:
         parent_name = packet.parent_id
