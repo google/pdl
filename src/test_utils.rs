@@ -147,7 +147,7 @@ pub fn assert_contains(haystack: &str, needle: &str) {
 #[track_caller]
 pub fn assert_snapshot_eq<P: AsRef<Path>>(snapshot_path: P, actual_content: &str) {
     let snapshot = snapshot_path.as_ref();
-    let snapshot_content = fs::read(&snapshot).unwrap_or_else(|err| {
+    let snapshot_content = fs::read(snapshot).unwrap_or_else(|err| {
         panic!("Could not read snapshot from {}: {}", snapshot.display(), err)
     });
     let snapshot_content = String::from_utf8(snapshot_content).expect("Snapshot was not UTF-8");
