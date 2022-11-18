@@ -25,10 +25,7 @@ pub struct FooBuilder {
 
 impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
-        if bytes.len() < 7 {
-            return false;
-        }
-        true
+        bytes.len() >= 7
     }
     fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 2 {

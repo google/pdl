@@ -173,12 +173,8 @@ fn generate_packet_decl(
     code.push_str(&quote_block! {
         impl #data_name {
             fn conforms(bytes: &[u8]) -> bool {
-                // TODO(mgeisler): return Boolean expression directly.
-                // TODO(mgeisler): skip when total_field_size == 0.
-                if bytes.len() < #packet_size_bytes {
-                    return false;
-                }
-                true
+                // TODO(mgeisler): skip when packet_size_bytes == 0.
+                bytes.len() >= #packet_size_bytes
             }
 
             fn parse(bytes: &[u8]) -> Result<Self> {
