@@ -54,7 +54,7 @@ fn generate_packet_decl(
     packets: &HashMap<&str, &ast::Decl>,
     child_ids: &[&str],
     id: &str,
-    fields: &[ast::Field],
+    fields: &[Field],
     parent_id: &Option<String>,
 ) -> String {
     // TODO(mgeisler): use the convert_case crate to convert between
@@ -102,7 +102,7 @@ fn generate_packet_decl(
             child: #data_child_ident,
         }
     });
-    let plain_fields = fields.iter().map(|field| Field::from(field).generate_decl(parse_quote!()));
+    let plain_fields = fields.iter().map(|field| field.generate_decl(parse_quote!()));
     code.push_str(&quote_block! {
         #[derive(Debug)]
         struct #data_name {
@@ -132,7 +132,7 @@ fn generate_packet_decl(
     });
 
     let builder_name = format_ident!("{id}Builder");
-    let pub_fields = fields.iter().map(|field| Field::from(field).generate_decl(parse_quote!(pub)));
+    let pub_fields = fields.iter().map(|field| field.generate_decl(parse_quote!(pub)));
     code.push_str(&quote_block! {
         #[derive(Debug)]
         pub struct #builder_name {
@@ -142,24 +142,22 @@ fn generate_packet_decl(
 
     let mut chunk_width = 0;
     let chunks = fields.split_inclusive(|field| {
-        chunk_width += Field::from(field).get_width();
+        chunk_width += field.get_width();
         chunk_width % 8 == 0
     });
     let mut field_parsers = Vec::new();
     let mut field_writers = Vec::new();
     let mut offset = 0;
-    for chunk in chunks {
-        let chunk_fields = chunk.iter().map(Field::from).collect::<Vec<_>>();
-        let chunk = Chunk::new(&chunk_fields);
+    for fields in chunks {
+        let chunk = Chunk::new(fields);
         field_parsers.push(chunk.generate_read(id, file.endianness.value, offset));
         field_writers.push(chunk.generate_write(file.endianness.value, offset));
         offset += chunk.get_width();
     }
 
-    let field_names = fields.iter().map(|field| Field::from(field).get_ident()).collect::<Vec<_>>();
+    let field_names = fields.iter().map(Field::get_ident).collect::<Vec<_>>();
 
-    let chunk_fields = fields.iter().map(Field::from).collect::<Vec<_>>();
-    let packet_size_bits = Chunk::new(&chunk_fields).get_width();
+    let packet_size_bits = Chunk::new(fields).get_width();
     if packet_size_bits % 8 != 0 {
         panic!("packet {id} does not end on a byte boundary, size: {packet_size_bits} bits",);
     }
@@ -232,7 +230,7 @@ fn generate_packet_decl(
             }
         }
     });
-    let field_getters = fields.iter().map(|field| Field::from(field).generate_getter(&ident));
+    let field_getters = fields.iter().map(|field| field.generate_getter(&ident));
     code.push_str(&quote_block! {
         impl #packet_name {
             pub fn parse(bytes: &[u8]) -> Result<Self> {
@@ -278,14 +276,17 @@ fn generate_decl(
 ) -> String {
     let empty: Vec<&str> = vec![];
     match decl {
-        ast::Decl::Packet { id, fields, parent_id, .. } => generate_packet_decl(
-            file,
-            packets,
-            children.get(id.as_str()).unwrap_or(&empty),
-            id,
-            fields,
-            parent_id,
-        ),
+        ast::Decl::Packet { id, fields, parent_id, .. } => {
+            let fields = fields.iter().map(Field::from).collect::<Vec<_>>();
+            generate_packet_decl(
+                file,
+                packets,
+                children.get(id.as_str()).unwrap_or(&empty),
+                id,
+                &fields,
+                parent_id,
+            )
+        }
         _ => todo!("unsupported Decl::{:?}", decl),
     }
 }
