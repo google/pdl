@@ -164,11 +164,6 @@ fn generate_packet_decl(
         panic!("packet {id} does not end on a byte boundary, size: {packet_size_bits} bits",);
     }
     let packet_size_bytes = syn::Index::from(packet_size_bits / 8);
-    let get_size_adjustment = (packet_size_bytes.index > 0).then(|| {
-        Some(quote! {
-            let ret = ret + #packet_size_bytes;
-        })
-    });
 
     let conforms = if packet_size_bytes.index == 0 {
         quote! { true }
@@ -196,9 +191,7 @@ fn generate_packet_decl(
             }
 
             fn get_size(&self) -> usize {
-                let ret = 0;
-                #get_size_adjustment
-                ret
+                #packet_size_bytes
             }
         }
     });

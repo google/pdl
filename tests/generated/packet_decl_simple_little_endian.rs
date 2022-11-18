@@ -60,9 +60,7 @@ impl FooData {
         self.get_size()
     }
     fn get_size(&self) -> usize {
-        let ret = 0;
-        let ret = ret + 6;
-        ret
+        6
     }
 }
 
