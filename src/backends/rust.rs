@@ -170,11 +170,16 @@ fn generate_packet_decl(
         })
     });
 
+    let conforms = if packet_size_bytes.index == 0 {
+        quote! { true }
+    } else {
+        quote! { bytes.len() >= #packet_size_bytes }
+    };
+
     code.push_str(&quote_block! {
         impl #data_name {
             fn conforms(bytes: &[u8]) -> bool {
-                // TODO(mgeisler): skip when packet_size_bytes == 0.
-                bytes.len() >= #packet_size_bytes
+                #conforms
             }
 
             fn parse(bytes: &[u8]) -> Result<Self> {
