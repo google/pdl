@@ -308,124 +308,79 @@ mod tests {
     use crate::ast;
     use crate::parser::parse_inline;
     use crate::test_utils::{assert_snapshot_eq, rustfmt};
+    use paste::paste;
 
-    /// Parse a string fragment as a PDL file.
+    /// Create a unit test for the given PDL `code`.
     ///
-    /// # Panics
+    /// The unit test will compare the generated Rust code for all
+    /// declarations with previously saved snapshots. The snapshots
+    /// are read from `"tests/generated/{name}_{endianness}_{id}.rs"`
+    /// where `is` taken from the declaration.
     ///
-    /// Panics on parse errors.
-    pub fn parse_str(text: &str) -> ast::File {
-        let mut db = ast::SourceDatabase::new();
-        parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parse error")
+    /// When adding new tests, use `touch` to create the missing files
+    /// and use `UPDATE_SNAPSHOTS=1 cargo test` to populate them.
+    ///
+    /// The `code` cannot have an endianness declaration, instead you
+    /// must supply either `little_endian` or `big_endian` as
+    /// `endianness`.
+    macro_rules! make_pdl_test {
+        ($name:ident, $code:expr, $endianness:ident) => {
+            paste! {
+                #[test]
+                fn [< test_ $name _ $endianness >]() {
+                    let name = stringify!($name);
+                    let endianness = stringify!($endianness);
+                    let code = format!("{endianness}_packets\n{}", $code);
+                    let mut db = ast::SourceDatabase::new();
+                    let file = parse_inline(&mut db, String::from("test"), code).unwrap();
+                    let actual_code = generate(&db, &file);
+                    assert_snapshot_eq(
+                        &format!("tests/generated/{name}_{endianness}.rs"),
+                        &rustfmt(&actual_code),
+                    );
+                }
+            }
+        };
     }
 
-    #[test]
-    fn test_generate_packet_decl_empty() {
-        let file = parse_str(
-            r#"
-              big_endian_packets
-              packet Foo {}
-            "#,
-        );
-        let scope = lint::Scope::new(&file).unwrap();
-        let decl = &file.declarations[0];
-        let actual_code = generate_decl(&scope, &file, decl);
-        assert_snapshot_eq("tests/generated/packet_decl_empty.rs", &rustfmt(&actual_code));
+    /// Create little- and bit-endian tests for the given PDL `code`.
+    ///
+    /// The `code` cannot have an endianness declaration: we will
+    /// automatically generate unit tests for both
+    /// "little_endian_packets" and "big_endian_packets".
+    macro_rules! test_pdl {
+        ($name:ident, $code:expr $(,)?) => {
+            make_pdl_test!($name, $code, little_endian);
+            make_pdl_test!($name, $code, big_endian);
+        };
     }
 
-    #[test]
-    fn test_generate_packet_decl_simple_little_endian() {
-        let file = parse_str(
-            r#"
-              little_endian_packets
+    test_pdl!(packet_decl_empty, "packet Foo {}");
 
-              packet Foo {
-                x: 8,
-                y: 16,
-                z: 24,
-              }
-            "#,
-        );
-        let scope = lint::Scope::new(&file).unwrap();
-        let decl = &file.declarations[0];
-        let actual_code = generate_decl(&scope, &file, decl);
-        assert_snapshot_eq(
-            "tests/generated/packet_decl_simple_little_endian.rs",
-            &rustfmt(&actual_code),
-        );
-    }
+    test_pdl!(
+        packet_decl_simple,
+        r#"
+          packet Foo {
+            x: 8,
+            y: 16,
+            z: 24,
+          }
+        "#
+    );
 
-    #[test]
-    fn test_generate_packet_decl_simple_big_endian() {
-        let file = parse_str(
-            r#"
-              big_endian_packets
-
-              packet Foo {
-                x: 8,
-                y: 16,
-                z: 24,
-              }
-            "#,
-        );
-        let scope = lint::Scope::new(&file).unwrap();
-        let decl = &file.declarations[0];
-        let actual_code = generate_decl(&scope, &file, decl);
-        assert_snapshot_eq(
-            "tests/generated/packet_decl_simple_big_endian.rs",
-            &rustfmt(&actual_code),
-        );
-    }
-
-    #[test]
-    fn test_generate_packet_decl_complex_little_endian() {
-        let file = parse_str(
-            r#"
-              little_endian_packets
-
-              packet Foo {
-                a: 3,
-                b: 8,
-                c: 5,
-                d: 24,
-                e: 12,
-                f: 4,
-              }
-            "#,
-        );
-        let scope = lint::Scope::new(&file).unwrap();
-        let decl = &file.declarations[0];
-        let actual_code = generate_decl(&scope, &file, decl);
-        assert_snapshot_eq(
-            "tests/generated/packet_decl_complex_little_endian.rs",
-            &rustfmt(&actual_code),
-        );
-    }
-
-    #[test]
-    fn test_generate_packet_decl_complex_big_endian() {
-        let file = parse_str(
-            r#"
-              big_endian_packets
-
-              packet Foo {
-                a: 3,
-                b: 8,
-                c: 5,
-                d: 24,
-                e: 12,
-                f: 4,
-              }
-            "#,
-        );
-        let scope = lint::Scope::new(&file).unwrap();
-        let decl = &file.declarations[0];
-        let actual_code = generate_decl(&scope, &file, decl);
-        assert_snapshot_eq(
-            "tests/generated/packet_decl_complex_big_endian.rs",
-            &rustfmt(&actual_code),
-        );
-    }
+    test_pdl!(
+        packet_decl_complex,
+        r#"
+          packet Foo {
+            a: 3,
+            b: 8,
+            c: 5,
+            d: 24,
+            e: 12,
+            f: 4,
+          }
+        "#,
+    );
 
     #[test]
     fn test_get_field_range() {
