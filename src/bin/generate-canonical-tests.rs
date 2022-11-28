@@ -75,8 +75,10 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
                     .as_u64()
                     .unwrap_or_else(|| panic!("Expected u64 for {key:?} key, got {value}"));
                 let value = proc_macro2::Literal::u64_unsuffixed(value_u64);
+                // We lack type information, but ToPrimitive allows us
+                // to convert both integers and enums to u64.
                 quote! {
-                    assert_eq!(actual.#getter(), #value);
+                    assert_eq!(actual.#getter().to_u64().unwrap(), #value);
                 }
             });
 
@@ -86,8 +88,10 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
                     .as_u64()
                     .unwrap_or_else(|| panic!("Expected u64 for {key:?} key, got {value}"));
                 let value = proc_macro2::Literal::u64_unsuffixed(value_u64);
+                // We lack type information, but FromPrimitive allows
+                // us to convert both integers and enums to u64.
                 quote! {
-                    #field: #value
+                    #field: FromPrimitive::from_u64(#value).unwrap()
                 }
             });
 
@@ -114,6 +118,7 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
 
     let code = quote! {
         use #module::Packet;
+        use num_traits::{FromPrimitive, ToPrimitive};
 
         #(#tests)*
     };

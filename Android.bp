@@ -155,7 +155,10 @@ rust_test_host {
     name: "pdl_rust_generator_tests_le",
     srcs: [":pdl_rust_generator_tests_le_src"],
     test_suites: ["general-tests"],
-    rustlibs: ["libpdl_le_backend"],
+    rustlibs: [
+        "libnum_traits",
+        "libpdl_le_backend",
+    ],
     clippy_lints: "none",
     lints: "none",
 }
@@ -164,7 +167,10 @@ rust_test_host {
     name: "pdl_rust_generator_tests_be",
     srcs: [":pdl_rust_generator_tests_be_src"],
     test_suites: ["general-tests"],
-    rustlibs: ["libpdl_be_backend"],
+    rustlibs: [
+        "libnum_traits",
+        "libpdl_be_backend",
+    ],
     clippy_lints: "none",
     lints: "none",
 }
