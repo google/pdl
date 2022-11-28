@@ -41,18 +41,30 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
         .unwrap_or_else(|err| panic!("Could not read {input}: {err}"));
     let packets: Vec<Packet> = serde_json::from_str(&data).expect("Could not parse JSON");
 
+    let module = format_ident!("{}", module_name);
     let mut tests = Vec::new();
     for packet in &packets {
         for (i, test_vector) in packet.tests.iter().enumerate() {
-            let packet_name = test_vector.packet.as_deref().unwrap_or(packet.name.as_str());
-            if !packet_names.contains(&packet_name) {
-                eprintln!("Skipping packet {}", packet_name);
+            let test_packet = test_vector.packet.as_deref().unwrap_or(packet.name.as_str());
+            if !packet_names.contains(&test_packet) {
+                eprintln!("Skipping packet {}", test_packet);
                 continue;
             }
-            let test_name =
-                format_ident!("{}_vector_{}_0x{}", packet_name, i + 1, &test_vector.packed);
+            let parse_test_name = format_ident!(
+                "test_parse_{}_vector_{}_0x{}",
+                test_packet,
+                i + 1,
+                &test_vector.packed
+            );
+            let serialize_test_name = format_ident!(
+                "test_serialize_{}_vector_{}_0x{}",
+                test_packet,
+                i + 1,
+                &test_vector.packed
+            );
             let packed = hexadecimal_to_vec(&test_vector.packed);
-            let packet_name = format_ident!("{}Packet", packet_name);
+            let packet_name = format_ident!("{}Packet", test_packet);
+            let builder_name = format_ident!("{}Builder", test_packet);
 
             let object = test_vector.unpacked.as_object().unwrap_or_else(|| {
                 panic!("Expected test vector object, found: {}", test_vector.unpacked)
@@ -68,19 +80,41 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
                 }
             });
 
-            let module = format_ident!("{}", module_name);
+            let builder_fields = object.iter().map(|(key, value)| {
+                let field = format_ident!("{key}");
+                let value_u64 = value
+                    .as_u64()
+                    .unwrap_or_else(|| panic!("Expected u64 for {key:?} key, got {value}"));
+                let value = proc_macro2::Literal::u64_unsuffixed(value_u64);
+                quote! {
+                    #field: #value
+                }
+            });
+
             tests.push(quote! {
                 #[test]
-                fn #test_name() {
+                fn #parse_test_name() {
                     let packed = #packed;
                     let actual = #module::#packet_name::parse(&packed).unwrap();
                     #(#assertions)*
+                }
+
+                #[test]
+                fn #serialize_test_name() {
+                    let builder =  #module::#builder_name {
+                        #(#builder_fields,)*
+                    };
+                    let packet = builder.build();
+                    let packed = #packed;
+                    assert_eq!(packet.to_vec(), packed);
                 }
             });
         }
     }
 
     let code = quote! {
+        use #module::Packet;
+
         #(#tests)*
     };
     println!("{code}");
