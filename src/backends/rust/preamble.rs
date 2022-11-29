@@ -8,6 +8,9 @@ pub fn generate(path: &Path) -> String {
     let filename = path.file_name().unwrap().to_str().expect("non UTF-8 filename");
     code.push_str(&format!("// @generated rust packets from {filename}\n\n"));
 
+    // TODO(mgeisler): make the generated code clean from warnings.
+    code.push_str("#![allow(warnings, missing_docs)]\n\n");
+
     code.push_str(&quote_block! {
         use bytes::{BufMut, Bytes, BytesMut};
         use num_derive::{FromPrimitive, ToPrimitive};

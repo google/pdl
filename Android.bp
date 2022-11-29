@@ -96,8 +96,6 @@ rust_defaults {
         "libthiserror",
     ],
     proc_macros: ["libnum_derive"],
-    clippy_lints: "none",
-    lints: "none",
 }
 
 rust_library_host {
@@ -159,8 +157,6 @@ rust_test_host {
         "libnum_traits",
         "libpdl_le_backend",
     ],
-    clippy_lints: "none",
-    lints: "none",
 }
 
 rust_test_host {
@@ -171,8 +167,6 @@ rust_test_host {
         "libnum_traits",
         "libpdl_be_backend",
     ],
-    clippy_lints: "none",
-    lints: "none",
 }
 
 // Defaults for PDL python backend generation.
