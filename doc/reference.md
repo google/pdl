@@ -434,6 +434,9 @@ An *array* field defines a sequence of `N` elements of type `T`.
 - An [identifier](#identifier) referencing an [enum](#enum), a [struct](#struct)
 or a [custom field](#custom-field) type.
 
+The size of `T` must always be a multiple of 8 bits, that is, the array elements
+must start at byte boundaries.
+
 ```
 packet Brew {
    pots: 8[2],
