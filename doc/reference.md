@@ -191,7 +191,9 @@ enum CoffeeAddition: 3 {
 > &nbsp;&nbsp;&nbsp;&nbsp; [field_list](#fields)?\
 > &nbsp;&nbsp; `}`
 
-A *packet* is a declaration of a sequence of [fields](#fields).
+A *packet* is a declaration of a sequence of [fields](#fields). While packets
+can contain bit-fields, the size of the whole packet must be a multiple of 8
+bits.
 
 A *packet* can optionally inherit from another *packet* declaration. In this case the packet
 inherits the parent's fields and the child's fields replace the
