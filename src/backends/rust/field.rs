@@ -16,10 +16,6 @@ impl ScalarField {
         ScalarField { id: String::from(id), width }
     }
 
-    fn get_width(&self) -> usize {
-        self.width
-    }
-
     fn get_ident(&self) -> proc_macro2::Ident {
         format_ident!("{}", self.id)
     }
@@ -141,7 +137,7 @@ impl From<&ast::Field> for Field {
 impl Field {
     pub fn get_width(&self) -> usize {
         match self {
-            Field::Scalar(field) => field.get_width(),
+            Field::Scalar(field) => field.width,
         }
     }
 
