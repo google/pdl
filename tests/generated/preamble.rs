@@ -2,7 +2,7 @@
 
 #![allow(warnings, missing_docs)]
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 use std::convert::{TryFrom, TryInto};

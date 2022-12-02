@@ -32,16 +32,6 @@ macro_rules! quote_block {
     }
 }
 
-/// Find byte indices covering `offset..offset+width` bits.
-pub fn get_field_range(offset: usize, width: usize) -> std::ops::Range<usize> {
-    let start = offset / 8;
-    let mut end = (offset + width) / 8;
-    if (offset + width) % 8 != 0 {
-        end += 1;
-    }
-    start..end
-}
-
 /// Generate a bit-mask which masks out `n` least significant bits.
 pub fn mask_bits(n: usize) -> syn::LitInt {
     syn::parse_str::<syn::LitInt>(&format!("{:#x}", (1u64 << n) - 1)).unwrap()
@@ -152,12 +142,10 @@ fn generate_packet_decl(
     });
     let mut field_parsers = Vec::new();
     let mut field_writers = Vec::new();
-    let mut offset = 0;
     for fields in chunks {
         let chunk = Chunk::new(fields);
-        field_parsers.push(chunk.generate_read(id, file.endianness.value, offset));
-        field_writers.push(chunk.generate_write(file.endianness.value, offset));
-        offset += chunk.get_width();
+        field_parsers.push(chunk.generate_read(id, file.endianness.value));
+        field_writers.push(chunk.generate_write(file.endianness.value));
     }
 
     let field_names = fields.iter().map(Field::get_ident).collect::<Vec<_>>();
@@ -180,7 +168,7 @@ fn generate_packet_decl(
                 #conforms
             }
 
-            fn parse(bytes: &[u8]) -> Result<Self> {
+            fn parse(mut bytes: &[u8]) -> Result<Self> {
                 #(#field_parsers)*
                 Ok(Self { #(#field_names),* })
             }
@@ -202,8 +190,7 @@ fn generate_packet_decl(
     code.push_str(&quote_block! {
         impl Packet for #packet_name {
             fn to_bytes(self) -> Bytes {
-                let mut buffer = BytesMut::new();
-                buffer.resize(self.#ident.get_total_size(), 0);
+                let mut buffer = BytesMut::with_capacity(self.#ident.get_total_size());
                 self.#ident.write_to(&mut buffer);
                 buffer.freeze()
             }
@@ -238,7 +225,7 @@ fn generate_packet_decl(
     let field_getters = fields.iter().map(|field| field.generate_getter(&ident));
     code.push_str(&quote_block! {
         impl #packet_name {
-            pub fn parse(bytes: &[u8]) -> Result<Self> {
+            pub fn parse(mut bytes: &[u8]) -> Result<Self> {
                 Ok(Self::new(Arc::new(#data_name::parse(bytes)?)).unwrap())
             }
 
@@ -382,26 +369,4 @@ mod tests {
           }
         "#,
     );
-
-    #[test]
-    fn test_get_field_range() {
-        // Zero widths will give you an empty slice iff the offset is
-        // byte aligned. In both cases, the slice covers the empty
-        // width. In practice, PDL doesn't allow zero-width fields.
-        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 0), (0..0));
-        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 0), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 8, /*width=*/ 0), (1..1));
-        assert_eq!(get_field_range(/*offset=*/ 9, /*width=*/ 0), (1..2));
-
-        // Non-zero widths work as expected.
-        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 1), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 5), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 8), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 20), (0..3));
-
-        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 1), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 3), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 4), (0..2));
-        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 20), (0..4));
-    }
 }
