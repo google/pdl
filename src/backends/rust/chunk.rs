@@ -85,21 +85,21 @@ impl Chunk<'_> {
     /// Generate a name for this chunk.
     ///
     /// The name is `"chunk"` if there is more than one field.
-    pub fn get_name(&self) -> proc_macro2::Ident {
+    pub fn name(&self) -> proc_macro2::Ident {
         match self.fields {
-            [field] => field.get_ident(),
+            [field] => field.ident(),
             _ => format_ident!("chunk"),
         }
     }
 
     /// Return the width in bits.
-    pub fn get_width(&self) -> usize {
-        self.fields.iter().map(|field| field.get_width()).sum()
+    pub fn width(&self) -> usize {
+        self.fields.iter().map(|field| field.width()).sum()
     }
 
     /// Generate length checks for this chunk.
     pub fn generate_length_check(&self, packet_name: &str) -> proc_macro2::TokenStream {
-        let wanted_length = proc_macro2::Literal::usize_unsuffixed(self.get_width() / 8);
+        let wanted_length = proc_macro2::Literal::usize_unsuffixed(self.width() / 8);
         quote! {
             if bytes.remaining() < #wanted_length {
                 return Err(Error::InvalidLengthError {
@@ -117,8 +117,8 @@ impl Chunk<'_> {
         packet_name: &str,
         endianness_value: ast::EndiannessValue,
     ) -> proc_macro2::TokenStream {
-        let chunk_name = self.get_name();
-        let chunk_width = self.get_width();
+        let chunk_name = self.name();
+        let chunk_width = self.width();
         assert!(chunk_width % 8 == 0, "Chunks must have a byte size, got width: {chunk_width}");
 
         let length_check = self.generate_length_check(packet_name);
@@ -139,14 +139,14 @@ impl Chunk<'_> {
             return quote! {};
         }
 
-        let chunk_width = self.get_width();
+        let chunk_width = self.width();
         let chunk_type = Integer::new(chunk_width);
 
         let mut field_parsers = Vec::new();
         let mut field_offset = 0;
         for field in self.fields {
             field_parsers.push(field.generate_read_adjustment(field_offset, chunk_type));
-            field_offset += field.get_width();
+            field_offset += field.width();
         }
 
         quote! {
@@ -158,8 +158,8 @@ impl Chunk<'_> {
         &self,
         endianness_value: ast::EndiannessValue,
     ) -> proc_macro2::TokenStream {
-        let chunk_width = self.get_width();
-        let chunk_name = self.get_name();
+        let chunk_width = self.width();
+        let chunk_name = self.name();
         assert!(chunk_width % 8 == 0, "Chunks must have a byte size, got width: {chunk_width}");
 
         // TODO(mgeisler): let slice = (chunk_type_width > chunk_width).then( ... )
@@ -176,20 +176,20 @@ impl Chunk<'_> {
         if let [field] = self.fields {
             // If there is a single field in the chunk, then we don't have to
             // shift, mask, or cast.
-            let field_name = field.get_ident();
+            let field_name = field.ident();
             return quote! {
                 let #field_name = self.#field_name;
             };
         }
 
-        let chunk_width = self.get_width();
+        let chunk_width = self.width();
         let chunk_type = Integer::new(chunk_width);
 
         let mut field_parsers = Vec::new();
         let mut field_offset = 0;
         for field in self.fields {
             field_parsers.push(field.generate_write_adjustment(field_offset, chunk_type));
-            field_offset += field.get_width();
+            field_offset += field.width();
         }
 
         quote! {

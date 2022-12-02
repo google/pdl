@@ -137,7 +137,7 @@ fn generate_packet_decl(
 
     let mut chunk_width = 0;
     let chunks = fields.split_inclusive(|field| {
-        chunk_width += field.get_width();
+        chunk_width += field.width();
         chunk_width % 8 == 0
     });
     let mut field_parsers = Vec::new();
@@ -148,9 +148,9 @@ fn generate_packet_decl(
         field_writers.push(chunk.generate_write(file.endianness.value));
     }
 
-    let field_names = fields.iter().map(Field::get_ident).collect::<Vec<_>>();
+    let field_names = fields.iter().map(Field::ident).collect::<Vec<_>>();
 
-    let packet_size_bits = Chunk::new(fields).get_width();
+    let packet_size_bits = Chunk::new(fields).width();
     if packet_size_bits % 8 != 0 {
         panic!("packet {id} does not end on a byte boundary, size: {packet_size_bits} bits",);
     }
