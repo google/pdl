@@ -8,9 +8,8 @@
 // Remove this when we use Rust 1.63 or later.
 #![allow(clippy::format_push_string)]
 
-use crate::ast;
+use crate::{ast, lint};
 use quote::{format_ident, quote};
-use std::collections::HashMap;
 use std::path::Path;
 use syn::parse_quote;
 
@@ -50,9 +49,8 @@ pub fn mask_bits(n: usize) -> syn::LitInt {
 
 /// Generate code for an `ast::Decl::Packet` enum value.
 fn generate_packet_decl(
+    scope: &lint::Scope<'_>,
     file: &ast::File,
-    packets: &HashMap<&str, &ast::Decl>,
-    child_ids: &[&str],
     id: &str,
     fields: &[Field],
     parent_id: &Option<String>,
@@ -60,7 +58,14 @@ fn generate_packet_decl(
     // TODO(mgeisler): use the convert_case crate to convert between
     // `FooBar` and `foo_bar` in the code below.
     let mut code = String::new();
-
+    let child_ids = scope
+        .typedef
+        .values()
+        .filter_map(|p| match p {
+            ast::Decl::Packet { id, parent_id, .. } if parent_id.as_deref() == Some(id) => Some(id),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     let has_children = !child_ids.is_empty();
     let child_idents = child_ids.iter().map(|id| format_ident!("{id}")).collect::<Vec<_>>();
 
@@ -111,7 +116,7 @@ fn generate_packet_decl(
         }
     });
 
-    let parent = parent_id.as_ref().map(|parent_id| match packets.get(parent_id.as_str()) {
+    let parent = parent_id.as_ref().map(|parent_id| match scope.typedef.get(parent_id.as_str()) {
         Some(ast::Decl::Packet { id, .. }) => {
             let parent_ident = format_ident!("{}", id.to_lowercase());
             let parent_data = format_ident!("{id}Data");
@@ -268,24 +273,11 @@ fn generate_packet_decl(
     code
 }
 
-fn generate_decl(
-    file: &ast::File,
-    packets: &HashMap<&str, &ast::Decl>,
-    children: &HashMap<&str, Vec<&str>>,
-    decl: &ast::Decl,
-) -> String {
-    let empty: Vec<&str> = vec![];
+fn generate_decl(scope: &lint::Scope<'_>, file: &ast::File, decl: &ast::Decl) -> String {
     match decl {
         ast::Decl::Packet { id, fields, parent_id, .. } => {
             let fields = fields.iter().map(Field::from).collect::<Vec<_>>();
-            generate_packet_decl(
-                file,
-                packets,
-                children.get(id.as_str()).unwrap_or(&empty),
-                id,
-                &fields,
-                parent_id,
-            )
+            generate_packet_decl(scope, file, id, &fields, parent_id)
         }
         _ => todo!("unsupported Decl::{:?}", decl),
     }
@@ -296,25 +288,14 @@ fn generate_decl(
 /// The code is not formatted, pipe it through `rustfmt` to get
 /// readable source code.
 pub fn generate(sources: &ast::SourceDatabase, file: &ast::File) -> String {
-    let source = sources.get(file.file).expect("could not read source");
-
-    let mut children = HashMap::new();
-    let mut packets = HashMap::new();
-    for decl in &file.declarations {
-        if let ast::Decl::Packet { id, parent_id, .. } = decl {
-            packets.insert(id.as_str(), decl);
-            if let Some(parent_id) = parent_id {
-                children.entry(parent_id.as_str()).or_insert_with(Vec::new).push(id.as_str());
-            }
-        }
-    }
-
     let mut code = String::new();
 
+    let source = sources.get(file.file).expect("could not read source");
     code.push_str(&preamble::generate(Path::new(source.name())));
 
+    let scope = lint::Scope::new(file).unwrap();
     for decl in &file.declarations {
-        code.push_str(&generate_decl(file, &packets, &children, decl));
+        code.push_str(&generate_decl(&scope, file, decl));
         code.push_str("\n\n");
     }
 
@@ -346,10 +327,9 @@ mod tests {
               packet Foo {}
             "#,
         );
-        let packets = HashMap::new();
-        let children = HashMap::new();
+        let scope = lint::Scope::new(&file).unwrap();
         let decl = &file.declarations[0];
-        let actual_code = generate_decl(&file, &packets, &children, decl);
+        let actual_code = generate_decl(&scope, &file, decl);
         assert_snapshot_eq("tests/generated/packet_decl_empty.rs", &rustfmt(&actual_code));
     }
 
@@ -366,10 +346,9 @@ mod tests {
               }
             "#,
         );
-        let packets = HashMap::new();
-        let children = HashMap::new();
+        let scope = lint::Scope::new(&file).unwrap();
         let decl = &file.declarations[0];
-        let actual_code = generate_decl(&file, &packets, &children, decl);
+        let actual_code = generate_decl(&scope, &file, decl);
         assert_snapshot_eq(
             "tests/generated/packet_decl_simple_little_endian.rs",
             &rustfmt(&actual_code),
@@ -389,10 +368,9 @@ mod tests {
               }
             "#,
         );
-        let packets = HashMap::new();
-        let children = HashMap::new();
+        let scope = lint::Scope::new(&file).unwrap();
         let decl = &file.declarations[0];
-        let actual_code = generate_decl(&file, &packets, &children, decl);
+        let actual_code = generate_decl(&scope, &file, decl);
         assert_snapshot_eq(
             "tests/generated/packet_decl_simple_big_endian.rs",
             &rustfmt(&actual_code),
@@ -401,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_generate_packet_decl_complex_little_endian() {
-        let grammar = parse_str(
+        let file = parse_str(
             r#"
               little_endian_packets
 
@@ -415,10 +393,9 @@ mod tests {
               }
             "#,
         );
-        let packets = HashMap::new();
-        let children = HashMap::new();
-        let decl = &grammar.declarations[0];
-        let actual_code = generate_decl(&grammar, &packets, &children, decl);
+        let scope = lint::Scope::new(&file).unwrap();
+        let decl = &file.declarations[0];
+        let actual_code = generate_decl(&scope, &file, decl);
         assert_snapshot_eq(
             "tests/generated/packet_decl_complex_little_endian.rs",
             &rustfmt(&actual_code),
@@ -427,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_generate_packet_decl_complex_big_endian() {
-        let grammar = parse_str(
+        let file = parse_str(
             r#"
               big_endian_packets
 
@@ -441,10 +418,9 @@ mod tests {
               }
             "#,
         );
-        let packets = HashMap::new();
-        let children = HashMap::new();
-        let decl = &grammar.declarations[0];
-        let actual_code = generate_decl(&grammar, &packets, &children, decl);
+        let scope = lint::Scope::new(&file).unwrap();
+        let decl = &file.declarations[0];
+        let actual_code = generate_decl(&scope, &file, decl);
         assert_snapshot_eq(
             "tests/generated/packet_decl_complex_big_endian.rs",
             &rustfmt(&actual_code),

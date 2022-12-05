@@ -8,6 +8,7 @@ use std::ptr;
 use crate::ast::*;
 
 /// Aggregate linter diagnostics.
+#[derive(Debug)]
 pub struct LintDiagnostics {
     pub diagnostics: Vec<Diagnostic<FileId>>,
 }
@@ -23,20 +24,22 @@ pub trait Lintable {
 /// Each field but the last in the chain is a typedef field of a group.
 /// The last field can also be a typedef field of a group if the chain is
 /// not fully expanded.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct FieldPath<'d>(Vec<&'d Field>);
 
 /// Gather information about the full AST.
-struct Scope<'d> {
+#[derive(Debug)]
+pub struct Scope<'d> {
     // Collection of Group, Packet, Enum, Struct, Checksum, and CustomField declarations.
-    typedef: HashMap<String, &'d Decl>,
+    pub typedef: HashMap<String, &'d Decl>,
 
     // Collection of Packet, Struct, and Group scope declarations.
-    scopes: HashMap<&'d Decl, PacketScope<'d>>,
+    pub scopes: HashMap<&'d Decl, PacketScope<'d>>,
 }
 
 /// Gather information about a Packet, Struct, or Group declaration.
-struct PacketScope<'d> {
+#[derive(Debug)]
+pub struct PacketScope<'d> {
     // Checksum starts, indexed by the checksum field id.
     checksums: HashMap<String, FieldPath<'d>>,
 
@@ -462,6 +465,23 @@ fn lint_constraint(
 }
 
 impl<'d> Scope<'d> {
+    pub fn new(file: &File) -> Result<Scope<'_>, LintDiagnostics> {
+        let mut lint_diagnostics = LintDiagnostics::new();
+        let scope = file.scope(&mut lint_diagnostics);
+
+        if !lint_diagnostics.diagnostics.is_empty() {
+            return Err(lint_diagnostics);
+        }
+        for decl in &file.declarations {
+            decl.lint(&scope, &mut lint_diagnostics)
+        }
+        if !lint_diagnostics.diagnostics.is_empty() {
+            return Err(lint_diagnostics);
+        }
+
+        Ok(scope)
+    }
+
     // Sort Packet, Struct, and Group declarations by reverse topological
     // orde, and inline Group fields.
     // Raises errors and warnings for:
@@ -1288,15 +1308,7 @@ impl File {
 
 impl Lintable for File {
     fn lint(&self) -> LintDiagnostics {
-        let mut result = LintDiagnostics::new();
-        let scope = self.scope(&mut result);
-        if !result.diagnostics.is_empty() {
-            return result;
-        }
-        for decl in &self.declarations {
-            decl.lint(&scope, &mut result)
-        }
-        result
+        Scope::new(self).err().unwrap_or_else(LintDiagnostics::new)
     }
 }
 
