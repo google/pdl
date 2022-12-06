@@ -261,12 +261,13 @@ class FieldParser:
             if size is not None:
                 self.check_size_(size)
             array_size = size or 'len(span)'
-            array_count = size
             if element_width != 1:
                 self.append_(f"if {array_size} % {element_width} != 0:")
                 self.append_("    raise Exception('Array size is not a multiple of the element size')")
                 self.append_(f"{field.id}_count = int({array_size} / {element_width})")
                 array_count = f'{field.id}_count'
+            else:
+                array_count = array_size
             self.append_(f"{field.id} = []")
             self.append_(f"for n in range({array_count}):")
             span = ('span[n:n + 1]' if element_width == 1 else f'span[n * {element_width}:(n + 1) * {element_width}]')
