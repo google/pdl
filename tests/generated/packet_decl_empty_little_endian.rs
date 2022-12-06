@@ -37,15 +37,12 @@ pub trait Packet {
 
 #[derive(Debug)]
 struct FooData {}
-
 #[derive(Debug, Clone)]
 pub struct FooPacket {
     foo: Arc<FooData>,
 }
-
 #[derive(Debug)]
 pub struct FooBuilder {}
-
 impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
         true
@@ -61,7 +58,6 @@ impl FooData {
         0
     }
 }
-
 impl Packet for FooPacket {
     fn to_bytes(self) -> Bytes {
         let mut buffer = BytesMut::with_capacity(self.foo.get_total_size());
@@ -82,7 +78,6 @@ impl From<FooPacket> for Vec<u8> {
         packet.to_vec()
     }
 }
-
 impl FooPacket {
     pub fn parse(mut bytes: &[u8]) -> Result<Self> {
         Ok(Self::new(Arc::new(FooData::parse(bytes)?)).unwrap())
@@ -92,7 +87,6 @@ impl FooPacket {
         Ok(Self { foo })
     }
 }
-
 impl FooBuilder {
     pub fn build(self) -> FooPacket {
         let foo = Arc::new(FooData {});

@@ -36,26 +36,65 @@ pub trait Packet {
 }
 
 #[derive(Debug)]
-struct FooData {}
+struct FooData {
+    x: u8,
+    y: u16,
+    z: u32,
+}
 #[derive(Debug, Clone)]
 pub struct FooPacket {
     foo: Arc<FooData>,
 }
 #[derive(Debug)]
-pub struct FooBuilder {}
+pub struct FooBuilder {
+    pub x: u8,
+    pub y: u16,
+    pub z: u32,
+}
 impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
-        true
+        bytes.len() >= 6
     }
     fn parse(mut bytes: &[u8]) -> Result<Self> {
-        Ok(Self {})
+        if bytes.remaining() < 1 {
+            return Err(Error::InvalidLengthError {
+                obj: "Foo".to_string(),
+                wanted: 1,
+                got: bytes.remaining(),
+            });
+        }
+        let x = bytes.get_u8();
+        if bytes.remaining() < 2 {
+            return Err(Error::InvalidLengthError {
+                obj: "Foo".to_string(),
+                wanted: 2,
+                got: bytes.remaining(),
+            });
+        }
+        let y = bytes.get_u16();
+        if bytes.remaining() < 3 {
+            return Err(Error::InvalidLengthError {
+                obj: "Foo".to_string(),
+                wanted: 3,
+                got: bytes.remaining(),
+            });
+        }
+        let z = bytes.get_uint(3) as u32;
+        Ok(Self { x, y, z })
     }
-    fn write_to(&self, buffer: &mut BytesMut) {}
+    fn write_to(&self, buffer: &mut BytesMut) {
+        buffer.put_u8(self.x);
+        buffer.put_u16(self.y);
+        if self.z > 0xffffff {
+            panic!("Invalid value for {}::{}: {} > {}", "Foo", "z", self.z, 0xffffff);
+        }
+        buffer.put_uint(self.z as u64, 3);
+    }
     fn get_total_size(&self) -> usize {
         self.get_size()
     }
     fn get_size(&self) -> usize {
-        0
+        6
     }
 }
 impl Packet for FooPacket {
@@ -86,10 +125,19 @@ impl FooPacket {
         let foo = root;
         Ok(Self { foo })
     }
+    pub fn get_x(&self) -> u8 {
+        self.foo.as_ref().x
+    }
+    pub fn get_y(&self) -> u16 {
+        self.foo.as_ref().y
+    }
+    pub fn get_z(&self) -> u32 {
+        self.foo.as_ref().z
+    }
 }
 impl FooBuilder {
     pub fn build(self) -> FooPacket {
-        let foo = Arc::new(FooData {});
+        let foo = Arc::new(FooData { x: self.x, y: self.y, z: self.z });
         FooPacket::new(foo).unwrap()
     }
 }

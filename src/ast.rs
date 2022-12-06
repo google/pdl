@@ -1,3 +1,4 @@
+use crate::lint;
 use codespan_reporting::diagnostic;
 use codespan_reporting::files;
 use serde::Serialize;
@@ -58,7 +59,7 @@ pub struct Tag {
     pub value: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(tag = "kind", rename = "constraint")]
 pub struct Constraint {
     pub id: String,
@@ -67,7 +68,7 @@ pub struct Constraint {
     pub tag_id: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(tag = "kind")]
 pub enum Field {
     #[serde(rename = "checksum_field")]
@@ -285,6 +286,32 @@ impl Field {
             Field::Array { id, .. } | Field::Scalar { id, .. } | Field::Typedef { id, .. } => {
                 Some(id)
             }
+        }
+    }
+
+    pub fn is_bitfield(&self, scope: &lint::Scope<'_>) -> bool {
+        match self {
+            Field::Size { .. }
+            | Field::Count { .. }
+            | Field::Fixed { .. }
+            | Field::Reserved { .. }
+            | Field::Scalar { .. } => true,
+            Field::Typedef { type_id, .. } => {
+                let field = scope.typedef.get(type_id.as_str());
+                matches!(field, Some(Decl::Enum { .. }))
+            }
+            _ => false,
+        }
+    }
+
+    pub fn width(&self) -> Option<usize> {
+        match self {
+            Field::Scalar { width, .. }
+            | Field::Size { width, .. }
+            | Field::Count { width, .. }
+            | Field::Reserved { width, .. } => Some(*width),
+            // TODO(mgeisler): padding, arrays, etc.
+            _ => None,
         }
     }
 }
