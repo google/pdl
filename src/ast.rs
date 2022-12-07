@@ -240,7 +240,7 @@ impl Decl {
         }
     }
 
-    pub fn id(&self) -> Option<&String> {
+    pub fn id(&self) -> Option<&str> {
         match self {
             Decl::Test { .. } => None,
             Decl::Checksum { id, .. }
@@ -271,7 +271,7 @@ impl Field {
         }
     }
 
-    pub fn id(&self) -> Option<&String> {
+    pub fn id(&self) -> Option<&str> {
         match self {
             Field::Checksum { .. }
             | Field::Padding { .. }

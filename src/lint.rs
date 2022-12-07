@@ -369,7 +369,7 @@ impl<'d> PacketScope<'d> {
         // Check field shadowing.
         for f in self.fields.iter().map(|f| f.0.last().unwrap()) {
             if let Some(id) = f.id() {
-                if let Some(prev) = self.all_fields.insert(id.clone(), f) {
+                if let Some(prev) = self.all_fields.insert(id.to_string(), f) {
                     result.push(
                         Diagnostic::warning()
                             .with_message(format!("declaration of `{}` shadows parent field", id))
@@ -1292,7 +1292,7 @@ impl File {
         // TODO: switch to try_insert when stable
         for decl in &self.declarations {
             if let Some(id) = decl.id() {
-                if let Some(prev) = scope.typedef.insert(id.clone(), decl) {
+                if let Some(prev) = scope.typedef.insert(id.to_string(), decl) {
                     result.err_redeclared(id, decl.kind(), decl.loc(), prev.loc())
                 }
             }
