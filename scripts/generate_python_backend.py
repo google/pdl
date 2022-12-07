@@ -177,6 +177,41 @@ class FieldParser:
             element = f"{field.type_id}.parse_all({span})"
             self.append_(f"    {field.id}.append({element})")
 
+    def parse_byte_array_field_(self, field: ast.ArrayField):
+        """Parse the selected u8 array field."""
+        array_size = core.get_array_field_size(field)
+        padded_size = field.padded_size
+
+        # Shift the span to reset the offset to 0.
+        self.consume_span_()
+
+        # Derive the array size.
+        if isinstance(array_size, int):
+            size = array_size
+        elif isinstance(array_size, ast.SizeField):
+            size = f'{field.id}_size - {field.size_modifier}' if field.size_modifier else f'{field.id}_size'
+        elif isinstance(array_size, ast.CountField):
+            size = f'{field.id}_count'
+        else:
+            size = None
+
+        # Parse from the padded array if padding is present.
+        if padded_size and size is not None:
+            self.check_size_(padded_size)
+            self.append_(f"if {size} > {padded_size}:")
+            self.append_("    raise Exception('Array size is larger than the padding size')")
+            self.append_(f"fields['{field.id}'] = list(span[:{size}])")
+            self.append_(f"span = span[{padded_size}:]")
+
+        elif size is not None:
+            self.check_size_(size)
+            self.append_(f"fields['{field.id}'] = list(span[:{size}])")
+            self.append_(f"span = span[{size}:]")
+
+        else:
+            self.append_(f"fields['{field.id}'] = list(span)")
+            self.append_(f"span = bytes()")
+
     def parse_array_field_(self, field: ast.ArrayField):
         """Parse the selected array field."""
         array_size = core.get_array_field_size(field)
@@ -484,6 +519,9 @@ class FieldParser:
             pass
 
         # Array fields.
+        elif isinstance(field, ast.ArrayField) and field.width == 8:
+            self.parse_byte_array_field_(field)
+
         elif isinstance(field, ast.ArrayField):
             self.parse_array_field_(field)
 
