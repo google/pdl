@@ -310,6 +310,8 @@ class FieldParser:
             self.append_(f"fields['{field.id}'] = {field.id}")
             if size is not None:
                 self.append_(f"span = span[{size}:]")
+            else:
+                self.append_(f"span = bytes()")
 
         # Drop the padding
         if padded_size:
@@ -631,17 +633,20 @@ class FieldSerializer:
                 size_modifier = f' + {value_field.size_modifier}'
 
             if isinstance(value_field, (ast.PayloadField, ast.BodyField)):
-                self.append_(f"_size = len(payload or self.payload or []){size_modifier}")
-                self.append_(f"if _size > {max_size}:")
+                self.append_(f"_payload_size = len(payload or self.payload or []){size_modifier}")
+                self.append_(f"if _payload_size > {max_size}:")
                 self.append_(f"    print(f\"Invalid length for payload field:" +
-                             f"  {{_size}} > {max_size}; the packet cannot be generated\")")
+                             f"  {{_payload_size}} > {max_size}; the packet cannot be generated\")")
                 self.append_(f"    raise Exception(\"Invalid payload length\")")
-                array_size = "_size"
+                array_size = "_payload_size"
             elif isinstance(value_field, ast.ArrayField) and value_field.width:
                 array_size = f"(len(self.{value_field.id}) * {int(value_field.width / 8)}{size_modifier})"
+            elif isinstance(value_field, ast.ArrayField) and isinstance(value_field.type, ast.EnumDeclaration):
+                array_size = f"(len(self.{value_field.id}) * {int(value_field.type.width / 8)}{size_modifier})"
             elif isinstance(value_field, ast.ArrayField):
-                self.append_(f"_size = sum([elt.size for elt in self.{value_field.id}]){size_modifier}")
-                array_size = "_size"
+                self.append_(
+                    f"_{value_field.id}_size = sum([elt.size for elt in self.{value_field.id}]){size_modifier}")
+                array_size = f"_{value_field.id}_size"
             else:
                 raise Exception("Unsupported field type")
             self.value.append(f"({array_size} << {shift})")
