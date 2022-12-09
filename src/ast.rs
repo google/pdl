@@ -304,12 +304,16 @@ impl Field {
         }
     }
 
-    pub fn width(&self) -> Option<usize> {
+    pub fn width(&self, scope: &lint::Scope<'_>) -> Option<usize> {
         match self {
             Field::Scalar { width, .. }
             | Field::Size { width, .. }
             | Field::Count { width, .. }
             | Field::Reserved { width, .. } => Some(*width),
+            Field::Typedef { type_id, .. } => match scope.typedef.get(type_id.as_str()) {
+                Some(Decl::Enum { width, .. }) => Some(*width),
+                _ => None,
+            },
             // TODO(mgeisler): padding, arrays, etc.
             _ => None,
         }

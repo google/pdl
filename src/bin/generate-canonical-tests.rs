@@ -135,5 +135,5 @@ fn main() {
     let module_name = std::env::args().nth(2).expect("Need name for the generated module");
     // TODO(mgeisler): remove the `packet_names` argument when we
     // support all canonical packets.
-    generate_unit_tests(&input_path, &["Packet_Scalar_Field"], &module_name);
+    generate_unit_tests(&input_path, &["Packet_Scalar_Field", "Packet_Enum_Field"], &module_name);
 }

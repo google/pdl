@@ -36,7 +36,7 @@ impl<'a> FieldSerializer<'a> {
         }
     }
 
-    fn endianness_suffix(&self, width: usize) -> &'static str {
+    fn endianness_suffix(&'a self, width: usize) -> &'static str {
         if width > 8 && self.endianness == ast::EndiannessValue::LittleEndian {
             "_le"
         } else {
@@ -48,7 +48,11 @@ impl<'a> FieldSerializer<'a> {
     ///
     /// The generated code requires that `self.span` is a mutable
     /// `bytes::BufMut` value.
-    fn put_uint(&self, value: &proc_macro2::TokenStream, width: usize) -> proc_macro2::TokenStream {
+    fn put_uint(
+        &'a self,
+        value: &proc_macro2::TokenStream,
+        width: usize,
+    ) -> proc_macro2::TokenStream {
         let span = &self.span;
         let suffix = self.endianness_suffix(width);
         let value_type = types::Integer::new(width);
@@ -77,7 +81,7 @@ impl<'a> FieldSerializer<'a> {
     }
 
     fn add_bit_field(&mut self, field: &ast::Field) {
-        let width = field.width().unwrap();
+        let width = field.width(self.scope).unwrap();
 
         match field {
             ast::Field::Scalar { id, width, .. } => {
@@ -96,6 +100,17 @@ impl<'a> FieldSerializer<'a> {
                     });
                 }
                 self.chunk.push(BitField { value: quote!(self.#field_name), shift: self.shift });
+            }
+            ast::Field::Typedef { id, .. } => {
+                let field_name = format_ident!("{id}");
+                let field_type = types::Integer::new(width);
+                let to_u = format_ident!("to_u{}", field_type.width);
+                // TODO(mgeisler): remove `unwrap` and return error to
+                // caller in generated code.
+                self.chunk.push(BitField {
+                    value: quote!(self.#field_name.#to_u().unwrap()),
+                    shift: self.shift,
+                });
             }
             _ => todo!(),
         }

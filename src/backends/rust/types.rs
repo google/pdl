@@ -1,5 +1,8 @@
 //! Utility functions for dealing with Rust integer types.
 
+use crate::ast;
+use quote::{format_ident, quote};
+
 /// A Rust integer type such as `u8`.
 #[derive(Copy, Clone)]
 pub struct Integer {
@@ -27,6 +30,20 @@ impl quote::ToTokens for Integer {
         let t: syn::Type = syn::parse_str(&format!("u{}", self.width))
             .expect("Could not parse integer, unsupported width?");
         t.to_tokens(tokens);
+    }
+}
+
+pub fn rust_type(field: &ast::Field) -> proc_macro2::TokenStream {
+    match field {
+        ast::Field::Scalar { width, .. } => {
+            let field_type = Integer::new(*width);
+            quote!(#field_type)
+        }
+        ast::Field::Typedef { type_id, .. } => {
+            let field_type = format_ident!("{type_id}");
+            quote!(#field_type)
+        }
+        _ => todo!(),
     }
 }
 

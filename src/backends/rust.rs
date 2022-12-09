@@ -71,16 +71,13 @@ fn generate_packet_decl(
     let id_builder = format_ident!("{id}Builder");
 
     let field_names =
-        fields.iter().filter_map(|f| f.id()).map(|id| format_ident!("{id}")).collect::<Vec<_>>();
-    let field_types = fields
-        .iter()
-        .filter_map(|f| f.width())
-        .map(|w| format_ident!("u{}", types::Integer::new(w).width))
-        .collect::<Vec<_>>();
+        fields.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
+    let field_types = fields.iter().map(types::rust_type).collect::<Vec<_>>();
 
     let getter_names = field_names.iter().map(|id| format_ident!("get_{id}"));
 
-    let packet_size = syn::Index::from(fields.iter().filter_map(|f| f.width()).sum::<usize>() / 8);
+    let packet_size =
+        syn::Index::from(fields.iter().filter_map(|f| f.width(scope)).sum::<usize>() / 8);
     let conforms = if packet_size.index == 0 {
         quote! { true }
     } else {
@@ -175,6 +172,25 @@ fn generate_packet_decl(
     }
 }
 
+fn generate_enum_decl(id: &str, tags: &[ast::Tag]) -> proc_macro2::TokenStream {
+    let variants = tags.iter().map(|t| {
+        let variant = format_ident!("{}", t.id);
+        let value = syn::parse_str::<syn::LitInt>(&format!("{:#x}", t.value)).unwrap();
+        quote! {
+            #variant = #value
+        }
+    });
+
+    let name = format_ident!("{}", id);
+    quote! {
+        #[derive(FromPrimitive, ToPrimitive, Debug, Hash, Eq, PartialEq, Clone, Copy)]
+        #[repr(u64)]
+        pub enum #name {
+            #(#variants),*
+        }
+    }
+}
+
 fn generate_decl(scope: &lint::Scope<'_>, file: &ast::File, decl: &ast::Decl) -> String {
     match decl {
         ast::Decl::Packet { id, constraints, fields, parent_id, .. } => generate_packet_decl(
@@ -186,6 +202,7 @@ fn generate_decl(scope: &lint::Scope<'_>, file: &ast::File, decl: &ast::Decl) ->
             parent_id.as_deref(),
         )
         .to_string(),
+        ast::Decl::Enum { id, tags, .. } => generate_enum_decl(id, tags).to_string(),
         _ => todo!("unsupported Decl::{:?}", decl),
     }
 }
@@ -305,5 +322,31 @@ mod tests {
             c: 6,
           }
         "#,
+    );
+
+    test_pdl!(packet_decl_8bit_enum, " enum Foo :  8 { A = 1, B = 2 } packet Bar { x: Foo }");
+    test_pdl!(packet_decl_24bit_enum, "enum Foo : 24 { A = 1, B = 2 } packet Bar { x: Foo }");
+    test_pdl!(packet_decl_64bit_enum, "enum Foo : 64 { A = 1, B = 2 } packet Bar { x: Foo }");
+
+    test_pdl!(
+        packet_decl_mixed_scalars_enums,
+        "
+          enum Enum7 : 7 {
+            A = 1,
+            B = 2,
+          }
+
+          enum Enum9 : 9 {
+            A = 1,
+            B = 2,
+          }
+
+          packet Foo {
+            x: Enum7,
+            y: 5,
+            z: Enum9,
+            w: 3,
+          }
+        "
     );
 }

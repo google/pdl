@@ -8,3 +8,22 @@ packet Packet_Scalar_Field {
     a: 7,
     c: 57,
 }
+
+enum Enum7 : 7 {
+    A = 1,
+    B = 2,
+}
+
+enum Enum16 : 16 {
+    A = 0xaabb,
+    B = 0xccdd,
+}
+
+enum MaxDiscriminantEnum : 64 {
+     Max = 0xffffffffffffffff,
+}
+
+packet Packet_Enum_Field {
+    a: Enum7,
+    c: 57,
+}
