@@ -5,6 +5,7 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
+use std::cell::Cell;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::sync::Arc;
@@ -20,6 +21,8 @@ pub enum Error {
     ConstraintOutOfBounds { field: String, value: u64 },
     #[error("when parsing {obj} needed length of {wanted} but got {got}")]
     InvalidLengthError { obj: String, wanted: usize, got: usize },
+    #[error("array size ({array} bytes) is not a multiple of the element size ({element} bytes)")]
+    InvalidArraySize { array: usize, element: usize },
     #[error("Due to size restrictions a struct could not be parsed.")]
     ImpossibleStructError,
     #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
@@ -51,7 +54,7 @@ impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
         true
     }
-    fn parse(mut bytes: &[u8]) -> Result<Self> {
+    fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         Ok(Self {})
     }
     fn write_to(&self, buffer: &mut BytesMut) {}
@@ -83,12 +86,27 @@ impl From<Foo> for Vec<u8> {
     }
 }
 impl Foo {
-    pub fn parse(mut bytes: &[u8]) -> Result<Self> {
-        Ok(Self::new(Arc::new(FooData::parse(bytes)?)).unwrap())
+    pub fn parse(bytes: &[u8]) -> Result<Self> {
+        let mut cell = Cell::new(bytes);
+        let packet = Self::parse_inner(&mut cell)?;
+        if !cell.get().is_empty() {
+            return Err(Error::InvalidPacketError);
+        }
+        Ok(packet)
+    }
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+        let packet = FooData::parse(&mut bytes)?;
+        Ok(Self::new(Arc::new(packet)).unwrap())
     }
     fn new(root: Arc<FooData>) -> std::result::Result<Self, &'static str> {
         let foo = root;
         Ok(Self { foo })
+    }
+    fn write_to(&self, buffer: &mut BytesMut) {
+        self.foo.write_to(buffer)
+    }
+    pub fn get_size(&self) -> usize {
+        self.foo.get_size()
     }
 }
 impl FooBuilder {

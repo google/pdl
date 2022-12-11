@@ -71,13 +71,13 @@ pub struct PacketScope<'d> {
     checksums: HashMap<String, &'d parser::ast::Field>,
 
     // Size or count fields, indexed by the field id.
-    sizes: HashMap<String, &'d parser::ast::Field>,
+    pub sizes: HashMap<String, &'d parser::ast::Field>,
 
     // Payload or body field.
     payload: Option<&'d parser::ast::Field>,
 
     // Typedef, scalar, array fields.
-    named: HashMap<String, &'d parser::ast::Field>,
+    pub named: HashMap<String, &'d parser::ast::Field>,
 
     // Group fields.
     groups: HashMap<String, &'d parser::ast::Field>,

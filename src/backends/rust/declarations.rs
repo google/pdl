@@ -1,4 +1,3 @@
-use crate::ast;
 use crate::backends::rust::types;
 use crate::parser::ast as parser_ast;
 use quote::{format_ident, quote};
@@ -13,27 +12,15 @@ impl FieldDeclarations {
     }
 
     pub fn add(&mut self, field: &parser_ast::Field) {
-        self.code.push(match &field.desc {
-            ast::FieldDesc::Scalar { id, width } => {
-                let id = format_ident!("{id}");
-                let field_type = types::Integer::new(*width);
-                quote! {
-                    #id: #field_type,
-                }
-            }
-            ast::FieldDesc::Typedef { id, type_id } => {
-                let id = format_ident!("{id}");
-                let field_type = format_ident!("{type_id}");
-                quote! {
-                    #id: #field_type,
-                }
-            }
-            ast::FieldDesc::Reserved { .. } => {
-                // Nothing to do here.
-                quote! {}
-            }
-            _ => todo!(),
-        });
+        let id = match field.id() {
+            Some(id) => format_ident!("{id}"),
+            None => return, // No id => field not stored.
+        };
+
+        let field_type = types::rust_type(field);
+        self.code.push(quote! {
+            #id: #field_type,
+        })
     }
 }
 

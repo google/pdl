@@ -5,6 +5,7 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
+use std::cell::Cell;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::sync::Arc;
@@ -20,6 +21,8 @@ pub enum Error {
     ConstraintOutOfBounds { field: String, value: u64 },
     #[error("when parsing {obj} needed length of {wanted} but got {got}")]
     InvalidLengthError { obj: String, wanted: usize, got: usize },
+    #[error("array size ({array} bytes) is not a multiple of the element size ({element} bytes)")]
+    InvalidArraySize { array: usize, element: usize },
     #[error("Due to size restrictions a struct could not be parsed.")]
     ImpossibleStructError,
     #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
@@ -59,15 +62,15 @@ impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 4
     }
-    fn parse(mut bytes: &[u8]) -> Result<Self> {
-        if bytes.remaining() < 4 {
+    fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+        if bytes.get().remaining() < 4 {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
                 wanted: 4,
-                got: bytes.remaining(),
+                got: bytes.get().remaining(),
             });
         }
-        let chunk = bytes.get_u32_le();
+        let chunk = bytes.get_mut().get_u32_le();
         let a = (chunk & 0x3) as u8;
         let b = ((chunk >> 2) & 0xffffff);
         let c = ((chunk >> 26) & 0x3f) as u8;
@@ -83,7 +86,7 @@ impl FooData {
         if self.c > 0x3f {
             panic!("Invalid value for {}::{}: {} > {}", "Foo", "c", self.c, 0x3f);
         }
-        let value = (self.a as u32) | ((self.b as u32) << 2) | ((self.c as u32) << 26);
+        let value = (self.a as u32) | (self.b << 2) | ((self.c as u32) << 26);
         buffer.put_u32_le(value);
     }
     fn get_total_size(&self) -> usize {
@@ -114,8 +117,17 @@ impl From<Foo> for Vec<u8> {
     }
 }
 impl Foo {
-    pub fn parse(mut bytes: &[u8]) -> Result<Self> {
-        Ok(Self::new(Arc::new(FooData::parse(bytes)?)).unwrap())
+    pub fn parse(bytes: &[u8]) -> Result<Self> {
+        let mut cell = Cell::new(bytes);
+        let packet = Self::parse_inner(&mut cell)?;
+        if !cell.get().is_empty() {
+            return Err(Error::InvalidPacketError);
+        }
+        Ok(packet)
+    }
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+        let packet = FooData::parse(&mut bytes)?;
+        Ok(Self::new(Arc::new(packet)).unwrap())
     }
     fn new(root: Arc<FooData>) -> std::result::Result<Self, &'static str> {
         let foo = root;
@@ -129,6 +141,12 @@ impl Foo {
     }
     pub fn get_c(&self) -> u8 {
         self.foo.as_ref().c
+    }
+    fn write_to(&self, buffer: &mut BytesMut) {
+        self.foo.write_to(buffer)
+    }
+    pub fn get_size(&self) -> usize {
+        self.foo.get_size()
     }
 }
 impl FooBuilder {

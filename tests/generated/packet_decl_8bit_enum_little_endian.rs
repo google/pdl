@@ -5,6 +5,7 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
+use std::cell::Cell;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::sync::Arc;
@@ -20,6 +21,8 @@ pub enum Error {
     ConstraintOutOfBounds { field: String, value: u64 },
     #[error("when parsing {obj} needed length of {wanted} but got {got}")]
     InvalidLengthError { obj: String, wanted: usize, got: usize },
+    #[error("array size ({array} bytes) is not a multiple of the element size ({element} bytes)")]
+    InvalidArraySize { array: usize, element: usize },
     #[error("Due to size restrictions a struct could not be parsed.")]
     ImpossibleStructError,
     #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
@@ -99,15 +102,15 @@ impl BarData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 1
     }
-    fn parse(mut bytes: &[u8]) -> Result<Self> {
-        if bytes.remaining() < 1 {
+    fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+        if bytes.get().remaining() < 1 {
             return Err(Error::InvalidLengthError {
                 obj: "Bar".to_string(),
                 wanted: 1,
-                got: bytes.remaining(),
+                got: bytes.get().remaining(),
             });
         }
-        let x = Foo::from_u8(bytes.get_u8()).unwrap();
+        let x = Foo::from_u8(bytes.get_mut().get_u8()).unwrap();
         Ok(Self { x })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
@@ -141,8 +144,17 @@ impl From<Bar> for Vec<u8> {
     }
 }
 impl Bar {
-    pub fn parse(mut bytes: &[u8]) -> Result<Self> {
-        Ok(Self::new(Arc::new(BarData::parse(bytes)?)).unwrap())
+    pub fn parse(bytes: &[u8]) -> Result<Self> {
+        let mut cell = Cell::new(bytes);
+        let packet = Self::parse_inner(&mut cell)?;
+        if !cell.get().is_empty() {
+            return Err(Error::InvalidPacketError);
+        }
+        Ok(packet)
+    }
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+        let packet = BarData::parse(&mut bytes)?;
+        Ok(Self::new(Arc::new(packet)).unwrap())
     }
     fn new(root: Arc<BarData>) -> std::result::Result<Self, &'static str> {
         let bar = root;
@@ -150,6 +162,12 @@ impl Bar {
     }
     pub fn get_x(&self) -> Foo {
         self.bar.as_ref().x
+    }
+    fn write_to(&self, buffer: &mut BytesMut) {
+        self.bar.write_to(buffer)
+    }
+    pub fn get_size(&self) -> usize {
+        self.bar.get_size()
     }
 }
 impl BarBuilder {
