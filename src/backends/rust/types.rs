@@ -47,6 +47,69 @@ pub fn rust_type(field: &ast::Field) -> proc_macro2::TokenStream {
     }
 }
 
+/// Suffix for `Buf::get_*` and `BufMut::put_*` methods when reading a
+/// value with the given `width`.
+fn endianness_suffix(endianness: ast::EndiannessValue, width: usize) -> &'static str {
+    if width > 8 && endianness == ast::EndiannessValue::LittleEndian {
+        "_le"
+    } else {
+        ""
+    }
+}
+
+/// Parse an unsigned integer with the given `width`.
+///
+/// The generated code requires that `span` is a mutable `bytes::Buf`
+/// value.
+pub fn get_uint(
+    endianness: ast::EndiannessValue,
+    width: usize,
+    span: &proc_macro2::Ident,
+) -> proc_macro2::TokenStream {
+    let suffix = endianness_suffix(endianness, width);
+    let value_type = Integer::new(width);
+    if value_type.width == width {
+        let get_u = format_ident!("get_u{}{}", value_type.width, suffix);
+        quote! {
+            #span.#get_u()
+        }
+    } else {
+        let get_uint = format_ident!("get_uint{}", suffix);
+        let value_nbytes = proc_macro2::Literal::usize_unsuffixed(width / 8);
+        let cast = (value_type.width < 64).then(|| quote!(as #value_type));
+        quote! {
+            #span.#get_uint(#value_nbytes) #cast
+        }
+    }
+}
+
+/// Write an unsigned integer `value` to `span`.
+///
+/// The generated code requires that `span` is a mutable
+/// `bytes::BufMut` value.
+pub fn put_uint(
+    endianness: ast::EndiannessValue,
+    value: &proc_macro2::TokenStream,
+    width: usize,
+    span: &proc_macro2::Ident,
+) -> proc_macro2::TokenStream {
+    let suffix = endianness_suffix(endianness, width);
+    let value_type = Integer::new(width);
+    if value_type.width == width {
+        let put_u = format_ident!("put_u{}{}", width, suffix);
+        quote! {
+            #span.#put_u(#value)
+        }
+    } else {
+        let put_uint = format_ident!("put_uint{}", suffix);
+        let value_nbytes = proc_macro2::Literal::usize_unsuffixed(width / 8);
+        let cast = (value_type.width < 64).then(|| quote!(as u64));
+        quote! {
+            #span.#put_uint(#value #cast, #value_nbytes)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
