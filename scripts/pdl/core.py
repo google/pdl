@@ -128,8 +128,9 @@ def get_packet_ancestor(
         return get_packet_ancestor(decl.file.packet_scope[decl.parent_id])
 
 
-def get_derived_packets(decl: Union[PacketDeclaration, StructDeclaration]
-                       ) -> List[Tuple[List[Constraint], Union[PacketDeclaration, StructDeclaration]]]:
+def get_derived_packets(
+    decl: Union[PacketDeclaration, StructDeclaration]
+) -> List[Tuple[List[Constraint], Union[PacketDeclaration, StructDeclaration]]]:
     """Return the list of packets or structs that immediately derive from the
     selected packet or struct, coupled with the field constraints.
     Packet aliases (containing no field declarations other than a payload)
@@ -269,7 +270,7 @@ def get_field_offset_from_end(field: Field) -> Optional[int]:
 def is_bit_field(field: Field) -> bool:
     """Identify fields that can have bit granularity.
     These include: ScalarField, FixedField, TypedefField with enum type,
-    SizeField, and CountField. Returns the size of the field in bits."""
+    SizeField, and CountField."""
 
     if isinstance(field, (ScalarField, SizeField, CountField, FixedField, ReservedField)):
         return True
