@@ -73,7 +73,7 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
                 &test_vector.packed
             );
             let packed = hexadecimal_to_vec(&test_vector.packed);
-            let packet_name = format_ident!("{}Packet", test_packet);
+            let packet_name = format_ident!("{}", test_packet);
             let builder_name = format_ident!("{}Builder", test_packet);
 
             let object = test_vector.unpacked.as_object().unwrap_or_else(|| {

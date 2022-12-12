@@ -73,6 +73,8 @@ rust_test_host {
         "tests/generated/packet_decl_simple_scalars_big_endian.rs",
         "tests/generated/packet_decl_simple_scalars_little_endian.rs",
         "tests/generated/preamble.rs",
+        "tests/generated/struct_decl_complex_scalars_big_endian.rs",
+        "tests/generated/struct_decl_complex_scalars_little_endian.rs",
     ],
 }
 

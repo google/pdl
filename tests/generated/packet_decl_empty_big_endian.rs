@@ -40,7 +40,7 @@ pub trait Packet {
 struct FooData {}
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct FooPacket {
+pub struct Foo {
     #[cfg_attr(feature = "serde", serde(flatten))]
     foo: Arc<FooData>,
 }
@@ -62,7 +62,7 @@ impl FooData {
         0
     }
 }
-impl Packet for FooPacket {
+impl Packet for Foo {
     fn to_bytes(self) -> Bytes {
         let mut buffer = BytesMut::with_capacity(self.foo.get_total_size());
         self.foo.write_to(&mut buffer);
@@ -72,17 +72,17 @@ impl Packet for FooPacket {
         self.to_bytes().to_vec()
     }
 }
-impl From<FooPacket> for Bytes {
-    fn from(packet: FooPacket) -> Self {
+impl From<Foo> for Bytes {
+    fn from(packet: Foo) -> Self {
         packet.to_bytes()
     }
 }
-impl From<FooPacket> for Vec<u8> {
-    fn from(packet: FooPacket) -> Self {
+impl From<Foo> for Vec<u8> {
+    fn from(packet: Foo) -> Self {
         packet.to_vec()
     }
 }
-impl FooPacket {
+impl Foo {
     pub fn parse(mut bytes: &[u8]) -> Result<Self> {
         Ok(Self::new(Arc::new(FooData::parse(bytes)?)).unwrap())
     }
@@ -92,8 +92,8 @@ impl FooPacket {
     }
 }
 impl FooBuilder {
-    pub fn build(self) -> FooPacket {
+    pub fn build(self) -> Foo {
         let foo = Arc::new(FooData {});
-        FooPacket::new(foo).unwrap()
+        Foo::new(foo).unwrap()
     }
 }
