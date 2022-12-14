@@ -146,14 +146,17 @@ pub fn assert_contains(haystack: &str, needle: &str) {
 /// a panic is triggered if they differ.
 #[track_caller]
 pub fn assert_snapshot_eq<P: AsRef<Path>>(snapshot_path: P, actual_content: &str) {
+    let update_snapshots = std::env::var("UPDATE_SNAPSHOTS").is_ok();
     let snapshot = snapshot_path.as_ref();
-    let snapshot_content = fs::read(snapshot).unwrap_or_else(|err| {
-        panic!("Could not read snapshot from {}: {}", snapshot.display(), err)
-    });
+    let snapshot_content = match fs::read(snapshot) {
+        Ok(content) => content,
+        Err(_) if update_snapshots => Vec::new(),
+        Err(err) => panic!("Could not read snapshot from {}: {}", snapshot.display(), err),
+    };
     let snapshot_content = String::from_utf8(snapshot_content).expect("Snapshot was not UTF-8");
 
     // Normal comparison if UPDATE_SNAPSHOTS is unset.
-    if std::env::var("UPDATE_SNAPSHOTS").is_err() {
+    if !update_snapshots {
         return assert_eq_with_diff(
             snapshot.to_str().unwrap(),
             &snapshot_content,

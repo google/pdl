@@ -317,8 +317,9 @@ mod tests {
     /// are read from `"tests/generated/{name}_{endianness}_{id}.rs"`
     /// where `is` taken from the declaration.
     ///
-    /// When adding new tests, use `touch` to create the missing files
-    /// and use `UPDATE_SNAPSHOTS=1 cargo test` to populate them.
+    /// When adding new tests or modifying existing ones, use
+    /// `UPDATE_SNAPSHOTS=1 cargo test` to automatically populate the
+    /// snapshots with the expected output.
     ///
     /// The `code` cannot have an endianness declaration, instead you
     /// must supply either `little_endian` or `big_endian` as
