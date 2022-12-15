@@ -20,13 +20,6 @@ pub trait Lintable {
     fn lint(&self) -> LintDiagnostics;
 }
 
-/// Represents a chain of group expansion.
-/// Each field but the last in the chain is a typedef field of a group.
-/// The last field can also be a typedef field of a group if the chain is
-/// not fully expanded.
-#[derive(Debug, Clone)]
-struct FieldPath<'d>(Vec<&'d Field>);
-
 /// Gather information about the full AST.
 #[derive(Debug)]
 pub struct Scope<'d> {
@@ -41,16 +34,16 @@ pub struct Scope<'d> {
 #[derive(Debug)]
 pub struct PacketScope<'d> {
     // Checksum starts, indexed by the checksum field id.
-    checksums: HashMap<String, FieldPath<'d>>,
+    checksums: HashMap<String, &'d Field>,
 
     // Size or count fields, indexed by the field id.
-    sizes: HashMap<String, FieldPath<'d>>,
+    sizes: HashMap<String, &'d Field>,
 
     // Payload or body field.
-    payload: Option<FieldPath<'d>>,
+    payload: Option<&'d Field>,
 
     // Typedef, scalar, array fields.
-    named: HashMap<String, FieldPath<'d>>,
+    named: HashMap<String, &'d Field>,
 
     // Group fields.
     groups: HashMap<String, &'d Field>,
@@ -58,9 +51,9 @@ pub struct PacketScope<'d> {
     // Flattened field declarations.
     // Contains field declarations from the original Packet, Struct, or Group,
     // where Group fields have been substituted by their body.
-    // Constrained Scalar or Typedef Group fields are substitued by a Fixed
+    // Constrained Scalar or Typedef Group fields are substituted by a Fixed
     // field.
-    fields: Vec<FieldPath<'d>>,
+    fields: Vec<&'d Field>,
 
     // Constraint declarations gathered from Group inlining.
     constraints: HashMap<String, &'d Constraint>,
@@ -84,12 +77,6 @@ impl<'d> std::cmp::PartialEq for &'d Decl {
 impl<'d> std::hash::Hash for &'d Decl {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::ptr::hash(*self, state);
-    }
-}
-
-impl FieldPath<'_> {
-    fn loc(&self) -> &SourceRange {
-        self.0.last().unwrap().loc()
     }
 }
 
@@ -144,7 +131,7 @@ impl<'d> PacketScope<'d> {
     fn insert(&mut self, field: &'d Field, result: &mut LintDiagnostics) {
         match field {
             Field::Checksum { loc, field_id, .. } => {
-                self.checksums.insert(field_id.clone(), FieldPath(vec![field])).map(|prev| {
+                self.checksums.insert(field_id.clone(), field).map(|prev| {
                     result.push(
                         Diagnostic::error()
                             .with_message(format!(
@@ -164,7 +151,7 @@ impl<'d> PacketScope<'d> {
             Field::Padding { .. } | Field::Reserved { .. } | Field::Fixed { .. } => None,
 
             Field::Size { loc, field_id, .. } | Field::Count { loc, field_id, .. } => {
-                self.sizes.insert(field_id.clone(), FieldPath(vec![field])).map(|prev| {
+                self.sizes.insert(field_id.clone(), field).map(|prev| {
                     result.push(
                         Diagnostic::error()
                             .with_message(format!(
@@ -192,7 +179,7 @@ impl<'d> PacketScope<'d> {
                             ]),
                     )
                 }
-                self.payload = Some(FieldPath(vec![field]));
+                self.payload = Some(field);
                 None
             }
 
@@ -200,7 +187,7 @@ impl<'d> PacketScope<'d> {
             | Field::Scalar { loc, id, .. }
             | Field::Typedef { loc, id, .. } => self
                 .named
-                .insert(id.clone(), FieldPath(vec![field]))
+                .insert(id.clone(), field)
                 .map(|prev| result.err_redeclared(id, "field", loc, prev.loc())),
 
             Field::Group { loc, group_id, .. } => {
@@ -280,7 +267,7 @@ impl<'d> PacketScope<'d> {
         }
 
         for (id, field) in packet_scope.checksums.iter() {
-            if let Some(prev) = self.checksums.insert(id.clone(), field.clone()) {
+            if let Some(prev) = self.checksums.insert(id.clone(), field) {
                 err_redeclared_by_group(
                     result,
                     format!("inserted group redeclares checksum start for `{}`", id),
@@ -290,7 +277,7 @@ impl<'d> PacketScope<'d> {
             }
         }
         for (id, field) in packet_scope.sizes.iter() {
-            if let Some(prev) = self.sizes.insert(id.clone(), field.clone()) {
+            if let Some(prev) = self.sizes.insert(id.clone(), field) {
                 err_redeclared_by_group(
                     result,
                     format!("inserted group redeclares size or count for `{}`", id),
@@ -306,13 +293,11 @@ impl<'d> PacketScope<'d> {
                 next.loc(),
                 prev.loc(),
             ),
-            (None, Some(payload)) => self.payload = Some(payload.clone()),
+            (None, Some(payload)) => self.payload = Some(payload),
             _ => (),
         }
         for (id, field) in packet_scope.named.iter() {
-            let mut path = vec![group];
-            path.extend(field.0.clone());
-            if let Some(prev) = self.named.insert(id.clone(), FieldPath(path)) {
+            if let Some(prev) = self.named.insert(id.clone(), field) {
                 err_redeclared_by_group(
                     result,
                     format!("inserted group redeclares field `{}`", id),
@@ -324,9 +309,7 @@ impl<'d> PacketScope<'d> {
 
         // Append group fields to the finalizeed fields.
         for field in packet_scope.fields.iter() {
-            let mut path = vec![group];
-            path.extend(field.0.clone());
-            self.fields.push(FieldPath(path));
+            self.fields.push(field);
         }
 
         // Append group constraints to the caller packet_scope.
@@ -353,10 +336,10 @@ impl<'d> PacketScope<'d> {
 
     /// Return the field immediately preceding the selected field, or None
     /// if no such field exists.
-    fn get_preceding_field(&self, searched_field: &FieldPath) -> Option<&FieldPath> {
-        let mut preceding_field: Option<&FieldPath> = None;
+    fn get_preceding_field(&self, searched_field: &Field) -> Option<&Field> {
+        let mut preceding_field: Option<&Field> = None;
         for field in self.fields.iter() {
-            if ptr::eq(field, searched_field) {
+            if ptr::eq(*field, searched_field) {
                 break;
             }
             preceding_field = Some(field);
@@ -367,7 +350,7 @@ impl<'d> PacketScope<'d> {
     /// Cleanup scope after processing all fields.
     fn finalize(&mut self, result: &mut LintDiagnostics) {
         // Check field shadowing.
-        for f in self.fields.iter().map(|f| f.0.last().unwrap()) {
+        for f in self.fields.iter() {
             if let Some(id) = f.id() {
                 if let Some(prev) = self.all_fields.insert(id.to_string(), f) {
                     result.push(
@@ -569,7 +552,7 @@ impl<'d> Scope<'d> {
                         }
                     }
                     Field::Typedef { type_id, .. } => {
-                        lscope.fields.push(FieldPath(vec![f]));
+                        lscope.fields.push(f);
                         match scope.typedef.get(type_id) {
                             None => result.push(
                                 Diagnostic::error()
@@ -585,7 +568,7 @@ impl<'d> Scope<'d> {
                             Some(_) => (),
                         }
                     }
-                    _ => lscope.fields.push(FieldPath(vec![f])),
+                    _ => lscope.fields.push(f),
                 }
             }
 
@@ -689,17 +672,16 @@ fn lint_enum(tags: &[Tag], width: usize, result: &mut LintDiagnostics) {
 fn lint_checksum(
     scope: &Scope,
     packet_scope: &PacketScope,
-    path: &FieldPath,
+    decl: &Field,
     field_id: &str,
     result: &mut LintDiagnostics,
 ) {
     // Checksum field must be declared before
     // the checksum start. The field must be a typedef with
     // a valid checksum type.
-    let checksum_loc = path.loc();
-    let field_decl = packet_scope.named.get(field_id);
+    let checksum_loc = decl.loc();
 
-    match field_decl.and_then(|f| f.0.last()) {
+    match packet_scope.named.get(field_id) {
         Some(Field::Typedef { loc: field_loc, type_id, .. }) => {
             // Check declaration type of checksum field.
             match scope.typedef.get(type_id) {
@@ -742,7 +724,7 @@ fn lint_checksum(
 fn lint_size(
     _scope: &Scope,
     packet_scope: &PacketScope,
-    path: &FieldPath,
+    decl: &Field,
     field_id: &str,
     _width: usize,
     result: &mut LintDiagnostics,
@@ -752,28 +734,16 @@ fn lint_size(
     // The field must reference a valid body, payload or array
     // field.
 
-    let size_loc = path.loc();
+    let size_loc = decl.loc();
 
     if field_id == "_payload_" {
-        return match packet_scope.payload.as_ref().and_then(|f| f.0.last()) {
+        return match packet_scope.payload.as_ref() {
             Some(Field::Body { .. }) => result.push(
                 Diagnostic::error()
                     .with_message("size field uses undeclared payload field, did you mean _body_ ?")
                     .with_labels(vec![size_loc.primary()]),
             ),
-            Some(Field::Payload { .. }) => {
-                match packet_scope.payload.as_ref().and_then(|f| f.0.first()) {
-                    Some(field) if field.loc().start < size_loc.start => result.push(
-                        Diagnostic::error().with_message("invalid size field").with_labels(vec![
-                            size_loc
-                                .primary()
-                                .with_message("size field is declared after payload field"),
-                            field.loc().secondary().with_message("payload field is declared here"),
-                        ]),
-                    ),
-                    _ => (),
-                }
-            }
+            Some(Field::Payload { .. }) => (),
             Some(_) => unreachable!(),
             None => result.push(
                 Diagnostic::error()
@@ -783,25 +753,13 @@ fn lint_size(
         };
     }
     if field_id == "_body_" {
-        return match packet_scope.payload.as_ref().and_then(|f| f.0.last()) {
+        return match packet_scope.payload.as_ref() {
             Some(Field::Payload { .. }) => result.push(
                 Diagnostic::error()
                     .with_message("size field uses undeclared body field, did you mean _payload_ ?")
                     .with_labels(vec![size_loc.primary()]),
             ),
-            Some(Field::Body { .. }) => {
-                match packet_scope.payload.as_ref().and_then(|f| f.0.first()) {
-                    Some(field) if field.loc().start < size_loc.start => result.push(
-                        Diagnostic::error().with_message("invalid size field").with_labels(vec![
-                            size_loc
-                                .primary()
-                                .with_message("size field is declared after body field"),
-                            field.loc().secondary().with_message("body field is declared here"),
-                        ]),
-                    ),
-                    _ => (),
-                }
-            }
+            Some(Field::Body { .. }) => (),
             Some(_) => unreachable!(),
             None => result.push(
                 Diagnostic::error()
@@ -811,9 +769,7 @@ fn lint_size(
         };
     }
 
-    let field = packet_scope.named.get(field_id);
-
-    match field.and_then(|f| f.0.last()) {
+    match packet_scope.named.get(field_id) {
         Some(Field::Array { size: Some(_), loc: array_loc, .. }) => result.push(
             Diagnostic::warning()
                 .with_message(format!("size field uses array `{}` with static size", field_id))
@@ -839,20 +795,6 @@ fn lint_size(
         ),
 
         None => result.err_undeclared(field_id, size_loc),
-    };
-    match field.and_then(|f| f.0.first()) {
-        Some(field) if field.loc().start < size_loc.start => {
-            result.push(Diagnostic::error().with_message("invalid size field").with_labels(vec![
-                    size_loc
-                        .primary()
-                        .with_message(format!("size field is declared after field `{}`", field_id)),
-                    field
-                        .loc()
-                        .secondary()
-                        .with_message(format!("`{}` is declared here", field_id)),
-                ]))
-        }
-        _ => (),
     }
 }
 
@@ -860,7 +802,7 @@ fn lint_size(
 fn lint_count(
     _scope: &Scope,
     packet_scope: &PacketScope,
-    path: &FieldPath,
+    decl: &Field,
     field_id: &str,
     _width: usize,
     result: &mut LintDiagnostics,
@@ -869,10 +811,8 @@ fn lint_count(
     // The field must reference a valid array field.
     // Warning if the array already has a known size.
 
-    let count_loc = path.loc();
-    let field = packet_scope.named.get(field_id);
-
-    match field.and_then(|f| f.0.last()) {
+    let count_loc = decl.loc();
+    match packet_scope.named.get(field_id) {
         Some(Field::Array { size: Some(_), loc: array_loc, .. }) => result.push(
             Diagnostic::warning()
                 .with_message(format!("count field uses array `{}` with static size", field_id))
@@ -899,21 +839,6 @@ fn lint_count(
         ),
 
         None => result.err_undeclared(field_id, count_loc),
-    };
-    match field.and_then(|f| f.0.first()) {
-        Some(field) if field.loc().start < count_loc.start => {
-            result.push(Diagnostic::error().with_message("invalid count field").with_labels(vec![
-                    count_loc.primary().with_message(format!(
-                        "count field is declared after field `{}`",
-                        field_id
-                    )),
-                    field
-                        .loc()
-                        .secondary()
-                        .with_message(format!("`{}` is declared here", field_id)),
-                ]))
-        }
-        _ => (),
     }
 }
 
@@ -922,7 +847,7 @@ fn lint_count(
 fn lint_fixed(
     scope: &Scope,
     _packet_scope: &PacketScope,
-    path: &FieldPath,
+    decl: &Field,
     width: &Option<usize>,
     value: &Option<usize>,
     enum_id: &Option<String>,
@@ -931,8 +856,7 @@ fn lint_fixed(
 ) {
     // By parsing constraint, we already have that either
     // (width and value) or (enum_id and tag_id) are Some.
-
-    let fixed_loc = path.loc();
+    let fixed_loc = decl.loc();
 
     if width.is_some() {
         // The value of a fixed field should have .
@@ -987,7 +911,7 @@ fn lint_fixed(
 fn lint_array(
     scope: &Scope,
     _packet_scope: &PacketScope,
-    path: &FieldPath,
+    decl: &Field,
     _width: &Option<usize>,
     type_id: &Option<String>,
     _size_modifier: &Option<String>,
@@ -999,8 +923,7 @@ fn lint_array(
     // type_id must reference a valid enum or packet type.
     // TODO(hchataing) unbounded arrays should have a matching size
     // or count field
-
-    let array_loc = path.loc();
+    let array_loc = decl.loc();
 
     if type_id.is_some() {
         match scope.typedef.get(type_id.as_ref().unwrap()) {
@@ -1034,15 +957,14 @@ fn lint_array(
 fn lint_padding(
     _scope: &Scope,
     packet_scope: &PacketScope,
-    path: &FieldPath,
+    decl: &Field,
     _size: usize,
     result: &mut LintDiagnostics,
 ) {
     // The padding field must follow an array field.
+    let padding_loc = decl.loc();
 
-    let padding_loc = path.loc();
-
-    match packet_scope.get_preceding_field(path).map(|f| f.0.last().unwrap()) {
+    match packet_scope.get_preceding_field(decl) {
         None => result.push(
             Diagnostic::error()
                 .with_message("padding field cannot be the first field of a packet")
@@ -1070,15 +992,14 @@ fn lint_padding(
 fn lint_typedef(
     scope: &Scope,
     _packet_scope: &PacketScope,
-    path: &FieldPath,
+    decl: &Field,
     type_id: &str,
     result: &mut LintDiagnostics,
 ) {
     // The typedef field must reference a valid struct, enum,
     // custom_field, or checksum type.
     // TODO(hchataing) checksum fields should have a matching checksum start
-
-    let typedef_loc = path.loc();
+    let typedef_loc = decl.loc();
 
     match scope.typedef.get(type_id) {
         Some(Decl::Enum { .. })
@@ -1109,27 +1030,27 @@ fn lint_typedef(
 fn lint_field(
     scope: &Scope,
     packet_scope: &PacketScope,
-    field: &FieldPath,
+    decl: &Field,
     result: &mut LintDiagnostics,
 ) {
-    match field.0.last().unwrap() {
+    match decl {
         Field::Checksum { field_id, .. } => {
-            lint_checksum(scope, packet_scope, field, field_id, result)
+            lint_checksum(scope, packet_scope, decl, field_id, result)
         }
         Field::Size { field_id, width, .. } => {
-            lint_size(scope, packet_scope, field, field_id, *width, result)
+            lint_size(scope, packet_scope, decl, field_id, *width, result)
         }
         Field::Count { field_id, width, .. } => {
-            lint_count(scope, packet_scope, field, field_id, *width, result)
+            lint_count(scope, packet_scope, decl, field_id, *width, result)
         }
         Field::Fixed { width, value, enum_id, tag_id, .. } => {
-            lint_fixed(scope, packet_scope, field, width, value, enum_id, tag_id, result)
+            lint_fixed(scope, packet_scope, decl, width, value, enum_id, tag_id, result)
         }
         Field::Array { width, type_id, size_modifier, size, .. } => {
-            lint_array(scope, packet_scope, field, width, type_id, size_modifier, size, result)
+            lint_array(scope, packet_scope, decl, width, type_id, size_modifier, size, result)
         }
-        Field::Typedef { type_id, .. } => lint_typedef(scope, packet_scope, field, type_id, result),
-        Field::Padding { size, .. } => lint_padding(scope, packet_scope, field, *size, result),
+        Field::Typedef { type_id, .. } => lint_typedef(scope, packet_scope, decl, type_id, result),
+        Field::Padding { size, .. } => lint_padding(scope, packet_scope, decl, *size, result),
         Field::Reserved { .. }
         | Field::Scalar { .. }
         | Field::Body { .. }
