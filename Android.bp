@@ -104,13 +104,18 @@ genrule {
 
 rust_defaults {
     name: "pdl_backend_defaults",
+    features: ["serde"],
     rustlibs: [
         "libbytes",
         "libnum_traits",
+        "libserde",
         "libtempfile",
         "libthiserror",
     ],
-    proc_macros: ["libnum_derive"],
+    proc_macros: [
+        "libnum_derive",
+        "libserde_derive",
+    ],
 }
 
 rust_library_host {
@@ -175,6 +180,7 @@ rust_test_host {
     rustlibs: [
         "libnum_traits",
         "libpdl_le_backend",
+        "libserde_json",
     ],
 }
 
@@ -185,6 +191,7 @@ rust_test_host {
     rustlibs: [
         "libnum_traits",
         "libpdl_be_backend",
+        "libserde_json",
     ],
 }
 

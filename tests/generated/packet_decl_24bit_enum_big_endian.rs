@@ -41,16 +41,57 @@ pub enum Foo {
     A = 0x1,
     B = 0x2,
 }
+#[cfg(feature = "serde")]
+impl serde::Serialize for Foo {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u64(*self as u64)
+    }
+}
+#[cfg(feature = "serde")]
+struct FooVisitor;
+#[cfg(feature = "serde")]
+impl<'de> serde::de::Visitor<'de> for FooVisitor {
+    type Value = Foo;
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a valid discriminant")
+    }
+    fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        match value {
+            0x1 => Ok(Foo::A),
+            0x2 => Ok(Foo::B),
+            _ => Err(E::custom(format!("invalid discriminant: {value}"))),
+        }
+    }
+}
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Foo {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_u64(FooVisitor)
+    }
+}
 
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct BarData {
     x: Foo,
 }
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BarPacket {
+    #[cfg_attr(feature = "serde", serde(flatten))]
     bar: Arc<BarData>,
 }
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BarBuilder {
     pub x: Foo,
 }

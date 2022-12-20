@@ -1,7 +1,7 @@
 //! Generate Rust unit tests for canonical test vectors.
 
 use quote::{format_ident, quote};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
@@ -18,10 +18,10 @@ struct TestVector {
     packet: Option<String>,
 }
 
-// Convert a string of hexadecimal characters into a Rust vector of
-// bytes.
-//
-// The string `"80038302"` becomes `vec![0x80, 0x03, 0x83, 0x02]`.
+/// Convert a string of hexadecimal characters into a Rust vector of
+/// bytes.
+///
+/// The string `"80038302"` becomes `vec![0x80, 0x03, 0x83, 0x02]`.
 fn hexadecimal_to_vec(hex: &str) -> proc_macro2::TokenStream {
     assert!(hex.len() % 2 == 0, "Expects an even number of hex digits");
     let bytes = hex.as_bytes().chunks_exact(2).map(|chunk| {
@@ -32,6 +32,16 @@ fn hexadecimal_to_vec(hex: &str) -> proc_macro2::TokenStream {
     quote! {
         vec![#(#bytes),*]
     }
+}
+
+/// Convert `value` to a JSON string literal.
+///
+/// The string literal is a raw literal to avoid escaping
+/// double-quotes.
+fn to_json<T: Serialize>(value: &T) -> syn::LitStr {
+    let json = serde_json::to_string(value).unwrap();
+    assert!(!json.contains("\"#"), "Please increase number of # for {json:?}");
+    syn::parse_str::<syn::LitStr>(&format!("r#\" {json} \"#")).unwrap()
 }
 
 fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
@@ -71,30 +81,15 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
             });
             let assertions = object.iter().map(|(key, value)| {
                 let getter = format_ident!("get_{key}");
-                let value_u64 = value
-                    .as_u64()
-                    .unwrap_or_else(|| panic!("Expected u64 for {key:?} key, got {value}"));
-                let value = proc_macro2::Literal::u64_unsuffixed(value_u64);
-                // We lack type information, but ToPrimitive allows us
-                // to convert both integers and enums to u64.
+                let expected = format_ident!("expected_{key}");
+                let json = to_json(&value);
                 quote! {
-                    assert_eq!(actual.#getter().to_u64().unwrap(), #value);
+                    let #expected: serde_json::Value = serde_json::from_str(#json).unwrap();
+                    assert_eq!(json!(actual.#getter()), #expected);
                 }
             });
 
-            let builder_fields = object.iter().map(|(key, value)| {
-                let field = format_ident!("{key}");
-                let value_u64 = value
-                    .as_u64()
-                    .unwrap_or_else(|| panic!("Expected u64 for {key:?} key, got {value}"));
-                let value = proc_macro2::Literal::u64_unsuffixed(value_u64);
-                // We lack type information, but FromPrimitive allows
-                // us to convert both integers and enums to u64.
-                quote! {
-                    #field: FromPrimitive::from_u64(#value).unwrap()
-                }
-            });
-
+            let json = to_json(&object);
             tests.push(quote! {
                 #[test]
                 fn #parse_test_name() {
@@ -105,9 +100,7 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
 
                 #[test]
                 fn #serialize_test_name() {
-                    let builder =  #module::#builder_name {
-                        #(#builder_fields,)*
-                    };
+                    let builder: #module::#builder_name = serde_json::from_str(#json).unwrap();
                     let packet = builder.build();
                     let packed = #packed;
                     assert_eq!(packet.to_vec(), packed);
@@ -124,6 +117,7 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
         &quote! {
             use #module::Packet;
             use num_traits::{FromPrimitive, ToPrimitive};
+            use serde_json::json;
 
             #(#tests)*
         }

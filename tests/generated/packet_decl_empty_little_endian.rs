@@ -36,12 +36,16 @@ pub trait Packet {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct FooData {}
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FooPacket {
+    #[cfg_attr(feature = "serde", serde(flatten))]
     foo: Arc<FooData>,
 }
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FooBuilder {}
 impl FooData {
     fn conforms(bytes: &[u8]) -> bool {

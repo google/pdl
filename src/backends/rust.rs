@@ -85,17 +85,21 @@ fn generate_packet_decl(
     };
 
     quote! {
-    #[derive(Debug)]
+        #[derive(Debug)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         struct #id_data {
             #field_declarations
         }
 
         #[derive(Debug, Clone)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub struct #id_packet {
+            #[cfg_attr(feature = "serde", serde(flatten))]
             #id_lower: Arc<#id_data>,
         }
 
         #[derive(Debug)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub struct #id_builder {
             #(pub #field_names: #field_types),*
         }
@@ -173,20 +177,61 @@ fn generate_packet_decl(
 }
 
 fn generate_enum_decl(id: &str, tags: &[ast::Tag]) -> proc_macro2::TokenStream {
-    let variants = tags.iter().map(|t| {
-        let variant = format_ident!("{}", t.id);
-        let value = syn::parse_str::<syn::LitInt>(&format!("{:#x}", t.value)).unwrap();
-        quote! {
-            #variant = #value
-        }
-    });
+    let name = format_ident!("{id}");
+    let variants = tags.iter().map(|t| format_ident!("{}", t.id)).collect::<Vec<_>>();
+    let values = tags
+        .iter()
+        .map(|t| syn::parse_str::<syn::LitInt>(&format!("{:#x}", t.value)).unwrap())
+        .collect::<Vec<_>>();
+    let visitor_name = format_ident!("{id}Visitor");
 
-    let name = format_ident!("{}", id);
     quote! {
         #[derive(FromPrimitive, ToPrimitive, Debug, Hash, Eq, PartialEq, Clone, Copy)]
         #[repr(u64)]
         pub enum #name {
-            #(#variants),*
+            #(#variants = #values,)*
+        }
+
+        #[cfg(feature = "serde")]
+        impl serde::Serialize for #name {
+            fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_u64(*self as u64)
+            }
+        }
+
+        #[cfg(feature = "serde")]
+        struct #visitor_name;
+
+        #[cfg(feature = "serde")]
+        impl<'de> serde::de::Visitor<'de> for #visitor_name {
+            type Value = #name;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a valid discriminant")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    #(#values => Ok(#name::#variants),)*
+                    _ => Err(E::custom(format!("invalid discriminant: {value}"))),
+                }
+            }
+        }
+
+        #[cfg(feature = "serde")]
+        impl<'de> serde::Deserialize<'de> for #name {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                deserializer.deserialize_u64(#visitor_name)
+            }
         }
     }
 }
