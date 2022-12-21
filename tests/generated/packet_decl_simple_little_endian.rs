@@ -1,3 +1,40 @@
+// @generated rust packets from test
+
+#![allow(warnings, missing_docs)]
+
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::{FromPrimitive, ToPrimitive};
+use std::convert::{TryFrom, TryInto};
+use std::fmt;
+use std::sync::Arc;
+use thiserror::Error;
+
+type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("Packet parsing failed")]
+    InvalidPacketError,
+    #[error("{field} was {value:x}, which is not known")]
+    ConstraintOutOfBounds { field: String, value: u64 },
+    #[error("when parsing {obj} needed length of {wanted} but got {got}")]
+    InvalidLengthError { obj: String, wanted: usize, got: usize },
+    #[error("Due to size restrictions a struct could not be parsed.")]
+    ImpossibleStructError,
+    #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
+    InvalidEnumValueError { obj: String, field: String, value: u64, type_: String },
+}
+
+#[derive(Debug, Error)]
+#[error("{0}")]
+pub struct TryFromError(&'static str);
+
+pub trait Packet {
+    fn to_bytes(self) -> Bytes;
+    fn to_vec(self) -> Vec<u8>;
+}
+
 #[derive(Debug)]
 struct FooData {
     x: u8,
@@ -21,40 +58,40 @@ impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 6
     }
-    fn parse(bytes: &[u8]) -> Result<Self> {
-        if bytes.len() < 1 {
+    fn parse(mut bytes: &[u8]) -> Result<Self> {
+        if bytes.remaining() < 1 {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
                 wanted: 1,
-                got: bytes.len(),
+                got: bytes.remaining(),
             });
         }
-        let x = u8::from_le_bytes([bytes[0]]);
-        if bytes.len() < 3 {
+        let x = bytes.get_u8();
+        if bytes.remaining() < 2 {
+            return Err(Error::InvalidLengthError {
+                obj: "Foo".to_string(),
+                wanted: 2,
+                got: bytes.remaining(),
+            });
+        }
+        let y = bytes.get_u16_le();
+        if bytes.remaining() < 3 {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
                 wanted: 3,
-                got: bytes.len(),
+                got: bytes.remaining(),
             });
         }
-        let y = u16::from_le_bytes([bytes[1], bytes[2]]);
-        if bytes.len() < 6 {
-            return Err(Error::InvalidLengthError {
-                obj: "Foo".to_string(),
-                wanted: 6,
-                got: bytes.len(),
-            });
-        }
-        let z = u32::from_le_bytes([bytes[3], bytes[4], bytes[5], 0]);
+        let z = bytes.get_uint_le(3) as u32;
         Ok(Self { x, y, z })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         let x = self.x;
-        buffer[0..1].copy_from_slice(&x.to_le_bytes()[0..1]);
+        buffer.put_u8(x);
         let y = self.y;
-        buffer[1..3].copy_from_slice(&y.to_le_bytes()[0..2]);
+        buffer.put_u16_le(y);
         let z = self.z;
-        buffer[3..6].copy_from_slice(&z.to_le_bytes()[0..3]);
+        buffer.put_uint_le(z as u64, 3);
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
@@ -66,8 +103,7 @@ impl FooData {
 
 impl Packet for FooPacket {
     fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::new();
-        buffer.resize(self.foo.get_total_size(), 0);
+        let mut buffer = BytesMut::with_capacity(self.foo.get_total_size());
         self.foo.write_to(&mut buffer);
         buffer.freeze()
     }
@@ -87,7 +123,7 @@ impl From<FooPacket> for Vec<u8> {
 }
 
 impl FooPacket {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(mut bytes: &[u8]) -> Result<Self> {
         Ok(Self::new(Arc::new(FooData::parse(bytes)?)).unwrap())
     }
     fn new(root: Arc<FooData>) -> std::result::Result<Self, &'static str> {

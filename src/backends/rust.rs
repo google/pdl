@@ -32,16 +32,6 @@ macro_rules! quote_block {
     }
 }
 
-/// Find byte indices covering `offset..offset+width` bits.
-pub fn get_field_range(offset: usize, width: usize) -> std::ops::Range<usize> {
-    let start = offset / 8;
-    let mut end = (offset + width) / 8;
-    if (offset + width) % 8 != 0 {
-        end += 1;
-    }
-    start..end
-}
-
 /// Generate a bit-mask which masks out `n` least significant bits.
 pub fn mask_bits(n: usize) -> syn::LitInt {
     syn::parse_str::<syn::LitInt>(&format!("{:#x}", (1u64 << n) - 1)).unwrap()
@@ -147,22 +137,20 @@ fn generate_packet_decl(
 
     let mut chunk_width = 0;
     let chunks = fields.split_inclusive(|field| {
-        chunk_width += field.get_width();
+        chunk_width += field.width();
         chunk_width % 8 == 0
     });
     let mut field_parsers = Vec::new();
     let mut field_writers = Vec::new();
-    let mut offset = 0;
     for fields in chunks {
         let chunk = Chunk::new(fields);
-        field_parsers.push(chunk.generate_read(id, file.endianness.value, offset));
-        field_writers.push(chunk.generate_write(file.endianness.value, offset));
-        offset += chunk.get_width();
+        field_parsers.push(chunk.generate_read(id, file.endianness.value));
+        field_writers.push(chunk.generate_write(file.endianness.value));
     }
 
-    let field_names = fields.iter().map(Field::get_ident).collect::<Vec<_>>();
+    let field_names = fields.iter().map(Field::ident).collect::<Vec<_>>();
 
-    let packet_size_bits = Chunk::new(fields).get_width();
+    let packet_size_bits = Chunk::new(fields).width();
     if packet_size_bits % 8 != 0 {
         panic!("packet {id} does not end on a byte boundary, size: {packet_size_bits} bits",);
     }
@@ -180,7 +168,7 @@ fn generate_packet_decl(
                 #conforms
             }
 
-            fn parse(bytes: &[u8]) -> Result<Self> {
+            fn parse(mut bytes: &[u8]) -> Result<Self> {
                 #(#field_parsers)*
                 Ok(Self { #(#field_names),* })
             }
@@ -202,8 +190,7 @@ fn generate_packet_decl(
     code.push_str(&quote_block! {
         impl Packet for #packet_name {
             fn to_bytes(self) -> Bytes {
-                let mut buffer = BytesMut::new();
-                buffer.resize(self.#ident.get_total_size(), 0);
+                let mut buffer = BytesMut::with_capacity(self.#ident.get_total_size());
                 self.#ident.write_to(&mut buffer);
                 buffer.freeze()
             }
@@ -238,7 +225,7 @@ fn generate_packet_decl(
     let field_getters = fields.iter().map(|field| field.generate_getter(&ident));
     code.push_str(&quote_block! {
         impl #packet_name {
-            pub fn parse(bytes: &[u8]) -> Result<Self> {
+            pub fn parse(mut bytes: &[u8]) -> Result<Self> {
                 Ok(Self::new(Arc::new(#data_name::parse(bytes)?)).unwrap())
             }
 
@@ -308,144 +295,78 @@ mod tests {
     use crate::ast;
     use crate::parser::parse_inline;
     use crate::test_utils::{assert_snapshot_eq, rustfmt};
+    use paste::paste;
 
-    /// Parse a string fragment as a PDL file.
+    /// Create a unit test for the given PDL `code`.
     ///
-    /// # Panics
+    /// The unit test will compare the generated Rust code for all
+    /// declarations with previously saved snapshots. The snapshots
+    /// are read from `"tests/generated/{name}_{endianness}_{id}.rs"`
+    /// where `is` taken from the declaration.
     ///
-    /// Panics on parse errors.
-    pub fn parse_str(text: &str) -> ast::File {
-        let mut db = ast::SourceDatabase::new();
-        parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parse error")
+    /// When adding new tests or modifying existing ones, use
+    /// `UPDATE_SNAPSHOTS=1 cargo test` to automatically populate the
+    /// snapshots with the expected output.
+    ///
+    /// The `code` cannot have an endianness declaration, instead you
+    /// must supply either `little_endian` or `big_endian` as
+    /// `endianness`.
+    macro_rules! make_pdl_test {
+        ($name:ident, $code:expr, $endianness:ident) => {
+            paste! {
+                #[test]
+                fn [< test_ $name _ $endianness >]() {
+                    let name = stringify!($name);
+                    let endianness = stringify!($endianness);
+                    let code = format!("{endianness}_packets\n{}", $code);
+                    let mut db = ast::SourceDatabase::new();
+                    let file = parse_inline(&mut db, String::from("test"), code).unwrap();
+                    let actual_code = generate(&db, &file);
+                    assert_snapshot_eq(
+                        &format!("tests/generated/{name}_{endianness}.rs"),
+                        &rustfmt(&actual_code),
+                    );
+                }
+            }
+        };
     }
 
-    #[test]
-    fn test_generate_packet_decl_empty() {
-        let file = parse_str(
-            r#"
-              big_endian_packets
-              packet Foo {}
-            "#,
-        );
-        let scope = lint::Scope::new(&file).unwrap();
-        let decl = &file.declarations[0];
-        let actual_code = generate_decl(&scope, &file, decl);
-        assert_snapshot_eq("tests/generated/packet_decl_empty.rs", &rustfmt(&actual_code));
+    /// Create little- and bit-endian tests for the given PDL `code`.
+    ///
+    /// The `code` cannot have an endianness declaration: we will
+    /// automatically generate unit tests for both
+    /// "little_endian_packets" and "big_endian_packets".
+    macro_rules! test_pdl {
+        ($name:ident, $code:expr $(,)?) => {
+            make_pdl_test!($name, $code, little_endian);
+            make_pdl_test!($name, $code, big_endian);
+        };
     }
 
-    #[test]
-    fn test_generate_packet_decl_simple_little_endian() {
-        let file = parse_str(
-            r#"
-              little_endian_packets
+    test_pdl!(packet_decl_empty, "packet Foo {}");
 
-              packet Foo {
-                x: 8,
-                y: 16,
-                z: 24,
-              }
-            "#,
-        );
-        let scope = lint::Scope::new(&file).unwrap();
-        let decl = &file.declarations[0];
-        let actual_code = generate_decl(&scope, &file, decl);
-        assert_snapshot_eq(
-            "tests/generated/packet_decl_simple_little_endian.rs",
-            &rustfmt(&actual_code),
-        );
-    }
+    test_pdl!(
+        packet_decl_simple,
+        r#"
+          packet Foo {
+            x: 8,
+            y: 16,
+            z: 24,
+          }
+        "#
+    );
 
-    #[test]
-    fn test_generate_packet_decl_simple_big_endian() {
-        let file = parse_str(
-            r#"
-              big_endian_packets
-
-              packet Foo {
-                x: 8,
-                y: 16,
-                z: 24,
-              }
-            "#,
-        );
-        let scope = lint::Scope::new(&file).unwrap();
-        let decl = &file.declarations[0];
-        let actual_code = generate_decl(&scope, &file, decl);
-        assert_snapshot_eq(
-            "tests/generated/packet_decl_simple_big_endian.rs",
-            &rustfmt(&actual_code),
-        );
-    }
-
-    #[test]
-    fn test_generate_packet_decl_complex_little_endian() {
-        let file = parse_str(
-            r#"
-              little_endian_packets
-
-              packet Foo {
-                a: 3,
-                b: 8,
-                c: 5,
-                d: 24,
-                e: 12,
-                f: 4,
-              }
-            "#,
-        );
-        let scope = lint::Scope::new(&file).unwrap();
-        let decl = &file.declarations[0];
-        let actual_code = generate_decl(&scope, &file, decl);
-        assert_snapshot_eq(
-            "tests/generated/packet_decl_complex_little_endian.rs",
-            &rustfmt(&actual_code),
-        );
-    }
-
-    #[test]
-    fn test_generate_packet_decl_complex_big_endian() {
-        let file = parse_str(
-            r#"
-              big_endian_packets
-
-              packet Foo {
-                a: 3,
-                b: 8,
-                c: 5,
-                d: 24,
-                e: 12,
-                f: 4,
-              }
-            "#,
-        );
-        let scope = lint::Scope::new(&file).unwrap();
-        let decl = &file.declarations[0];
-        let actual_code = generate_decl(&scope, &file, decl);
-        assert_snapshot_eq(
-            "tests/generated/packet_decl_complex_big_endian.rs",
-            &rustfmt(&actual_code),
-        );
-    }
-
-    #[test]
-    fn test_get_field_range() {
-        // Zero widths will give you an empty slice iff the offset is
-        // byte aligned. In both cases, the slice covers the empty
-        // width. In practice, PDL doesn't allow zero-width fields.
-        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 0), (0..0));
-        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 0), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 8, /*width=*/ 0), (1..1));
-        assert_eq!(get_field_range(/*offset=*/ 9, /*width=*/ 0), (1..2));
-
-        // Non-zero widths work as expected.
-        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 1), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 5), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 8), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 0, /*width=*/ 20), (0..3));
-
-        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 1), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 3), (0..1));
-        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 4), (0..2));
-        assert_eq!(get_field_range(/*offset=*/ 5, /*width=*/ 20), (0..4));
-    }
+    test_pdl!(
+        packet_decl_complex,
+        r#"
+          packet Foo {
+            a: 3,
+            b: 8,
+            c: 5,
+            d: 24,
+            e: 12,
+            f: 4,
+          }
+        "#,
+    );
 }

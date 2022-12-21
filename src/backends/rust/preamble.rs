@@ -12,7 +12,7 @@ pub fn generate(path: &Path) -> String {
     code.push_str("#![allow(warnings, missing_docs)]\n\n");
 
     code.push_str(&quote_block! {
-        use bytes::{BufMut, Bytes, BytesMut};
+        use bytes::{Buf, BufMut, Bytes, BytesMut};
         use num_derive::{FromPrimitive, ToPrimitive};
         use num_traits::{FromPrimitive, ToPrimitive};
         use std::convert::{TryFrom, TryInto};

@@ -1,8 +1,71 @@
 use crate::ast;
 use crate::backends::rust::field::Field;
-use crate::backends::rust::get_field_range;
 use crate::backends::rust::types::Integer;
 use quote::{format_ident, quote};
+
+fn endianness_suffix(width: usize, endianness_value: ast::EndiannessValue) -> &'static str {
+    if width > 8 && endianness_value == ast::EndiannessValue::LittleEndian {
+        "_le"
+    } else {
+        ""
+    }
+}
+
+/// Parse an unsigned integer from `buffer`.
+///
+/// The generated code requires that `buffer` is a mutable
+/// `bytes::Buf` value.
+fn get_uint(
+    endianness: ast::EndiannessValue,
+    buffer: proc_macro2::Ident,
+    width: usize,
+) -> proc_macro2::TokenStream {
+    let suffix = endianness_suffix(width, endianness);
+    let rust_integer_widths = [8, 16, 32, 64];
+    if rust_integer_widths.contains(&width) {
+        // We can use Buf::get_uNN.
+        let get_u = format_ident!("get_u{}{}", width, suffix);
+        quote! {
+            #buffer.#get_u()
+        }
+    } else {
+        // We fall back to Buf::get_uint.
+        let get_uint = format_ident!("get_uint{}", suffix);
+        let value_type = Integer::new(width);
+        let value_nbytes = proc_macro2::Literal::usize_unsuffixed(width / 8);
+        quote! {
+            #buffer.#get_uint(#value_nbytes) as #value_type
+        }
+    }
+}
+
+/// Write an unsigned integer `value` to `buffer`.
+///
+/// The generated code requires that `buffer` is a mutable
+/// `bytes::BufMut` value.
+fn put_uint(
+    endianness: ast::EndiannessValue,
+    buffer: proc_macro2::Ident,
+    value: proc_macro2::TokenStream,
+    width: usize,
+) -> proc_macro2::TokenStream {
+    let suffix = endianness_suffix(width, endianness);
+    let rust_integer_widths = [8, 16, 32, 64];
+    if rust_integer_widths.contains(&width) {
+        // We can use BufMut::put_uNN.
+        let put_u = format_ident!("put_u{}{}", width, suffix);
+        quote! {
+            #buffer.#put_u(#value)
+        }
+    } else {
+        // We fall back to BufMut::put_uint.
+        let put_uint = format_ident!("put_uint{}", suffix);
+        let value_nbytes = proc_macro2::Literal::usize_unsuffixed(width / 8);
+        quote! {
+            #buffer.#put_uint(#value as u64, #value_nbytes)
+        }
+    }
+}
 
 /// A chunk of field.
 ///
@@ -22,32 +85,27 @@ impl Chunk<'_> {
     /// Generate a name for this chunk.
     ///
     /// The name is `"chunk"` if there is more than one field.
-    pub fn get_name(&self) -> proc_macro2::Ident {
+    pub fn name(&self) -> proc_macro2::Ident {
         match self.fields {
-            [field] => field.get_ident(),
+            [field] => field.ident(),
             _ => format_ident!("chunk"),
         }
     }
 
     /// Return the width in bits.
-    pub fn get_width(&self) -> usize {
-        self.fields.iter().map(|field| field.get_width()).sum()
+    pub fn width(&self) -> usize {
+        self.fields.iter().map(|field| field.width()).sum()
     }
 
     /// Generate length checks for this chunk.
-    pub fn generate_length_check(
-        &self,
-        packet_name: &str,
-        offset: usize,
-    ) -> proc_macro2::TokenStream {
-        let range = get_field_range(offset, self.get_width());
-        let wanted_length = syn::Index::from(range.end);
+    pub fn generate_length_check(&self, packet_name: &str) -> proc_macro2::TokenStream {
+        let wanted_length = proc_macro2::Literal::usize_unsuffixed(self.width() / 8);
         quote! {
-            if bytes.len() < #wanted_length {
+            if bytes.remaining() < #wanted_length {
                 return Err(Error::InvalidLengthError {
                     obj: #packet_name.to_string(),
                     wanted: #wanted_length,
-                    got: bytes.len(),
+                    got: bytes.remaining(),
                 });
             }
         }
@@ -58,46 +116,18 @@ impl Chunk<'_> {
         &self,
         packet_name: &str,
         endianness_value: ast::EndiannessValue,
-        offset: usize,
     ) -> proc_macro2::TokenStream {
-        assert!(offset % 8 == 0, "Chunks must be byte-aligned, got offset: {offset}");
-        let getter = match endianness_value {
-            ast::EndiannessValue::BigEndian => format_ident!("from_be_bytes"),
-            ast::EndiannessValue::LittleEndian => format_ident!("from_le_bytes"),
-        };
-
-        let chunk_name = self.get_name();
-        let chunk_width = self.get_width();
-        let chunk_type = Integer::new(chunk_width);
+        let chunk_name = self.name();
+        let chunk_width = self.width();
         assert!(chunk_width % 8 == 0, "Chunks must have a byte size, got width: {chunk_width}");
 
-        let range = get_field_range(offset, chunk_width);
-        let indices = range.map(syn::Index::from).collect::<Vec<_>>();
-        let length_check = self.generate_length_check(packet_name, offset);
-
-        // When the chunk_type.width is larger than chunk_width (e.g.
-        // chunk_width is 24 but chunk_type.width is 32), then we need
-        // zero padding.
-        let zero_padding_len = (chunk_type.width - chunk_width) / 8;
-        // We need the padding on the MSB side of the payload, so for
-        // big-endian, we need to padding on the left, for little-endian
-        // we need it on the right.
-        let (zero_padding_before, zero_padding_after) = match endianness_value {
-            ast::EndiannessValue::BigEndian => {
-                (vec![syn::Index::from(0); zero_padding_len], vec![])
-            }
-            ast::EndiannessValue::LittleEndian => {
-                (vec![], vec![syn::Index::from(0); zero_padding_len])
-            }
-        };
-
+        let length_check = self.generate_length_check(packet_name);
+        let read = get_uint(endianness_value, format_ident!("bytes"), chunk_width);
         let read_adjustments = self.generate_read_adjustments();
 
         quote! {
             #length_check
-            let #chunk_name = #chunk_type::#getter([
-                #(#zero_padding_before,)* #(bytes[#indices]),* #(, #zero_padding_after)*
-            ]);
+            let #chunk_name = #read;
             #read_adjustments
         }
     }
@@ -109,14 +139,14 @@ impl Chunk<'_> {
             return quote! {};
         }
 
-        let chunk_width = self.get_width();
+        let chunk_width = self.width();
         let chunk_type = Integer::new(chunk_width);
 
         let mut field_parsers = Vec::new();
         let mut field_offset = 0;
         for field in self.fields {
             field_parsers.push(field.generate_read_adjustment(field_offset, chunk_type));
-            field_offset += field.get_width();
+            field_offset += field.width();
         }
 
         quote! {
@@ -127,26 +157,18 @@ impl Chunk<'_> {
     pub fn generate_write(
         &self,
         endianness_value: ast::EndiannessValue,
-        offset: usize,
     ) -> proc_macro2::TokenStream {
-        let writer = match endianness_value {
-            ast::EndiannessValue::BigEndian => format_ident!("to_be_bytes"),
-            ast::EndiannessValue::LittleEndian => format_ident!("to_le_bytes"),
-        };
-
-        let chunk_width = self.get_width();
-        let chunk_name = self.get_name();
+        let chunk_width = self.width();
+        let chunk_name = self.name();
         assert!(chunk_width % 8 == 0, "Chunks must have a byte size, got width: {chunk_width}");
 
-        let range = get_field_range(offset, chunk_width);
-        let start = syn::Index::from(range.start);
-        let end = syn::Index::from(range.end);
         // TODO(mgeisler): let slice = (chunk_type_width > chunk_width).then( ... )
-        let chunk_byte_width = syn::Index::from(chunk_width / 8);
         let write_adjustments = self.generate_write_adjustments();
+        let write =
+            put_uint(endianness_value, format_ident!("buffer"), quote!(#chunk_name), chunk_width);
         quote! {
             #write_adjustments
-            buffer[#start..#end].copy_from_slice(&#chunk_name.#writer()[0..#chunk_byte_width]);
+            #write;
         }
     }
 
@@ -154,20 +176,20 @@ impl Chunk<'_> {
         if let [field] = self.fields {
             // If there is a single field in the chunk, then we don't have to
             // shift, mask, or cast.
-            let field_name = field.get_ident();
+            let field_name = field.ident();
             return quote! {
                 let #field_name = self.#field_name;
             };
         }
 
-        let chunk_width = self.get_width();
+        let chunk_width = self.width();
         let chunk_type = Integer::new(chunk_width);
 
         let mut field_parsers = Vec::new();
         let mut field_offset = 0;
         for field in self.fields {
             field_parsers.push(field.generate_write_adjustment(field_offset, chunk_type));
-            field_offset += field.get_width();
+            field_offset += field.width();
         }
 
         quote! {
@@ -187,7 +209,7 @@ mod tests {
     fn test_generate_read_8bit() {
         let fields = [Field::Scalar(ScalarField { id: String::from("a"), width: 8 })];
         let chunk = Chunk::new(&fields);
-        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::BigEndian, 80);
+        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::BigEndian);
         let code = quote! { fn main() { #chunk_read } };
         assert_snapshot_eq(
             "tests/generated/generate_chunk_read_8bit.rs",
@@ -199,7 +221,7 @@ mod tests {
     fn test_generate_read_16bit_le() {
         let fields = [Field::Scalar(ScalarField { id: String::from("a"), width: 16 })];
         let chunk = Chunk::new(&fields);
-        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::LittleEndian, 80);
+        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::LittleEndian);
         let code = quote! { fn main() { #chunk_read } };
         assert_snapshot_eq(
             "tests/generated/generate_chunk_read_16bit_le.rs",
@@ -211,7 +233,7 @@ mod tests {
     fn test_generate_read_16bit_be() {
         let fields = [Field::Scalar(ScalarField { id: String::from("a"), width: 16 })];
         let chunk = Chunk::new(&fields);
-        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::BigEndian, 80);
+        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::BigEndian);
         let code = quote! { fn main() { #chunk_read } };
         assert_snapshot_eq(
             "tests/generated/generate_chunk_read_16bit_be.rs",
@@ -223,7 +245,7 @@ mod tests {
     fn test_generate_read_24bit_le() {
         let fields = [Field::Scalar(ScalarField { id: String::from("a"), width: 24 })];
         let chunk = Chunk::new(&fields);
-        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::LittleEndian, 80);
+        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::LittleEndian);
         let code = quote! { fn main() { #chunk_read } };
         assert_snapshot_eq(
             "tests/generated/generate_chunk_read_24bit_le.rs",
@@ -235,7 +257,7 @@ mod tests {
     fn test_generate_read_24bit_be() {
         let fields = [Field::Scalar(ScalarField { id: String::from("a"), width: 24 })];
         let chunk = Chunk::new(&fields);
-        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::BigEndian, 80);
+        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::BigEndian);
         let code = quote! { fn main() { #chunk_read } };
         assert_snapshot_eq(
             "tests/generated/generate_chunk_read_24bit_be.rs",
@@ -250,7 +272,7 @@ mod tests {
             Field::Scalar(ScalarField { id: String::from("b"), width: 24 }),
         ];
         let chunk = Chunk::new(&fields);
-        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::BigEndian, 80);
+        let chunk_read = chunk.generate_read("Foo", ast::EndiannessValue::BigEndian);
         let code = quote! { fn main() { #chunk_read } };
         assert_snapshot_eq(
             "tests/generated/generate_chunk_read_multiple_fields.rs",
@@ -301,10 +323,10 @@ mod tests {
         let fields = [Field::Scalar(ScalarField { id: String::from("a"), width: 8 })];
         let chunk = Chunk::new(&fields);
         assert_expr_eq(
-            chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
+            chunk.generate_write(ast::EndiannessValue::BigEndian),
             quote! {
                 let a = self.a;
-                buffer[10..11].copy_from_slice(&a.to_be_bytes()[0..1]);
+                buffer.put_u8(a);
             },
         );
     }
@@ -314,10 +336,10 @@ mod tests {
         let fields = [Field::Scalar(ScalarField { id: String::from("a"), width: 16 })];
         let chunk = Chunk::new(&fields);
         assert_expr_eq(
-            chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
+            chunk.generate_write(ast::EndiannessValue::BigEndian),
             quote! {
                 let a = self.a;
-                buffer[10..12].copy_from_slice(&a.to_be_bytes()[0..2]);
+                buffer.put_u16(a);
             },
         );
     }
@@ -327,10 +349,10 @@ mod tests {
         let fields = [Field::Scalar(ScalarField { id: String::from("a"), width: 24 })];
         let chunk = Chunk::new(&fields);
         assert_expr_eq(
-            chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
+            chunk.generate_write(ast::EndiannessValue::BigEndian),
             quote! {
                 let a = self.a;
-                buffer[10..13].copy_from_slice(&a.to_be_bytes()[0..3]);
+                buffer.put_uint(a as u64, 3);
             },
         );
     }
@@ -343,12 +365,12 @@ mod tests {
         ];
         let chunk = Chunk::new(&fields);
         assert_expr_eq(
-            chunk.generate_write(ast::EndiannessValue::BigEndian, 80),
+            chunk.generate_write(ast::EndiannessValue::BigEndian),
             quote! {
                 let chunk = 0;
                 let chunk = chunk | (self.a as u64);
                 let chunk = chunk | (((self.b as u64) & 0xffffff) << 16);
-                buffer[10..15].copy_from_slice(&chunk.to_be_bytes()[0..5]);
+                buffer.put_uint(chunk as u64, 5);
             },
         );
     }
