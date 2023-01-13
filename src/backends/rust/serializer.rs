@@ -77,6 +77,9 @@ impl<'a> FieldSerializer<'a> {
                     shift: self.shift,
                 });
             }
+            ast::Field::Reserved { .. } => {
+                // Nothing to do here.
+            }
             _ => todo!(),
         }
 
@@ -110,7 +113,13 @@ impl<'a> FieldSerializer<'a> {
             .collect::<Vec<_>>();
 
         match values.as_slice() {
-            [] => todo!(),
+            [] => {
+                let span = format_ident!("{}", self.span);
+                let count = syn::Index::from(self.shift / 8);
+                self.code.push(quote! {
+                    #span.put_bytes(0, #count);
+                });
+            }
             [value] => {
                 let put = types::put_uint(self.endianness, value, self.shift, self.span);
                 self.code.push(quote! {

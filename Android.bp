@@ -70,6 +70,8 @@ rust_test_host {
         "tests/generated/packet_decl_mask_scalar_value_little_endian.rs",
         "tests/generated/packet_decl_mixed_scalars_enums_big_endian.rs",
         "tests/generated/packet_decl_mixed_scalars_enums_little_endian.rs",
+        "tests/generated/packet_decl_reserved_field_big_endian.rs",
+        "tests/generated/packet_decl_reserved_field_little_endian.rs",
         "tests/generated/packet_decl_simple_scalars_big_endian.rs",
         "tests/generated/packet_decl_simple_scalars_little_endian.rs",
         "tests/generated/preamble.rs",

@@ -27,6 +27,10 @@ impl FieldDeclarations {
                     #id: #field_type,
                 }
             }
+            ast::Field::Reserved { .. } => {
+                // Nothing to do here.
+                quote! {}
+            }
             _ => todo!(),
         });
     }

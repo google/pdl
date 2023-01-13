@@ -71,10 +71,10 @@ fn generate_packet_decl(
     let id_data = format_ident!("{id}Data");
     let id_builder = format_ident!("{id}Builder");
 
+    let fields_with_ids = fields.iter().filter(|f| f.id().is_some()).collect::<Vec<_>>();
     let field_names =
-        fields.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
-    let field_types = fields.iter().map(types::rust_type).collect::<Vec<_>>();
-
+        fields_with_ids.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
+    let field_types = fields_with_ids.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
     let getter_names = field_names.iter().map(|id| format_ident!("get_{id}"));
 
     let packet_size =
@@ -407,6 +407,15 @@ mod tests {
             y: 5,
             z: Enum9,
             w: 3,
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_reserved_field,
+        "
+          packet Foo {
+            _reserved_: 40,
           }
         "
     );
