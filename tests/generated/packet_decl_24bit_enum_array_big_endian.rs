@@ -19,6 +19,8 @@ pub enum Error {
     InvalidPacketError,
     #[error("{field} was {value:x}, which is not known")]
     ConstraintOutOfBounds { field: String, value: u64 },
+    #[error("Got {actual:x}, expected {expected:x}")]
+    InvalidFixedValue { expected: u64, actual: u64 },
     #[error("when parsing {obj} needed length of {wanted} but got {got}")]
     InvalidLengthError { obj: String, wanted: usize, got: usize },
     #[error("array size ({array} bytes) is not a multiple of the element size ({element} bytes)")]

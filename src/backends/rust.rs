@@ -583,4 +583,29 @@ mod tests {
           }
         "
     );
+
+    test_pdl!(
+        packet_decl_fixed_scalar_field,
+        "
+          packet Foo {
+            _fixed_ = 7 : 7,
+            b: 57,
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_fixed_enum_field,
+        "
+          enum Enum7 : 7 {
+            A = 1,
+            B = 2,
+          }
+
+          packet Foo {
+              _fixed_ = A : Enum7,
+              b: 57,
+          }
+        "
+    );
 }

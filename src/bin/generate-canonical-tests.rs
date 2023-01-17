@@ -155,6 +155,8 @@ fn main() {
             "Packet_Array_Field_UnsizedElement_VariableSize",
             "Packet_Size_Field",
             "Packet_Count_Field",
+            "Packet_FixedScalar_Field",
+            "Packet_FixedEnum_Field",
         ],
         &module_name,
     );

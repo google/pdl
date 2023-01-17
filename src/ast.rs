@@ -350,7 +350,10 @@ impl<A: Annotation> Field<A> {
             | FieldDesc::Size { width, .. }
             | FieldDesc::Count { width, .. }
             | FieldDesc::ElementSize { width, .. }
-            | FieldDesc::Reserved { width, .. } => Some(*width),
+            | FieldDesc::Reserved { width, .. }
+            | FieldDesc::FixedScalar { width, .. } => Some(*width),
+            FieldDesc::FixedEnum { .. } => self.declaration(scope)?.width(scope, false),
+            FieldDesc::Padding { .. } => todo!(),
             FieldDesc::Array { size: Some(size), width, .. } => {
                 let width = width.or_else(|| self.declaration(scope)?.width(scope, false))?;
                 Some(width * size)

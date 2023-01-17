@@ -70,6 +70,17 @@ impl<'a> FieldSerializer<'a> {
                 }
                 self.chunk.push(BitField { value: quote!(self.#field_name), field_type, shift });
             }
+            ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
+                let field_type = types::Integer::new(width);
+                let enum_id = format_ident!("{enum_id}");
+                let tag_id = format_ident!("{tag_id}");
+                self.chunk.push(BitField { value: quote!(#enum_id::#tag_id), field_type, shift });
+            }
+            ast::FieldDesc::FixedScalar { value, .. } => {
+                let field_type = types::Integer::new(width);
+                let value = proc_macro2::Literal::usize_unsuffixed(*value);
+                self.chunk.push(BitField { value: quote!(#value), field_type, shift });
+            }
             ast::FieldDesc::Typedef { id, .. } => {
                 let field_name = format_ident!("{id}");
                 let field_type = types::Integer::new(width);

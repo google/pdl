@@ -62,6 +62,20 @@ packet Packet_Count_Field {
     b: 8[],
 }
 
+// The parser must be able to handle bit fields with fixed scalar values
+// up to 64 bits wide.  The parser should generate a static size guard.
+packet Packet_FixedScalar_Field {
+    _fixed_ = 7 : 7,
+    b: 57,
+}
+
+// The parser must be able to handle bit fields with fixed enum values
+// up to 64 bits wide. The parser should generate a static size guard.
+packet Packet_FixedEnum_Field {
+    _fixed_ = A : Enum7,
+    b: 57,
+}
+
 packet Packet_Array_Field_ByteElement_ConstantSize {
     array: 8[4],
 }
@@ -112,4 +126,18 @@ packet Packet_Array_Field_UnsizedElement_VariableCount {
 
 packet Packet_Array_Field_UnsizedElement_UnknownSize {
     array: UnsizedStruct[],
+}
+
+// The parser must be able to handle bit fields with fixed scalar values
+// up to 64 bits wide.  The parser should generate a static size guard.
+struct Struct_FixedScalar_Field_ {
+    _fixed_ = 7 : 7,
+    b: 57,
+}
+
+// The parser must be able to handle bit fields with fixed enum values
+// up to 64 bits wide. The parser should generate a static size guard.
+struct Struct_FixedEnum_Field_ {
+    _fixed_ = A : Enum7,
+    b: 57,
 }
