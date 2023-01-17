@@ -84,7 +84,8 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
                 let expected = format_ident!("expected_{key}");
                 let json = to_json(&value);
                 quote! {
-                    let #expected: serde_json::Value = serde_json::from_str(#json).unwrap();
+                    let #expected: serde_json::Value = serde_json::from_str(#json)
+                        .expect("Could not create expected value from canonical JSON data");
                     assert_eq!(json!(actual.#getter()), #expected);
                 }
             });
@@ -100,7 +101,8 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
 
                 #[test]
                 fn #serialize_test_name() {
-                    let builder: #module::#builder_name = serde_json::from_str(#json).unwrap();
+                    let builder: #module::#builder_name = serde_json::from_str(#json)
+                        .expect("Could not create builder from canonical JSON data");
                     let packet = builder.build();
                     let packed = #packed;
                     assert_eq!(packet.to_vec(), packed);
