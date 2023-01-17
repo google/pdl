@@ -23,6 +23,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::ast;
+use crate::parser;
 
 use self::{
     enums::generate_enum, packet_parser::generate_packet,
@@ -31,7 +32,7 @@ use self::{
 
 use super::intermediate::Schema;
 
-pub fn generate(file: &ast::File, schema: &Schema) -> Result<String, String> {
+pub fn generate(file: &parser::ast::File, schema: &Schema) -> Result<String, String> {
     match file.endianness.value {
         ast::EndiannessValue::LittleEndian => {}
         _ => unimplemented!("Only little_endian endianness supported"),
@@ -43,9 +44,9 @@ pub fn generate(file: &ast::File, schema: &Schema) -> Result<String, String> {
 
     let mut children = HashMap::<&str, Vec<&str>>::new();
     for decl in &file.declarations {
-        match decl {
-            ast::Decl::Packet { id, parent_id: Some(parent_id), .. }
-            | ast::Decl::Struct { id, parent_id: Some(parent_id), .. } => {
+        match &decl.desc {
+            ast::DeclDesc::Packet { id, parent_id: Some(parent_id), .. }
+            | ast::DeclDesc::Struct { id, parent_id: Some(parent_id), .. } => {
                 children.entry(parent_id.as_str()).or_default().push(id.as_str());
             }
             _ => {}
@@ -69,14 +70,14 @@ pub fn generate(file: &ast::File, schema: &Schema) -> Result<String, String> {
 }
 
 fn generate_decl(
-    decl: &ast::Decl,
+    decl: &parser::ast::Decl,
     schema: &Schema,
     children: &HashMap<&str, Vec<&str>>,
 ) -> Result<TokenStream, String> {
-    match decl {
-        ast::Decl::Enum { id, tags, width, .. } => Ok(generate_enum(id, tags, *width)),
-        ast::Decl::Packet { id, fields, parent_id, .. }
-        | ast::Decl::Struct { id, fields, parent_id, .. } => {
+    match &decl.desc {
+        ast::DeclDesc::Enum { id, tags, width, .. } => Ok(generate_enum(id, tags, *width)),
+        ast::DeclDesc::Packet { id, fields, parent_id, .. }
+        | ast::DeclDesc::Struct { id, fields, parent_id, .. } => {
             let parser = generate_packet(
                 id,
                 fields,

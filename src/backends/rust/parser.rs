@@ -1,11 +1,12 @@
 use crate::backends::rust::{mask_bits, types};
+use crate::parser::ast as parser_ast;
 use crate::{ast, lint};
 use quote::{format_ident, quote};
 
 /// A single bit-field.
 struct BitField<'a> {
     shift: usize, // The shift to apply to this field.
-    field: &'a ast::Field,
+    field: &'a parser_ast::Field,
 }
 
 pub struct FieldParser<'a> {
@@ -38,7 +39,7 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    pub fn add(&mut self, field: &'a ast::Field) {
+    pub fn add(&mut self, field: &'a parser_ast::Field) {
         if field.is_bitfield(self.scope) {
             self.add_bit_field(field);
             return;
@@ -47,7 +48,7 @@ impl<'a> FieldParser<'a> {
         todo!("not yet supported: {field:?}")
     }
 
-    fn add_bit_field(&mut self, field: &'a ast::Field) {
+    fn add_bit_field(&mut self, field: &'a parser_ast::Field) {
         self.chunk.push(BitField { shift: self.shift, field });
         self.shift += field.width(self.scope).unwrap();
         if self.shift % 8 != 0 {
@@ -112,14 +113,14 @@ impl<'a> FieldParser<'a> {
                 v = quote! { #v as #value_type };
             }
 
-            self.code.push(match field {
-                ast::Field::Scalar { id, .. } => {
+            self.code.push(match &field.desc {
+                ast::FieldDesc::Scalar { id, .. } => {
                     let id = format_ident!("{id}");
                     quote! {
                         let #id = #v;
                     }
                 }
-                ast::Field::Typedef { id, type_id, .. } => {
+                ast::FieldDesc::Typedef { id, type_id } => {
                     let id = format_ident!("{id}");
                     let type_id = format_ident!("{type_id}");
                     let from_u = format_ident!("from_u{}", value_type.width);
@@ -130,7 +131,7 @@ impl<'a> FieldParser<'a> {
                         let #id = #type_id::#from_u(#v).unwrap();
                     }
                 }
-                ast::Field::Reserved { .. } => {
+                ast::FieldDesc::Reserved { .. } => {
                     // Nothing to do here.
                     quote! {}
                 }

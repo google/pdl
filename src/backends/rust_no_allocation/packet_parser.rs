@@ -4,6 +4,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
 use crate::ast;
+use crate::parser;
 
 use crate::backends::intermediate::{
     ComputedOffsetId, ComputedValueId, PacketOrStruct, PacketOrStructLength, Schema,
@@ -14,7 +15,7 @@ use super::utils::get_integer_type;
 
 pub fn generate_packet(
     id: &str,
-    fields: &[ast::Field],
+    fields: &[parser::ast::Field],
     parent_id: Option<&str>,
     schema: &Schema,
     curr_schema: &PacketOrStruct,
@@ -38,22 +39,22 @@ pub fn generate_packet(
         );
 
     let field_getters = fields.iter().map(|field| {
-        match field {
-            ast::Field::Padding { .. }
-            | ast::Field::Reserved { .. }
-            | ast::Field::Fixed { .. }
-            | ast::Field::ElementSize { .. }
-            | ast::Field::Count { .. }
-            | ast::Field::Size { .. } => {
+        match &field.desc {
+            ast::FieldDesc::Padding { .. }
+            | ast::FieldDesc::Reserved { .. }
+            | ast::FieldDesc::Fixed { .. }
+            | ast::FieldDesc::ElementSize { .. }
+            | ast::FieldDesc::Count { .. }
+            | ast::FieldDesc::Size { .. } => {
                 // no-op, no getter generated for this type
                 quote! {}
             }
-            ast::Field::Group { .. } => unreachable!(),
-            ast::Field::Checksum { .. } => {
+            ast::FieldDesc::Group { .. } => unreachable!(),
+            ast::FieldDesc::Checksum { .. } => {
                 unimplemented!("checksums not yet supported with this backend")
             }
-            ast::Field::Payload { .. } | ast::Field::Body { .. } => {
-                let name = if matches!(field, ast::Field::Payload { .. }) { "_payload_"} else { "_body_"};
+            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+                let name = if matches!(field.desc, ast::FieldDesc::Payload { .. }) { "_payload_"} else { "_body_"};
                 let payload_start_offset = ComputedOffsetId::FieldOffset(name).call_fn();
                 let payload_end_offset = ComputedOffsetId::FieldEndOffset(name).call_fn();
                 quote! {
@@ -74,7 +75,7 @@ pub fn generate_packet(
                     }
                 }
             }
-            ast::Field::Array { id, width, type_id, .. } => {
+            ast::FieldDesc::Array { id, width, type_id, .. } => {
                 let (elem_type, return_type) = if let Some(width) = width {
                     let ident = get_integer_type(*width);
                     (ident.clone(), quote!{ #ident })
@@ -140,7 +141,7 @@ pub fn generate_packet(
                     }
                 }
             }
-            ast::Field::Scalar { id, width, .. } => {
+            ast::FieldDesc::Scalar { id, width } => {
                 let try_getter_name = format_ident!("try_get_{id}");
                 let getter_name = format_ident!("get_{id}");
                 let offset = ComputedOffsetId::FieldOffset(id).call_fn();
@@ -156,7 +157,7 @@ pub fn generate_packet(
                     }
                 }
             }
-            ast::Field::Typedef { id, type_id, .. } => {
+            ast::FieldDesc::Typedef { id, type_id } => {
                 let try_getter_name = format_ident!("try_get_{id}");
                 let getter_name = format_ident!("get_{id}");
 
@@ -213,25 +214,25 @@ pub fn generate_packet(
         quote! { parent }
     };
 
-    let field_validators = fields.iter().map(|field| match field {
-        ast::Field::Checksum { .. } => unimplemented!(),
-        ast::Field::Group { .. } => unreachable!(),
-        ast::Field::Padding { .. }
-        | ast::Field::Size { .. }
-        | ast::Field::Count { .. }
-        | ast::Field::ElementSize { .. }
-        | ast::Field::Body { .. }
-        | ast::Field::Fixed { .. }
-        | ast::Field::Reserved { .. } => {
+    let field_validators = fields.iter().map(|field| match &field.desc {
+        ast::FieldDesc::Checksum { .. } => unimplemented!(),
+        ast::FieldDesc::Group { .. } => unreachable!(),
+        ast::FieldDesc::Padding { .. }
+        | ast::FieldDesc::Size { .. }
+        | ast::FieldDesc::Count { .. }
+        | ast::FieldDesc::ElementSize { .. }
+        | ast::FieldDesc::Body
+        | ast::FieldDesc::Fixed { .. }
+        | ast::FieldDesc::Reserved { .. } => {
             quote! {}
         }
-        ast::Field::Payload { .. } => {
+        ast::FieldDesc::Payload { .. } => {
             quote! {
                 self.try_get_payload()?;
                 self.try_get_raw_payload()?;
             }
         }
-        ast::Field::Array { id, .. } => {
+        ast::FieldDesc::Array { id, .. } => {
             let iter_ident = format_ident!("try_get_{id}_iter");
             quote! {
                 for elem in self.#iter_ident()? {
@@ -239,7 +240,7 @@ pub fn generate_packet(
                 }
             }
         }
-        ast::Field::Scalar { id, .. } | ast::Field::Typedef { id, .. } => {
+        ast::FieldDesc::Scalar { id, .. } | ast::FieldDesc::Typedef { id, .. } => {
             let getter_ident = format_ident!("try_get_{id}");
             quote! { self.#getter_ident()?; }
         }

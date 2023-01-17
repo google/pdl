@@ -1,5 +1,6 @@
 use crate::ast;
 use crate::backends::rust::types;
+use crate::parser::ast as parser_ast;
 use quote::{format_ident, quote};
 
 pub struct FieldDeclarations {
@@ -11,23 +12,23 @@ impl FieldDeclarations {
         FieldDeclarations { code: Vec::new() }
     }
 
-    pub fn add(&mut self, field: &ast::Field) {
-        self.code.push(match field {
-            ast::Field::Scalar { id, width, .. } => {
+    pub fn add(&mut self, field: &parser_ast::Field) {
+        self.code.push(match &field.desc {
+            ast::FieldDesc::Scalar { id, width } => {
                 let id = format_ident!("{id}");
                 let field_type = types::Integer::new(*width);
                 quote! {
                     #id: #field_type,
                 }
             }
-            ast::Field::Typedef { id, type_id, .. } => {
+            ast::FieldDesc::Typedef { id, type_id } => {
                 let id = format_ident!("{id}");
                 let field_type = format_ident!("{type_id}");
                 quote! {
                     #id: #field_type,
                 }
             }
-            ast::Field::Reserved { .. } => {
+            ast::FieldDesc::Reserved { .. } => {
                 // Nothing to do here.
                 quote! {}
             }

@@ -9,6 +9,7 @@ use crate::{
         intermediate::{ComputedValue, ComputedValueId, PacketOrStruct, Schema},
         rust_no_allocation::utils::get_integer_type,
     },
+    parser,
 };
 
 fn standardize_child(id: &str) -> &str {
@@ -21,7 +22,7 @@ fn standardize_child(id: &str) -> &str {
 pub fn generate_packet_serializer(
     id: &str,
     parent_id: Option<&str>,
-    fields: &[ast::Field],
+    fields: &[parser::ast::Field],
     schema: &Schema,
     curr_schema: &PacketOrStruct,
     children: &HashMap<&str, Vec<&str>>,
@@ -31,25 +32,25 @@ pub fn generate_packet_serializer(
     let builder_fields = fields
         .iter()
         .filter_map(|field| {
-            match field {
-                ast::Field::Padding { .. }
-                | ast::Field::Reserved { .. }
-                | ast::Field::Fixed { .. }
-                | ast::Field::ElementSize { .. }
-                | ast::Field::Count { .. }
-                | ast::Field::Size { .. } => {
+            match &field.desc {
+                ast::FieldDesc::Padding { .. }
+                | ast::FieldDesc::Reserved { .. }
+                | ast::FieldDesc::Fixed { .. }
+                | ast::FieldDesc::ElementSize { .. }
+                | ast::FieldDesc::Count { .. }
+                | ast::FieldDesc::Size { .. } => {
                     // no-op, no getter generated for this type
                     None
                 }
-                ast::Field::Group { .. } => unreachable!(),
-                ast::Field::Checksum { .. } => {
+                ast::FieldDesc::Group { .. } => unreachable!(),
+                ast::FieldDesc::Checksum { .. } => {
                     unimplemented!("checksums not yet supported with this backend")
                 }
-                ast::Field::Body { .. } | ast::Field::Payload { .. } => {
+                ast::FieldDesc::Body | ast::FieldDesc::Payload { .. } => {
                     let type_ident = format_ident!("{id}Child");
                     Some(("_child_", quote! { #type_ident }))
                 }
-                ast::Field::Array { id, width, type_id, .. } => {
+                ast::FieldDesc::Array { id, width, type_id, .. } => {
                     let element_type = if let Some(width) = width {
                         get_integer_type(*width)
                     } else if let Some(type_id) = type_id {
@@ -63,11 +64,11 @@ pub fn generate_packet_serializer(
                     };
                     Some((id.as_str(), quote! { Box<[#element_type]> }))
                 }
-                ast::Field::Scalar { id, width, .. } => {
+                ast::FieldDesc::Scalar { id, width } => {
                     let id_type = get_integer_type(*width);
                     Some((id.as_str(), quote! { #id_type }))
                 }
-                ast::Field::Typedef { id, type_id, .. } => {
+                ast::FieldDesc::Typedef { id, type_id } => {
                     let type_ident = if schema.enums.contains_key(type_id.as_str()) {
                         format_ident!("{type_id}")
                     } else {
@@ -85,9 +86,9 @@ pub fn generate_packet_serializer(
     let mut has_child = false;
 
     let serializer = fields.iter().map(|field| {
-        match field {
-            ast::Field::Checksum { .. } | ast::Field::Group { .. } => unimplemented!(),
-            ast::Field::Padding { size, .. } => {
+        match &field.desc {
+            ast::FieldDesc::Checksum { .. } | ast::FieldDesc::Group { .. } => unimplemented!(),
+            ast::FieldDesc::Padding { size, .. } => {
                 quote! {
                     if (most_recent_array_size_in_bits > #size * 8) {
                         return Err(SerializeError::NegativePadding);
@@ -95,7 +96,7 @@ pub fn generate_packet_serializer(
                     writer.write_bits((#size * 8 - most_recent_array_size_in_bits) as usize, || Ok(0u64))?;
                 }
             },
-            ast::Field::Size { field_id, width, .. } => {
+            ast::FieldDesc::Size { field_id, width } => {
                 let field_id = standardize_child(field_id);
                 let field_ident = format_ident!("{field_id}");
 
@@ -137,11 +138,11 @@ pub fn generate_packet_serializer(
                     })?;
                 }
             }
-            ast::Field::Count { field_id, width, .. } => {
+            ast::FieldDesc::Count { field_id, width } => {
                 let field_ident = format_ident!("{field_id}");
                 quote! { writer.write_bits(#width, || u64::try_from(self.#field_ident.len()).or(Err(SerializeError::IntegerConversionFailure)))?; }
             }
-            ast::Field::ElementSize { field_id, width, .. } => {
+            ast::FieldDesc::ElementSize { field_id, width } => {
                 // TODO(aryarahul) - add validation for elementsize against all the other elements
                 let field_ident = format_ident!("{field_id}");
                 quote! {
@@ -158,14 +159,14 @@ pub fn generate_packet_serializer(
                     writer.write_bits(#width, || get_element_size() )?;
                 }
             }
-            ast::Field::Reserved { width, .. } => {
+            ast::FieldDesc::Reserved { width, .. } => {
                 quote!{ writer.write_bits(#width, || Ok(0u64))?; }
             }
-            ast::Field::Scalar { width, id, .. } => {
+            ast::FieldDesc::Scalar { width, id } => {
                 let field_ident = format_ident!("{id}");
                 quote! { writer.write_bits(#width, || Ok(self.#field_ident))?; }
             }
-            ast::Field::Fixed { width, enum_id, value, tag_id, .. } => {
+            ast::FieldDesc::Fixed { width, enum_id, value, tag_id } => {
                 let width = if let Some(width) = width {
                     quote! { #width }
                 } else if let Some(enum_id) = enum_id {
@@ -186,11 +187,11 @@ pub fn generate_packet_serializer(
                 };
                 quote!{ writer.write_bits(#width, || Ok(#value))?; }
             }
-            ast::Field::Body { .. } | ast::Field::Payload { .. } => {
+            ast::FieldDesc::Body | ast::FieldDesc::Payload { .. } => {
                 has_child = true;
                 quote! { self._child_.serialize(writer)?; }
             }
-            ast::Field::Array { width, id, .. } => {
+            ast::FieldDesc::Array { width, id, .. } => {
                 let id_ident = format_ident!("{id}");
                 if let Some(width) = width {
                     quote! {
@@ -209,7 +210,7 @@ pub fn generate_packet_serializer(
                      }
                 }
             }
-            ast::Field::Typedef { id, .. } => {
+            ast::FieldDesc::Typedef { id, .. } => {
                 let id_ident = format_ident!("{id}");
                 quote! { self.#id_ident.serialize(writer)?; }
             }

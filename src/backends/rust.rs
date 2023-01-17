@@ -12,6 +12,8 @@ use crate::{ast, lint};
 use quote::{format_ident, quote};
 use std::path::Path;
 
+use crate::parser::ast as parser_ast;
+
 mod declarations;
 mod parser;
 mod preamble;
@@ -49,7 +51,7 @@ fn generate_packet_decl(
     // Packet:
     id: &str,
     _constraints: &[ast::Constraint],
-    fields: &[ast::Field],
+    fields: &[parser_ast::Field],
     _parent_id: Option<&str>,
 ) -> proc_macro2::TokenStream {
     // TODO(mgeisler): use the convert_case crate to convert between
@@ -237,10 +239,14 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag]) -> proc_macro2::TokenStream {
     }
 }
 
-fn generate_decl(scope: &lint::Scope<'_>, file: &ast::File, decl: &ast::Decl) -> String {
-    match decl {
-        ast::Decl::Packet { id, constraints, fields, parent_id, .. }
-        | ast::Decl::Struct { id, constraints, fields, parent_id, .. } => generate_packet_decl(
+fn generate_decl(
+    scope: &lint::Scope<'_>,
+    file: &parser_ast::File,
+    decl: &parser_ast::Decl,
+) -> String {
+    match &decl.desc {
+        ast::DeclDesc::Packet { id, constraints, fields, parent_id, .. }
+        | ast::DeclDesc::Struct { id, constraints, fields, parent_id, .. } => generate_packet_decl(
             scope,
             file.endianness.value,
             id,
@@ -249,7 +255,7 @@ fn generate_decl(scope: &lint::Scope<'_>, file: &ast::File, decl: &ast::Decl) ->
             parent_id.as_deref(),
         )
         .to_string(),
-        ast::Decl::Enum { id, tags, .. } => generate_enum_decl(id, tags).to_string(),
+        ast::DeclDesc::Enum { id, tags, .. } => generate_enum_decl(id, tags).to_string(),
         _ => todo!("unsupported Decl::{:?}", decl),
     }
 }
@@ -258,7 +264,7 @@ fn generate_decl(scope: &lint::Scope<'_>, file: &ast::File, decl: &ast::Decl) ->
 ///
 /// The code is not formatted, pipe it through `rustfmt` to get
 /// readable source code.
-pub fn generate(sources: &ast::SourceDatabase, file: &ast::File) -> String {
+pub fn generate(sources: &ast::SourceDatabase, file: &parser_ast::File) -> String {
     let mut code = String::new();
 
     let source = sources.get(file.file).expect("could not read source");

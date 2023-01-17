@@ -30,6 +30,11 @@ pub struct SourceRange {
     pub end: SourceLocation,
 }
 
+pub trait Annotation: fmt::Debug + Serialize {
+    type FieldAnnotation: Default + fmt::Debug;
+    type DeclAnnotation: Default + fmt::Debug;
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename = "comment")]
 pub struct Comment {
@@ -70,34 +75,32 @@ pub struct Constraint {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(tag = "kind")]
-pub enum Field {
+pub enum FieldDesc {
     #[serde(rename = "checksum_field")]
-    Checksum { loc: SourceRange, field_id: String },
+    Checksum { field_id: String },
     #[serde(rename = "padding_field")]
-    Padding { loc: SourceRange, size: usize },
+    Padding { size: usize },
     #[serde(rename = "size_field")]
-    Size { loc: SourceRange, field_id: String, width: usize },
+    Size { field_id: String, width: usize },
     #[serde(rename = "count_field")]
-    Count { loc: SourceRange, field_id: String, width: usize },
+    Count { field_id: String, width: usize },
     #[serde(rename = "elementsize_field")]
-    ElementSize { loc: SourceRange, field_id: String, width: usize },
+    ElementSize { field_id: String, width: usize },
     #[serde(rename = "body_field")]
-    Body { loc: SourceRange },
+    Body,
     #[serde(rename = "payload_field")]
-    Payload { loc: SourceRange, size_modifier: Option<String> },
+    Payload { size_modifier: Option<String> },
     #[serde(rename = "fixed_field")]
     Fixed {
-        loc: SourceRange,
         width: Option<usize>,
         value: Option<usize>,
         enum_id: Option<String>,
         tag_id: Option<String>,
     },
     #[serde(rename = "reserved_field")]
-    Reserved { loc: SourceRange, width: usize },
+    Reserved { width: usize },
     #[serde(rename = "array_field")]
     Array {
-        loc: SourceRange,
         id: String,
         width: Option<usize>,
         type_id: Option<String>,
@@ -105,11 +108,20 @@ pub enum Field {
         size: Option<usize>,
     },
     #[serde(rename = "scalar_field")]
-    Scalar { loc: SourceRange, id: String, width: usize },
+    Scalar { id: String, width: usize },
     #[serde(rename = "typedef_field")]
-    Typedef { loc: SourceRange, id: String, type_id: String },
+    Typedef { id: String, type_id: String },
     #[serde(rename = "group_field")]
-    Group { loc: SourceRange, group_id: String, constraints: Vec<Constraint> },
+    Group { group_id: String, constraints: Vec<Constraint> },
+}
+
+#[derive(Debug, Serialize)]
+pub struct Field<A: Annotation> {
+    pub loc: SourceRange,
+    #[serde(skip_serializing)]
+    pub annot: A::FieldAnnotation,
+    #[serde(flatten)]
+    pub desc: FieldDesc,
 }
 
 #[derive(Debug, Serialize)]
@@ -121,42 +133,49 @@ pub struct TestCase {
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind")]
-pub enum Decl {
+pub enum DeclDesc<A: Annotation> {
     #[serde(rename = "checksum_declaration")]
-    Checksum { id: String, loc: SourceRange, function: String, width: usize },
+    Checksum { id: String, function: String, width: usize },
     #[serde(rename = "custom_field_declaration")]
-    CustomField { id: String, loc: SourceRange, width: Option<usize>, function: String },
+    CustomField { id: String, width: Option<usize>, function: String },
     #[serde(rename = "enum_declaration")]
-    Enum { id: String, loc: SourceRange, tags: Vec<Tag>, width: usize },
+    Enum { id: String, tags: Vec<Tag>, width: usize },
     #[serde(rename = "packet_declaration")]
     Packet {
         id: String,
-        loc: SourceRange,
         constraints: Vec<Constraint>,
-        fields: Vec<Field>,
+        fields: Vec<Field<A>>,
         parent_id: Option<String>,
     },
     #[serde(rename = "struct_declaration")]
     Struct {
         id: String,
-        loc: SourceRange,
         constraints: Vec<Constraint>,
-        fields: Vec<Field>,
+        fields: Vec<Field<A>>,
         parent_id: Option<String>,
     },
     #[serde(rename = "group_declaration")]
-    Group { id: String, loc: SourceRange, fields: Vec<Field> },
+    Group { id: String, fields: Vec<Field<A>> },
     #[serde(rename = "test_declaration")]
-    Test { loc: SourceRange, type_id: String, test_cases: Vec<TestCase> },
+    Test { type_id: String, test_cases: Vec<TestCase> },
 }
 
 #[derive(Debug, Serialize)]
-pub struct File {
+pub struct Decl<A: Annotation> {
+    pub loc: SourceRange,
+    #[serde(skip_serializing)]
+    pub annot: A::DeclAnnotation,
+    #[serde(flatten)]
+    pub desc: DeclDesc<A>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct File<A: Annotation> {
     pub version: String,
     pub file: FileId,
     pub comments: Vec<Comment>,
     pub endianness: Endianness,
-    pub declarations: Vec<Decl>,
+    pub declarations: Vec<Decl<A>>,
 }
 
 impl SourceLocation {
@@ -213,8 +232,8 @@ impl ops::Add<SourceRange> for SourceRange {
     }
 }
 
-impl File {
-    pub fn new(file: FileId) -> File {
+impl<A: Annotation> File<A> {
+    pub fn new(file: FileId) -> File<A> {
         File {
             version: "1,0".to_owned(),
             comments: vec![],
@@ -230,92 +249,68 @@ impl File {
     }
 }
 
-impl Decl {
-    pub fn loc(&self) -> &SourceRange {
-        match self {
-            Decl::Checksum { loc, .. }
-            | Decl::CustomField { loc, .. }
-            | Decl::Enum { loc, .. }
-            | Decl::Packet { loc, .. }
-            | Decl::Struct { loc, .. }
-            | Decl::Group { loc, .. }
-            | Decl::Test { loc, .. } => loc,
+impl<A: Annotation> Decl<A> {
+    pub fn id(&self) -> Option<&str> {
+        match &self.desc {
+            DeclDesc::Test { .. } => None,
+            DeclDesc::Checksum { id, .. }
+            | DeclDesc::CustomField { id, .. }
+            | DeclDesc::Enum { id, .. }
+            | DeclDesc::Packet { id, .. }
+            | DeclDesc::Struct { id, .. }
+            | DeclDesc::Group { id, .. } => Some(id),
         }
     }
 
-    pub fn id(&self) -> Option<&str> {
-        match self {
-            Decl::Test { .. } => None,
-            Decl::Checksum { id, .. }
-            | Decl::CustomField { id, .. }
-            | Decl::Enum { id, .. }
-            | Decl::Packet { id, .. }
-            | Decl::Struct { id, .. }
-            | Decl::Group { id, .. } => Some(id),
-        }
+    pub fn new(loc: SourceRange, desc: DeclDesc<A>) -> Decl<A> {
+        Decl { loc, annot: Default::default(), desc }
     }
 }
 
-impl Field {
-    pub fn loc(&self) -> &SourceRange {
-        match self {
-            Field::Checksum { loc, .. }
-            | Field::Padding { loc, .. }
-            | Field::Size { loc, .. }
-            | Field::ElementSize { loc, .. }
-            | Field::Count { loc, .. }
-            | Field::Body { loc, .. }
-            | Field::Payload { loc, .. }
-            | Field::Fixed { loc, .. }
-            | Field::Reserved { loc, .. }
-            | Field::Array { loc, .. }
-            | Field::Scalar { loc, .. }
-            | Field::Typedef { loc, .. }
-            | Field::Group { loc, .. } => loc,
-        }
-    }
-
+impl<A: Annotation> Field<A> {
     pub fn id(&self) -> Option<&str> {
-        match self {
-            Field::Checksum { .. }
-            | Field::Padding { .. }
-            | Field::Size { .. }
-            | Field::ElementSize { .. }
-            | Field::Count { .. }
-            | Field::Body { .. }
-            | Field::Payload { .. }
-            | Field::Fixed { .. }
-            | Field::Reserved { .. }
-            | Field::Group { .. } => None,
-            Field::Array { id, .. } | Field::Scalar { id, .. } | Field::Typedef { id, .. } => {
-                Some(id)
-            }
+        match &self.desc {
+            FieldDesc::Checksum { .. }
+            | FieldDesc::Padding { .. }
+            | FieldDesc::Size { .. }
+            | FieldDesc::Count { .. }
+            | FieldDesc::ElementSize { .. }
+            | FieldDesc::Body
+            | FieldDesc::Payload { .. }
+            | FieldDesc::Fixed { .. }
+            | FieldDesc::Reserved { .. }
+            | FieldDesc::Group { .. } => None,
+            FieldDesc::Array { id, .. }
+            | FieldDesc::Scalar { id, .. }
+            | FieldDesc::Typedef { id, .. } => Some(id),
         }
     }
 
     pub fn is_bitfield(&self, scope: &lint::Scope<'_>) -> bool {
-        match self {
-            Field::Size { .. }
-            | Field::Count { .. }
-            | Field::Fixed { .. }
-            | Field::Reserved { .. }
-            | Field::Scalar { .. } => true,
-            Field::Typedef { type_id, .. } => {
+        match &self.desc {
+            FieldDesc::Size { .. }
+            | FieldDesc::Count { .. }
+            | FieldDesc::ElementSize { .. }
+            | FieldDesc::Fixed { .. }
+            | FieldDesc::Reserved { .. }
+            | FieldDesc::Scalar { .. } => true,
+            FieldDesc::Typedef { type_id, .. } => {
                 let field = scope.typedef.get(type_id.as_str());
-                matches!(field, Some(Decl::Enum { .. }))
+                matches!(field, Some(Decl { desc: DeclDesc::Enum { .. }, .. }))
             }
             _ => false,
         }
     }
 
     pub fn width(&self, scope: &lint::Scope<'_>) -> Option<usize> {
-        match self {
-            Field::Scalar { width, .. }
-            | Field::Size { width, .. }
-            | Field::Count { width, .. }
-            | Field::Reserved { width, .. } => Some(*width),
-            Field::Typedef { type_id, .. } => match scope.typedef.get(type_id.as_str()) {
-                Some(Decl::Enum { width, .. }) => Some(*width),
+        match &self.desc {
+            FieldDesc::Scalar { width, .. }
+            | FieldDesc::Size { width, .. }
+            | FieldDesc::Count { width, .. }
+            | FieldDesc::ElementSize { width, .. }
+            | FieldDesc::Reserved { width, .. } => Some(*width),
+            FieldDesc::Typedef { type_id, .. } => match scope.typedef.get(type_id.as_str()) {
+                Some(Decl { desc: DeclDesc::Enum { width, .. }, .. }) => Some(*width),
                 _ => None,
             },
             // TODO(mgeisler): padding, arrays, etc.

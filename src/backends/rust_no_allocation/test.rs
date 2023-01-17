@@ -203,33 +203,34 @@ pub fn generate_test_file() -> Result<String, String> {
     let pdl = include_str!("../../../tests/canonical/le_rust_noalloc_test_file.pdl");
     let ast = parse_inline(&mut ast::SourceDatabase::new(), "test.pdl".to_owned(), pdl.to_owned())
         .expect("could not parse reference PDL");
-    let packet_lookup = ast
-        .declarations
-        .iter()
-        .filter_map(|decl| match decl {
-            ast::Decl::Packet { id, fields, .. } | ast::Decl::Struct { id, fields, .. } => Some((
-                id.as_str(),
-                fields
-                    .iter()
-                    .filter_map(|field| match field {
-                        ast::Field::Body { .. } | ast::Field::Payload { .. } => {
-                            Some(("payload", None))
-                        }
-                        ast::Field::Array { id, type_id, .. } => match type_id {
-                            Some(type_id) => Some((id.as_str(), Some(type_id.as_str()))),
-                            None => Some((id.as_str(), None)),
-                        },
-                        ast::Field::Typedef { id, type_id, .. } => {
-                            Some((id.as_str(), Some(type_id.as_str())))
-                        }
-                        ast::Field::Scalar { id, .. } => Some((id.as_str(), None)),
-                        _ => None,
-                    })
-                    .collect::<HashMap<_, _>>(),
-            )),
-            _ => None,
-        })
-        .collect::<HashMap<_, _>>();
+    let packet_lookup =
+        ast.declarations
+            .iter()
+            .filter_map(|decl| match &decl.desc {
+                ast::DeclDesc::Packet { id, fields, .. }
+                | ast::DeclDesc::Struct { id, fields, .. } => Some((
+                    id.as_str(),
+                    fields
+                        .iter()
+                        .filter_map(|field| match &field.desc {
+                            ast::FieldDesc::Body { .. } | ast::FieldDesc::Payload { .. } => {
+                                Some(("payload", None))
+                            }
+                            ast::FieldDesc::Array { id, type_id, .. } => match type_id {
+                                Some(type_id) => Some((id.as_str(), Some(type_id.as_str()))),
+                                None => Some((id.as_str(), None)),
+                            },
+                            ast::FieldDesc::Typedef { id, type_id, .. } => {
+                                Some((id.as_str(), Some(type_id.as_str())))
+                            }
+                            ast::FieldDesc::Scalar { id, .. } => Some((id.as_str(), None)),
+                            _ => None,
+                        })
+                        .collect::<HashMap<_, _>>(),
+                )),
+                _ => None,
+            })
+            .collect::<HashMap<_, _>>();
 
     for PacketTest { packet, tests } in test_vectors.iter() {
         if !pdl.contains(packet) {

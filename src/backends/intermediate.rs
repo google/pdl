@@ -1,6 +1,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 
 use crate::ast;
+use crate::parser;
 
 pub struct Schema<'a> {
     pub packets_and_structs: HashMap<&'a str, PacketOrStruct<'a>>,
@@ -82,7 +83,7 @@ pub enum ComputedOffset<'a> {
     Alias(ComputedOffsetId<'a>),
 }
 
-pub fn generate(file: &ast::File) -> Result<Schema, String> {
+pub fn generate(file: &parser::ast::File) -> Result<Schema, String> {
     let mut schema = Schema { packets_and_structs: HashMap::new(), enums: HashMap::new() };
     match file.endianness.value {
         ast::EndiannessValue::LittleEndian => {}
@@ -96,13 +97,13 @@ pub fn generate(file: &ast::File) -> Result<Schema, String> {
     Ok(schema)
 }
 
-fn process_decl<'a>(schema: &mut Schema<'a>, decl: &'a ast::Decl) {
-    match decl {
-        ast::Decl::Enum { id, tags, width, .. } => process_enum(schema, id, tags, *width),
-        ast::Decl::Packet { id, fields, .. } | ast::Decl::Struct { id, fields, .. } => {
+fn process_decl<'a>(schema: &mut Schema<'a>, decl: &'a parser::ast::Decl) {
+    match &decl.desc {
+        ast::DeclDesc::Enum { id, tags, width, .. } => process_enum(schema, id, tags, *width),
+        ast::DeclDesc::Packet { id, fields, .. } | ast::DeclDesc::Struct { id, fields, .. } => {
             process_packet_or_struct(schema, id, fields)
         }
-        ast::Decl::Group { .. } => todo!(),
+        ast::DeclDesc::Group { .. } => todo!(),
         _ => unimplemented!("type {decl:?} not supported"),
     }
 }
@@ -119,11 +120,18 @@ fn process_enum<'a>(schema: &mut Schema<'a>, id: &'a str, tags: &'a [ast::Tag], 
     );
 }
 
-fn process_packet_or_struct<'a>(schema: &mut Schema<'a>, id: &'a str, fields: &'a [ast::Field]) {
+fn process_packet_or_struct<'a>(
+    schema: &mut Schema<'a>,
+    id: &'a str,
+    fields: &'a [parser::ast::Field],
+) {
     schema.packets_and_structs.insert(id, compute_getters(schema, fields));
 }
 
-fn compute_getters<'a>(schema: &Schema<'a>, fields: &'a [ast::Field]) -> PacketOrStruct<'a> {
+fn compute_getters<'a>(
+    schema: &Schema<'a>,
+    fields: &'a [parser::ast::Field],
+) -> PacketOrStruct<'a> {
     let mut prev_pos_id = None;
     let mut curr_pos_id = ComputedOffsetId::HeaderStart;
     let mut computed_values = HashMap::new();
@@ -142,16 +150,16 @@ fn compute_getters<'a>(schema: &Schema<'a>, fields: &'a [ast::Field]) -> PacketO
         // populate this only if we are an array with a knowable size
         let mut next_prev_pos_id = None;
 
-        let next_pos = match field {
-            ast::Field::Reserved { width, .. } => {
+        let next_pos = match &field.desc {
+            ast::FieldDesc::Reserved { width } => {
                 ComputedOffset::ConstantPlusOffsetInBits(curr_pos_id, *width as i64)
             }
-            ast::Field::Scalar { id, width, .. } => {
+            ast::FieldDesc::Scalar { id, width } => {
                 computed_offsets
                     .insert(ComputedOffsetId::FieldOffset(id), ComputedOffset::Alias(curr_pos_id));
                 ComputedOffset::ConstantPlusOffsetInBits(curr_pos_id, *width as i64)
             }
-            ast::Field::Fixed { width, enum_id, .. } => {
+            ast::FieldDesc::Fixed { width, enum_id, .. } => {
                 let offset = match (width, enum_id) {
                     (Some(width), _) => *width,
                     (_, Some(enum_id)) => schema.enums[enum_id.as_str()].width,
@@ -159,32 +167,32 @@ fn compute_getters<'a>(schema: &Schema<'a>, fields: &'a [ast::Field]) -> PacketO
                 };
                 ComputedOffset::ConstantPlusOffsetInBits(curr_pos_id, offset as i64)
             }
-            ast::Field::Size { field_id, width, .. } => {
+            ast::FieldDesc::Size { field_id, width } => {
                 computed_values.insert(
                     ComputedValueId::FieldSize(field_id),
                     ComputedValue::ValueAt { offset: curr_pos_id, width: *width },
                 );
                 ComputedOffset::ConstantPlusOffsetInBits(curr_pos_id, *width as i64)
             }
-            ast::Field::Count { field_id, width, .. } => {
+            ast::FieldDesc::Count { field_id, width } => {
                 computed_values.insert(
                     ComputedValueId::FieldCount(field_id.as_str()),
                     ComputedValue::ValueAt { offset: curr_pos_id, width: *width },
                 );
                 ComputedOffset::ConstantPlusOffsetInBits(curr_pos_id, *width as i64)
             }
-            ast::Field::ElementSize { field_id, width, .. } => {
+            ast::FieldDesc::ElementSize { field_id, width } => {
                 computed_values.insert(
                     ComputedValueId::FieldElementSize(field_id),
                     ComputedValue::ValueAt { offset: curr_pos_id, width: *width },
                 );
                 ComputedOffset::ConstantPlusOffsetInBits(curr_pos_id, *width as i64)
             }
-            ast::Field::Group { .. } => {
+            ast::FieldDesc::Group { .. } => {
                 unimplemented!("this should be removed by the linter...")
             }
-            ast::Field::Checksum { .. } => unimplemented!("checksum not supported"),
-            ast::Field::Body { .. } => {
+            ast::FieldDesc::Checksum { .. } => unimplemented!("checksum not supported"),
+            ast::FieldDesc::Body => {
                 computed_offsets.insert(
                     ComputedOffsetId::FieldOffset("_body_"),
                     ComputedOffset::Alias(curr_pos_id),
@@ -202,7 +210,7 @@ fn compute_getters<'a>(schema: &Schema<'a>, fields: &'a [ast::Field]) -> PacketO
                 computed_offsets.insert(ComputedOffsetId::FieldEndOffset("_body_"), end_offset);
                 end_offset
             }
-            ast::Field::Payload { size_modifier, .. } => {
+            ast::FieldDesc::Payload { size_modifier } => {
                 if size_modifier.is_some() {
                     unimplemented!("size modifiers not supported")
                 }
@@ -223,13 +231,12 @@ fn compute_getters<'a>(schema: &Schema<'a>, fields: &'a [ast::Field]) -> PacketO
                 computed_offsets.insert(ComputedOffsetId::FieldEndOffset("_payload_"), end_offset);
                 end_offset
             }
-            ast::Field::Array {
+            ast::FieldDesc::Array {
                 id,
                 width,
                 type_id,
                 size_modifier,
                 size: statically_known_count,
-                ..
             } => {
                 if size_modifier.is_some() {
                     unimplemented!("size modifiers not supported")
@@ -395,14 +402,14 @@ fn compute_getters<'a>(schema: &Schema<'a>, fields: &'a [ast::Field]) -> PacketO
                     ComputedOffset::Alias(ComputedOffsetId::TrailerStart)
                 }
             }
-            ast::Field::Padding { size, .. } => {
+            ast::FieldDesc::Padding { size } => {
                 if let Some(prev_pos_id) = prev_pos_id {
                     ComputedOffset::ConstantPlusOffsetInBits(prev_pos_id, *size as i64)
                 } else {
                     panic!("padding must follow array field with known total size")
                 }
             }
-            ast::Field::Typedef { id, type_id, .. } => {
+            ast::FieldDesc::Typedef { id, type_id } => {
                 computed_offsets
                     .insert(ComputedOffsetId::FieldOffset(id), ComputedOffset::Alias(curr_pos_id));
 

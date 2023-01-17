@@ -1,9 +1,24 @@
-use super::ast;
 use codespan_reporting::diagnostic::Diagnostic;
 use codespan_reporting::files;
 use pest::iterators::{Pair, Pairs};
 use pest::{Parser, Token};
 use std::iter::{Filter, Peekable};
+
+pub mod ast {
+    use serde::Serialize;
+
+    #[derive(Debug, Serialize)]
+    pub struct Annotation;
+
+    impl crate::ast::Annotation for Annotation {
+        type FieldAnnotation = ();
+        type DeclAnnotation = ();
+    }
+
+    pub type Field = crate::ast::Field<Annotation>;
+    pub type Decl = crate::ast::Decl<Annotation>;
+    pub type File = crate::ast::File<Annotation>;
+}
 
 // Generate the PDL parser.
 // TODO: use #[grammar = "pdl.pest"]
@@ -139,11 +154,11 @@ pub struct PDLParser;
 
 type Node<'i> = Pair<'i, Rule>;
 type NodeIterator<'i> = Peekable<Filter<Pairs<'i, Rule>, fn(&Node<'i>) -> bool>>;
-type Context<'a> = (ast::FileId, &'a Vec<usize>);
+type Context<'a> = (crate::ast::FileId, &'a Vec<usize>);
 
 trait Helpers<'i> {
     fn children(self) -> NodeIterator<'i>;
-    fn as_loc(&self, context: &Context) -> ast::SourceRange;
+    fn as_loc(&self, context: &Context) -> crate::ast::SourceRange;
     fn as_string(&self) -> String;
     fn as_usize(&self) -> Result<usize, String>;
 }
@@ -153,12 +168,12 @@ impl<'i> Helpers<'i> for Node<'i> {
         self.into_inner().filter((|n| n.as_rule() != Rule::COMMENT) as fn(&Self) -> bool).peekable()
     }
 
-    fn as_loc(&self, context: &Context) -> ast::SourceRange {
+    fn as_loc(&self, context: &Context) -> crate::ast::SourceRange {
         let span = self.as_span();
-        ast::SourceRange {
+        crate::ast::SourceRange {
             file: context.0,
-            start: ast::SourceLocation::new(span.start_pos().pos(), context.1),
-            end: ast::SourceLocation::new(span.end_pos().pos(), context.1),
+            start: crate::ast::SourceLocation::new(span.start_pos().pos(), context.1),
+            end: crate::ast::SourceLocation::new(span.end_pos().pos(), context.1),
         }
     }
 
@@ -245,22 +260,22 @@ fn parse_size_modifier_opt(iter: &mut NodeIterator<'_>) -> Option<String> {
     maybe(iter, Rule::size_modifier).map(|n| n.as_string())
 }
 
-fn parse_endianness(node: Node<'_>, context: &Context) -> Result<ast::Endianness, String> {
+fn parse_endianness(node: Node<'_>, context: &Context) -> Result<crate::ast::Endianness, String> {
     if node.as_rule() != Rule::endianness_declaration {
         err_unexpected_rule(Rule::endianness_declaration, node.as_rule())
     } else {
-        Ok(ast::Endianness {
+        Ok(crate::ast::Endianness {
             loc: node.as_loc(context),
             value: match node.as_str() {
-                "little_endian_packets" => ast::EndiannessValue::LittleEndian,
-                "big_endian_packets" => ast::EndiannessValue::BigEndian,
+                "little_endian_packets" => crate::ast::EndiannessValue::LittleEndian,
+                "big_endian_packets" => crate::ast::EndiannessValue::BigEndian,
                 _ => unreachable!(),
             },
         })
     }
 }
 
-fn parse_constraint(node: Node<'_>, context: &Context) -> Result<ast::Constraint, String> {
+fn parse_constraint(node: Node<'_>, context: &Context) -> Result<crate::ast::Constraint, String> {
     if node.as_rule() != Rule::constraint {
         err_unexpected_rule(Rule::constraint, node.as_rule())
     } else {
@@ -268,19 +283,19 @@ fn parse_constraint(node: Node<'_>, context: &Context) -> Result<ast::Constraint
         let mut children = node.children();
         let id = parse_identifier(&mut children)?;
         let (tag_id, value) = parse_identifier_or_integer(&mut children)?;
-        Ok(ast::Constraint { id, loc, value, tag_id })
+        Ok(crate::ast::Constraint { id, loc, value, tag_id })
     }
 }
 
 fn parse_constraint_list_opt(
     iter: &mut NodeIterator<'_>,
     context: &Context,
-) -> Result<Vec<ast::Constraint>, String> {
+) -> Result<Vec<crate::ast::Constraint>, String> {
     maybe(iter, Rule::constraint_list)
         .map_or(Ok(vec![]), |n| n.children().map(|n| parse_constraint(n, context)).collect())
 }
 
-fn parse_enum_tag(node: Node<'_>, context: &Context) -> Result<ast::Tag, String> {
+fn parse_enum_tag(node: Node<'_>, context: &Context) -> Result<crate::ast::Tag, String> {
     if node.as_rule() != Rule::enum_tag {
         err_unexpected_rule(Rule::enum_tag, node.as_rule())
     } else {
@@ -288,14 +303,14 @@ fn parse_enum_tag(node: Node<'_>, context: &Context) -> Result<ast::Tag, String>
         let mut children = node.children();
         let id = parse_identifier(&mut children)?;
         let value = parse_integer(&mut children)?;
-        Ok(ast::Tag { id, loc, value })
+        Ok(crate::ast::Tag { id, loc, value })
     }
 }
 
 fn parse_enum_tag_list(
     iter: &mut NodeIterator<'_>,
     context: &Context,
-) -> Result<Vec<ast::Tag>, String> {
+) -> Result<Vec<crate::ast::Tag>, String> {
     expect(iter, Rule::enum_tag_list)
         .and_then(|n| n.children().map(|n| parse_enum_tag(n, context)).collect())
 }
@@ -304,84 +319,88 @@ fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> 
     let loc = node.as_loc(context);
     let rule = node.as_rule();
     let mut children = node.children();
-    Ok(match rule {
-        Rule::checksum_field => {
-            let field_id = parse_identifier(&mut children)?;
-            ast::Field::Checksum { loc, field_id }
-        }
-        Rule::padding_field => {
-            let size = parse_integer(&mut children)?;
-            ast::Field::Padding { loc, size }
-        }
-        Rule::size_field => {
-            let field_id = match children.next() {
-                Some(n) if n.as_rule() == Rule::identifier => n.as_string(),
-                Some(n) if n.as_rule() == Rule::payload_identifier => n.as_string(),
-                Some(n) if n.as_rule() == Rule::body_identifier => n.as_string(),
-                Some(n) => err_unexpected_rule(Rule::identifier, n.as_rule())?,
-                None => err_missing_rule(Rule::identifier)?,
-            };
-            let width = parse_integer(&mut children)?;
-            ast::Field::Size { loc, field_id, width }
-        }
-        Rule::count_field => {
-            let field_id = parse_identifier(&mut children)?;
-            let width = parse_integer(&mut children)?;
-            ast::Field::Count { loc, field_id, width }
-        }
-        Rule::elementsize_field => {
-            let field_id = parse_identifier(&mut children)?;
-            let width = parse_integer(&mut children)?;
-            ast::Field::ElementSize { loc, field_id, width }
-        }
-        Rule::body_field => ast::Field::Body { loc },
-        Rule::payload_field => {
-            let size_modifier = parse_size_modifier_opt(&mut children);
-            ast::Field::Payload { loc, size_modifier }
-        }
-        Rule::fixed_field => {
-            let (tag_id, value) = parse_identifier_or_integer(&mut children)?;
-            let (enum_id, width) = parse_identifier_or_integer(&mut children)?;
-            ast::Field::Fixed { loc, enum_id, tag_id, width, value }
-        }
-        Rule::reserved_field => {
-            let width = parse_integer(&mut children)?;
-            ast::Field::Reserved { loc, width }
-        }
-        Rule::array_field => {
-            let id = parse_identifier(&mut children)?;
-            let (type_id, width) = parse_identifier_or_integer(&mut children)?;
-            let (size, size_modifier) = match children.next() {
-                Some(n) if n.as_rule() == Rule::integer => (Some(n.as_usize()?), None),
-                Some(n) if n.as_rule() == Rule::size_modifier => (None, Some(n.as_string())),
-                Some(n) => {
-                    return Err(format!(
-                        "expected rule {:?} or {:?}, got {:?}",
-                        Rule::integer,
-                        Rule::size_modifier,
-                        n.as_rule()
-                    ))
-                }
-                None => (None, None),
-            };
-            ast::Field::Array { loc, id, type_id, width, size, size_modifier }
-        }
-        Rule::scalar_field => {
-            let id = parse_identifier(&mut children)?;
-            let width = parse_integer(&mut children)?;
-            ast::Field::Scalar { loc, id, width }
-        }
-        Rule::typedef_field => {
-            let id = parse_identifier(&mut children)?;
-            let type_id = parse_identifier(&mut children)?;
-            ast::Field::Typedef { loc, id, type_id }
-        }
-        Rule::group_field => {
-            let group_id = parse_identifier(&mut children)?;
-            let constraints = parse_constraint_list_opt(&mut children, context)?;
-            ast::Field::Group { loc, group_id, constraints }
-        }
-        _ => return Err(format!("expected rule *_field, got {:?}", rule)),
+    Ok(crate::ast::Field {
+        loc,
+        annot: Default::default(),
+        desc: match rule {
+            Rule::checksum_field => {
+                let field_id = parse_identifier(&mut children)?;
+                crate::ast::FieldDesc::Checksum { field_id }
+            }
+            Rule::padding_field => {
+                let size = parse_integer(&mut children)?;
+                crate::ast::FieldDesc::Padding { size }
+            }
+            Rule::size_field => {
+                let field_id = match children.next() {
+                    Some(n) if n.as_rule() == Rule::identifier => n.as_string(),
+                    Some(n) if n.as_rule() == Rule::payload_identifier => n.as_string(),
+                    Some(n) if n.as_rule() == Rule::body_identifier => n.as_string(),
+                    Some(n) => err_unexpected_rule(Rule::identifier, n.as_rule())?,
+                    None => err_missing_rule(Rule::identifier)?,
+                };
+                let width = parse_integer(&mut children)?;
+                crate::ast::FieldDesc::Size { field_id, width }
+            }
+            Rule::count_field => {
+                let field_id = parse_identifier(&mut children)?;
+                let width = parse_integer(&mut children)?;
+                crate::ast::FieldDesc::Count { field_id, width }
+            }
+            Rule::elementsize_field => {
+                let field_id = parse_identifier(&mut children)?;
+                let width = parse_integer(&mut children)?;
+                crate::ast::FieldDesc::ElementSize { field_id, width }
+            }
+            Rule::body_field => crate::ast::FieldDesc::Body,
+            Rule::payload_field => {
+                let size_modifier = parse_size_modifier_opt(&mut children);
+                crate::ast::FieldDesc::Payload { size_modifier }
+            }
+            Rule::fixed_field => {
+                let (tag_id, value) = parse_identifier_or_integer(&mut children)?;
+                let (enum_id, width) = parse_identifier_or_integer(&mut children)?;
+                crate::ast::FieldDesc::Fixed { enum_id, tag_id, width, value }
+            }
+            Rule::reserved_field => {
+                let width = parse_integer(&mut children)?;
+                crate::ast::FieldDesc::Reserved { width }
+            }
+            Rule::array_field => {
+                let id = parse_identifier(&mut children)?;
+                let (type_id, width) = parse_identifier_or_integer(&mut children)?;
+                let (size, size_modifier) = match children.next() {
+                    Some(n) if n.as_rule() == Rule::integer => (Some(n.as_usize()?), None),
+                    Some(n) if n.as_rule() == Rule::size_modifier => (None, Some(n.as_string())),
+                    Some(n) => {
+                        return Err(format!(
+                            "expected rule {:?} or {:?}, got {:?}",
+                            Rule::integer,
+                            Rule::size_modifier,
+                            n.as_rule()
+                        ))
+                    }
+                    None => (None, None),
+                };
+                crate::ast::FieldDesc::Array { id, type_id, width, size, size_modifier }
+            }
+            Rule::scalar_field => {
+                let id = parse_identifier(&mut children)?;
+                let width = parse_integer(&mut children)?;
+                crate::ast::FieldDesc::Scalar { id, width }
+            }
+            Rule::typedef_field => {
+                let id = parse_identifier(&mut children)?;
+                let type_id = parse_identifier(&mut children)?;
+                crate::ast::FieldDesc::Typedef { id, type_id }
+            }
+            Rule::group_field => {
+                let group_id = parse_identifier(&mut children)?;
+                let constraints = parse_constraint_list_opt(&mut children, context)?;
+                crate::ast::FieldDesc::Group { group_id, constraints }
+            }
+            _ => return Err(format!("expected rule *_field, got {:?}", rule)),
+        },
     })
 }
 
@@ -403,7 +422,7 @@ fn parse_field_list_opt<'i>(
 
 fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String> {
     let mut toplevel_comments = vec![];
-    let mut file = ast::File::new(context.0);
+    let mut file = crate::ast::File::new(context.0);
 
     let mut comment_start = vec![];
     for token in root.clone().tokens() {
@@ -411,11 +430,11 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
             Token::Start { rule: Rule::COMMENT, pos } => comment_start.push(pos),
             Token::End { rule: Rule::COMMENT, pos } => {
                 let start_pos = comment_start.pop().unwrap();
-                file.comments.push(ast::Comment {
-                    loc: ast::SourceRange {
+                file.comments.push(crate::ast::Comment {
+                    loc: crate::ast::SourceRange {
                         file: context.0,
-                        start: ast::SourceLocation::new(start_pos.pos(), context.1),
-                        end: ast::SourceLocation::new(pos.pos(), context.1),
+                        start: crate::ast::SourceLocation::new(start_pos.pos(), context.1),
+                        end: crate::ast::SourceLocation::new(pos.pos(), context.1),
                     },
                     text: start_pos.span(&pos).as_str().to_owned(),
                 })
@@ -434,21 +453,30 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let id = parse_identifier(&mut children)?;
                 let width = parse_integer(&mut children)?;
                 let function = parse_string(&mut children)?;
-                file.declarations.push(ast::Decl::Checksum { id, loc, function, width })
+                file.declarations.push(crate::ast::Decl::new(
+                    loc,
+                    crate::ast::DeclDesc::Checksum { id, function, width },
+                ))
             }
             Rule::custom_field_declaration => {
                 let mut children = node.children();
                 let id = parse_identifier(&mut children)?;
                 let width = parse_integer_opt(&mut children)?;
                 let function = parse_string(&mut children)?;
-                file.declarations.push(ast::Decl::CustomField { id, loc, function, width })
+                file.declarations.push(crate::ast::Decl::new(
+                    loc,
+                    crate::ast::DeclDesc::CustomField { id, function, width },
+                ))
             }
             Rule::enum_declaration => {
                 let mut children = node.children();
                 let id = parse_identifier(&mut children)?;
                 let width = parse_integer(&mut children)?;
                 let tags = parse_enum_tag_list(&mut children, context)?;
-                file.declarations.push(ast::Decl::Enum { id, loc, width, tags })
+                file.declarations.push(crate::ast::Decl::new(
+                    loc,
+                    crate::ast::DeclDesc::Enum { id, width, tags },
+                ))
             }
             Rule::packet_declaration => {
                 let mut children = node.children();
@@ -456,13 +484,10 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let parent_id = parse_identifier_opt(&mut children)?;
                 let constraints = parse_constraint_list_opt(&mut children, context)?;
                 let fields = parse_field_list_opt(&mut children, context)?;
-                file.declarations.push(ast::Decl::Packet {
-                    id,
+                file.declarations.push(crate::ast::Decl::new(
                     loc,
-                    parent_id,
-                    constraints,
-                    fields,
-                })
+                    crate::ast::DeclDesc::Packet { id, parent_id, constraints, fields },
+                ))
             }
             Rule::struct_declaration => {
                 let mut children = node.children();
@@ -470,19 +495,17 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let parent_id = parse_identifier_opt(&mut children)?;
                 let constraints = parse_constraint_list_opt(&mut children, context)?;
                 let fields = parse_field_list_opt(&mut children, context)?;
-                file.declarations.push(ast::Decl::Struct {
-                    id,
+                file.declarations.push(crate::ast::Decl::new(
                     loc,
-                    parent_id,
-                    constraints,
-                    fields,
-                })
+                    crate::ast::DeclDesc::Struct { id, parent_id, constraints, fields },
+                ))
             }
             Rule::group_declaration => {
                 let mut children = node.children();
                 let id = parse_identifier(&mut children)?;
                 let fields = parse_field_list(&mut children, context)?;
-                file.declarations.push(ast::Decl::Group { id, loc, fields })
+                file.declarations
+                    .push(crate::ast::Decl::new(loc, crate::ast::DeclDesc::Group { id, fields }))
             }
             Rule::test_declaration => {}
             Rule::EOI => (),
@@ -498,10 +521,10 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
 /// The file is added to the compilation database under the provided
 /// name.
 pub fn parse_inline(
-    sources: &mut ast::SourceDatabase,
+    sources: &mut crate::ast::SourceDatabase,
     name: String,
     source: String,
-) -> Result<ast::File, Diagnostic<ast::FileId>> {
+) -> Result<ast::File, Diagnostic<crate::ast::FileId>> {
     let root = PDLParser::parse(Rule::file, &source)
         .map_err(|e| {
             Diagnostic::error()
@@ -520,9 +543,9 @@ pub fn parse_inline(
 /// database. Returns the constructed AST, or a descriptive error
 /// message in case of syntax error.
 pub fn parse_file(
-    sources: &mut ast::SourceDatabase,
+    sources: &mut crate::ast::SourceDatabase,
     name: String,
-) -> Result<ast::File, Diagnostic<ast::FileId>> {
+) -> Result<ast::File, Diagnostic<crate::ast::FileId>> {
     let source = std::fs::read_to_string(&name).map_err(|e| {
         Diagnostic::error().with_message(format!("failed to read input file '{}': {}", &name, e))
     })?;
@@ -537,12 +560,12 @@ mod test {
     fn endianness_is_set() {
         // The file starts out with a placeholder little-endian value.
         // This tests that we update it while parsing.
-        let mut db = ast::SourceDatabase::new();
+        let mut db = crate::ast::SourceDatabase::new();
         let file =
             parse_inline(&mut db, String::from("stdin"), String::from("  big_endian_packets  "))
                 .unwrap();
-        assert_eq!(file.endianness.value, ast::EndiannessValue::BigEndian);
-        assert_ne!(file.endianness.loc, ast::SourceRange::default());
+        assert_eq!(file.endianness.value, crate::ast::EndiannessValue::BigEndian);
+        assert_ne!(file.endianness.loc, crate::ast::SourceRange::default());
     }
 
     #[test]

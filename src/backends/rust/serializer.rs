@@ -1,4 +1,5 @@
 use crate::backends::rust::{mask_bits, types};
+use crate::parser::ast as parser_ast;
 use crate::{ast, lint};
 use quote::{format_ident, quote};
 
@@ -36,7 +37,7 @@ impl<'a> FieldSerializer<'a> {
         }
     }
 
-    pub fn add(&mut self, field: &ast::Field) {
+    pub fn add(&mut self, field: &parser_ast::Field) {
         if field.is_bitfield(self.scope) {
             self.add_bit_field(field);
             return;
@@ -45,11 +46,11 @@ impl<'a> FieldSerializer<'a> {
         todo!("not yet supported: {field:?}")
     }
 
-    fn add_bit_field(&mut self, field: &ast::Field) {
+    fn add_bit_field(&mut self, field: &parser_ast::Field) {
         let width = field.width(self.scope).unwrap();
 
-        match field {
-            ast::Field::Scalar { id, width, .. } => {
+        match &field.desc {
+            ast::FieldDesc::Scalar { id, width } => {
                 let field_name = format_ident!("{id}");
                 let field_type = types::Integer::new(*width);
                 if field_type.width > *width {
@@ -66,7 +67,7 @@ impl<'a> FieldSerializer<'a> {
                 }
                 self.chunk.push(BitField { value: quote!(self.#field_name), shift: self.shift });
             }
-            ast::Field::Typedef { id, .. } => {
+            ast::FieldDesc::Typedef { id, .. } => {
                 let field_name = format_ident!("{id}");
                 let field_type = types::Integer::new(width);
                 let to_u = format_ident!("to_u{}", field_type.width);
@@ -77,7 +78,7 @@ impl<'a> FieldSerializer<'a> {
                     shift: self.shift,
                 });
             }
-            ast::Field::Reserved { .. } => {
+            ast::FieldDesc::Reserved { .. } => {
                 // Nothing to do here.
             }
             _ => todo!(),
