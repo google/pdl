@@ -79,6 +79,8 @@ pub enum Field {
     Size { loc: SourceRange, field_id: String, width: usize },
     #[serde(rename = "count_field")]
     Count { loc: SourceRange, field_id: String, width: usize },
+    #[serde(rename = "elementsize_field")]
+    ElementSize { loc: SourceRange, field_id: String, width: usize },
     #[serde(rename = "body_field")]
     Body { loc: SourceRange },
     #[serde(rename = "payload_field")]
@@ -260,6 +262,7 @@ impl Field {
             Field::Checksum { loc, .. }
             | Field::Padding { loc, .. }
             | Field::Size { loc, .. }
+            | Field::ElementSize { loc, .. }
             | Field::Count { loc, .. }
             | Field::Body { loc, .. }
             | Field::Payload { loc, .. }
@@ -277,6 +280,7 @@ impl Field {
             Field::Checksum { .. }
             | Field::Padding { .. }
             | Field::Size { .. }
+            | Field::ElementSize { .. }
             | Field::Count { .. }
             | Field::Body { .. }
             | Field::Payload { .. }

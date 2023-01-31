@@ -148,7 +148,10 @@ impl<'d> PacketScope<'d> {
                 })
             }
 
-            Field::Padding { .. } | Field::Reserved { .. } | Field::Fixed { .. } => None,
+            Field::Padding { .. }
+            | Field::Reserved { .. }
+            | Field::Fixed { .. }
+            | Field::ElementSize { .. } => None,
 
             Field::Size { loc, field_id, .. } | Field::Count { loc, field_id, .. } => {
                 self.sizes.insert(field_id.clone(), field).map(|prev| {
@@ -627,6 +630,7 @@ impl Field {
             Field::Padding { .. } => "padding",
             Field::Size { .. } => "size",
             Field::Count { .. } => "count",
+            Field::ElementSize { .. } => "elementsize",
             Field::Body { .. } => "body",
             Field::Payload { .. } => "payload",
             Field::Fixed { .. } => "fixed",
@@ -1043,6 +1047,7 @@ fn lint_field(
         Field::Count { field_id, width, .. } => {
             lint_count(scope, packet_scope, decl, field_id, *width, result)
         }
+        Field::ElementSize { .. } => { /* TODO(aryarahul) */ }
         Field::Fixed { width, value, enum_id, tag_id, .. } => {
             lint_fixed(scope, packet_scope, decl, width, value, enum_id, tag_id, result)
         }

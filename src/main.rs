@@ -16,6 +16,8 @@ use crate::lint::Lintable;
 enum OutputFormat {
     JSON,
     Rust,
+    RustNoAlloc,
+    RustNoAllocTest,
 }
 
 impl std::str::FromStr for OutputFormat {
@@ -25,7 +27,9 @@ impl std::str::FromStr for OutputFormat {
         match input.to_lowercase().as_str() {
             "json" => Ok(Self::JSON),
             "rust" => Ok(Self::Rust),
-            _ => Err(format!("could not parse {:?}, valid option are 'json' and 'rust'.", input)),
+            "rust_no_alloc" => Ok(Self::RustNoAlloc),
+            "rust_no_alloc_test" => Ok(Self::RustNoAllocTest),
+            _ => Err(format!("could not parse {:?}, valid option are 'json', 'rust', 'rust_no_alloc', and 'rust_no_alloc_test'.", input)),
         }
     }
 }
@@ -37,7 +41,7 @@ struct Opt {
     #[clap(short, long = "version")]
     version: bool,
 
-    /// Generate output in this format ("json" or "rust"). The output
+    /// Generate output in this format ("json", "rust", "rust_no_alloc", "rust_no_alloc_test"). The output
     /// will be printed on stdout in both cases.
     #[clap(short, long = "output-format", name = "FORMAT", default_value = "JSON")]
     output_format: OutputFormat,
@@ -71,6 +75,16 @@ fn main() -> std::process::ExitCode {
                 }
                 OutputFormat::Rust => {
                     println!("{}", backends::rust::generate(&sources, &file))
+                }
+                OutputFormat::RustNoAlloc => {
+                    let schema = backends::intermediate::generate(&file).unwrap();
+                    println!("{}", backends::rust_no_allocation::generate(&file, &schema).unwrap())
+                }
+                OutputFormat::RustNoAllocTest => {
+                    println!(
+                        "{}",
+                        backends::rust_no_allocation::test::generate_test_file().unwrap()
+                    )
                 }
             }
             std::process::ExitCode::SUCCESS

@@ -48,6 +48,7 @@ checksum_field = { "_checksum_start_" ~ "(" ~ identifier ~ ")" }
 padding_field = { "_padding_" ~ "[" ~ integer ~ "]" }
 size_field = { "_size_" ~ "(" ~ (identifier|payload_identifier|body_identifier)  ~ ")" ~ ":" ~ integer }
 count_field = { "_count_" ~ "(" ~ identifier ~ ")" ~ ":" ~ integer }
+elementsize_field = { "_elementsize_" ~ "(" ~ identifier ~ ")" ~ ":" ~ integer }
 body_field = @{ "_body_" }
 payload_field = { "_payload_" ~ (":" ~ "[" ~ size_modifier ~ "]")? }
 fixed_field = { "_fixed_" ~ "=" ~ (
@@ -67,6 +68,7 @@ field = _{
     padding_field |
     size_field |
     count_field |
+    elementsize_field |
     body_field |
     payload_field |
     fixed_field |
@@ -326,6 +328,11 @@ fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> 
             let field_id = parse_identifier(&mut children)?;
             let width = parse_integer(&mut children)?;
             ast::Field::Count { loc, field_id, width }
+        }
+        Rule::elementsize_field => {
+            let field_id = parse_identifier(&mut children)?;
+            let width = parse_integer(&mut children)?;
+            ast::Field::ElementSize { loc, field_id, width }
         }
         Rule::body_field => ast::Field::Body { loc },
         Rule::payload_field => {

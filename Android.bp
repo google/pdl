@@ -289,3 +289,44 @@ python_test_host {
         ":pypdl",
     ],
 }
+
+// Defaults for the rust_noalloc backend
+genrule_defaults {
+    name: "pdl_rust_noalloc_generator_defaults",
+    cmd: "set -o pipefail;" +
+        " $(location :pdl) --output-format rust_no_alloc $(in) |" +
+        " $(location :rustfmt) > $(out)",
+    tools: [
+        ":pdl",
+        ":rustfmt",
+    ],
+}
+
+// Generate the rust_noalloc backend srcs against the little-endian test vectors
+genrule {
+    name: "pdl_rust_noalloc_le_test_backend_srcs",
+    defaults: ["pdl_rust_noalloc_generator_defaults"],
+    srcs: ["tests/canonical/le_rust_noalloc_test_file.pdl"],
+    out: ["_packets.rs"],
+}
+
+// Generate the rust_noalloc test harness srcs for the supplied test vectors
+genrule {
+    name: "pdl_rust_noalloc_le_test_gen_harness",
+    cmd: "set -o pipefail;" +
+        " $(location :pdl) $(in) --output-format rust_no_alloc_test" +
+        " > $(out)",
+    srcs: ["tests/canonical/le_rust_noalloc_test_file.pdl"],
+    out: ["test_rust_noalloc_parser.rs"],
+    tools: [":pdl"],
+}
+
+// The test target for rust_noalloc
+rust_test_host {
+    name: "pdl_rust_noalloc_le_test",
+    srcs: [
+        ":pdl_rust_noalloc_le_test_gen_harness",
+        ":pdl_rust_noalloc_le_test_backend_srcs",
+    ],
+    test_suites: ["general-tests"],
+}
