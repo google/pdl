@@ -23,7 +23,7 @@ pub struct SourceLocation {
     pub column: usize,
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Serialize)]
+#[derive(Default, Copy, Clone, PartialEq, Eq, Serialize)]
 pub struct SourceRange {
     pub file: FileId,
     pub start: SourceLocation,
@@ -64,7 +64,7 @@ pub struct Tag {
     pub value: usize,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "kind", rename = "constraint")]
 pub struct Constraint {
     pub id: String,
@@ -73,7 +73,7 @@ pub struct Constraint {
     pub tag_id: Option<String>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum FieldDesc {
     #[serde(rename = "checksum_field")]
@@ -112,7 +112,7 @@ pub enum FieldDesc {
     Group { group_id: String, constraints: Vec<Constraint> },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Field<A: Annotation> {
     pub loc: SourceRange,
     #[serde(skip_serializing)]
@@ -213,6 +213,12 @@ impl fmt::Display for SourceRange {
                 self.start.line, self.start.column, self.end.line, self.end.column
             )
         }
+    }
+}
+
+impl fmt::Debug for SourceRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SourceRange").finish_non_exhaustive()
     }
 }
 

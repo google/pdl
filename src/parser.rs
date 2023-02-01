@@ -7,7 +7,7 @@ use std::iter::{Filter, Peekable};
 pub mod ast {
     use serde::Serialize;
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Serialize, PartialEq, Eq)]
     pub struct Annotation;
 
     impl crate::ast::Annotation for Annotation {

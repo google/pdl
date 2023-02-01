@@ -86,7 +86,7 @@ impl<'de> serde::Deserialize<'de> for Foo {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct BarData {
+pub struct BarData {
     x: [Foo; 3],
 }
 #[derive(Debug, Clone)]
@@ -138,7 +138,7 @@ impl BarData {
 }
 impl Packet for Bar {
     fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.bar.get_total_size());
+        let mut buffer = BytesMut::with_capacity(self.bar.get_size());
         self.bar.write_to(&mut buffer);
         buffer.freeze()
     }
@@ -166,11 +166,10 @@ impl Bar {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        let packet = BarData::parse(&mut bytes)?;
-        Ok(Self::new(Arc::new(packet)).unwrap())
+        let data = BarData::parse(&mut bytes)?;
+        Ok(Self::new(Arc::new(data)).unwrap())
     }
-    fn new(root: Arc<BarData>) -> std::result::Result<Self, &'static str> {
-        let bar = root;
+    fn new(bar: Arc<BarData>) -> std::result::Result<Self, &'static str> {
         Ok(Self { bar })
     }
     pub fn get_x(&self) -> &[Foo; 3] {
@@ -187,5 +186,10 @@ impl BarBuilder {
     pub fn build(self) -> Bar {
         let bar = Arc::new(BarData { x: self.x });
         Bar::new(bar).unwrap()
+    }
+}
+impl From<BarBuilder> for Bar {
+    fn from(builder: BarBuilder) -> Bar {
+        builder.build().into()
     }
 }
