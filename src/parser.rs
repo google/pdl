@@ -357,11 +357,19 @@ fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> 
                 let size_modifier = parse_size_modifier_opt(&mut children);
                 crate::ast::FieldDesc::Payload { size_modifier }
             }
-            Rule::fixed_field => {
-                let (tag_id, value) = parse_identifier_or_integer(&mut children)?;
-                let (enum_id, width) = parse_identifier_or_integer(&mut children)?;
-                crate::ast::FieldDesc::Fixed { enum_id, tag_id, width, value }
-            }
+            Rule::fixed_field => match children.next() {
+                Some(n) if n.as_rule() == Rule::integer => {
+                    let value = n.as_usize()?;
+                    let width = parse_integer(&mut children)?;
+                    crate::ast::FieldDesc::FixedScalar { width, value }
+                }
+                Some(n) if n.as_rule() == Rule::identifier => {
+                    let tag_id = n.as_string();
+                    let enum_id = parse_identifier(&mut children)?;
+                    crate::ast::FieldDesc::FixedEnum { enum_id, tag_id }
+                }
+                _ => unreachable!(),
+            },
             Rule::reserved_field => {
                 let width = parse_integer(&mut children)?;
                 crate::ast::FieldDesc::Reserved { width }

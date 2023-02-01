@@ -42,7 +42,8 @@ pub fn generate_packet(
         match &field.desc {
             ast::FieldDesc::Padding { .. }
             | ast::FieldDesc::Reserved { .. }
-            | ast::FieldDesc::Fixed { .. }
+            | ast::FieldDesc::FixedScalar { .. }
+            | ast::FieldDesc::FixedEnum { .. }
             | ast::FieldDesc::ElementSize { .. }
             | ast::FieldDesc::Count { .. }
             | ast::FieldDesc::Size { .. } => {
@@ -222,7 +223,8 @@ pub fn generate_packet(
         | ast::FieldDesc::Count { .. }
         | ast::FieldDesc::ElementSize { .. }
         | ast::FieldDesc::Body
-        | ast::FieldDesc::Fixed { .. }
+        | ast::FieldDesc::FixedScalar { .. }
+        | ast::FieldDesc::FixedEnum { .. }
         | ast::FieldDesc::Reserved { .. } => {
             quote! {}
         }

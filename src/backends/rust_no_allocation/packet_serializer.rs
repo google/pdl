@@ -35,7 +35,8 @@ pub fn generate_packet_serializer(
             match &field.desc {
                 ast::FieldDesc::Padding { .. }
                 | ast::FieldDesc::Reserved { .. }
-                | ast::FieldDesc::Fixed { .. }
+                | ast::FieldDesc::FixedScalar { .. }
+                | ast::FieldDesc::FixedEnum { .. }
                 | ast::FieldDesc::ElementSize { .. }
                 | ast::FieldDesc::Count { .. }
                 | ast::FieldDesc::Size { .. } => {
@@ -166,24 +167,23 @@ pub fn generate_packet_serializer(
                 let field_ident = format_ident!("{id}");
                 quote! { writer.write_bits(#width, || Ok(self.#field_ident))?; }
             }
-            ast::FieldDesc::Fixed { width, enum_id, value, tag_id } => {
-                let width = if let Some(width) = width {
-                    quote! { #width }
-                } else if let Some(enum_id) = enum_id {
-                    let width = schema.enums[enum_id.as_str()].width;
-                    quote! { #width }
-                } else {
-                    unreachable!()
-                };
-                let value = if let Some(tag_id) = tag_id {
-                    let enum_ident = format_ident!("{}", enum_id.as_ref().unwrap());
-                    let tag_ident = format_ident!("{tag_id}");
-                    quote! { #enum_ident::#tag_ident.value() }
-                } else if let Some(value) = value {
+            ast::FieldDesc::FixedScalar { width, value } => {
+                let width = quote! { #width };
+                let value = {
                     let value = *value as u64;
                     quote! { #value }
-                } else {
-                    unreachable!()
+                };
+                quote!{ writer.write_bits(#width, || Ok(#value))?; }
+            }
+            ast::FieldDesc::FixedEnum { enum_id, tag_id } => {
+                let width = {
+                    let width = schema.enums[enum_id.as_str()].width;
+                    quote! { #width }
+                };
+                let value = {
+                    let enum_ident = format_ident!("{}", enum_id);
+                    let tag_ident = format_ident!("{tag_id}");
+                    quote! { #enum_ident::#tag_ident.value() }
                 };
                 quote!{ writer.write_bits(#width, || Ok(#value))?; }
             }

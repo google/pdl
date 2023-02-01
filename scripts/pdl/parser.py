@@ -85,13 +85,14 @@ def parse_fields(data):
             width_or_enum = g(f'{g(integer, "width")}|{g(identifier, "enum_id")}')
             value_or_tag = g(f'{g(integer, "value")}|{g(identifier, "tag_id")}')
             m = re.match(rule(f' = {value_or_tag} : {width_or_enum}'), rest)
-            fields.append({
-                'kind': 'fixed_field',
-                'width': int(m['width'], 0) if 'width' in m.groupdict() else None,
-                'value': int(m['value'], 0) if 'value' in m.groupdict() else None,
-                'enum_id': m['enum_id'],
-                'tag_id': m['tag_id'],
-            })
+            fixed_field = {'kind': 'fixed_field'}
+            if 'width' in m.groupdict():
+                fixed_field['width'] = int(m['width'], 0)
+                fixed_field['value'] = int(m['value'], 0)
+            else:
+                fixed_field['enum_id'] = m['enum_id']
+                fixed_field['tag_id'] = m['tag_id']
+            fields.append(fixed_field)
         elif name == '_reserved_':
             m = re.match(rule(f' : {g(integer, "width")}'), rest)
             fields.append({'kind': 'reserved_field', 'width': int(m['width'], 0)})

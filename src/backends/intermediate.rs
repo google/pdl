@@ -159,12 +159,12 @@ fn compute_getters<'a>(
                     .insert(ComputedOffsetId::FieldOffset(id), ComputedOffset::Alias(curr_pos_id));
                 ComputedOffset::ConstantPlusOffsetInBits(curr_pos_id, *width as i64)
             }
-            ast::FieldDesc::Fixed { width, enum_id, .. } => {
-                let offset = match (width, enum_id) {
-                    (Some(width), _) => *width,
-                    (_, Some(enum_id)) => schema.enums[enum_id.as_str()].width,
-                    _ => unreachable!(),
-                };
+            ast::FieldDesc::FixedScalar { width, .. } => {
+                let offset = *width;
+                ComputedOffset::ConstantPlusOffsetInBits(curr_pos_id, offset as i64)
+            }
+            ast::FieldDesc::FixedEnum { enum_id, .. } => {
+                let offset = schema.enums[enum_id.as_str()].width;
                 ComputedOffset::ConstantPlusOffsetInBits(curr_pos_id, offset as i64)
             }
             ast::FieldDesc::Size { field_id, width } => {

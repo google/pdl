@@ -91,12 +91,9 @@ pub enum FieldDesc {
     #[serde(rename = "payload_field")]
     Payload { size_modifier: Option<String> },
     #[serde(rename = "fixed_field")]
-    Fixed {
-        width: Option<usize>,
-        value: Option<usize>,
-        enum_id: Option<String>,
-        tag_id: Option<String>,
-    },
+    FixedScalar { width: usize, value: usize },
+    #[serde(rename = "fixed_field")]
+    FixedEnum { enum_id: String, tag_id: String },
     #[serde(rename = "reserved_field")]
     Reserved { width: usize },
     #[serde(rename = "array_field")]
@@ -277,7 +274,8 @@ impl<A: Annotation> Field<A> {
             | FieldDesc::ElementSize { .. }
             | FieldDesc::Body
             | FieldDesc::Payload { .. }
-            | FieldDesc::Fixed { .. }
+            | FieldDesc::FixedScalar { .. }
+            | FieldDesc::FixedEnum { .. }
             | FieldDesc::Reserved { .. }
             | FieldDesc::Group { .. } => None,
             FieldDesc::Array { id, .. }
@@ -291,7 +289,8 @@ impl<A: Annotation> Field<A> {
             FieldDesc::Size { .. }
             | FieldDesc::Count { .. }
             | FieldDesc::ElementSize { .. }
-            | FieldDesc::Fixed { .. }
+            | FieldDesc::FixedScalar { .. }
+            | FieldDesc::FixedEnum { .. }
             | FieldDesc::Reserved { .. }
             | FieldDesc::Scalar { .. } => true,
             FieldDesc::Typedef { type_id, .. } => {

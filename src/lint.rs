@@ -184,7 +184,8 @@ impl<'d> PacketScope<'d> {
 
             FieldDesc::Padding { .. }
             | FieldDesc::Reserved { .. }
-            | FieldDesc::Fixed { .. }
+            | FieldDesc::FixedScalar { .. }
+            | FieldDesc::FixedEnum { .. }
             | FieldDesc::ElementSize { .. } => None,
 
             FieldDesc::Size { field_id, .. } | FieldDesc::Count { field_id, .. } => {
@@ -675,7 +676,7 @@ impl parser::ast::Field {
             FieldDesc::ElementSize { .. } => "elementsize",
             FieldDesc::Body { .. } => "body",
             FieldDesc::Payload { .. } => "payload",
-            FieldDesc::Fixed { .. } => "fixed",
+            FieldDesc::FixedScalar { .. } | FieldDesc::FixedEnum { .. } => "fixed",
             FieldDesc::Reserved { .. } => "reserved",
             FieldDesc::Group { .. } => "group",
             FieldDesc::Array { .. } => "array",
@@ -895,66 +896,68 @@ fn lint_count(
 }
 
 // Helper for linting fixed fields.
-#[allow(clippy::too_many_arguments)]
-fn lint_fixed(
-    scope: &Scope,
+fn lint_fixed_scalar(
+    _scope: &Scope,
     _packet_scope: &PacketScope,
     decl: &parser::ast::Field,
-    width: &Option<usize>,
-    value: &Option<usize>,
-    enum_id: &Option<String>,
-    tag_id: &Option<String>,
+    width: usize,
+    value: usize,
     result: &mut LintDiagnostics,
 ) {
     // By parsing constraint, we already have that either
     // (width and value) or (enum_id and tag_id) are Some.
     let fixed_loc = decl.loc;
 
-    if width.is_some() {
-        // The value of a fixed field should have .
-        if bit_width(value.unwrap()) > width.unwrap() {
-            result.push(Diagnostic::error().with_message("invalid integer literal").with_labels(
-                vec![fixed_loc.primary().with_message(format!(
-                    "expected maximum value of `{}`",
-                    (1 << width.unwrap()) - 1
-                ))],
-            ))
-        }
-    } else {
-        // The fixed field should reference a valid enum id and tag id
-        // association.
-        match scope.typedef.get(enum_id.as_ref().unwrap()) {
-            Some(Decl { desc: DeclDesc::Enum { tags, .. }, .. }) => {
-                match tags.iter().find(|t| &t.id == tag_id.as_ref().unwrap()) {
-                    Some(_) => (),
-                    None => result.push(
-                        Diagnostic::error()
-                            .with_message(format!(
-                                "undeclared enum tag `{}`",
-                                tag_id.as_ref().unwrap()
-                            ))
-                            .with_labels(vec![fixed_loc.primary()]),
-                    ),
-                }
+    // The value of a fixed field should have .
+    if bit_width(value) > width {
+        result.push(Diagnostic::error().with_message("invalid integer literal").with_labels(
+            vec![fixed_loc.primary().with_message(format!(
+                "expected maximum value of `{}`",
+                (1 << width) - 1
+            ))],
+        ))
+    }
+}
+
+fn lint_fixed_enum(
+    scope: &Scope,
+    _packet_scope: &PacketScope,
+    decl: &parser::ast::Field,
+    enum_id: &str,
+    tag_id: &str,
+    result: &mut LintDiagnostics,
+) {
+    // By parsing constraint, we already have that either
+    // (width and value) or (enum_id and tag_id) are Some.
+    let fixed_loc = decl.loc;
+
+    // The fixed field should reference a valid enum id and tag id
+    // association.
+    match scope.typedef.get(enum_id) {
+        Some(Decl { desc: DeclDesc::Enum { tags, .. }, .. }) => {
+            match tags.iter().find(|t| t.id == tag_id) {
+                Some(_) => (),
+                None => result.push(
+                    Diagnostic::error()
+                        .with_message(format!("undeclared enum tag `{}`", tag_id))
+                        .with_labels(vec![fixed_loc.primary()]),
+                ),
             }
-            Some(decl) => result.push(
-                Diagnostic::error()
-                    .with_message(format!(
-                        "fixed field uses invalid typedef `{}`",
-                        decl.id().unwrap()
-                    ))
-                    .with_labels(vec![fixed_loc.primary().with_message(format!(
-                        "{} has kind {}, expected enum",
-                        decl.id().unwrap(),
-                        decl.kind(),
-                    ))]),
-            ),
-            None => result.push(
-                Diagnostic::error()
-                    .with_message(format!("undeclared enum type `{}`", enum_id.as_ref().unwrap()))
-                    .with_labels(vec![fixed_loc.primary()]),
-            ),
         }
+        Some(decl) => result.push(
+            Diagnostic::error()
+                .with_message(format!("fixed field uses invalid typedef `{}`", decl.id().unwrap()))
+                .with_labels(vec![fixed_loc.primary().with_message(format!(
+                    "{} has kind {}, expected enum",
+                    decl.id().unwrap(),
+                    decl.kind(),
+                ))]),
+        ),
+        None => result.push(
+            Diagnostic::error()
+                .with_message(format!("undeclared enum type `{}`", enum_id))
+                .with_labels(vec![fixed_loc.primary()]),
+        ),
     }
 }
 
@@ -1096,8 +1099,11 @@ fn lint_field(
             lint_count(scope, packet_scope, decl, field_id, *width, result)
         }
         FieldDesc::ElementSize { .. } => { /* TODO(aryarahul) */ }
-        FieldDesc::Fixed { width, value, enum_id, tag_id, .. } => {
-            lint_fixed(scope, packet_scope, decl, width, value, enum_id, tag_id, result)
+        FieldDesc::FixedScalar { width, value } => {
+            lint_fixed_scalar(scope, packet_scope, decl, *width, *value, result)
+        }
+        FieldDesc::FixedEnum { enum_id, tag_id } => {
+            lint_fixed_enum(scope, packet_scope, decl, enum_id, tag_id, result)
         }
         FieldDesc::Array { width, type_id, size_modifier, size, .. } => {
             lint_array(scope, packet_scope, decl, width, type_id, size_modifier, size, result)
