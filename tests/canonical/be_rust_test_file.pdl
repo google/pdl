@@ -12,6 +12,16 @@ enum Enum16 : 16 {
     B = 0xccdd,
 }
 
+struct SizedStruct {
+    a: 8,
+}
+
+struct UnsizedStruct {
+    _size_(array): 2,
+    _reserved_: 6,
+    array: 8[],
+}
+
 enum MaxDiscriminantEnum : 64 {
      Max = 0xffffffffffffffff,
 }
