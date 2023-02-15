@@ -412,16 +412,13 @@ fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> 
     })
 }
 
-fn parse_field_list<'i>(
-    iter: &mut NodeIterator<'i>,
-    context: &Context,
-) -> Result<Vec<ast::Field>, String> {
+fn parse_field_list(iter: &mut NodeIterator, context: &Context) -> Result<Vec<ast::Field>, String> {
     expect(iter, Rule::field_list)
         .and_then(|n| n.children().map(|n| parse_field(n, context)).collect())
 }
 
-fn parse_field_list_opt<'i>(
-    iter: &mut NodeIterator<'i>,
+fn parse_field_list_opt(
+    iter: &mut NodeIterator,
     context: &Context,
 ) -> Result<Vec<ast::Field>, String> {
     maybe(iter, Rule::field_list)
