@@ -44,6 +44,34 @@ pub fn rust_type(field: &parser_ast::Field) -> proc_macro2::TokenStream {
             let field_type = format_ident!("{type_id}");
             quote!(#field_type)
         }
+        ast::FieldDesc::Array { width: Some(width), size: Some(size), .. } => {
+            let field_type = Integer::new(*width);
+            let size = proc_macro2::Literal::usize_unsuffixed(*size);
+            quote!([#field_type; #size])
+        }
+        ast::FieldDesc::Array { width: Some(width), size: None, .. } => {
+            let field_type = Integer::new(*width);
+            quote!(Vec<#field_type>)
+        }
+        ast::FieldDesc::Array { type_id: Some(type_id), size: Some(size), .. } => {
+            let field_type = format_ident!("{type_id}");
+            let size = proc_macro2::Literal::usize_unsuffixed(*size);
+            quote!([#field_type; #size])
+        }
+        ast::FieldDesc::Array { type_id: Some(type_id), size: None, .. } => {
+            let field_type = format_ident!("{type_id}");
+            quote!(Vec<#field_type>)
+        }
+        //ast::Field::Size { .. } | ast::Field::Count { .. } => quote!(),
+        _ => todo!("{field:?}"),
+    }
+}
+
+pub fn rust_borrow(field: &parser_ast::Field) -> proc_macro2::TokenStream {
+    match &field.desc {
+        // TODO: not all typedef fields are copy-types.
+        ast::FieldDesc::Scalar { .. } | ast::FieldDesc::Typedef { .. } => quote!(),
+        ast::FieldDesc::Array { .. } => quote!(&),
         _ => todo!(),
     }
 }
@@ -72,14 +100,14 @@ pub fn get_uint(
     if value_type.width == width {
         let get_u = format_ident!("get_u{}{}", value_type.width, suffix);
         quote! {
-            #span.#get_u()
+            #span.get_mut().#get_u()
         }
     } else {
         let get_uint = format_ident!("get_uint{}", suffix);
         let value_nbytes = proc_macro2::Literal::usize_unsuffixed(width / 8);
         let cast = (value_type.width < 64).then(|| quote!(as #value_type));
         quote! {
-            #span.#get_uint(#value_nbytes) #cast
+            #span.get_mut().#get_uint(#value_nbytes) #cast
         }
     }
 }

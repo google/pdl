@@ -38,112 +38,70 @@ pub trait Packet {
     fn to_vec(self) -> Vec<u8>;
 }
 
-#[derive(FromPrimitive, ToPrimitive, Debug, Hash, Eq, PartialEq, Clone, Copy)]
-#[repr(u64)]
-pub enum Foo {
-    A = 0x1,
-    B = 0x2,
-}
-#[cfg(feature = "serde")]
-impl serde::Serialize for Foo {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_u64(*self as u64)
-    }
-}
-#[cfg(feature = "serde")]
-struct FooVisitor;
-#[cfg(feature = "serde")]
-impl<'de> serde::de::Visitor<'de> for FooVisitor {
-    type Value = Foo;
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a valid discriminant")
-    }
-    fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        match value {
-            0x1 => Ok(Foo::A),
-            0x2 => Ok(Foo::B),
-            _ => Err(E::custom(format!("invalid discriminant: {value}"))),
-        }
-    }
-}
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for Foo {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserializer.deserialize_u64(FooVisitor)
-    }
-}
-
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct BarData {
-    x: Foo,
+struct FooData {
+    x: [u8; 3],
 }
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Bar {
+pub struct Foo {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    bar: Arc<BarData>,
+    foo: Arc<FooData>,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct BarBuilder {
-    pub x: Foo,
+pub struct FooBuilder {
+    pub x: [u8; 3],
 }
-impl BarData {
+impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
-        bytes.len() >= 1
+        bytes.len() >= 3
     }
     fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        if bytes.get().remaining() < 1 {
+        if bytes.get().remaining() < 3 {
             return Err(Error::InvalidLengthError {
-                obj: "Bar".to_string(),
-                wanted: 1,
+                obj: "Foo".to_string(),
+                wanted: 3,
                 got: bytes.get().remaining(),
             });
         }
-        let x = Foo::from_u8(bytes.get_mut().get_u8()).unwrap();
+        let x = std::array::from_fn(|_| Ok::<_, Error>(bytes.get_mut().get_u8()).unwrap());
         Ok(Self { x })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
-        buffer.put_u8(self.x.to_u8().unwrap());
+        for elem in &self.x {
+            buffer.put_u8(*elem);
+        }
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
     }
     fn get_size(&self) -> usize {
-        1
+        3
     }
 }
-impl Packet for Bar {
+impl Packet for Foo {
     fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.bar.get_total_size());
-        self.bar.write_to(&mut buffer);
+        let mut buffer = BytesMut::with_capacity(self.foo.get_total_size());
+        self.foo.write_to(&mut buffer);
         buffer.freeze()
     }
     fn to_vec(self) -> Vec<u8> {
         self.to_bytes().to_vec()
     }
 }
-impl From<Bar> for Bytes {
-    fn from(packet: Bar) -> Self {
+impl From<Foo> for Bytes {
+    fn from(packet: Foo) -> Self {
         packet.to_bytes()
     }
 }
-impl From<Bar> for Vec<u8> {
-    fn from(packet: Bar) -> Self {
+impl From<Foo> for Vec<u8> {
+    fn from(packet: Foo) -> Self {
         packet.to_vec()
     }
 }
-impl Bar {
+impl Foo {
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
@@ -153,26 +111,26 @@ impl Bar {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        let packet = BarData::parse(&mut bytes)?;
+        let packet = FooData::parse(&mut bytes)?;
         Ok(Self::new(Arc::new(packet)).unwrap())
     }
-    fn new(root: Arc<BarData>) -> std::result::Result<Self, &'static str> {
-        let bar = root;
-        Ok(Self { bar })
+    fn new(root: Arc<FooData>) -> std::result::Result<Self, &'static str> {
+        let foo = root;
+        Ok(Self { foo })
     }
-    pub fn get_x(&self) -> Foo {
-        self.bar.as_ref().x
+    pub fn get_x(&self) -> &[u8; 3] {
+        &self.foo.as_ref().x
     }
     fn write_to(&self, buffer: &mut BytesMut) {
-        self.bar.write_to(buffer)
+        self.foo.write_to(buffer)
     }
     pub fn get_size(&self) -> usize {
-        self.bar.get_size()
+        self.foo.get_size()
     }
 }
-impl BarBuilder {
-    pub fn build(self) -> Bar {
-        let bar = Arc::new(BarData { x: self.x });
-        Bar::new(bar).unwrap()
+impl FooBuilder {
+    pub fn build(self) -> Foo {
+        let foo = Arc::new(FooData { x: self.x });
+        Foo::new(foo).unwrap()
     }
 }

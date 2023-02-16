@@ -85,7 +85,7 @@ impl<'de> serde::Deserialize<'de> for Foo {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct BarData {
-    x: Foo,
+    x: [Foo; 5],
 }
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -96,31 +96,42 @@ pub struct Bar {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BarBuilder {
-    pub x: Foo,
+    pub x: [Foo; 5],
 }
 impl BarData {
     fn conforms(bytes: &[u8]) -> bool {
-        bytes.len() >= 1
+        bytes.len() >= 15
     }
     fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        if bytes.get().remaining() < 1 {
+        if bytes.get().remaining() < 5 * 3 {
             return Err(Error::InvalidLengthError {
                 obj: "Bar".to_string(),
-                wanted: 1,
+                wanted: 5 * 3,
                 got: bytes.get().remaining(),
             });
         }
-        let x = Foo::from_u8(bytes.get_mut().get_u8()).unwrap();
+        let x = std::array::from_fn(|_| {
+            Foo::from_u32(bytes.get_mut().get_uint(3) as u32)
+                .ok_or_else(|| Error::InvalidEnumValueError {
+                    obj: "Bar".to_string(),
+                    field: String::new(),
+                    value: 0,
+                    type_: "Foo".to_string(),
+                })
+                .unwrap()
+        });
         Ok(Self { x })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
-        buffer.put_u8(self.x.to_u8().unwrap());
+        for elem in &self.x {
+            buffer.put_uint(elem.to_u32().unwrap() as u64, 3);
+        }
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
     }
     fn get_size(&self) -> usize {
-        1
+        15
     }
 }
 impl Packet for Bar {
@@ -160,8 +171,8 @@ impl Bar {
         let bar = root;
         Ok(Self { bar })
     }
-    pub fn get_x(&self) -> Foo {
-        self.bar.as_ref().x
+    pub fn get_x(&self) -> &[Foo; 5] {
+        &self.bar.as_ref().x
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.bar.write_to(buffer)

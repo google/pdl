@@ -16,6 +16,7 @@ pub fn generate(path: &Path) -> String {
         use num_derive::{FromPrimitive, ToPrimitive};
         use num_traits::{FromPrimitive, ToPrimitive};
         use std::convert::{TryFrom, TryInto};
+        use std::cell::Cell;
         use std::fmt;
         use std::sync::Arc;
         use thiserror::Error;
@@ -34,6 +35,8 @@ pub fn generate(path: &Path) -> String {
             ConstraintOutOfBounds { field: String, value: u64 },
             #[error("when parsing {obj} needed length of {wanted} but got {got}")]
             InvalidLengthError { obj: String, wanted: usize, got: usize },
+            #[error("array size ({array} bytes) is not a multiple of the element size ({element} bytes)")]
+            InvalidArraySize { array: usize, element: usize },
             #[error("Due to size restrictions a struct could not be parsed.")]
             ImpossibleStructError,
             #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]

@@ -42,6 +42,76 @@ pub fn mask_bits(n: usize) -> syn::LitInt {
     syn::parse_str::<syn::LitInt>(&format!("{:#x}{suffix}", (1u64 << n) - 1)).unwrap()
 }
 
+fn generate_packet_size_getter(
+    scope: &lint::Scope<'_>,
+    fields: &[parser_ast::Field],
+) -> (usize, proc_macro2::TokenStream) {
+    let mut constant_width = 0;
+    let mut dynamic_widths = Vec::new();
+
+    for field in fields {
+        if let Some(width) = field.width(scope, false) {
+            constant_width += width;
+            continue;
+        }
+
+        let decl = field.declaration(scope);
+        dynamic_widths.push(match &field.desc {
+            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. } => {
+                quote!(self.payload.len())
+            }
+            ast::FieldDesc::Typedef { id, .. } => {
+                let id = format_ident!("{id}");
+                quote!(self.#id.get_size())
+            }
+            ast::FieldDesc::Array { id, width, .. } => {
+                let id = format_ident!("{id}");
+                match &decl {
+                    Some(parser_ast::Decl {
+                        desc: ast::DeclDesc::Struct { .. } | ast::DeclDesc::CustomField { .. },
+                        ..
+                    }) => {
+                        quote! {
+                            self.#id.iter().map(|elem| elem.get_size()).sum::<usize>()
+                        }
+                    }
+                    Some(parser_ast::Decl { desc: ast::DeclDesc::Enum { .. }, .. }) => {
+                        let width =
+                            syn::Index::from(decl.unwrap().width(scope, false).unwrap() / 8);
+                        let mul_width = (width.index > 1).then(|| quote!(* #width));
+                        quote! {
+                            self.#id.len() #mul_width
+                        }
+                    }
+                    _ => {
+                        let width = syn::Index::from(width.unwrap() / 8);
+                        let mul_width = (width.index > 1).then(|| quote!(* #width));
+                        quote! {
+                            self.#id.len() #mul_width
+                        }
+                    }
+                }
+            }
+            _ => panic!("Unsupported field type: {field:?}"),
+        });
+    }
+
+    if constant_width > 0 {
+        let width = syn::Index::from(constant_width / 8);
+        dynamic_widths.insert(0, quote!(#width));
+    }
+    if dynamic_widths.is_empty() {
+        dynamic_widths.push(quote!(0))
+    }
+
+    (
+        constant_width,
+        quote! {
+            #(#dynamic_widths)+*
+        },
+    )
+}
+
 /// Generate code for `ast::Decl::Packet` and `ast::Decl::Struct`
 /// values.
 fn generate_packet_decl(
@@ -77,14 +147,15 @@ fn generate_packet_decl(
     let field_names =
         fields_with_ids.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
     let field_types = fields_with_ids.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
+    let field_borrows = fields_with_ids.iter().map(|f| types::rust_borrow(f)).collect::<Vec<_>>();
     let getter_names = field_names.iter().map(|id| format_ident!("get_{id}"));
 
-    let packet_size =
-        syn::Index::from(fields.iter().filter_map(|f| f.width(scope)).sum::<usize>() / 8);
-    let conforms = if packet_size.index == 0 {
+    let (constant_width, packet_size) = generate_packet_size_getter(scope, fields);
+    let conforms = if constant_width == 0 {
         quote! { true }
     } else {
-        quote! { #span.len() >= #packet_size }
+        let constant_width = syn::Index::from(constant_width / 8);
+        quote! { #span.len() >= #constant_width }
     };
 
     quote! {
@@ -112,7 +183,7 @@ fn generate_packet_decl(
                 #conforms
             }
 
-            fn parse(mut #span: &[u8]) -> Result<Self> {
+            fn parse(mut #span: &mut Cell<&[u8]>) -> Result<Self> {
                 #field_parser
                 Ok(Self { #(#field_names),* })
             }
@@ -155,17 +226,35 @@ fn generate_packet_decl(
         }
 
         impl #id_packet {
-            pub fn parse(mut bytes: &[u8]) -> Result<Self> {
-                Ok(Self::new(Arc::new(#id_data::parse(bytes)?)).unwrap())
+            pub fn parse(#span: &[u8]) -> Result<Self> {
+                let mut cell = Cell::new(#span);
+                let packet = Self::parse_inner(&mut cell)?;
+                if !cell.get().is_empty() {
+                    return Err(Error::InvalidPacketError);
+                }
+                Ok(packet)
+            }
+
+            fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+                let packet = #id_data::parse(&mut bytes)?;
+                Ok(Self::new(Arc::new(packet)).unwrap())
             }
             fn new(root: Arc<#id_data>) -> std::result::Result<Self, &'static str> {
                 let #id_lower = root;
                 Ok(Self { #id_lower })
             }
 
-            #(pub fn #getter_names(&self) -> #field_types {
-                self.#id_lower.as_ref().#field_names
+            #(pub fn #getter_names(&self) -> #field_borrows #field_types {
+                #field_borrows self.#id_lower.as_ref().#field_names
             })*
+
+            fn write_to(&self, buffer: &mut BytesMut) {
+                self.#id_lower.write_to(buffer)
+            }
+
+            pub fn get_size(&self) -> usize {
+                self.#id_lower.get_size()
+            }
         }
 
         impl #id_builder {
@@ -413,6 +502,75 @@ mod tests {
             y: 5,
             z: Enum9,
             w: 3,
+          }
+        "
+    );
+
+    test_pdl!(packet_decl_8bit_scalar_array, " packet Foo { x:  8[3] }");
+    test_pdl!(packet_decl_24bit_scalar_array, "packet Foo { x: 24[5] }");
+    test_pdl!(packet_decl_64bit_scalar_array, "packet Foo { x: 64[7] }");
+
+    test_pdl!(
+        packet_decl_8bit_enum_array,
+        "enum Foo :  8 { A = 1, B = 2 } packet Bar { x: Foo[3] }"
+    );
+    test_pdl!(
+        packet_decl_24bit_enum_array,
+        "enum Foo : 24 { A = 1, B = 2 } packet Bar { x: Foo[5] }"
+    );
+    test_pdl!(
+        packet_decl_64bit_enum_array,
+        "enum Foo : 64 { A = 1, B = 2 } packet Bar { x: Foo[7] }"
+    );
+
+    test_pdl!(
+        packet_decl_array_dynamic_count,
+        "
+          packet Foo {
+            _count_(x): 5,
+            padding: 3,
+            x: 24[]
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_array_dynamic_size,
+        "
+          packet Foo {
+            _size_(x): 5,
+            padding: 3,
+            x: 24[]
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_array_unknown_element_width_dynamic_size,
+        "
+          struct Foo {
+            _count_(a): 8,
+            a: 16[],
+          }
+
+          packet Bar {
+            _size_(x): 8,
+            x: Foo[],
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_array_unknown_element_width_dynamic_count,
+        "
+          struct Foo {
+            _count_(a): 8,
+            a: 16[],
+          }
+
+          packet Bar {
+            _count_(x): 8,
+            x: Foo[],
           }
         "
     );

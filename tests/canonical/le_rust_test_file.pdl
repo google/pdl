@@ -27,3 +27,17 @@ packet Packet_Enum_Field {
     a: Enum7,
     c: 57,
 }
+
+packet Packet_Size_Field {
+    _size_(b): 3,
+    a: 61,
+    b: 8[],
+}
+
+// The parser must be able to handle bit fields with count fields
+// up to 64 bits wide.  The parser should generate a static size guard.
+packet Packet_Count_Field {
+    _count_(b): 3,
+    a: 61,
+    b: 8[],
+}
