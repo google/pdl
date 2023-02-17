@@ -60,6 +60,8 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
                 eprintln!("Skipping packet {}", test_packet);
                 continue;
             }
+            eprintln!("Generating tests for packet {}", test_packet);
+
             let parse_test_name = format_ident!(
                 "test_parse_{}_vector_{}_0x{}",
                 test_packet,
@@ -104,7 +106,7 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
                     let builder: #module::#builder_name = serde_json::from_str(#json)
                         .expect("Could not create builder from canonical JSON data");
                     let packet = builder.build();
-                    let packed = #packed;
+                    let packed: Vec<u8> = #packed;
                     assert_eq!(packet.to_vec(), packed);
                 }
             });
@@ -131,5 +133,31 @@ fn main() {
     let module_name = std::env::args().nth(2).expect("Need name for the generated module");
     // TODO(mgeisler): remove the `packet_names` argument when we
     // support all canonical packets.
-    generate_unit_tests(&input_path, &["Packet_Scalar_Field", "Packet_Enum_Field"], &module_name);
+    generate_unit_tests(
+        &input_path,
+        &[
+            "Packet_Scalar_Field",
+            "Packet_Enum_Field",
+            "Packet_Enum8_Field",
+            "Packet_Array_Field_ByteElement_ConstantSize",
+            "Packet_Array_Field_ByteElement_UnknownSize",
+            "Packet_Array_Field_EnumElement",
+            "Packet_Array_Field_EnumElement_ConstantSize",
+            "Packet_Array_Field_EnumElement_UnknownSize",
+            "Packet_Array_Field_ScalarElement",
+            "Packet_Array_Field_ScalarElement_ConstantSize",
+            "Packet_Array_Field_ScalarElement_UnknownSize",
+            "Packet_Array_Field_SizedElement_ConstantSize",
+            "Packet_Array_Field_SizedElement_UnknownSize",
+            "Packet_Array_Field_UnsizedElement_ConstantSize",
+            "Packet_Array_Field_UnsizedElement_UnknownSize",
+            "Packet_Array_Field_UnsizedElement_VariableCount",
+            "Packet_Array_Field_UnsizedElement_VariableSize",
+            "Packet_Size_Field",
+            "Packet_Count_Field",
+            "Packet_FixedScalar_Field",
+            "Packet_FixedEnum_Field",
+        ],
+        &module_name,
+    );
 }
