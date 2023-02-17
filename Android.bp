@@ -159,6 +159,8 @@ rust_library_host {
     crate_name: "pdl_le_backend",
     srcs: [":pdl_le_backend"],
     defaults: ["pdl_backend_defaults"],
+    clippy_lints: "none",
+    lints: "none",
 }
 
 rust_library_host {
@@ -166,6 +168,8 @@ rust_library_host {
     crate_name: "pdl_be_backend",
     srcs: [":pdl_be_backend"],
     defaults: ["pdl_backend_defaults"],
+    clippy_lints: "none",
+    lints: "none",
 }
 
 rust_binary_host {
@@ -218,6 +222,8 @@ rust_test_host {
         "libpdl_le_backend",
         "libserde_json",
     ],
+    clippy_lints: "none",
+    lints: "none",
 }
 
 rust_test_host {
@@ -229,6 +235,8 @@ rust_test_host {
         "libpdl_be_backend",
         "libserde_json",
     ],
+    clippy_lints: "none",
+    lints: "none",
 }
 
 // Defaults for PDL python backend generation.
