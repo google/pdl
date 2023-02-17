@@ -9,6 +9,7 @@
 #![allow(clippy::format_push_string)]
 
 use crate::{ast, lint};
+use heck::ToUpperCamelCase;
 use quote::{format_ident, quote};
 use std::path::Path;
 
@@ -246,7 +247,7 @@ fn generate_packet_decl(
                                 }
                                 _ => unreachable!("Invalid constraint: {constraint:?}"),
                             };
-                            let tag_id = format_ident!("{tag_id}");
+                            let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
                             quote!(#type_id::#tag_id)
                         }
                         _ => unreachable!("Invalid constraint: {constraint:?}"),
@@ -506,7 +507,8 @@ fn generate_packet_decl(
 
 fn generate_enum_decl(id: &str, tags: &[ast::Tag]) -> proc_macro2::TokenStream {
     let name = format_ident!("{id}");
-    let variants = tags.iter().map(|t| format_ident!("{}", t.id)).collect::<Vec<_>>();
+    let variants =
+        tags.iter().map(|t| format_ident!("{}", t.id.to_upper_camel_case())).collect::<Vec<_>>();
     let values = tags
         .iter()
         .map(|t| syn::parse_str::<syn::LitInt>(&format!("{:#x}", t.value)).unwrap())
@@ -742,15 +744,15 @@ mod tests {
 
     test_pdl!(
         packet_decl_8bit_enum_array,
-        "enum Foo :  8 { A = 1, B = 2 } packet Bar { x: Foo[3] }"
+        "enum Foo :  8 { FOO_BAR = 1, BAZ = 2 } packet Bar { x: Foo[3] }"
     );
     test_pdl!(
         packet_decl_24bit_enum_array,
-        "enum Foo : 24 { A = 1, B = 2 } packet Bar { x: Foo[5] }"
+        "enum Foo : 24 { FOO_BAR = 1, BAZ = 2 } packet Bar { x: Foo[5] }"
     );
     test_pdl!(
         packet_decl_64bit_enum_array,
-        "enum Foo : 64 { A = 1, B = 2 } packet Bar { x: Foo[7] }"
+        "enum Foo : 64 { FOO_BAR = 1, BAZ = 2 } packet Bar { x: Foo[7] }"
     );
 
     test_pdl!(

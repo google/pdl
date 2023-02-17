@@ -1,6 +1,7 @@
 use crate::backends::rust::{mask_bits, types};
 use crate::parser::ast as parser_ast;
 use crate::{ast, lint};
+use heck::ToUpperCamelCase;
 use quote::{format_ident, quote};
 
 /// A single bit-field value.
@@ -76,7 +77,7 @@ impl<'a> FieldSerializer<'a> {
             ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
                 let field_type = types::Integer::new(width);
                 let enum_id = format_ident!("{enum_id}");
-                let tag_id = format_ident!("{tag_id}");
+                let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
                 self.chunk.push(BitField { value: quote!(#enum_id::#tag_id), field_type, shift });
             }
             ast::FieldDesc::FixedScalar { value, .. } => {

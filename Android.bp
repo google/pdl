@@ -13,6 +13,7 @@ rust_defaults {
     rustlibs: [
         "libclap",
         "libcodespan_reporting",
+        "libheck",
         "libpest",
         "libproc_macro2",
         "libquote",

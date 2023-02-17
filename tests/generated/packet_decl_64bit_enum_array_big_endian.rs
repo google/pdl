@@ -41,8 +41,8 @@ pub trait Packet {
 #[derive(FromPrimitive, ToPrimitive, Debug, Hash, Eq, PartialEq, Clone, Copy)]
 #[repr(u64)]
 pub enum Foo {
-    A = 0x1,
-    B = 0x2,
+    FooBar = 0x1,
+    Baz = 0x2,
 }
 #[cfg(feature = "serde")]
 impl serde::Serialize for Foo {
@@ -66,8 +66,8 @@ impl<'de> serde::de::Visitor<'de> for FooVisitor {
         E: serde::de::Error,
     {
         match value {
-            0x1 => Ok(Foo::A),
-            0x2 => Ok(Foo::B),
+            0x1 => Ok(Foo::FooBar),
+            0x2 => Ok(Foo::Baz),
             _ => Err(E::custom(format!("invalid discriminant: {value}"))),
         }
     }
