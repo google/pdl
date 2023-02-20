@@ -166,6 +166,18 @@ packet Packet_Array_Field_ScalarElement_ConstantSize {
     array: 16[4],
 }
 
+packet Packet_Array_Field_ScalarElement_VariableSize {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: 16[],
+}
+
+packet Packet_Array_Field_ScalarElement_VariableCount {
+    _count_(array) : 4,
+    _reserved_: 4,
+    array: 16[],
+}
+
 packet Packet_Array_Field_ScalarElement_UnknownSize {
     array: 16[],
 }
@@ -174,12 +186,36 @@ packet Packet_Array_Field_EnumElement_ConstantSize {
     array: Enum16[4],
 }
 
+packet Packet_Array_Field_EnumElement_VariableSize {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: Enum16[],
+}
+
+packet Packet_Array_Field_EnumElement_VariableCount {
+    _count_(array) : 4,
+    _reserved_: 4,
+    array: Enum16[],
+}
+
 packet Packet_Array_Field_EnumElement_UnknownSize {
     array: Enum16[],
 }
 
 packet Packet_Array_Field_SizedElement_ConstantSize {
     array: SizedStruct[4],
+}
+
+packet Packet_Array_Field_SizedElement_VariableSize {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: SizedStruct[],
+}
+
+packet Packet_Array_Field_SizedElement_VariableCount {
+    _count_(array) : 4,
+    _reserved_: 4,
+    array: SizedStruct[],
 }
 
 packet Packet_Array_Field_SizedElement_UnknownSize {
