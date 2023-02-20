@@ -117,6 +117,31 @@ packet Packet_Payload_Field_UnknownSize_Terminal {
     _payload_,
 }
 
+// Packet body fields
+
+// The parser must be able to handle sized body fields without
+// size modifier when the packet has no children.
+packet Packet_Body_Field_VariableSize {
+    _size_(_body_): 3,
+    _reserved_: 5,
+    _body_
+}
+
+// The parser must be able to handle body fields of unkonwn size followed
+// by fields of statically known size. The remaining span is integrated
+// in the packet.
+packet Packet_Body_Field_UnknownSize {
+    _body_,
+    a: 16,
+}
+
+// The parser must be able to handle body fields of unkonwn size.
+// The remaining span is integrated in the packet.
+packet Packet_Body_Field_UnknownSize_Terminal {
+    a: 16,
+    _body_,
+}
+
 packet Packet_Array_Field_ByteElement_ConstantSize {
     array: 8[4],
 }
