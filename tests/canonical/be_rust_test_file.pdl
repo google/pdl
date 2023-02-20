@@ -42,8 +42,13 @@ packet Packet_Enum_Field {
     c: 57,
 }
 
-// Array fields
-// Array element types
+// The parser must be able to handle bit fields with reserved fields
+// up to 64 bits wide.  The parser should generate a static size guard.
+packet Packet_Reserved_Field {
+    a: 7,
+    _reserved_: 2,
+    c: 55,
+}
 
 // The parser must be able to handle bit fields with size fields
 // up to 64 bits wide.  The parser should generate a static size guard.
