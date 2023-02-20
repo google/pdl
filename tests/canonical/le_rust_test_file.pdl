@@ -121,6 +121,18 @@ packet Packet_Array_Field_ByteElement_ConstantSize {
     array: 8[4],
 }
 
+packet Packet_Array_Field_ByteElement_VariableSize {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: 8[],
+}
+
+packet Packet_Array_Field_ByteElement_VariableCount {
+    _count_(array) : 4,
+    _reserved_: 4,
+    array: 8[],
+}
+
 packet Packet_Array_Field_ByteElement_UnknownSize {
     array: 8[],
 }

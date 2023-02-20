@@ -140,6 +140,8 @@ fn main() {
             "EnumChild_B",
             "Packet_Array_Field_ByteElement_ConstantSize",
             "Packet_Array_Field_ByteElement_UnknownSize",
+            "Packet_Array_Field_ByteElement_VariableCount",
+            "Packet_Array_Field_ByteElement_VariableSize",
             "Packet_Array_Field_EnumElement",
             "Packet_Array_Field_EnumElement_ConstantSize",
             "Packet_Array_Field_EnumElement_UnknownSize",
