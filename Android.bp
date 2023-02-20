@@ -124,6 +124,39 @@ genrule_defaults {
     ],
 }
 
+// The generators support more features for LE packets than for BE
+// packets. We use a single input written for LE packets and remove
+// the parts that don't work for BE packets. We do this by removing
+// everything between
+//
+// // Start: little_endian_only
+//
+// and
+//
+// // End: little_endian_only
+//
+// from the LE packet input.
+genrule_defaults {
+    name: "pdl_be_test_file_defaults",
+    cmd: "sed -e 's/little_endian_packets/big_endian_packets/' " +
+        "     -e '/Start: little_endian_only/,/End: little_endian_only/d' " +
+        " < $(in) > $(out)",
+}
+
+genrule {
+    name: "pdl_be_rust_test_file",
+    defaults: ["pdl_be_test_file_defaults"],
+    srcs: ["tests/canonical/le_rust_test_file.pdl"],
+    out: ["be_rust_test_file.pdl"],
+}
+
+genrule {
+    name: "pdl_be_test_file",
+    defaults: ["pdl_be_test_file_defaults"],
+    srcs: ["tests/canonical/le_test_file.pdl"],
+    out: ["be_test_file.pdl"],
+}
+
 // Generate the Rust parser+serializer backends.
 genrule {
     name: "pdl_le_backend",
@@ -135,7 +168,7 @@ genrule {
 genrule {
     name: "pdl_be_backend",
     defaults: ["pdl_rust_generator_defaults"],
-    srcs: ["tests/canonical/be_rust_test_file.pdl"],
+    srcs: [":pdl_be_rust_test_file"],
     out: ["be_backend.rs"],
 }
 
@@ -269,8 +302,8 @@ genrule {
     ],
 }
 
-// Generate the python parser+serializer backend for the
-// big endian test file located at tests/canonical/be_test_file.pdl.
+// Generate the python parser+serializer backend for a big endian test
+// file derived from tests/canonical/le_test_file.pdl.
 genrule {
     name: "pdl_python_generator_be_test_gen",
     defaults: ["pdl_python_generator_defaults"],
@@ -282,7 +315,7 @@ genrule {
         "tests/custom_types.py",
     ],
     srcs: [
-        "tests/canonical/be_test_file.pdl",
+        ":pdl_be_test_file",
     ],
     out: [
         "be_pdl_test.py",
