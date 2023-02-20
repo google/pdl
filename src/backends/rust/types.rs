@@ -1,7 +1,7 @@
 //! Utility functions for dealing with Rust integer types.
 
-use crate::ast;
 use crate::parser::ast as parser_ast;
+use crate::{ast, lint};
 use quote::{format_ident, quote};
 
 /// A Rust integer type such as `u8`.
@@ -67,10 +67,14 @@ pub fn rust_type(field: &parser_ast::Field) -> proc_macro2::TokenStream {
     }
 }
 
-pub fn rust_borrow(field: &parser_ast::Field) -> proc_macro2::TokenStream {
+pub fn rust_borrow(field: &parser_ast::Field, scope: &lint::Scope<'_>) -> proc_macro2::TokenStream {
     match &field.desc {
-        // TODO: not all typedef fields are copy-types.
-        ast::FieldDesc::Scalar { .. } | ast::FieldDesc::Typedef { .. } => quote!(),
+        ast::FieldDesc::Scalar { .. } => quote!(),
+        ast::FieldDesc::Typedef { type_id, .. } => match &scope.typedef[type_id].desc {
+            ast::DeclDesc::Enum { .. } => quote!(),
+            ast::DeclDesc::Struct { .. } => quote!(&),
+            desc => unreachable!("unexpected declaration: {desc:?}"),
+        },
         ast::FieldDesc::Array { .. } => quote!(&),
         _ => todo!(),
     }

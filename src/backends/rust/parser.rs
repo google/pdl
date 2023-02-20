@@ -56,6 +56,7 @@ impl<'a> FieldParser<'a> {
                 *size,
                 field.declaration(self.scope),
             ),
+            ast::FieldDesc::Typedef { id, type_id } => self.add_typedef_field(id, type_id),
             ast::FieldDesc::Payload { size_modifier, .. } => {
                 self.add_payload_field(size_modifier.as_deref())
             }
@@ -398,6 +399,45 @@ impl<'a> FieldParser<'a> {
                     let mut #id = Vec::with_capacity(#array_count);
                     for _ in 0..#array_count {
                         #id.push(#parse_element?);
+                    }
+                });
+            }
+        }
+    }
+
+    /// Parse typedef fields.
+    ///
+    /// This is only for non-enum fields: enums are parsed via
+    /// add_bit_field.
+    fn add_typedef_field(&mut self, id: &str, type_id: &str) {
+        assert_eq!(self.shift, 0, "Typedef field does not start on an octet boundary");
+
+        let decl = self.scope.typedef[type_id];
+        if let ast::DeclDesc::Struct { parent_id: Some(_), .. } = &decl.desc {
+            panic!("Derived struct used in typedef field");
+        }
+
+        let span = self.span;
+        let id = format_ident!("{id}");
+        let type_id = format_ident!("{type_id}");
+
+        match decl.width(self.scope, true) {
+            None => self.code.push(quote! {
+                let #id = #type_id::parse_inner(&mut #span)?;
+            }),
+            Some(width) => {
+                assert_eq!(width % 8, 0, "Typedef field type size is not a multiple of 8");
+                let width = syn::Index::from(width / 8);
+                self.code.push(if let ast::DeclDesc::Checksum { .. } = &decl.desc {
+                    // TODO: handle checksum fields.
+                    quote! {
+                        #span.get_mut().advance(#width);
+                    }
+                } else {
+                    quote! {
+                        let (head, tail) = #span.get().split_at(#width);
+                        #span.replace(tail);
+                        let #id = #type_id::parse(head)?;
                     }
                 });
             }
