@@ -1,7 +1,5 @@
 // @generated rust packets from test
 
-#![allow(warnings, missing_docs)]
-
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -86,7 +84,7 @@ impl<'de> serde::Deserialize<'de> for Enum7 {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct FooData {
+pub struct FooData {
     b: u64,
 }
 #[derive(Debug, Clone)]
@@ -138,7 +136,7 @@ impl FooData {
 }
 impl Packet for Foo {
     fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.foo.get_total_size());
+        let mut buffer = BytesMut::with_capacity(self.foo.get_size());
         self.foo.write_to(&mut buffer);
         buffer.freeze()
     }
@@ -166,11 +164,10 @@ impl Foo {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        let packet = FooData::parse(&mut bytes)?;
-        Ok(Self::new(Arc::new(packet)).unwrap())
+        let data = FooData::parse(&mut bytes)?;
+        Ok(Self::new(Arc::new(data)).unwrap())
     }
-    fn new(root: Arc<FooData>) -> std::result::Result<Self, &'static str> {
-        let foo = root;
+    fn new(foo: Arc<FooData>) -> std::result::Result<Self, &'static str> {
         Ok(Self { foo })
     }
     pub fn get_b(&self) -> u64 {
@@ -187,5 +184,10 @@ impl FooBuilder {
     pub fn build(self) -> Foo {
         let foo = Arc::new(FooData { b: self.b });
         Foo::new(foo).unwrap()
+    }
+}
+impl From<FooBuilder> for Foo {
+    fn from(builder: FooBuilder) -> Foo {
+        builder.build().into()
     }
 }

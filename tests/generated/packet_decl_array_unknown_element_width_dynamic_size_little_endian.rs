@@ -1,7 +1,5 @@
 // @generated rust packets from test
 
-#![allow(warnings, missing_docs)]
-
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -42,7 +40,7 @@ pub trait Packet {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct FooData {
+pub struct FooData {
     a: Vec<u16>,
 }
 #[derive(Debug, Clone)]
@@ -96,7 +94,7 @@ impl FooData {
 }
 impl Packet for Foo {
     fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.foo.get_total_size());
+        let mut buffer = BytesMut::with_capacity(self.foo.get_size());
         self.foo.write_to(&mut buffer);
         buffer.freeze()
     }
@@ -124,11 +122,10 @@ impl Foo {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        let packet = FooData::parse(&mut bytes)?;
-        Ok(Self::new(Arc::new(packet)).unwrap())
+        let data = FooData::parse(&mut bytes)?;
+        Ok(Self::new(Arc::new(data)).unwrap())
     }
-    fn new(root: Arc<FooData>) -> std::result::Result<Self, &'static str> {
-        let foo = root;
+    fn new(foo: Arc<FooData>) -> std::result::Result<Self, &'static str> {
         Ok(Self { foo })
     }
     pub fn get_a(&self) -> &Vec<u16> {
@@ -147,10 +144,15 @@ impl FooBuilder {
         Foo::new(foo).unwrap()
     }
 }
+impl From<FooBuilder> for Foo {
+    fn from(builder: FooBuilder) -> Foo {
+        builder.build().into()
+    }
+}
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct BarData {
+pub struct BarData {
     x: Vec<Foo>,
 }
 #[derive(Debug, Clone)]
@@ -212,7 +214,7 @@ impl BarData {
 }
 impl Packet for Bar {
     fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.bar.get_total_size());
+        let mut buffer = BytesMut::with_capacity(self.bar.get_size());
         self.bar.write_to(&mut buffer);
         buffer.freeze()
     }
@@ -240,11 +242,10 @@ impl Bar {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        let packet = BarData::parse(&mut bytes)?;
-        Ok(Self::new(Arc::new(packet)).unwrap())
+        let data = BarData::parse(&mut bytes)?;
+        Ok(Self::new(Arc::new(data)).unwrap())
     }
-    fn new(root: Arc<BarData>) -> std::result::Result<Self, &'static str> {
-        let bar = root;
+    fn new(bar: Arc<BarData>) -> std::result::Result<Self, &'static str> {
         Ok(Self { bar })
     }
     pub fn get_x(&self) -> &Vec<Foo> {
@@ -261,5 +262,10 @@ impl BarBuilder {
     pub fn build(self) -> Bar {
         let bar = Arc::new(BarData { x: self.x });
         Bar::new(bar).unwrap()
+    }
+}
+impl From<BarBuilder> for Bar {
+    fn from(builder: BarBuilder) -> Bar {
+        builder.build().into()
     }
 }

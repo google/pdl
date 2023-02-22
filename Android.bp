@@ -13,6 +13,7 @@ rust_defaults {
     rustlibs: [
         "libclap",
         "libcodespan_reporting",
+        "libheck",
         "libpest",
         "libproc_macro2",
         "libquote",
@@ -82,6 +83,8 @@ rust_test_host {
         "tests/generated/packet_decl_array_unknown_element_width_dynamic_count_little_endian.rs",
         "tests/generated/packet_decl_array_unknown_element_width_dynamic_size_big_endian.rs",
         "tests/generated/packet_decl_array_unknown_element_width_dynamic_size_little_endian.rs",
+        "tests/generated/packet_decl_child_packets_big_endian.rs",
+        "tests/generated/packet_decl_child_packets_little_endian.rs",
         "tests/generated/packet_decl_complex_scalars_big_endian.rs",
         "tests/generated/packet_decl_complex_scalars_little_endian.rs",
         "tests/generated/packet_decl_empty_big_endian.rs",
@@ -94,6 +97,12 @@ rust_test_host {
         "tests/generated/packet_decl_mask_scalar_value_little_endian.rs",
         "tests/generated/packet_decl_mixed_scalars_enums_big_endian.rs",
         "tests/generated/packet_decl_mixed_scalars_enums_little_endian.rs",
+        "tests/generated/packet_decl_payload_field_unknown_size_big_endian.rs",
+        "tests/generated/packet_decl_payload_field_unknown_size_little_endian.rs",
+        "tests/generated/packet_decl_payload_field_unknown_size_terminal_big_endian.rs",
+        "tests/generated/packet_decl_payload_field_unknown_size_terminal_little_endian.rs",
+        "tests/generated/packet_decl_payload_field_variable_size_big_endian.rs",
+        "tests/generated/packet_decl_payload_field_variable_size_little_endian.rs",
         "tests/generated/packet_decl_reserved_field_big_endian.rs",
         "tests/generated/packet_decl_reserved_field_little_endian.rs",
         "tests/generated/packet_decl_simple_scalars_big_endian.rs",
@@ -151,6 +160,8 @@ rust_library_host {
     crate_name: "pdl_le_backend",
     srcs: [":pdl_le_backend"],
     defaults: ["pdl_backend_defaults"],
+    clippy_lints: "none",
+    lints: "none",
 }
 
 rust_library_host {
@@ -158,6 +169,8 @@ rust_library_host {
     crate_name: "pdl_be_backend",
     srcs: [":pdl_be_backend"],
     defaults: ["pdl_backend_defaults"],
+    clippy_lints: "none",
+    lints: "none",
 }
 
 rust_binary_host {
@@ -210,6 +223,8 @@ rust_test_host {
         "libpdl_le_backend",
         "libserde_json",
     ],
+    clippy_lints: "none",
+    lints: "none",
 }
 
 rust_test_host {
@@ -221,6 +236,8 @@ rust_test_host {
         "libpdl_be_backend",
         "libserde_json",
     ],
+    clippy_lints: "none",
+    lints: "none",
 }
 
 // Defaults for PDL python backend generation.

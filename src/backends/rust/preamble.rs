@@ -6,10 +6,21 @@ use crate::quote_block;
 pub fn generate(path: &Path) -> String {
     let mut code = String::new();
     let filename = path.file_name().unwrap().to_str().expect("non UTF-8 filename");
+    // TODO(mgeisler): Make the  generated code free from warnings.
+    //
+    // The code either needs
+    //
+    // clippy_lints: "none",
+    // lints: "none",
+    //
+    // in the Android.bp file, or we need to add
+    //
+    // #![allow(warnings, missing_docs)]
+    //
+    // to the generated code. We cannot add the module-level attribute
+    // here because of how the generated code is used with include! in
+    // lmp/src/packets.rs.
     code.push_str(&format!("// @generated rust packets from {filename}\n\n"));
-
-    // TODO(mgeisler): make the generated code clean from warnings.
-    code.push_str("#![allow(warnings, missing_docs)]\n\n");
 
     code.push_str(&quote_block! {
         use bytes::{Buf, BufMut, Bytes, BytesMut};

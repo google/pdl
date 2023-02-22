@@ -38,54 +38,31 @@ pub trait Packet {
     fn to_vec(self) -> Vec<u8>;
 }
 
-#[derive(FromPrimitive, ToPrimitive, Debug, Hash, Eq, PartialEq, Clone, Copy)]
-#[repr(u64)]
-pub enum Enum7 {
-    A = 0x1,
-    B = 0x2,
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum FooDataChild {
+    Payload(Bytes),
+    None,
 }
-#[cfg(feature = "serde")]
-impl serde::Serialize for Enum7 {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_u64(*self as u64)
-    }
-}
-#[cfg(feature = "serde")]
-struct Enum7Visitor;
-#[cfg(feature = "serde")]
-impl<'de> serde::de::Visitor<'de> for Enum7Visitor {
-    type Value = Enum7;
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a valid discriminant")
-    }
-    fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        match value {
-            0x1 => Ok(Enum7::A),
-            0x2 => Ok(Enum7::B),
-            _ => Err(E::custom(format!("invalid discriminant: {value}"))),
+impl FooDataChild {
+    fn get_total_size(&self) -> usize {
+        match self {
+            FooDataChild::Payload(bytes) => bytes.len(),
+            FooDataChild::None => 0,
         }
     }
 }
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for Enum7 {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserializer.deserialize_u64(Enum7Visitor)
-    }
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum FooChild {
+    Payload(Bytes),
+    None,
 }
-
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FooData {
-    b: u64,
+    a: u32,
+    child: FooDataChild,
 }
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -96,42 +73,52 @@ pub struct Foo {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FooBuilder {
-    pub b: u64,
+    pub a: u32,
+    pub payload: Option<Bytes>,
 }
 impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
-        bytes.len() >= 8
+        bytes.len() >= 3
     }
     fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        if bytes.get().remaining() < 8 {
+        if bytes.get().remaining() < 3 {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
-                wanted: 8,
+                wanted: 3,
                 got: bytes.get().remaining(),
             });
         }
-        let chunk = bytes.get_mut().get_u64();
-        if (chunk & 0x7f) as u8 != Enum7::A as u8 {
-            return Err(Error::InvalidFixedValue {
-                expected: Enum7::A as u64,
-                actual: (chunk & 0x7f) as u8 as u64,
+        let payload = &bytes.get()[..bytes.get().len() - 3];
+        bytes.get_mut().advance(payload.len());
+        if bytes.get().remaining() < 3 {
+            return Err(Error::InvalidLengthError {
+                obj: "Foo".to_string(),
+                wanted: 3,
+                got: bytes.get().remaining(),
             });
         }
-        let b = ((chunk >> 7) & 0x1ffffffffffffffu64);
-        Ok(Self { b })
+        let a = bytes.get_mut().get_uint(3) as u32;
+        let child = match () {
+            _ if !payload.is_empty() => FooDataChild::Payload(Bytes::copy_from_slice(payload)),
+            _ => FooDataChild::None,
+        };
+        Ok(Self { a, child })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
-        if self.b > 0x1ffffffffffffffu64 {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "b", self.b, 0x1ffffffffffffffu64);
+        match &self.child {
+            FooDataChild::Payload(payload) => buffer.put_slice(payload),
+            FooDataChild::None => {}
         }
-        let value = (Enum7::A as u64) | (self.b << 7);
-        buffer.put_u64(value);
+        if self.a > 0xffffff {
+            panic!("Invalid value for {}::{}: {} > {}", "Foo", "a", self.a, 0xffffff);
+        }
+        buffer.put_uint(self.a as u64, 3);
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
     }
     fn get_size(&self) -> usize {
-        8
+        3 + self.child.get_total_size()
     }
 }
 impl Packet for Foo {
@@ -170,8 +157,14 @@ impl Foo {
     fn new(foo: Arc<FooData>) -> std::result::Result<Self, &'static str> {
         Ok(Self { foo })
     }
-    pub fn get_b(&self) -> u64 {
-        self.foo.as_ref().b
+    pub fn get_a(&self) -> u32 {
+        self.foo.as_ref().a
+    }
+    pub fn get_payload(&self) -> &[u8] {
+        match &self.foo.child {
+            FooDataChild::Payload(bytes) => &bytes,
+            FooDataChild::None => &[],
+        }
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.foo.write_to(buffer)
@@ -182,7 +175,13 @@ impl Foo {
 }
 impl FooBuilder {
     pub fn build(self) -> Foo {
-        let foo = Arc::new(FooData { b: self.b });
+        let foo = Arc::new(FooData {
+            a: self.a,
+            child: match self.payload {
+                None => FooDataChild::None,
+                Some(bytes) => FooDataChild::Payload(bytes),
+            },
+        });
         Foo::new(foo).unwrap()
     }
 }

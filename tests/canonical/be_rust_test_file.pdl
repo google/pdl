@@ -141,3 +141,66 @@ struct Struct_FixedEnum_Field_ {
     _fixed_ = A : Enum7,
     b: 57,
 }
+
+packet ScalarParent {
+    a: 8,
+    _size_(_payload_): 8,
+    _payload_
+}
+
+packet EnumParent {
+    a: Enum16,
+    _size_(_payload_): 8,
+    _payload_
+}
+
+// Packet inheritance
+
+// The parser must handle specialization into
+// any child packet of a parent packet with scalar constraints.
+packet ScalarChild_A : ScalarParent (a = 0) {
+    b: 8,
+}
+
+// The parser must handle specialization into
+// any child packet of a parent packet with scalar constraints.
+packet ScalarChild_B : ScalarParent (a = 1) {
+    c: 16,
+}
+
+// The parser must handle specialization into
+// any child packet of a parent packet with enum constraints.
+packet EnumChild_A : EnumParent (a = A) {
+    b: 8,
+}
+
+// The parser must handle specialization into
+// any child packet of a parent packet with enum constraints.
+packet EnumChild_B : EnumParent (a = B) {
+    c: 16,
+}
+
+// Packet payload fields
+
+// The parser must be able to handle sized payload fields without
+// size modifier.
+packet Packet_Payload_Field_VariableSize {
+    _size_(_payload_): 3,
+    _reserved_: 5,
+    _payload_
+}
+
+// The parser must be able to handle payload fields of unkonwn size followed
+// by fields of statically known size. The remaining span is integrated
+// in the packet.
+packet Packet_Payload_Field_UnknownSize {
+    _payload_,
+    a: 16,
+}
+
+// The parser must be able to handle payload fields of unkonwn size.
+// The remaining span is integrated in the packet.
+packet Packet_Payload_Field_UnknownSize_Terminal {
+    a: 16,
+    _payload_,
+}

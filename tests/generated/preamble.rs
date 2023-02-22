@@ -1,7 +1,5 @@
 // @generated rust packets from foo.pdl
 
-#![allow(warnings, missing_docs)]
-
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};

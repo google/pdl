@@ -1,6 +1,7 @@
 use crate::backends::rust::{mask_bits, types};
 use crate::parser::ast as parser_ast;
 use crate::{ast, lint};
+use heck::ToUpperCamelCase;
 use quote::{format_ident, quote};
 
 /// A single bit-field value.
@@ -44,7 +45,10 @@ impl<'a> FieldSerializer<'a> {
             ast::FieldDesc::Array { id, width, .. } => {
                 self.add_array_field(id, *width, field.declaration(self.scope))
             }
-            _ => todo!(),
+            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. } => {
+                self.add_payload_field()
+            }
+            _ => todo!("Cannot yet serialize {field:?}"),
         }
     }
 
@@ -73,7 +77,7 @@ impl<'a> FieldSerializer<'a> {
             ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
                 let field_type = types::Integer::new(width);
                 let enum_id = format_ident!("{enum_id}");
-                let tag_id = format_ident!("{tag_id}");
+                let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
                 self.chunk.push(BitField { value: quote!(#enum_id::#tag_id), field_type, shift });
             }
             ast::FieldDesc::FixedScalar { value, .. } => {
@@ -97,9 +101,12 @@ impl<'a> FieldSerializer<'a> {
                 // Nothing to do here.
             }
             ast::FieldDesc::Size { field_id, width, .. } => {
+                let packet_name = &self.packet_name;
+                let max_value = mask_bits(*width);
+
                 let decl = self.scope.typedef.get(self.packet_name).unwrap();
                 let scope = self.scope.scopes.get(decl).unwrap();
-                let value_field = scope.named.get(field_id).unwrap();
+                let value_field = scope.get_packet_field(field_id).unwrap();
 
                 let field_name = format_ident!("{field_id}");
                 let field_type = types::Integer::new(*width);
@@ -111,7 +118,8 @@ impl<'a> FieldSerializer<'a> {
                 let array_size = match (&value_field.desc, value_field_decl.map(|decl| &decl.desc))
                 {
                     (ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. }, _) => {
-                        todo!("Cannot handle payload or body size fields")
+                        //let span = format_ident!("{}", self.span);
+                        quote! { self.child.get_total_size() }
                     }
                     (ast::FieldDesc::Array { width: Some(width), .. }, _)
                     | (ast::FieldDesc::Array { .. }, Some(ast::DeclDesc::Enum { width, .. })) => {
@@ -134,8 +142,6 @@ impl<'a> FieldSerializer<'a> {
                     _ => panic!("Unexpected size field: {field:?}"),
                 };
 
-                let packet_name = &self.packet_name;
-                let max_value = mask_bits(*width);
                 self.code.push(quote! {
                     if #array_size > #max_value {
                         panic!(
@@ -261,6 +267,33 @@ impl<'a> FieldSerializer<'a> {
                 #serialize;
             }
         });
+    }
+
+    fn add_payload_field(&mut self) {
+        if self.shift != 0 && self.endianness == ast::EndiannessValue::BigEndian {
+            panic!("Payload field does not start on an octet boundary");
+        }
+
+        let children =
+            self.scope.children.get(self.packet_name).map(Vec::as_slice).unwrap_or_default();
+        let child_ids = children
+            .iter()
+            .map(|child| format_ident!("{}", child.id().unwrap()))
+            .collect::<Vec<_>>();
+
+        if self.shift == 0 {
+            let span = format_ident!("{}", self.span);
+            let packet_data_child = format_ident!("{}DataChild", self.packet_name);
+            self.code.push(quote! {
+                match &self.child {
+                    #(#packet_data_child::#child_ids(child) => child.write_to(#span),)*
+                    #packet_data_child::Payload(payload) => #span.put_slice(payload),
+                    #packet_data_child::None => {},
+                }
+            })
+        } else {
+            todo!("Shifted payloads");
+        }
     }
 }
 

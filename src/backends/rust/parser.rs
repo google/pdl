@@ -1,7 +1,13 @@
 use crate::backends::rust::{mask_bits, types};
 use crate::parser::ast as parser_ast;
 use crate::{ast, lint};
+use heck::ToUpperCamelCase;
 use quote::{format_ident, quote};
+use std::collections::{BTreeSet, HashMap};
+
+fn size_field_ident(id: &str) -> proc_macro2::Ident {
+    format_ident!("{}_size", id.trim_matches('_'))
+}
 
 /// A single bit-field.
 struct BitField<'a> {
@@ -42,6 +48,7 @@ impl<'a> FieldParser<'a> {
     pub fn add(&mut self, field: &'a parser_ast::Field) {
         match &field.desc {
             _ if field.is_bitfield(self.scope) => self.add_bit_field(field),
+            ast::FieldDesc::Padding { .. } => todo!("Padding fields are not supported"),
             ast::FieldDesc::Array { id, width, type_id, size, .. } => self.add_array_field(
                 id,
                 *width,
@@ -49,6 +56,10 @@ impl<'a> FieldParser<'a> {
                 *size,
                 field.declaration(self.scope),
             ),
+            ast::FieldDesc::Payload { size_modifier, .. } => {
+                self.add_payload_field(size_modifier.as_deref())
+            }
+            ast::FieldDesc::Body { .. } => self.add_payload_field(None),
             _ => todo!("{field:?}"),
         }
     }
@@ -118,7 +129,7 @@ impl<'a> FieldParser<'a> {
                 }
                 ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
                     let enum_id = format_ident!("{enum_id}");
-                    let tag_id = format_ident!("{tag_id}");
+                    let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
                     quote! {
                         if #v != #enum_id::#tag_id as #value_type {
                             return Err(Error::InvalidFixedValue {
@@ -155,7 +166,7 @@ impl<'a> FieldParser<'a> {
                     quote! {}
                 }
                 ast::FieldDesc::Size { field_id, .. } => {
-                    let id = format_ident!("{field_id}_size");
+                    let id = size_field_ident(field_id);
                     quote! {
                         let #id = #v as usize;
                     }
@@ -187,9 +198,28 @@ impl<'a> FieldParser<'a> {
 
     fn find_size_field(&self, id: &str) -> Option<proc_macro2::Ident> {
         match self.packet_scope()?.sizes.get(id)?.desc {
-            ast::FieldDesc::Size { .. } => Some(format_ident!("{id}_size")),
+            ast::FieldDesc::Size { .. } => Some(size_field_ident(id)),
             _ => None,
         }
+    }
+
+    fn payload_field_offset_from_end(&self) -> Option<usize> {
+        let packet_scope = self.packet_scope().unwrap();
+        let mut fields = packet_scope.fields.iter();
+        fields.find(|f| {
+            matches!(f.desc, ast::FieldDesc::Body { .. } | ast::FieldDesc::Payload { .. })
+        })?;
+
+        let mut offset = 0;
+        for field in fields {
+            if let Some(width) = field.width(self.scope, false) {
+                offset += width;
+            } else {
+                return None;
+            }
+        }
+
+        Some(offset)
     }
 
     fn check_size(&mut self, wanted: &proc_macro2::TokenStream) {
@@ -374,6 +404,72 @@ impl<'a> FieldParser<'a> {
         }
     }
 
+    /// Parse body and payload fields.
+    fn add_payload_field(&mut self, size_modifier: Option<&str>) {
+        let span = self.span;
+        let packet_scope = self.packet_scope().unwrap();
+        let payload_size_field = packet_scope.get_payload_size_field();
+        let offset_from_end = self.payload_field_offset_from_end();
+
+        if size_modifier.is_some() {
+            todo!(
+                "Unsupported size modifier for {packet}: {size_modifier:?}",
+                packet = self.packet_name
+            );
+        }
+
+        if self.shift != 0 {
+            if payload_size_field.is_some() {
+                panic!("Unexpected payload size for non byte aligned payload");
+            }
+
+            //let rounded_size = self.shift / 8 + if self.shift % 8 == 0 { 0 } else { 1 };
+            //let padding_bits = 8 * rounded_size - self.shift;
+            //let reserved_field =
+            //    ast::Field::Reserved { loc: ast::SourceRange::default(), width: padding_bits };
+            //TODO: self.add_bit_field(&reserved_field); --
+            // reserved_field does not live long enough.
+
+            // TODO: consume span of rounded size
+        } else {
+            // TODO: consume span
+        }
+
+        if let Some(ast::FieldDesc::Size { field_id, .. }) = &payload_size_field.map(|f| &f.desc) {
+            // The payload or body has a known size. Consume the
+            // payload and update the span in case fields are placed
+            // after the payload.
+            let size_field = size_field_ident(field_id);
+            self.check_size(&quote!(#size_field ));
+            self.code.push(quote! {
+                let payload = &#span.get()[..#size_field];
+                #span.get_mut().advance(#size_field);
+            });
+        } else if offset_from_end == Some(0) {
+            // The payload or body is the last field of a packet,
+            // consume the remaining span.
+            self.code.push(quote! {
+                let payload = #span.get();
+                #span.get_mut().advance(payload.len());
+            });
+        } else if let Some(offset_from_end) = offset_from_end {
+            // The payload or body is followed by fields of static
+            // size. Consume the span that is not reserved for the
+            // following fields.
+            assert_eq!(
+                offset_from_end % 8,
+                0,
+                "Payload field offset from end of packet is not a multiple of 8"
+            );
+            let offset_from_end = syn::Index::from(offset_from_end / 8);
+            self.check_size(&quote!(#offset_from_end));
+            self.code.push(quote! {
+                let payload = &#span.get()[..#span.get().len() - #offset_from_end];
+                #span.get_mut().advance(payload.len());
+            });
+        }
+    }
+
     /// Parse a single array field element from `span`.
     fn parse_array_element(
         &self,
@@ -411,7 +507,86 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    pub fn done(&mut self) {}
+    pub fn done(&mut self) {
+        let packet_scope = &self.scope.scopes[&self.scope.typedef[self.packet_name]];
+        let children =
+            self.scope.children.get(self.packet_name).map(Vec::as_slice).unwrap_or_default();
+        if children.is_empty() && packet_scope.payload.is_none() {
+            return;
+        }
+
+        let child_ids = children
+            .iter()
+            .map(|child| format_ident!("{}", child.id().unwrap()))
+            .collect::<Vec<_>>();
+        let child_ids_data = child_ids.iter().map(|ident| format_ident!("{ident}Data"));
+
+        // Set of field names (sorted by name).
+        let mut constrained_fields = BTreeSet::new();
+        // Maps (child name, field name) -> value.
+        let mut constraint_values = HashMap::new();
+
+        for child in children.iter() {
+            match &child.desc {
+                ast::DeclDesc::Packet { id, constraints, .. }
+                | ast::DeclDesc::Struct { id, constraints, .. } => {
+                    for constraint in constraints.iter() {
+                        let value = match constraint {
+                            ast::Constraint { value: Some(value), .. } => {
+                                let value = proc_macro2::Literal::usize_unsuffixed(*value);
+                                quote!(#value)
+                            }
+                            ast::Constraint { id, tag_id: Some(tag_id), .. } => {
+                                // TODO: add `type_id` to `Constraint`.
+                                let type_id = match &packet_scope.named[id].desc {
+                                    ast::FieldDesc::Typedef { type_id, .. } => {
+                                        format_ident!("{type_id}")
+                                    }
+                                    _ => unreachable!("Invalid constraint: {constraint:?}"),
+                                };
+                                let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
+                                quote!(#type_id::#tag_id)
+                            }
+                            _ => unreachable!("Invalid constraint: {constraint:?}"),
+                        };
+                        constrained_fields.insert(&constraint.id);
+                        constraint_values.insert((id.as_str(), &constraint.id), value);
+                    }
+                }
+                _ => unreachable!("Invalid child: {child:?}"),
+            }
+        }
+
+        let wildcard = quote!(_);
+        let match_values = children.iter().map(|child| {
+            let child_id = child.id().unwrap();
+            let values = constrained_fields.iter().map(|field_name| {
+                constraint_values.get(&(child_id, field_name)).unwrap_or(&wildcard)
+            });
+            quote! {
+                (#(#values),*)
+            }
+        });
+        let constrained_field_idents =
+            constrained_fields.iter().map(|field| format_ident!("{field}"));
+        let packet_data_child = format_ident!("{}DataChild", self.packet_name);
+        self.code.push(quote! {
+            let child = match (#(#constrained_field_idents),*) {
+                #(#match_values => {
+                    let mut cell = Cell::new(payload);
+                    let child_data = #child_ids_data::parse(&mut cell)?;
+                    if !cell.get().is_empty() {
+                        return Err(Error::InvalidPacketError);
+                    }
+                    #packet_data_child::#child_ids(Arc::new(child_data))
+                }),*
+                _ if !payload.is_empty() => {
+                    #packet_data_child::Payload(Bytes::copy_from_slice(payload))
+                }
+                _ => #packet_data_child::None,
+            };
+        });
+    }
 }
 
 impl quote::ToTokens for FieldParser<'_> {

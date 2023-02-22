@@ -1,7 +1,5 @@
 // @generated rust packets from test
 
-#![allow(warnings, missing_docs)]
-
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -43,8 +41,8 @@ pub trait Packet {
 #[derive(FromPrimitive, ToPrimitive, Debug, Hash, Eq, PartialEq, Clone, Copy)]
 #[repr(u64)]
 pub enum Foo {
-    A = 0x1,
-    B = 0x2,
+    FooBar = 0x1,
+    Baz = 0x2,
 }
 #[cfg(feature = "serde")]
 impl serde::Serialize for Foo {
@@ -68,8 +66,8 @@ impl<'de> serde::de::Visitor<'de> for FooVisitor {
         E: serde::de::Error,
     {
         match value {
-            0x1 => Ok(Foo::A),
-            0x2 => Ok(Foo::B),
+            0x1 => Ok(Foo::FooBar),
+            0x2 => Ok(Foo::Baz),
             _ => Err(E::custom(format!("invalid discriminant: {value}"))),
         }
     }
@@ -86,7 +84,7 @@ impl<'de> serde::Deserialize<'de> for Foo {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct BarData {
+pub struct BarData {
     x: [Foo; 3],
 }
 #[derive(Debug, Clone)]
@@ -138,7 +136,7 @@ impl BarData {
 }
 impl Packet for Bar {
     fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.bar.get_total_size());
+        let mut buffer = BytesMut::with_capacity(self.bar.get_size());
         self.bar.write_to(&mut buffer);
         buffer.freeze()
     }
@@ -166,11 +164,10 @@ impl Bar {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        let packet = BarData::parse(&mut bytes)?;
-        Ok(Self::new(Arc::new(packet)).unwrap())
+        let data = BarData::parse(&mut bytes)?;
+        Ok(Self::new(Arc::new(data)).unwrap())
     }
-    fn new(root: Arc<BarData>) -> std::result::Result<Self, &'static str> {
-        let bar = root;
+    fn new(bar: Arc<BarData>) -> std::result::Result<Self, &'static str> {
         Ok(Self { bar })
     }
     pub fn get_x(&self) -> &[Foo; 3] {
@@ -187,5 +184,10 @@ impl BarBuilder {
     pub fn build(self) -> Bar {
         let bar = Arc::new(BarData { x: self.x });
         Bar::new(bar).unwrap()
+    }
+}
+impl From<BarBuilder> for Bar {
+    fn from(builder: BarBuilder) -> Bar {
+        builder.build().into()
     }
 }

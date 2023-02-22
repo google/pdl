@@ -1,7 +1,5 @@
 // @generated rust packets from test
 
-#![allow(warnings, missing_docs)]
-
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -130,7 +128,7 @@ impl<'de> serde::Deserialize<'de> for Enum9 {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct FooData {
+pub struct FooData {
     x: Enum7,
     y: u8,
     z: Enum9,
@@ -145,10 +143,10 @@ pub struct Foo {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FooBuilder {
+    pub w: u8,
     pub x: Enum7,
     pub y: u8,
     pub z: Enum9,
-    pub w: u8,
 }
 impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
@@ -191,7 +189,7 @@ impl FooData {
 }
 impl Packet for Foo {
     fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.foo.get_total_size());
+        let mut buffer = BytesMut::with_capacity(self.foo.get_size());
         self.foo.write_to(&mut buffer);
         buffer.freeze()
     }
@@ -219,12 +217,14 @@ impl Foo {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        let packet = FooData::parse(&mut bytes)?;
-        Ok(Self::new(Arc::new(packet)).unwrap())
+        let data = FooData::parse(&mut bytes)?;
+        Ok(Self::new(Arc::new(data)).unwrap())
     }
-    fn new(root: Arc<FooData>) -> std::result::Result<Self, &'static str> {
-        let foo = root;
+    fn new(foo: Arc<FooData>) -> std::result::Result<Self, &'static str> {
         Ok(Self { foo })
+    }
+    pub fn get_w(&self) -> u8 {
+        self.foo.as_ref().w
     }
     pub fn get_x(&self) -> Enum7 {
         self.foo.as_ref().x
@@ -235,9 +235,6 @@ impl Foo {
     pub fn get_z(&self) -> Enum9 {
         self.foo.as_ref().z
     }
-    pub fn get_w(&self) -> u8 {
-        self.foo.as_ref().w
-    }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.foo.write_to(buffer)
     }
@@ -247,7 +244,12 @@ impl Foo {
 }
 impl FooBuilder {
     pub fn build(self) -> Foo {
-        let foo = Arc::new(FooData { x: self.x, y: self.y, z: self.z, w: self.w });
+        let foo = Arc::new(FooData { w: self.w, x: self.x, y: self.y, z: self.z });
         Foo::new(foo).unwrap()
+    }
+}
+impl From<FooBuilder> for Foo {
+    fn from(builder: FooBuilder) -> Foo {
+        builder.build().into()
     }
 }
