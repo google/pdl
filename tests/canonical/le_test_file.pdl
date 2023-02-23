@@ -50,6 +50,7 @@ packet EmptyParent : ScalarParent {
     _payload_
 }
 
+// Start: little_endian_only
 packet PartialParent5 {
     a: 5,
     _payload_
@@ -59,6 +60,7 @@ packet PartialParent12 {
     a: 12,
     _payload_
 }
+// End: little_endian_only
 
 // Packet bit fields
 
@@ -398,6 +400,8 @@ packet AliasedChild_B : EmptyParent (a = 3) {
     c: 16,
 }
 
+// Start: little_endian_only
+
 // The parser must handle inheritance of packets with payloads starting
 // on a shifted byte boundary, as long as the first fields of the child
 // complete the bit fields.
@@ -425,6 +429,8 @@ packet PartialChild12_A : PartialParent12 (a = 2) {
 packet PartialChild12_B : PartialParent12 (a = 3) {
     e: 20,
 }
+
+// End: little_endian_only
 
 // Struct bit fields
 

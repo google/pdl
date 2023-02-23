@@ -2,6 +2,10 @@ little_endian_packets
 
 // Preliminary definitions
 
+enum MaxDiscriminantEnum : 64 {
+     Max = 0xffffffffffffffff,
+}
+
 enum Enum7 : 7 {
     A = 1,
     B = 2,
@@ -22,8 +26,16 @@ struct UnsizedStruct {
     array: 8[],
 }
 
-enum MaxDiscriminantEnum : 64 {
-     Max = 0xffffffffffffffff,
+packet ScalarParent {
+    a: 8,
+    _size_(_payload_): 8,
+    _payload_
+}
+
+packet EnumParent {
+    a: Enum16,
+    _size_(_payload_): 8,
+    _payload_
 }
 
 // Packet bit fields
@@ -42,8 +54,13 @@ packet Packet_Enum_Field {
     c: 57,
 }
 
-// Array fields
-// Array element types
+// The parser must be able to handle bit fields with reserved fields
+// up to 64 bits wide.  The parser should generate a static size guard.
+packet Packet_Reserved_Field {
+    a: 7,
+    _reserved_: 2,
+    c: 55,
+}
 
 // The parser must be able to handle bit fields with size fields
 // up to 64 bits wide.  The parser should generate a static size guard.
@@ -52,7 +69,6 @@ packet Packet_Size_Field {
     a: 61,
     b: 8[],
 }
-
 
 // The parser must be able to handle bit fields with count fields
 // up to 64 bits wide.  The parser should generate a static size guard.
@@ -76,8 +92,70 @@ packet Packet_FixedEnum_Field {
     b: 57,
 }
 
+// Packet payload fields
+
+// The parser must be able to handle sized payload fields without
+// size modifier.
+packet Packet_Payload_Field_VariableSize {
+    _size_(_payload_): 3,
+    _reserved_: 5,
+    _payload_
+}
+
+// The parser must be able to handle payload fields of unkonwn size followed
+// by fields of statically known size. The remaining span is integrated
+// in the packet.
+packet Packet_Payload_Field_UnknownSize {
+    _payload_,
+    a: 16,
+}
+
+// The parser must be able to handle payload fields of unkonwn size.
+// The remaining span is integrated in the packet.
+packet Packet_Payload_Field_UnknownSize_Terminal {
+    a: 16,
+    _payload_,
+}
+
+// Packet body fields
+
+// The parser must be able to handle sized body fields without
+// size modifier when the packet has no children.
+packet Packet_Body_Field_VariableSize {
+    _size_(_body_): 3,
+    _reserved_: 5,
+    _body_
+}
+
+// The parser must be able to handle body fields of unkonwn size followed
+// by fields of statically known size. The remaining span is integrated
+// in the packet.
+packet Packet_Body_Field_UnknownSize {
+    _body_,
+    a: 16,
+}
+
+// The parser must be able to handle body fields of unkonwn size.
+// The remaining span is integrated in the packet.
+packet Packet_Body_Field_UnknownSize_Terminal {
+    a: 16,
+    _body_,
+}
+
 packet Packet_Array_Field_ByteElement_ConstantSize {
     array: 8[4],
+}
+
+packet Packet_Array_Field_ByteElement_VariableSize {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: 8[],
+}
+
+packet Packet_Array_Field_ByteElement_VariableCount {
+    _count_(array) : 4,
+    _reserved_: 4,
+    array: 8[],
 }
 
 packet Packet_Array_Field_ByteElement_UnknownSize {
@@ -88,6 +166,18 @@ packet Packet_Array_Field_ScalarElement_ConstantSize {
     array: 16[4],
 }
 
+packet Packet_Array_Field_ScalarElement_VariableSize {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: 16[],
+}
+
+packet Packet_Array_Field_ScalarElement_VariableCount {
+    _count_(array) : 4,
+    _reserved_: 4,
+    array: 16[],
+}
+
 packet Packet_Array_Field_ScalarElement_UnknownSize {
     array: 16[],
 }
@@ -96,12 +186,36 @@ packet Packet_Array_Field_EnumElement_ConstantSize {
     array: Enum16[4],
 }
 
+packet Packet_Array_Field_EnumElement_VariableSize {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: Enum16[],
+}
+
+packet Packet_Array_Field_EnumElement_VariableCount {
+    _count_(array) : 4,
+    _reserved_: 4,
+    array: Enum16[],
+}
+
 packet Packet_Array_Field_EnumElement_UnknownSize {
     array: Enum16[],
 }
 
 packet Packet_Array_Field_SizedElement_ConstantSize {
     array: SizedStruct[4],
+}
+
+packet Packet_Array_Field_SizedElement_VariableSize {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: SizedStruct[],
+}
+
+packet Packet_Array_Field_SizedElement_VariableCount {
+    _count_(array) : 4,
+    _reserved_: 4,
+    array: SizedStruct[],
 }
 
 packet Packet_Array_Field_SizedElement_UnknownSize {
@@ -126,32 +240,6 @@ packet Packet_Array_Field_UnsizedElement_VariableCount {
 
 packet Packet_Array_Field_UnsizedElement_UnknownSize {
     array: UnsizedStruct[],
-}
-
-// The parser must be able to handle bit fields with fixed scalar values
-// up to 64 bits wide.  The parser should generate a static size guard.
-struct Struct_FixedScalar_Field_ {
-    _fixed_ = 7 : 7,
-    b: 57,
-}
-
-// The parser must be able to handle bit fields with fixed enum values
-// up to 64 bits wide. The parser should generate a static size guard.
-struct Struct_FixedEnum_Field_ {
-    _fixed_ = A : Enum7,
-    b: 57,
-}
-
-packet ScalarParent {
-    a: 8,
-    _size_(_payload_): 8,
-    _payload_
-}
-
-packet EnumParent {
-    a: Enum16,
-    _size_(_payload_): 8,
-    _payload_
 }
 
 // Packet inheritance
@@ -180,27 +268,16 @@ packet EnumChild_B : EnumParent (a = B) {
     c: 16,
 }
 
-// Packet payload fields
-
-// The parser must be able to handle sized payload fields without
-// size modifier.
-packet Packet_Payload_Field_VariableSize {
-    _size_(_payload_): 3,
-    _reserved_: 5,
-    _payload_
+// The parser must be able to handle bit fields with fixed scalar values
+// up to 64 bits wide.  The parser should generate a static size guard.
+struct Struct_FixedScalar_Field_ {
+    _fixed_ = 7 : 7,
+    b: 57,
 }
 
-// The parser must be able to handle payload fields of unkonwn size followed
-// by fields of statically known size. The remaining span is integrated
-// in the packet.
-packet Packet_Payload_Field_UnknownSize {
-    _payload_,
-    a: 16,
-}
-
-// The parser must be able to handle payload fields of unkonwn size.
-// The remaining span is integrated in the packet.
-packet Packet_Payload_Field_UnknownSize_Terminal {
-    a: 16,
-    _payload_,
+// The parser must be able to handle bit fields with fixed enum values
+// up to 64 bits wide. The parser should generate a static size guard.
+struct Struct_FixedEnum_Field_ {
+    _fixed_ = A : Enum7,
+    b: 57,
 }
