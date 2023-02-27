@@ -195,7 +195,8 @@ fn generate_packet_decl(
     let all_field_names =
         all_fields.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
     let all_field_types = all_fields.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
-    let all_field_borrows = all_fields.iter().map(|f| types::rust_borrow(f)).collect::<Vec<_>>();
+    let all_field_borrows =
+        all_fields.iter().map(|f| types::rust_borrow(f, scope)).collect::<Vec<_>>();
     let all_field_getter_names = all_field_names.iter().map(|id| format_ident!("get_{id}"));
     let all_field_self_field = all_fields.iter().map(|f| {
         for (parent, parent_id) in parents.iter().zip(parent_lower_ids.iter()) {

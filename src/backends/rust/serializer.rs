@@ -45,6 +45,9 @@ impl<'a> FieldSerializer<'a> {
             ast::FieldDesc::Array { id, width, .. } => {
                 self.add_array_field(id, *width, field.declaration(self.scope))
             }
+            ast::FieldDesc::Typedef { id, type_id } => {
+                self.add_typedef_field(id, type_id);
+            }
             ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. } => {
                 self.add_payload_field()
             }
@@ -266,6 +269,20 @@ impl<'a> FieldSerializer<'a> {
             for elem in &self.#id {
                 #serialize;
             }
+        });
+    }
+
+    fn add_typedef_field(&mut self, id: &str, type_id: &str) {
+        assert_eq!(self.shift, 0, "Typedef field does not start on an octet boundary");
+        let decl = self.scope.typedef[type_id];
+        if let ast::DeclDesc::Struct { parent_id: Some(_), .. } = &decl.desc {
+            panic!("Derived struct used in typedef field");
+        }
+
+        let id = format_ident!("{id}");
+        let span = format_ident!("{}", self.span);
+        self.code.push(quote! {
+            self.#id.write_to(#span);
         });
     }
 
