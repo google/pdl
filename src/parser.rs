@@ -48,7 +48,14 @@ size_modifier = @{ "+" ~ intvalue }
 
 endianness_declaration = { "little_endian_packets" | "big_endian_packets" }
 
-enum_tag = { identifier ~ "=" ~ integer }
+enum_value = { identifier ~ "=" ~ integer }
+enum_value_list = { enum_value ~ ("," ~ enum_value)* ~ ","? }
+enum_range = {
+    identifier ~ "=" ~ integer ~ ".." ~ integer ~ ("{" ~
+        enum_value_list ~
+    "}")?
+}
+enum_tag = { enum_range | enum_value }
 enum_tag_list = { enum_tag ~ ("," ~ enum_tag)* ~ ","? }
 enum_declaration = {
     "enum" ~ identifier ~ ":" ~ integer ~ "{" ~
@@ -295,15 +302,63 @@ fn parse_constraint_list_opt(
         .map_or(Ok(vec![]), |n| n.children().map(|n| parse_constraint(n, context)).collect())
 }
 
-fn parse_enum_tag(node: Node<'_>, context: &Context) -> Result<crate::ast::Tag, String> {
-    if node.as_rule() != Rule::enum_tag {
-        err_unexpected_rule(Rule::enum_tag, node.as_rule())
+fn parse_enum_value(node: Node<'_>, context: &Context) -> Result<crate::ast::TagValue, String> {
+    if node.as_rule() != Rule::enum_value {
+        err_unexpected_rule(Rule::enum_value, node.as_rule())
     } else {
         let loc = node.as_loc(context);
         let mut children = node.children();
         let id = parse_identifier(&mut children)?;
         let value = parse_integer(&mut children)?;
-        Ok(crate::ast::Tag { id, loc, value })
+        Ok(crate::ast::TagValue { id, loc, value })
+    }
+}
+
+fn parse_enum_value_list_opt(
+    iter: &mut NodeIterator<'_>,
+    context: &Context,
+) -> Result<Vec<crate::ast::TagValue>, String> {
+    maybe(iter, Rule::enum_value_list)
+        .map_or(Ok(vec![]), |n| n.children().map(|n| parse_enum_value(n, context)).collect())
+}
+
+fn parse_enum_range(node: Node<'_>, context: &Context) -> Result<crate::ast::TagRange, String> {
+    if node.as_rule() != Rule::enum_range {
+        err_unexpected_rule(Rule::enum_range, node.as_rule())
+    } else {
+        let loc = node.as_loc(context);
+        let mut children = node.children();
+        let id = parse_identifier(&mut children)?;
+        let start = parse_integer(&mut children)?;
+        let end = parse_integer(&mut children)?;
+        let tags = parse_enum_value_list_opt(&mut children, context)?;
+        Ok(crate::ast::TagRange { id, loc, range: start..=end, tags })
+    }
+}
+
+fn parse_enum_tag(node: Node<'_>, context: &Context) -> Result<crate::ast::Tag, String> {
+    if node.as_rule() != Rule::enum_tag {
+        err_unexpected_rule(Rule::enum_tag, node.as_rule())
+    } else {
+        match node.children().next() {
+            Some(node) if node.as_rule() == Rule::enum_value => {
+                Ok(crate::ast::Tag::Value(parse_enum_value(node, context)?))
+            }
+            Some(node) if node.as_rule() == Rule::enum_range => {
+                Ok(crate::ast::Tag::Range(parse_enum_range(node, context)?))
+            }
+            Some(node) => Err(format!(
+                "expected rule {:?} or {:?}, got {:?}",
+                Rule::enum_value,
+                Rule::enum_range,
+                node.as_rule()
+            )),
+            None => Err(format!(
+                "expected rule {:?} or {:?}, got nothing",
+                Rule::enum_value,
+                Rule::enum_range
+            )),
+        }
     }
 }
 

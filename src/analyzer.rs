@@ -139,6 +139,10 @@ pub enum ErrorCode {
     MissingPayloadField = 37,
     RedundantArraySize = 38,
     InvalidPaddingField = 39,
+    InvalidTagRange = 40,
+    DuplicateTagRange = 41,
+    E42 = 42,
+    E43 = 43,
 }
 
 impl From<ErrorCode> for String {
@@ -277,6 +281,15 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
 /// Return the bit-width of a scalar value.
 fn bit_width(value: usize) -> usize {
     usize::BITS as usize - value.leading_zeros() as usize
+}
+
+/// Return the maximum value for a scalar value.
+fn scalar_max(width: usize) -> usize {
+    if width >= usize::BITS as usize {
+        usize::MAX
+    } else {
+        (1 << width) - 1
+    }
 }
 
 /// Check declaration identifiers.
@@ -500,50 +513,191 @@ fn check_field_identifiers(file: &parser_ast::File) -> Result<(), Diagnostics> {
 ///      - duplicate tag identifier
 ///      - duplicate tag value
 fn check_enum_declarations(file: &parser_ast::File) -> Result<(), Diagnostics> {
+    // Return the inclusive range with bounds correctly ordered.
+    // The analyzer will raise an error if the bounds are incorrectly ordered, but this
+    // will enable additional checks.
+    fn ordered_range(range: &std::ops::RangeInclusive<usize>) -> std::ops::RangeInclusive<usize> {
+        *std::cmp::min(range.start(), range.end())..=*std::cmp::max(range.start(), range.end())
+    }
+
+    fn check_tag_value<'a>(
+        tag: &'a TagValue,
+        range: std::ops::RangeInclusive<usize>,
+        reserved_ranges: impl Iterator<Item = &'a TagRange>,
+        tags_by_id: &mut HashMap<&'a str, SourceRange>,
+        tags_by_value: &mut HashMap<usize, SourceRange>,
+        diagnostics: &mut Diagnostics,
+    ) {
+        if let Some(prev) = tags_by_id.insert(&tag.id, tag.loc) {
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_code(ErrorCode::DuplicateTagIdentifier)
+                    .with_message(format!("duplicate tag identifier `{}`", tag.id))
+                    .with_labels(vec![
+                        tag.loc.primary(),
+                        prev.secondary()
+                            .with_message(format!("`{}` is first declared here", tag.id)),
+                    ]),
+            )
+        }
+        if let Some(prev) = tags_by_value.insert(tag.value, tag.loc) {
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_code(ErrorCode::DuplicateTagValue)
+                    .with_message(format!("duplicate tag value `{}`", tag.value))
+                    .with_labels(vec![
+                        tag.loc.primary(),
+                        prev.secondary()
+                            .with_message(format!("`{}` is first declared here", tag.value)),
+                    ]),
+            )
+        }
+        if !range.contains(&tag.value) {
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_code(ErrorCode::InvalidTagValue)
+                    .with_message(format!(
+                        "tag value `{}` is outside the range of valid values `{}..{}`",
+                        tag.value,
+                        range.start(),
+                        range.end()
+                    ))
+                    .with_labels(vec![tag.loc.primary()]),
+            )
+        }
+        for reserved_range in reserved_ranges {
+            if ordered_range(&reserved_range.range).contains(&tag.value) {
+                diagnostics.push(
+                    Diagnostic::error()
+                        .with_code(ErrorCode::E43)
+                        .with_message(format!(
+                            "tag value `{}` is declared inside the reserved range `{} = {}..{}`",
+                            tag.value,
+                            reserved_range.id,
+                            reserved_range.range.start(),
+                            reserved_range.range.end()
+                        ))
+                        .with_labels(vec![tag.loc.primary()]),
+                )
+            }
+        }
+    }
+
+    fn check_tag_range<'a>(
+        tag: &'a TagRange,
+        range: std::ops::RangeInclusive<usize>,
+        tags_by_id: &mut HashMap<&'a str, SourceRange>,
+        tags_by_value: &mut HashMap<usize, SourceRange>,
+        diagnostics: &mut Diagnostics,
+    ) {
+        if let Some(prev) = tags_by_id.insert(&tag.id, tag.loc) {
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_code(ErrorCode::DuplicateTagIdentifier)
+                    .with_message(format!("duplicate tag identifier `{}`", tag.id))
+                    .with_labels(vec![
+                        tag.loc.primary(),
+                        prev.secondary()
+                            .with_message(format!("`{}` is first declared here", tag.id)),
+                    ]),
+            )
+        }
+        if !range.contains(tag.range.start()) || !range.contains(tag.range.end()) {
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_code(ErrorCode::InvalidTagRange)
+                    .with_message(format!(
+                        "tag range `{}..{}` has bounds outside the range of valid values `{}..{}`",
+                        tag.range.start(),
+                        tag.range.end(),
+                        range.start(),
+                        range.end(),
+                    ))
+                    .with_labels(vec![tag.loc.primary()]),
+            )
+        }
+        if tag.range.start() >= tag.range.end() {
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_code(ErrorCode::InvalidTagRange)
+                    .with_message(format!(
+                        "tag start value `{}` is greater than or equal to the end value `{}`",
+                        tag.range.start(),
+                        tag.range.end()
+                    ))
+                    .with_labels(vec![tag.loc.primary()]),
+            )
+        }
+
+        let range = ordered_range(&tag.range);
+        for tag in tag.tags.iter() {
+            check_tag_value(tag, range.clone(), [].iter(), tags_by_id, tags_by_value, diagnostics)
+        }
+    }
+
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
         if let DeclDesc::Enum { tags, width, .. } = &decl.desc {
             let mut tags_by_id = HashMap::new();
             let mut tags_by_value = HashMap::new();
+            let mut tags_by_range = tags
+                .iter()
+                .filter_map(|tag| match tag {
+                    Tag::Range(tag) => Some(tag),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
 
             for tag in tags {
-                if let Some(prev) = tags_by_id.insert(&tag.id, tag) {
-                    diagnostics.push(
-                        Diagnostic::error()
-                            .with_code(ErrorCode::DuplicateTagIdentifier)
-                            .with_message(format!("duplicate tag identifier `{}`", tag.id))
-                            .with_labels(vec![
-                                tag.loc.primary(),
-                                prev.loc
-                                    .secondary()
-                                    .with_message(format!("`{}` is first declared here", tag.id)),
-                            ]),
-                    )
+                match tag {
+                    Tag::Value(value) => check_tag_value(
+                        value,
+                        0..=scalar_max(*width),
+                        tags_by_range.iter().copied(),
+                        &mut tags_by_id,
+                        &mut tags_by_value,
+                        &mut diagnostics,
+                    ),
+                    Tag::Range(range) => check_tag_range(
+                        range,
+                        0..=scalar_max(*width),
+                        &mut tags_by_id,
+                        &mut tags_by_value,
+                        &mut diagnostics,
+                    ),
                 }
-                if let Some(prev) = tags_by_value.insert(&tag.value, tag) {
+            }
+
+            // Order tag ranges by increasing bounds in order to check for intersecting ranges.
+            tags_by_range.sort_by(|lhs, rhs| {
+                ordered_range(&lhs.range).into_inner().cmp(&ordered_range(&rhs.range).into_inner())
+            });
+
+            // Iterate to check for overlap between tag ranges.
+            // Not all potential errors are reported, but the check will report
+            // at least one error if the values are incorrect.
+            for tag in tags_by_range.windows(2) {
+                let left_tag = tag[0];
+                let right_tag = tag[1];
+                let left = ordered_range(&left_tag.range);
+                let right = ordered_range(&right_tag.range);
+                if !(left.end() < right.start() || right.end() < left.start()) {
                     diagnostics.push(
                         Diagnostic::error()
-                            .with_code(ErrorCode::DuplicateTagValue)
-                            .with_message(format!("duplicate tag value `{}`", tag.value))
+                            .with_code(ErrorCode::DuplicateTagRange)
+                            .with_message(format!(
+                                "overlapping tag range `{}..{}`",
+                                right.start(),
+                                right.end()
+                            ))
                             .with_labels(vec![
-                                tag.loc.primary(),
-                                prev.loc.secondary().with_message(format!(
-                                    "`{}` is first declared here",
-                                    tag.value
+                                right_tag.loc.primary(),
+                                left_tag.loc.secondary().with_message(format!(
+                                    "`{}..{}` is first declared here",
+                                    left.start(),
+                                    left.end()
                                 )),
                             ]),
-                    )
-                }
-
-                if bit_width(tag.value) > *width {
-                    diagnostics.push(
-                        Diagnostic::error()
-                            .with_code(ErrorCode::InvalidTagValue)
-                            .with_message(format!(
-                                "tag value `{}` is larger than the maximum value",
-                                tag.value
-                            ))
-                            .with_labels(vec![tag.loc.primary()]),
                     )
                 }
             }
@@ -644,25 +798,39 @@ fn check_constraints(
                                     ])
                                     .with_notes(vec!["hint: expected enum value".to_owned()]),
                             ),
-                            Some(tag_id) => {
-                                if !tags.iter().any(|tag| &tag.id == tag_id) {
-                                    diagnostics.push(
-                                        Diagnostic::error()
-                                            .with_code(ErrorCode::E20)
-                                            .with_message(format!(
-                                                "undeclared enum tag `{}`",
-                                                tag_id
-                                            ))
-                                            .with_labels(vec![
-                                                constraint.loc.primary(),
-                                                field.loc.secondary().with_message(format!(
-                                                    "`{}` is declared here",
-                                                    constraint.id
-                                                )),
-                                            ]),
-                                    )
-                                }
-                            }
+                            Some(tag_id) => match tags.iter().find(|tag| tag.id() == tag_id) {
+                                None => diagnostics.push(
+                                    Diagnostic::error()
+                                        .with_code(ErrorCode::E20)
+                                        .with_message(format!("undeclared enum tag `{}`", tag_id))
+                                        .with_labels(vec![
+                                            constraint.loc.primary(),
+                                            field.loc.secondary().with_message(format!(
+                                                "`{}` is declared here",
+                                                constraint.id
+                                            )),
+                                        ]),
+                                ),
+                                Some(Tag::Range { .. }) => diagnostics.push(
+                                    Diagnostic::error()
+                                        .with_code(ErrorCode::E42)
+                                        .with_message(format!(
+                                            "enum tag `{}` defines a range",
+                                            tag_id
+                                        ))
+                                        .with_labels(vec![
+                                            constraint.loc.primary(),
+                                            field.loc.secondary().with_message(format!(
+                                                "`{}` is declared here",
+                                                constraint.id
+                                            )),
+                                        ])
+                                        .with_notes(vec![
+                                            "hint: expected enum tag with value".to_owned()
+                                        ]),
+                                ),
+                                Some(_) => (),
+                            },
                         }
                     }
                     Some(decl) => diagnostics.push(
@@ -921,7 +1089,7 @@ fn check_fixed_fields(
                             .with_notes(vec!["hint: expected enum identifier".to_owned()]),
                     ),
                     Some(enum_decl @ Decl { desc: DeclDesc::Enum { tags, .. }, .. }) => {
-                        if !tags.iter().any(|tag| &tag.id == tag_id) {
+                        if !tags.iter().any(|tag| tag.id() == tag_id) {
                             diagnostics.push(
                                 Diagnostic::error()
                                     .with_code(ErrorCode::E34)
@@ -1578,6 +1746,30 @@ mod test {
         }
         "#
         );
+
+        raises!(
+            DuplicateTagIdentifier,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            X = 0,
+            A = 1..10 {
+                X = 1,
+            }
+        }
+        "#
+        );
+
+        raises!(
+            DuplicateTagIdentifier,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            X = 0,
+            X = 1..10,
+        }
+        "#
+        );
     }
 
     #[test]
@@ -1592,6 +1784,19 @@ mod test {
         }
         "#
         );
+
+        raises!(
+            DuplicateTagValue,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            A = 1..10 {
+                X = 1,
+                Y = 1,
+            }
+        }
+        "#
+        );
     }
 
     #[test]
@@ -1602,6 +1807,19 @@ mod test {
         little_endian_packets
         enum A : 8 {
             X = 256,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidTagValue,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            A = 0,
+            X = 10..20 {
+                B = 1,
+            },
         }
         "#
         );
@@ -2115,6 +2333,152 @@ mod test {
         packet A {
             x : 8[],
             _padding_ [16]
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e40() {
+        raises!(
+            InvalidTagRange,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            X = 4..2,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidTagRange,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            X = 2..2,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidTagRange,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            X = 258..259,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e41() {
+        raises!(
+            DuplicateTagRange,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            X = 0..15,
+            Y = 8..31,
+        }
+        "#
+        );
+
+        raises!(
+            DuplicateTagRange,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            X = 8..31,
+            Y = 0..15,
+        }
+        "#
+        );
+
+        raises!(
+            DuplicateTagRange,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            X = 1..9,
+            Y = 9..11,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e42() {
+        raises!(
+            E42,
+            r#"
+        little_endian_packets
+        enum C : 8 { X = 0..15 }
+        packet A { x : C }
+        packet B : A (x = X) { }
+        "#
+        );
+
+        raises!(
+            E42,
+            r#"
+        little_endian_packets
+        enum C : 8 { X = 0..15 }
+        group A { x : C }
+        packet B {
+            A { x = X }
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e43() {
+        raises!(
+            E43,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            A = 0,
+            B = 1,
+            X = 1..15,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_enum_declaration() {
+        valid!(
+            r#"
+        little_endian_packets
+        enum A : 7 {
+            X = 0,
+            Y = 1,
+            Z = 127,
+        }
+        "#
+        );
+
+        valid!(
+            r#"
+        little_endian_packets
+        enum A : 7 {
+            A = 50..100 {
+                X = 50,
+                Y = 100,
+            },
+            Z = 101,
+        }
+        "#
+        );
+
+        valid!(
+            r#"
+        little_endian_packets
+        enum A : 7 {
+            A = 50..100,
+            X = 101,
         }
         "#
         );

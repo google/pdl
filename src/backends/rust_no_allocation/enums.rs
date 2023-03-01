@@ -7,9 +7,11 @@ use super::utils::get_integer_type;
 
 pub fn generate_enum(id: &str, tags: &[ast::Tag], width: usize) -> TokenStream {
     let id_ident = format_ident!("{id}");
-    let tag_ids = tags.iter().map(|tag| format_ident!("{}", tag.id)).collect::<Vec<_>>();
-    let tag_values =
-        tags.iter().map(|tag| Literal::u64_unsuffixed(tag.value as u64)).collect::<Vec<_>>();
+    let tag_ids = tags.iter().map(|tag| format_ident!("{}", tag.id())).collect::<Vec<_>>();
+    let tag_values = tags
+        .iter()
+        .map(|tag| Literal::u64_unsuffixed(tag.value().unwrap() as u64))
+        .collect::<Vec<_>>();
     let backing_ident = get_integer_type(width);
 
     quote! {

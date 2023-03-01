@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 
 constructors_ = dict()
 
@@ -37,7 +37,9 @@ class Node:
 @node('tag')
 class Tag(Node):
     id: str
-    value: int
+    value: Optional[int] = field(default=None)
+    range: Optional[Tuple[int, int]] = field(default=None)
+    tags: Optional[List['Tag']] = field(default=None)
 
 
 @node('constraint')
@@ -247,6 +249,8 @@ def convert_(obj: object) -> object:
     if isinstance(obj, list):
         return [convert_(elt) for elt in obj]
     if isinstance(obj, object):
+        if 'start' in obj.keys() and 'end' in obj.keys():
+            return (objs.start, obj.end)
         kind = obj['kind']
         loc = obj['loc']
         loc = SourceRange(loc['file'], SourceLocation(**loc['start']), SourceLocation(**loc['end']))

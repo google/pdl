@@ -683,10 +683,10 @@ fn generate_struct_decl(
 fn generate_enum_decl(id: &str, tags: &[ast::Tag]) -> proc_macro2::TokenStream {
     let name = format_ident!("{id}");
     let variants =
-        tags.iter().map(|t| format_ident!("{}", t.id.to_upper_camel_case())).collect::<Vec<_>>();
+        tags.iter().map(|t| format_ident!("{}", t.id().to_upper_camel_case())).collect::<Vec<_>>();
     let values = tags
         .iter()
-        .map(|t| syn::parse_str::<syn::LitInt>(&format!("{:#x}", t.value)).unwrap())
+        .map(|t| syn::parse_str::<syn::LitInt>(&format!("{:#x}", t.value().unwrap())).unwrap())
         .collect::<Vec<_>>();
     let visitor_name = format_ident!("{id}Visitor");
 
