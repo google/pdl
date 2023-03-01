@@ -11,7 +11,7 @@ pub mod ast {
     use serde::Serialize;
 
     // Field and declaration size information.
-    #[derive(Default, Debug)]
+    #[derive(Default, Debug, Clone)]
     #[allow(unused)]
     pub enum Size {
         // Constant size in bits.
@@ -682,26 +682,6 @@ impl<'d> Scope<'d> {
     }
 }
 
-impl parser::ast::Field {
-    fn kind(&self) -> &str {
-        match &self.desc {
-            FieldDesc::Checksum { .. } => "payload",
-            FieldDesc::Padding { .. } => "padding",
-            FieldDesc::Size { .. } => "size",
-            FieldDesc::Count { .. } => "count",
-            FieldDesc::ElementSize { .. } => "elementsize",
-            FieldDesc::Body { .. } => "body",
-            FieldDesc::Payload { .. } => "payload",
-            FieldDesc::FixedScalar { .. } | FieldDesc::FixedEnum { .. } => "fixed",
-            FieldDesc::Reserved { .. } => "reserved",
-            FieldDesc::Group { .. } => "group",
-            FieldDesc::Array { .. } => "array",
-            FieldDesc::Scalar { .. } => "scalar",
-            FieldDesc::Typedef { .. } => "typedef",
-        }
-    }
-}
-
 // Helper for linting an enum declaration.
 fn lint_enum(tags: &[Tag], width: usize, result: &mut LintDiagnostics) {
     let mut local_scope = HashMap::new();
@@ -1211,17 +1191,6 @@ fn lint_struct(
 }
 
 impl parser::ast::Decl {
-    fn constraints(&self) -> impl Iterator<Item = &Constraint> {
-        match &self.desc {
-            DeclDesc::Packet { constraints, .. } | DeclDesc::Struct { constraints, .. } => {
-                Some(constraints.iter())
-            }
-            _ => None,
-        }
-        .into_iter()
-        .flatten()
-    }
-
     fn scope<'d>(&'d self, result: &mut LintDiagnostics) -> Option<PacketScope<'d>> {
         match &self.desc {
             DeclDesc::Packet { fields, .. }
@@ -1262,18 +1231,6 @@ impl parser::ast::Decl {
             // potential errors are raised only once.
             DeclDesc::Group { .. } => (),
             DeclDesc::Test { .. } => (),
-        }
-    }
-
-    fn kind(&self) -> &str {
-        match &self.desc {
-            DeclDesc::Checksum { .. } => "checksum",
-            DeclDesc::CustomField { .. } => "custom field",
-            DeclDesc::Enum { .. } => "enum",
-            DeclDesc::Packet { .. } => "packet",
-            DeclDesc::Struct { .. } => "struct",
-            DeclDesc::Group { .. } => "group",
-            DeclDesc::Test { .. } => "test",
         }
     }
 }
