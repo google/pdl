@@ -11,6 +11,7 @@
 use crate::{ast, lint};
 use heck::ToUpperCamelCase;
 use quote::{format_ident, quote};
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use crate::parser::ast as parser_ast;
@@ -123,6 +124,52 @@ fn top_level_packet<'a>(scope: &lint::Scope<'a>, packet_name: &'a str) -> &'a pa
     decl
 }
 
+fn get_packet_children<'a>(scope: &'a lint::Scope<'_>, id: &str) -> &'a [&'a parser_ast::Decl] {
+    scope.children.get(id).map(Vec::as_slice).unwrap_or_default()
+}
+
+/// Find all constrained fields in children of `id`.
+fn find_constrained_fields<'a>(
+    scope: &'a lint::Scope<'a>,
+    id: &'a str,
+) -> Vec<&'a parser_ast::Field> {
+    let mut fields = Vec::new();
+    let mut field_names = BTreeSet::new();
+    let mut children = Vec::from(get_packet_children(scope, id));
+
+    while let Some(child) = children.pop() {
+        if let ast::DeclDesc::Packet { id, constraints, .. }
+        | ast::DeclDesc::Struct { id, constraints, .. } = &child.desc
+        {
+            let packet_scope = &scope.scopes[&scope.typedef[id]];
+            for constraint in constraints {
+                if field_names.insert(&constraint.id) {
+                    fields.push(packet_scope.all_fields[&constraint.id]);
+                }
+            }
+            children.extend(get_packet_children(scope, id));
+        }
+    }
+
+    fields
+}
+
+/// Find parent fields which are constrained in child packets.
+///
+/// These fields are the fields which need to be passed in when
+/// parsing a `id` packet since their values are needed for one or
+/// more child packets.
+fn find_constrained_parent_fields<'a>(
+    scope: &'a lint::Scope<'a>,
+    id: &'a str,
+) -> impl Iterator<Item = &'a parser_ast::Field> {
+    let packet_scope = &scope.scopes[&scope.typedef[id]];
+    find_constrained_fields(scope, id).into_iter().filter(|field| {
+        let id = field.id().unwrap();
+        packet_scope.all_fields.contains_key(id) && !packet_scope.named.contains_key(id)
+    })
+}
+
 /// Generate code for `ast::Decl::Packet` and `ast::Decl::Struct`
 /// values.
 fn generate_packet_decl(
@@ -206,6 +253,11 @@ fn generate_packet_decl(
         }
         unreachable!("Could not find {f:?} in parent chain");
     });
+
+    let parse_fields = find_constrained_parent_fields(scope, id).collect::<Vec<_>>();
+    let parse_field_names =
+        parse_fields.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
+    let parse_field_types = parse_fields.iter().map(|f| types::rust_type(f));
 
     let unconstrained_fields = all_fields
         .iter()
@@ -291,7 +343,7 @@ fn generate_packet_decl(
         }
     });
 
-    let children = scope.children.get(id).map(Vec::as_slice).unwrap_or_default();
+    let children = get_packet_children(scope, id);
     let has_payload = packet_scope.payload.is_some();
     let has_children_or_payload = !children.is_empty() || has_payload;
     let child =
@@ -402,7 +454,7 @@ fn generate_packet_decl(
                 #conforms
             }
 
-            fn parse(mut #span: &mut Cell<&[u8]>) -> Result<Self> {
+            fn parse(mut #span: &mut Cell<&[u8]> #(, #parse_field_names: #parse_field_types)*) -> Result<Self> {
                 #field_parser
                 Ok(Self {
                     #(#field_names,)*
@@ -608,6 +660,53 @@ mod tests {
     use crate::parser::parse_inline;
     use crate::test_utils::{assert_snapshot_eq, rustfmt};
     use paste::paste;
+
+    /// Parse a string fragment as a PDL file.
+    ///
+    /// # Panics
+    ///
+    /// Panics on parse errors.
+    pub fn parse_str(text: &str) -> parser_ast::File {
+        let mut db = ast::SourceDatabase::new();
+        parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parse error")
+    }
+
+    #[track_caller]
+    fn assert_iter_eq<T: std::cmp::PartialEq + std::fmt::Debug>(
+        left: impl IntoIterator<Item = T>,
+        right: impl IntoIterator<Item = T>,
+    ) {
+        assert_eq!(left.into_iter().collect::<Vec<T>>(), right.into_iter().collect::<Vec<T>>());
+    }
+
+    #[test]
+    fn test_find_constrained_parent_fields() {
+        let code = "
+              little_endian_packets
+              packet Parent {
+                a: 8,
+                b: 8,
+                c: 8,
+              }
+              packet Child: Parent(a = 10) {
+                x: 8,
+              }
+              packet GrandChild: Child(b = 20) {
+                y: 8,
+              }
+              packet GrandGrandChild: GrandChild(c = 30) {
+                z: 8,
+              }
+            ";
+        let file = parse_str(code);
+        let scope = lint::Scope::new(&file).unwrap();
+        let find_fields =
+            |id| find_constrained_parent_fields(&scope, id).map(|field| field.id().unwrap());
+        assert_iter_eq(find_fields("Parent"), vec![]);
+        assert_iter_eq(find_fields("Child"), vec!["b", "c"]);
+        assert_iter_eq(find_fields("GrandChild"), vec!["c"]);
+        assert_iter_eq(find_fields("GrandGrandChild"), vec![]);
+    }
 
     /// Create a unit test for the given PDL `code`.
     ///
@@ -895,6 +994,37 @@ mod tests {
 
           packet Baz : Foo (b = B) {
               y: 16,
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_grand_children,
+        "
+          enum Enum16 : 16 {
+            A = 1,
+            B = 2,
+          }
+
+          packet Parent {
+              foo: Enum16,
+              bar: Enum16,
+              baz: Enum16,
+              _size_(_payload_): 8,
+              _payload_
+          }
+
+          packet Child : Parent (foo = A) {
+              quux: Enum16,
+              _payload_,
+          }
+
+          packet GrandChild : Child (bar = A, quux = A) {
+              _body_,
+          }
+
+          packet GrandGrandChild : GrandChild (baz = A) {
+              _body_,
           }
         "
     );

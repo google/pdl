@@ -1,4 +1,4 @@
-use crate::backends::rust::{mask_bits, types};
+use crate::backends::rust::{find_constrained_parent_fields, mask_bits, types};
 use crate::parser::ast as parser_ast;
 use crate::{ast, lint};
 use heck::ToUpperCamelCase;
@@ -578,7 +578,7 @@ impl<'a> FieldParser<'a> {
                             }
                             ast::Constraint { id, tag_id: Some(tag_id), .. } => {
                                 // TODO: add `type_id` to `Constraint`.
-                                let type_id = match &packet_scope.named[id].desc {
+                                let type_id = match &packet_scope.all_fields[id].desc {
                                     ast::FieldDesc::Typedef { type_id, .. } => {
                                         format_ident!("{type_id}")
                                     }
@@ -609,12 +609,17 @@ impl<'a> FieldParser<'a> {
         });
         let constrained_field_idents =
             constrained_fields.iter().map(|field| format_ident!("{field}"));
+        let child_parse_args = children.iter().map(|child| {
+            let fields = find_constrained_parent_fields(self.scope, child.id().unwrap())
+                .map(|field| format_ident!("{}", field.id().unwrap()));
+            quote!(#(, #fields)*)
+        });
         let packet_data_child = format_ident!("{}DataChild", self.packet_name);
         self.code.push(quote! {
             let child = match (#(#constrained_field_idents),*) {
                 #(#match_values => {
                     let mut cell = Cell::new(payload);
-                    let child_data = #child_ids_data::parse(&mut cell)?;
+                    let child_data = #child_ids_data::parse(&mut cell #child_parse_args)?;
                     if !cell.get().is_empty() {
                         return Err(Error::InvalidPacketError);
                     }

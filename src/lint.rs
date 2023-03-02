@@ -91,7 +91,7 @@ pub struct PacketScope<'d> {
     pub fields: Vec<&'d parser::ast::Field>,
 
     // Constraint declarations gathered from Group inlining.
-    constraints: HashMap<String, &'d Constraint>,
+    pub constraints: HashMap<String, &'d Constraint>,
 
     // Local and inherited field declarations. Only named fields are preserved.
     // Saved here for reference for parent constraint resolving.
