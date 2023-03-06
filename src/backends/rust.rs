@@ -170,6 +170,31 @@ fn find_constrained_parent_fields<'a>(
     })
 }
 
+/// Turn the constraint into a value (such as `10` or
+/// `SomeEnum::Foo`).
+pub fn constraint_to_value(
+    packet_scope: &lint::PacketScope<'_>,
+    constraint: &ast::Constraint,
+) -> proc_macro2::TokenStream {
+    match constraint {
+        ast::Constraint { value: Some(value), .. } => {
+            let value = proc_macro2::Literal::usize_unsuffixed(*value);
+            quote!(#value)
+        }
+        // TODO(mgeisler): include type_id in `ast::Constraint` and
+        // drop the packet_scope argument.
+        ast::Constraint { tag_id: Some(tag_id), .. } => {
+            let type_id = match &packet_scope.all_fields[&constraint.id].desc {
+                ast::FieldDesc::Typedef { type_id, .. } => format_ident!("{type_id}"),
+                _ => unreachable!("Invalid constraint: {constraint:?}"),
+            };
+            let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
+            quote!(#type_id::#tag_id)
+        }
+        _ => unreachable!("Invalid constraint: {constraint:?}"),
+    }
+}
+
 /// Generate code for `ast::Decl::Packet` and `ast::Decl::Struct`
 /// values.
 fn generate_packet_decl(
@@ -287,26 +312,7 @@ fn generate_packet_decl(
         let mut value = named_fields
             .iter()
             .map(|&id| match packet_scope.all_constraints.get(id) {
-                Some(constraint) => {
-                    let value = match constraint {
-                        ast::Constraint { value: Some(value), .. } => {
-                            let value = proc_macro2::Literal::usize_unsuffixed(*value);
-                            quote!(#value)
-                        }
-                        ast::Constraint { tag_id: Some(tag_id), .. } => {
-                            let type_id = match packet_scope.all_fields.get(id).map(|f| &f.desc) {
-                                Some(ast::FieldDesc::Typedef { type_id, .. }) => {
-                                    format_ident!("{type_id}")
-                                }
-                                _ => unreachable!("Invalid constraint: {constraint:?}"),
-                            };
-                            let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
-                            quote!(#type_id::#tag_id)
-                        }
-                        _ => unreachable!("Invalid constraint: {constraint:?}"),
-                    };
-                    quote!(#value)
-                }
+                Some(constraint) => constraint_to_value(packet_scope, constraint),
                 None => {
                     let id = format_ident!("{id}");
                     quote!(self.#id)
