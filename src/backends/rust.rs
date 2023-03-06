@@ -170,6 +170,22 @@ fn find_constrained_parent_fields<'a>(
     })
 }
 
+/// Find all parents from `id`.
+///
+/// This includes the `Decl` for `id` itself.
+fn find_parents<'a>(scope: &lint::Scope<'a>, id: &str) -> Vec<&'a parser_ast::Decl> {
+    let mut decl = scope.typedef[id];
+    let mut parents = vec![decl];
+    while let ast::DeclDesc::Packet { parent_id: Some(parent_id), .. }
+    | ast::DeclDesc::Struct { parent_id: Some(parent_id), .. } = &decl.desc
+    {
+        decl = scope.typedef[parent_id];
+        parents.push(decl);
+    }
+    parents.reverse();
+    parents
+}
+
 /// Turn the constraint into a value (such as `10` or
 /// `SomeEnum::Foo`).
 pub fn constraint_to_value(
@@ -240,16 +256,7 @@ fn generate_packet_decl(
     let field_names =
         fields_with_ids.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
 
-    let mut decl = scope.typedef[id];
-    let mut parents = vec![decl];
-    while let ast::DeclDesc::Packet { parent_id: Some(parent_id), .. }
-    | ast::DeclDesc::Struct { parent_id: Some(parent_id), .. } = &decl.desc
-    {
-        decl = scope.typedef[parent_id];
-        parents.push(decl);
-    }
-    parents.reverse();
-
+    let parents = find_parents(scope, id);
     let parent_ids = parents.iter().map(|p| p.id().unwrap()).collect::<Vec<_>>();
     let parent_shifted_ids = parent_ids.iter().skip(1).map(|id| format_ident!("{id}"));
     let parent_lower_ids =
