@@ -46,7 +46,7 @@ pub fn mask_bits(n: usize) -> syn::LitInt {
 
 fn generate_packet_size_getter(
     scope: &lint::Scope<'_>,
-    fields: &[parser_ast::Field],
+    fields: &[&parser_ast::Field],
 ) -> (usize, proc_macro2::TokenStream) {
     let mut constant_width = 0;
     let mut dynamic_widths = Vec::new();
@@ -215,12 +215,8 @@ pub fn constraint_to_value(
 /// values.
 fn generate_packet_decl(
     scope: &lint::Scope<'_>,
-    //  File:
     endianness: ast::EndiannessValue,
-    // Packet:
     id: &str,
-    _constraints: &[ast::Constraint],
-    fields: &[parser_ast::Field],
 ) -> proc_macro2::TokenStream {
     let packet_scope = &scope.scopes[&scope.typedef[id]];
 
@@ -237,7 +233,7 @@ fn generate_packet_decl(
     let mut field_declarations = FieldDeclarations::new(scope, id);
     let mut field_parser = FieldParser::new(scope, endianness, id, &span);
     let mut field_serializer = FieldSerializer::new(scope, endianness, id, &serializer_span);
-    for field in fields {
+    for field in &packet_scope.fields {
         field_declarations.add(field);
         field_parser.add(field);
         field_serializer.add(field);
@@ -252,7 +248,8 @@ fn generate_packet_decl(
     let id_data_child = format_ident!("{id}DataChild");
     let id_builder = format_ident!("{id}Builder");
 
-    let fields_with_ids = fields.iter().filter(|f| f.id().is_some()).collect::<Vec<_>>();
+    let fields_with_ids =
+        packet_scope.fields.iter().filter(|f| f.id().is_some()).collect::<Vec<_>>();
     let field_names =
         fields_with_ids.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
 
@@ -429,7 +426,7 @@ fn generate_packet_decl(
         }
     });
 
-    let (constant_width, packet_size) = generate_packet_size_getter(scope, fields);
+    let (constant_width, packet_size) = generate_packet_size_getter(scope, &packet_scope.fields);
     let conforms = if constant_width == 0 {
         quote! { true }
     } else {
@@ -638,9 +635,8 @@ fn generate_decl(
     decl: &parser_ast::Decl,
 ) -> String {
     match &decl.desc {
-        ast::DeclDesc::Packet { id, constraints, fields, .. }
-        | ast::DeclDesc::Struct { id, constraints, fields, .. } => {
-            generate_packet_decl(scope, file.endianness.value, id, constraints, fields).to_string()
+        ast::DeclDesc::Packet { id, .. } | ast::DeclDesc::Struct { id, .. } => {
+            generate_packet_decl(scope, file.endianness.value, id).to_string()
         }
         ast::DeclDesc::Enum { id, tags, .. } => generate_enum_decl(id, tags).to_string(),
         _ => todo!("unsupported Decl::{:?}", decl),
