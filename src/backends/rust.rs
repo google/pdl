@@ -16,13 +16,11 @@ use std::path::Path;
 
 use crate::parser::ast as parser_ast;
 
-mod declarations;
 mod parser;
 mod preamble;
 mod serializer;
 mod types;
 
-use declarations::FieldDeclarations;
 use parser::FieldParser;
 use serializer::FieldSerializer;
 
@@ -59,6 +57,7 @@ pub fn mask_bits(n: usize, suffix: &str) -> syn::LitInt {
 fn generate_packet_size_getter(
     scope: &lint::Scope<'_>,
     fields: &[&parser_ast::Field],
+    is_packet: bool,
 ) -> (usize, proc_macro2::TokenStream) {
     let mut constant_width = 0;
     let mut dynamic_widths = Vec::new();
@@ -71,9 +70,17 @@ fn generate_packet_size_getter(
 
         let decl = field.declaration(scope);
         dynamic_widths.push(match &field.desc {
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. } => quote! {
-                self.child.get_total_size()
-            },
+            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. } => {
+                if is_packet {
+                    quote! {
+                        self.child.get_total_size()
+                    }
+                } else {
+                    quote! {
+                        self.payload.len()
+                    }
+                }
+            }
             ast::FieldDesc::Typedef { id, .. } => {
                 let id = format_ident!("{id}");
                 quote!(self.#id.get_size())
@@ -191,33 +198,31 @@ fn generate_data_struct(
     endianness: ast::EndiannessValue,
     id: &str,
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
-    let packet_scope = &scope.scopes[&scope.typedef[id]];
-    let id_data = format_ident!("{id}Data");
-
-    let fields_with_ids =
-        packet_scope.fields.iter().filter(|f| f.id().is_some()).collect::<Vec<_>>();
-    let field_names =
-        fields_with_ids.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
+    let decl = scope.typedef[id];
+    let packet_scope = &scope.scopes[&decl];
+    let is_packet = matches!(&decl.desc, ast::DeclDesc::Packet { .. });
 
     let span = format_ident!("bytes");
     let serializer_span = format_ident!("buffer");
-    let mut field_declarations = FieldDeclarations::new(scope, id);
     let mut field_parser = FieldParser::new(scope, endianness, id, &span);
     let mut field_serializer = FieldSerializer::new(scope, endianness, id, &serializer_span);
     for field in &packet_scope.fields {
-        field_declarations.add(field);
         field_parser.add(field);
         field_serializer.add(field);
     }
-    field_declarations.done();
     field_parser.done();
 
-    let parse_fields = find_constrained_parent_fields(scope, id).collect::<Vec<_>>();
-    let parse_field_names =
-        parse_fields.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
-    let parse_field_types = parse_fields.iter().map(|f| types::rust_type(f));
+    let (parse_arg_names, parse_arg_types) = if is_packet {
+        let fields = find_constrained_parent_fields(scope, id).collect::<Vec<_>>();
+        let names = fields.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
+        let types = fields.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
+        (names, types)
+    } else {
+        (Vec::new(), Vec::new()) // No extra arguments to parse in structs.
+    };
 
-    let (constant_width, packet_size) = generate_packet_size_getter(scope, &packet_scope.fields);
+    let (constant_width, packet_size) =
+        generate_packet_size_getter(scope, &packet_scope.fields, is_packet);
     let conforms = if constant_width == 0 {
         quote! { true }
     } else {
@@ -225,30 +230,58 @@ fn generate_data_struct(
         quote! { #span.len() >= #constant_width }
     };
 
+    let visibility = if is_packet { quote!() } else { quote!(pub) };
     let has_payload = packet_scope.payload.is_some();
     let children = get_packet_children(scope, id);
     let has_children_or_payload = !children.is_empty() || has_payload;
-    let child_field = has_children_or_payload.then(|| quote!(child));
+    let struct_name = if is_packet { format_ident!("{id}Data") } else { format_ident!("{id}") };
+    let fields_with_ids =
+        packet_scope.fields.iter().filter(|f| f.id().is_some()).collect::<Vec<_>>();
+    let mut field_names =
+        fields_with_ids.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
+    let mut field_types = fields_with_ids.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
+    if has_children_or_payload {
+        if is_packet {
+            field_names.push(format_ident!("child"));
+            let field_type = format_ident!("{id}DataChild");
+            field_types.push(quote!(#field_type));
+        } else {
+            field_names.push(format_ident!("payload"));
+            field_types.push(quote!(Vec<u8>));
+        }
+    }
 
     let data_struct_decl = quote! {
         #[derive(Debug, Clone, PartialEq, Eq)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-        pub struct #id_data {
-            #field_declarations
+        pub struct #struct_name {
+            #(#visibility #field_names: #field_types,)*
         }
     };
 
     let data_struct_impl = quote! {
-        impl #id_data {
+        impl #struct_name {
             fn conforms(#span: &[u8]) -> bool {
                 #conforms
             }
 
-            fn parse(mut #span: &mut Cell<&[u8]> #(, #parse_field_names: #parse_field_types)*) -> Result<Self> {
+            #visibility fn parse(
+                #span: &[u8] #(, #parse_arg_names: #parse_arg_types)*
+            ) -> Result<Self> {
+                let mut cell = Cell::new(#span);
+                let packet = Self::parse_inner(&mut cell #(, #parse_arg_names)*)?;
+                if !cell.get().is_empty() {
+                    return Err(Error::InvalidPacketError);
+                }
+                Ok(packet)
+            }
+
+            fn parse_inner(
+                mut #span: &mut Cell<&[u8]> #(, #parse_arg_names: #parse_arg_types)*
+            ) -> Result<Self> {
                 #field_parser
                 Ok(Self {
                     #(#field_names,)*
-                    #child_field
                 })
             }
 
@@ -310,8 +343,7 @@ pub fn constraint_to_value(
     }
 }
 
-/// Generate code for `ast::Decl::Packet` and `ast::Decl::Struct`
-/// values.
+/// Generate code for a `ast::Decl::Packet`.
 fn generate_packet_decl(
     scope: &lint::Scope<'_>,
     endianness: ast::EndiannessValue,
@@ -578,7 +610,7 @@ fn generate_packet_decl(
             }
 
             fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-                let data = #top_level_data::parse(&mut bytes)?;
+                let data = #top_level_data::parse_inner(&mut bytes)?;
                 Ok(Self::new(Arc::new(data)).unwrap())
             }
 
@@ -624,6 +656,19 @@ fn generate_packet_decl(
                 }
             }
         )*
+    }
+}
+
+/// Generate code for a `ast::Decl::Struct`.
+fn generate_struct_decl(
+    scope: &lint::Scope<'_>,
+    endianness: ast::EndiannessValue,
+    id: &str,
+) -> proc_macro2::TokenStream {
+    let (struct_decl, struct_impl) = generate_data_struct(scope, endianness, id);
+    quote! {
+        #struct_decl
+        #struct_impl
     }
 }
 
@@ -694,8 +739,16 @@ fn generate_decl(
     decl: &parser_ast::Decl,
 ) -> String {
     match &decl.desc {
-        ast::DeclDesc::Packet { id, .. } | ast::DeclDesc::Struct { id, .. } => {
+        ast::DeclDesc::Packet { id, .. } => {
             generate_packet_decl(scope, file.endianness.value, id).to_string()
+        }
+        ast::DeclDesc::Struct { id, parent_id: None, .. } => {
+            // TODO(mgeisler): handle structs with parents. We could
+            // generate code for them, but the code is not useful
+            // since it would require the caller to unpack everything
+            // manually. We either need to change the API, or
+            // implement the recursive (de)serialization.
+            generate_struct_decl(scope, file.endianness.value, id).to_string()
         }
         ast::DeclDesc::Enum { id, tags, .. } => generate_enum_decl(id, tags).to_string(),
         _ => todo!("unsupported Decl::{:?}", decl),
@@ -1096,4 +1149,63 @@ mod tests {
           }
         "
     );
+
+    // TODO(mgeisler): enable this test when we have an approach to
+    // struct fields with parents.
+    //
+    // test_pdl!(
+    //     struct_decl_child_structs,
+    //     "
+    //       enum Enum16 : 16 {
+    //         A = 1,
+    //         B = 2,
+    //       }
+    //
+    //       struct Foo {
+    //           a: 8,
+    //           b: Enum16,
+    //           _size_(_payload_): 8,
+    //           _payload_
+    //       }
+    //
+    //       struct Bar : Foo (a = 100) {
+    //           x: 8,
+    //       }
+    //
+    //       struct Baz : Foo (b = B) {
+    //           y: 16,
+    //       }
+    //     "
+    // );
+    //
+    // test_pdl!(
+    //     struct_decl_grand_children,
+    //     "
+    //       enum Enum16 : 16 {
+    //         A = 1,
+    //         B = 2,
+    //       }
+    //
+    //       struct Parent {
+    //           foo: Enum16,
+    //           bar: Enum16,
+    //           baz: Enum16,
+    //           _size_(_payload_): 8,
+    //           _payload_
+    //       }
+    //
+    //       struct Child : Parent (foo = A) {
+    //           quux: Enum16,
+    //           _payload_,
+    //       }
+    //
+    //       struct GrandChild : Child (bar = A, quux = A) {
+    //           _body_,
+    //       }
+    //
+    //       struct GrandGrandChild : GrandChild (baz = A) {
+    //           _body_,
+    //       }
+    //     "
+    // );
 }

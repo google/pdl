@@ -17,6 +17,7 @@ pub mod ast {
 
     pub type Field = crate::ast::Field<Annotation>;
     pub type Decl = crate::ast::Decl<Annotation>;
+    pub type DeclDesc = crate::ast::DeclDesc<Annotation>;
     pub type File = crate::ast::File<Annotation>;
 }
 

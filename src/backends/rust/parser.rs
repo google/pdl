@@ -520,6 +520,13 @@ impl<'a> FieldParser<'a> {
                 #span.get_mut().advance(payload.len());
             });
         }
+
+        let decl = self.scope.typedef[self.packet_name];
+        if let ast::DeclDesc::Struct { .. } = &decl.desc {
+            self.code.push(quote! {
+                let payload = Vec::from(payload);
+            });
+        }
     }
 
     /// Parse a single array field element from `span`.
@@ -560,7 +567,12 @@ impl<'a> FieldParser<'a> {
     }
 
     pub fn done(&mut self) {
-        let packet_scope = &self.scope.scopes[&self.scope.typedef[self.packet_name]];
+        let decl = self.scope.typedef[self.packet_name];
+        if let parser_ast::DeclDesc::Struct { .. } = &decl.desc {
+            return; // Structs don't parse the child structs recursively.
+        }
+
+        let packet_scope = &self.scope.scopes[&decl];
         let children =
             self.scope.children.get(self.packet_name).map(Vec::as_slice).unwrap_or_default();
         if children.is_empty() && packet_scope.payload.is_none() {
@@ -616,7 +628,7 @@ impl<'a> FieldParser<'a> {
             let child = match (#(#constrained_field_idents),*) {
                 #(#match_values => {
                     let mut cell = Cell::new(payload);
-                    let child_data = #child_ids_data::parse(&mut cell #child_parse_args)?;
+                    let child_data = #child_ids_data::parse_inner(&mut cell #child_parse_args)?;
                     if !cell.get().is_empty() {
                         return Err(Error::InvalidPacketError);
                     }
