@@ -32,6 +32,10 @@ rust_binary_host {
     name: "pdl",
     defaults: ["pdl_defaults"],
     srcs: ["src/main.rs"],
+    visibility: [
+        "//packages/modules/Bluetooth:__subpackages__",
+        "//external/uwb/src",
+    ],
 }
 
 rust_test_host {
@@ -123,6 +127,10 @@ genrule_defaults {
     tools: [
         ":pdl",
         ":rustfmt",
+    ],
+    defaults_visibility: [
+        "//packages/modules/Bluetooth:__subpackages__",
+        "//external/uwb/src",
     ],
 }
 
