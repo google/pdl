@@ -154,6 +154,12 @@ impl Foo {
         let data = FooData::parse(&mut bytes)?;
         Ok(Self::new(Arc::new(data)).unwrap())
     }
+    pub fn specialize(&self) -> FooChild {
+        match &self.foo.child {
+            FooDataChild::Payload(payload) => FooChild::Payload(payload.clone()),
+            FooDataChild::None => FooChild::None,
+        }
+    }
     fn new(foo: Arc<FooData>) -> std::result::Result<Self, &'static str> {
         Ok(Self { foo })
     }

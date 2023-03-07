@@ -474,6 +474,21 @@ fn generate_packet_decl(
             }
         }
     });
+    let specialize = has_children_or_payload.then(|| {
+        quote! {
+            pub fn specialize(&self) -> #id_child {
+                match &self.#id_lower.child {
+                    #(
+                        #id_data_child::#child(_) =>
+                        #id_child::#child(#child::new(self.#top_level_id_lower.clone()).unwrap()),
+                    )*
+                    #id_data_child::Payload(payload) => #id_child::Payload(payload.clone()),
+                    #id_data_child::None => #id_child::None,
+                }
+            }
+        }
+    });
+
     let builder_payload_field = has_children_or_payload.then(|| {
         quote! {
             pub payload: Option<Bytes>
@@ -566,6 +581,9 @@ fn generate_packet_decl(
                 let data = #top_level_data::parse(&mut bytes)?;
                 Ok(Self::new(Arc::new(data)).unwrap())
             }
+
+            #specialize
+
             fn new(#top_level_id_lower: Arc<#top_level_data>)
                    -> std::result::Result<Self, &'static str> {
                 #(

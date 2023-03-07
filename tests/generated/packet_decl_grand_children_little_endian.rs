@@ -247,6 +247,15 @@ impl Parent {
         let data = ParentData::parse(&mut bytes)?;
         Ok(Self::new(Arc::new(data)).unwrap())
     }
+    pub fn specialize(&self) -> ParentChild {
+        match &self.parent.child {
+            ParentDataChild::Child(_) => {
+                ParentChild::Child(Child::new(self.parent.clone()).unwrap())
+            }
+            ParentDataChild::Payload(payload) => ParentChild::Payload(payload.clone()),
+            ParentDataChild::None => ParentChild::None,
+        }
+    }
     fn new(parent: Arc<ParentData>) -> std::result::Result<Self, &'static str> {
         Ok(Self { parent })
     }
@@ -418,6 +427,15 @@ impl Child {
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse(&mut bytes)?;
         Ok(Self::new(Arc::new(data)).unwrap())
+    }
+    pub fn specialize(&self) -> ChildChild {
+        match &self.child.child {
+            ChildDataChild::GrandChild(_) => {
+                ChildChild::GrandChild(GrandChild::new(self.parent.clone()).unwrap())
+            }
+            ChildDataChild::Payload(payload) => ChildChild::Payload(payload.clone()),
+            ChildDataChild::None => ChildChild::None,
+        }
     }
     fn new(parent: Arc<ParentData>) -> std::result::Result<Self, &'static str> {
         let child = match &parent.child {
@@ -603,6 +621,15 @@ impl GrandChild {
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse(&mut bytes)?;
         Ok(Self::new(Arc::new(data)).unwrap())
+    }
+    pub fn specialize(&self) -> GrandChildChild {
+        match &self.grandchild.child {
+            GrandChildDataChild::GrandGrandChild(_) => {
+                GrandChildChild::GrandGrandChild(GrandGrandChild::new(self.parent.clone()).unwrap())
+            }
+            GrandChildDataChild::Payload(payload) => GrandChildChild::Payload(payload.clone()),
+            GrandChildDataChild::None => GrandChildChild::None,
+        }
     }
     fn new(parent: Arc<ParentData>) -> std::result::Result<Self, &'static str> {
         let child = match &parent.child {
@@ -792,6 +819,14 @@ impl GrandGrandChild {
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse(&mut bytes)?;
         Ok(Self::new(Arc::new(data)).unwrap())
+    }
+    pub fn specialize(&self) -> GrandGrandChildChild {
+        match &self.grandgrandchild.child {
+            GrandGrandChildDataChild::Payload(payload) => {
+                GrandGrandChildChild::Payload(payload.clone())
+            }
+            GrandGrandChildDataChild::None => GrandGrandChildChild::None,
+        }
     }
     fn new(parent: Arc<ParentData>) -> std::result::Result<Self, &'static str> {
         let child = match &parent.child {
