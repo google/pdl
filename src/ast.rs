@@ -31,11 +31,11 @@ pub struct SourceRange {
 }
 
 pub trait Annotation: fmt::Debug + Serialize {
-    type FieldAnnotation: Default + fmt::Debug;
+    type FieldAnnotation: Default + fmt::Debug + Clone;
     type DeclAnnotation: Default + fmt::Debug;
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(tag = "kind", rename = "comment")]
 pub struct Comment {
     pub loc: SourceRange,
@@ -56,7 +56,7 @@ pub struct Endianness {
     pub value: EndiannessValue,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(tag = "kind", rename = "tag")]
 pub struct Tag {
     pub id: String,
@@ -121,7 +121,7 @@ pub struct Field<A: Annotation> {
     pub desc: FieldDesc,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(tag = "kind", rename = "test_case")]
 pub struct TestCase {
     pub loc: SourceRange,
@@ -250,9 +250,61 @@ impl<A: Annotation> File<A> {
             file,
         }
     }
+
+    /// Iterate over the children of the selected declaration.
+    /// /!\ This method is unsafe to use if the file contains cyclic
+    /// declarations, use with caution.
+    pub fn iter_children<'d>(&'d self, decl: &'d Decl<A>) -> impl Iterator<Item = &'d Decl<A>> {
+        self.declarations.iter().filter(|other_decl| other_decl.parent_id() == decl.id())
+    }
 }
 
 impl<A: Annotation> Decl<A> {
+    pub fn new(loc: SourceRange, desc: DeclDesc<A>) -> Decl<A> {
+        Decl { loc, annot: Default::default(), desc }
+    }
+
+    pub fn annotate<F, B: Annotation>(
+        &self,
+        annot: B::DeclAnnotation,
+        annotate_fields: F,
+    ) -> Decl<B>
+    where
+        F: FnOnce(&[Field<A>]) -> Vec<Field<B>>,
+    {
+        let desc = match &self.desc {
+            DeclDesc::Checksum { id, function, width } => {
+                DeclDesc::Checksum { id: id.clone(), function: function.clone(), width: *width }
+            }
+            DeclDesc::CustomField { id, width, function } => {
+                DeclDesc::CustomField { id: id.clone(), width: *width, function: function.clone() }
+            }
+            DeclDesc::Enum { id, tags, width } => {
+                DeclDesc::Enum { id: id.clone(), tags: tags.clone(), width: *width }
+            }
+
+            DeclDesc::Test { type_id, test_cases } => {
+                DeclDesc::Test { type_id: type_id.clone(), test_cases: test_cases.clone() }
+            }
+            DeclDesc::Packet { id, constraints, parent_id, fields } => DeclDesc::Packet {
+                id: id.clone(),
+                constraints: constraints.clone(),
+                parent_id: parent_id.clone(),
+                fields: annotate_fields(fields),
+            },
+            DeclDesc::Struct { id, constraints, parent_id, fields } => DeclDesc::Struct {
+                id: id.clone(),
+                constraints: constraints.clone(),
+                parent_id: parent_id.clone(),
+                fields: annotate_fields(fields),
+            },
+            DeclDesc::Group { id, fields } => {
+                DeclDesc::Group { id: id.clone(), fields: annotate_fields(fields) }
+            }
+        };
+        Decl { loc: self.loc, desc, annot }
+    }
+
     pub fn id(&self) -> Option<&str> {
         match &self.desc {
             DeclDesc::Test { .. } => None,
@@ -262,6 +314,24 @@ impl<A: Annotation> Decl<A> {
             | DeclDesc::Packet { id, .. }
             | DeclDesc::Struct { id, .. }
             | DeclDesc::Group { id, .. } => Some(id),
+        }
+    }
+
+    pub fn parent_id(&self) -> Option<&str> {
+        match &self.desc {
+            DeclDesc::Packet { parent_id, .. } | DeclDesc::Struct { parent_id, .. } => {
+                parent_id.as_deref()
+            }
+            _ => None,
+        }
+    }
+
+    pub fn constraints(&self) -> std::slice::Iter<'_, Constraint> {
+        match &self.desc {
+            DeclDesc::Packet { constraints, .. } | DeclDesc::Struct { constraints, .. } => {
+                constraints.iter()
+            }
+            _ => [].iter(),
         }
     }
 
@@ -290,12 +360,33 @@ impl<A: Annotation> Decl<A> {
         }
     }
 
-    pub fn new(loc: SourceRange, desc: DeclDesc<A>) -> Decl<A> {
-        Decl { loc, annot: Default::default(), desc }
+    pub fn fields(&self) -> std::slice::Iter<'_, Field<A>> {
+        match &self.desc {
+            DeclDesc::Packet { fields, .. }
+            | DeclDesc::Struct { fields, .. }
+            | DeclDesc::Group { fields, .. } => fields.iter(),
+            _ => [].iter(),
+        }
+    }
+
+    pub fn kind(&self) -> &str {
+        match &self.desc {
+            DeclDesc::Checksum { .. } => "checksum",
+            DeclDesc::CustomField { .. } => "custom field",
+            DeclDesc::Enum { .. } => "enum",
+            DeclDesc::Packet { .. } => "packet",
+            DeclDesc::Struct { .. } => "struct",
+            DeclDesc::Group { .. } => "group",
+            DeclDesc::Test { .. } => "test",
+        }
     }
 }
 
 impl<A: Annotation> Field<A> {
+    pub fn annotate<B: Annotation>(&self, annot: B::FieldAnnotation) -> Field<B> {
+        Field { loc: self.loc, annot, desc: self.desc.clone() }
+    }
+
     pub fn id(&self) -> Option<&str> {
         match &self.desc {
             FieldDesc::Checksum { .. }
@@ -368,6 +459,24 @@ impl<A: Annotation> Field<A> {
             FieldDesc::Checksum { .. } => Some(0),
             FieldDesc::Payload { .. } | FieldDesc::Body { .. } if skip_payload => Some(0),
             _ => None,
+        }
+    }
+
+    pub fn kind(&self) -> &str {
+        match &self.desc {
+            FieldDesc::Checksum { .. } => "payload",
+            FieldDesc::Padding { .. } => "padding",
+            FieldDesc::Size { .. } => "size",
+            FieldDesc::Count { .. } => "count",
+            FieldDesc::ElementSize { .. } => "elementsize",
+            FieldDesc::Body { .. } => "body",
+            FieldDesc::Payload { .. } => "payload",
+            FieldDesc::FixedScalar { .. } | FieldDesc::FixedEnum { .. } => "fixed",
+            FieldDesc::Reserved { .. } => "reserved",
+            FieldDesc::Group { .. } => "group",
+            FieldDesc::Array { .. } => "array",
+            FieldDesc::Scalar { .. } => "scalar",
+            FieldDesc::Typedef { .. } => "typedef",
         }
     }
 }

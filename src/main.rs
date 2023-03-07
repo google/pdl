@@ -1,16 +1,15 @@
-//! PDL parser and linter.
+//! PDL parser and analyzer.
 
 use clap::Parser;
 use codespan_reporting::term::{self, termcolor};
 
+mod analyzer;
 mod ast;
 mod backends;
 mod lint;
 mod parser;
 #[cfg(test)]
 mod test_utils;
-
-use crate::lint::Lintable;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum OutputFormat {
@@ -62,12 +61,19 @@ fn main() -> std::process::ExitCode {
     let mut sources = ast::SourceDatabase::new();
     match parser::parse_file(&mut sources, opt.input_file) {
         Ok(file) => {
-            let lint = file.lint();
-            if !lint.diagnostics.is_empty() {
-                lint.print(&sources, termcolor::ColorChoice::Always)
-                    .expect("Could not print lint diagnostics");
-                return std::process::ExitCode::FAILURE;
-            }
+            let _analyzed_file = match analyzer::analyze(&file) {
+                Ok(file) => file,
+                Err(diagnostics) => {
+                    diagnostics
+                        .emit(
+                            &sources,
+                            &mut termcolor::StandardStream::stderr(termcolor::ColorChoice::Always)
+                                .lock(),
+                        )
+                        .expect("Could not print analyzer diagnostics");
+                    return std::process::ExitCode::FAILURE;
+                }
+            };
 
             match opt.output_format {
                 OutputFormat::JSON => {
@@ -89,6 +95,7 @@ fn main() -> std::process::ExitCode {
             }
             std::process::ExitCode::SUCCESS
         }
+
         Err(err) => {
             let writer = termcolor::StandardStream::stderr(termcolor::ColorChoice::Always);
             let config = term::Config::default();
