@@ -134,9 +134,6 @@ impl ParentData {
     fn parse(bytes: &[u8]) -> Result<Self> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
-        if !cell.get().is_empty() {
-            return Err(Error::InvalidPacketError);
-        }
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
@@ -185,9 +182,6 @@ impl ParentData {
             (Enum16::A) => {
                 let mut cell = Cell::new(payload);
                 let child_data = ChildData::parse_inner(&mut cell, bar, baz)?;
-                if !cell.get().is_empty() {
-                    return Err(Error::InvalidPacketError);
-                }
                 ParentDataChild::Child(Arc::new(child_data))
             }
             _ if !payload.is_empty() => ParentDataChild::Payload(Bytes::copy_from_slice(payload)),
@@ -246,9 +240,6 @@ impl Parent {
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
-        if !cell.get().is_empty() {
-            return Err(Error::InvalidPacketError);
-        }
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
@@ -355,9 +346,6 @@ impl ChildData {
     fn parse(bytes: &[u8], bar: Enum16, baz: Enum16) -> Result<Self> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell, bar, baz)?;
-        if !cell.get().is_empty() {
-            return Err(Error::InvalidPacketError);
-        }
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>, bar: Enum16, baz: Enum16) -> Result<Self> {
@@ -375,9 +363,6 @@ impl ChildData {
             (Enum16::A, Enum16::A) => {
                 let mut cell = Cell::new(payload);
                 let child_data = GrandChildData::parse_inner(&mut cell, baz)?;
-                if !cell.get().is_empty() {
-                    return Err(Error::InvalidPacketError);
-                }
                 ChildDataChild::GrandChild(Arc::new(child_data))
             }
             _ if !payload.is_empty() => ChildDataChild::Payload(Bytes::copy_from_slice(payload)),
@@ -435,9 +420,6 @@ impl Child {
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
-        if !cell.get().is_empty() {
-            return Err(Error::InvalidPacketError);
-        }
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
@@ -559,9 +541,6 @@ impl GrandChildData {
     fn parse(bytes: &[u8], baz: Enum16) -> Result<Self> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell, baz)?;
-        if !cell.get().is_empty() {
-            return Err(Error::InvalidPacketError);
-        }
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>, baz: Enum16) -> Result<Self> {
@@ -571,9 +550,6 @@ impl GrandChildData {
             (Enum16::A) => {
                 let mut cell = Cell::new(payload);
                 let child_data = GrandGrandChildData::parse_inner(&mut cell)?;
-                if !cell.get().is_empty() {
-                    return Err(Error::InvalidPacketError);
-                }
                 GrandChildDataChild::GrandGrandChild(Arc::new(child_data))
             }
             _ if !payload.is_empty() => {
@@ -637,9 +613,6 @@ impl GrandChild {
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
-        if !cell.get().is_empty() {
-            return Err(Error::InvalidPacketError);
-        }
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
@@ -769,9 +742,6 @@ impl GrandGrandChildData {
     fn parse(bytes: &[u8]) -> Result<Self> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
-        if !cell.get().is_empty() {
-            return Err(Error::InvalidPacketError);
-        }
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
@@ -843,9 +813,6 @@ impl GrandGrandChild {
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
-        if !cell.get().is_empty() {
-            return Err(Error::InvalidPacketError);
-        }
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {

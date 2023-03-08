@@ -63,9 +63,6 @@ impl FooData {
     fn parse(bytes: &[u8]) -> Result<Self> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
-        if !cell.get().is_empty() {
-            return Err(Error::InvalidPacketError);
-        }
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
@@ -135,9 +132,6 @@ impl Foo {
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
-        if !cell.get().is_empty() {
-            return Err(Error::InvalidPacketError);
-        }
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {

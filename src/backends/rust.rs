@@ -270,9 +270,7 @@ fn generate_data_struct(
             ) -> Result<Self> {
                 let mut cell = Cell::new(#span);
                 let packet = Self::parse_inner(&mut cell #(, #parse_arg_names)*)?;
-                if !cell.get().is_empty() {
-                    return Err(Error::InvalidPacketError);
-                }
+                // TODO(mgeisler): communicate back to user if !cell.get().is_empty()?
                 Ok(packet)
             }
 
@@ -603,9 +601,7 @@ fn generate_packet_decl(
             pub fn parse(#span: &[u8]) -> Result<Self> {
                 let mut cell = Cell::new(#span);
                 let packet = Self::parse_inner(&mut cell)?;
-                if !cell.get().is_empty() {
-                    return Err(Error::InvalidPacketError);
-                }
+                // TODO(mgeisler): communicate back to user if !cell.get().is_empty()?
                 Ok(packet)
             }
 
