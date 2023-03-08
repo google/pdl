@@ -165,8 +165,18 @@ impl<'a> FieldParser<'a> {
                     }
                 }
                 ast::FieldDesc::Reserved { .. } => {
-                    // Nothing to do here.
-                    quote! {}
+                    if single_value {
+                        let span = self.span;
+                        let size = proc_macro2::Literal::usize_unsuffixed(size);
+                        quote! {
+                            #span.get_mut().advance(#size);
+                        }
+                    } else {
+                        //  Otherwise we don't need anything: we will
+                        //  have advanced past the reserved field when
+                        //  reading the chunk above.
+                        quote! {}
+                    }
                 }
                 ast::FieldDesc::Size { field_id, .. } => {
                     let id = size_field_ident(field_id);

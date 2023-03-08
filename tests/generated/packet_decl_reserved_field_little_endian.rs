@@ -62,6 +62,7 @@ impl FooData {
                 got: bytes.get().remaining(),
             });
         }
+        bytes.get_mut().advance(5);
         Ok(Self {})
     }
     fn write_to(&self, buffer: &mut BytesMut) {
