@@ -117,12 +117,15 @@ impl FooData {
                 actual: (chunk & 0x7f) as u8 as u64,
             });
         }
-        let b = ((chunk >> 7) & 0x1ffffffffffffffu64);
+        let b = ((chunk >> 7) & 0x1ff_ffff_ffff_ffff_u64);
         Ok(Self { b })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
-        if self.b > 0x1ffffffffffffffu64 {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "b", self.b, 0x1ffffffffffffffu64);
+        if self.b > 0x1ff_ffff_ffff_ffff_u64 {
+            panic!(
+                "Invalid value for {}::{}: {} > {}",
+                "Foo", "b", self.b, 0x1ff_ffff_ffff_ffff_u64
+            );
         }
         let value = (Enum7::A as u64) | (self.b << 7);
         buffer.put_u64(value);

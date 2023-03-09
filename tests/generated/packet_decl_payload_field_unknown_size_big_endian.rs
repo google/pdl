@@ -98,8 +98,8 @@ impl FooData {
         Ok(Self { a, child })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
-        if self.a > 0xffffff {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "a", self.a, 0xffffff);
+        if self.a > 0xff_ffff {
+            panic!("Invalid value for {}::{}: {} > {}", "Foo", "a", self.a, 0xff_ffff);
         }
         buffer.put_uint(self.a as u64, 3);
         match &self.child {

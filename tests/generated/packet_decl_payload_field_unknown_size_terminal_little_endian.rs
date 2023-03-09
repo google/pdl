@@ -109,8 +109,8 @@ impl FooData {
             FooDataChild::Payload(payload) => buffer.put_slice(payload),
             FooDataChild::None => {}
         }
-        if self.a > 0xffffff {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "a", self.a, 0xffffff);
+        if self.a > 0xff_ffff {
+            panic!("Invalid value for {}::{}: {} > {}", "Foo", "a", self.a, 0xff_ffff);
         }
         buffer.put_uint_le(self.a as u64, 3);
     }

@@ -38,10 +38,22 @@ macro_rules! quote_block {
 }
 
 /// Generate a bit-mask which masks out `n` least significant bits.
-pub fn mask_bits(n: usize) -> syn::LitInt {
-    // The literal needs a suffix if it's larger than an i32.
-    let suffix = if n > 31 { "u64" } else { "" };
-    syn::parse_str::<syn::LitInt>(&format!("{:#x}{suffix}", (1u64 << n) - 1)).unwrap()
+///
+/// Literal integers in Rust default to the `i32` type. For this
+/// reason, if `n` is larger than 31, a suffix is added to the
+/// `LitInt` returned. This should either be `u64` or `usize`
+/// depending on where the result is used.
+pub fn mask_bits(n: usize, suffix: &str) -> syn::LitInt {
+    let suffix = if n > 31 { format!("_{suffix}") } else { String::new() };
+    // Format the hex digits as 0x1111_2222_3333_usize.
+    let hex_digits = format!("{:x}", (1u64 << n) - 1)
+        .as_bytes()
+        .rchunks(4)
+        .rev()
+        .map(|chunk| std::str::from_utf8(chunk).unwrap())
+        .collect::<Vec<&str>>()
+        .join("_");
+    syn::parse_str::<syn::LitInt>(&format!("0x{hex_digits}{suffix}")).unwrap()
 }
 
 fn generate_packet_size_getter(
@@ -919,12 +931,12 @@ mod tests {
         packet_decl_array_unknown_element_width_dynamic_size,
         "
           struct Foo {
-            _count_(a): 8,
+            _count_(a): 40,
             a: 16[],
           }
 
           packet Bar {
-            _size_(x): 8,
+            _size_(x): 40,
             x: Foo[],
           }
         "
@@ -934,12 +946,12 @@ mod tests {
         packet_decl_array_unknown_element_width_dynamic_count,
         "
           struct Foo {
-            _count_(a): 8,
+            _count_(a): 40,
             a: 16[],
           }
 
           packet Bar {
-            _count_(x): 8,
+            _count_(x): 40,
             x: Foo[],
           }
         "

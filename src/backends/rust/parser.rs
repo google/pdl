@@ -115,7 +115,7 @@ impl<'a> FieldParser<'a> {
             if !single_value && width < value_type.width {
                 // Mask value if we grabbed more than `width` and if
                 // `as #value_type` doesn't already do the masking.
-                let mask = mask_bits(width);
+                let mask = mask_bits(width, "u64");
                 v = quote! { (#v & #mask) };
             }
 

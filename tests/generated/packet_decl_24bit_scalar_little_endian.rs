@@ -70,8 +70,8 @@ impl FooData {
         Ok(Self { x })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
-        if self.x > 0xffffff {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "x", self.x, 0xffffff);
+        if self.x > 0xff_ffff {
+            panic!("Invalid value for {}::{}: {} > {}", "Foo", "x", self.x, 0xff_ffff);
         }
         buffer.put_uint_le(self.x as u64, 3);
     }
