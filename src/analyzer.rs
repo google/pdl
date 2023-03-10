@@ -130,6 +130,7 @@ pub enum ErrorCode {
     DuplicatePayloadField = 36,
     MissingPayloadField = 37,
     RedundantArraySize = 38,
+    InvalidPaddingField = 39,
 }
 
 impl From<ErrorCode> for String {
@@ -1037,6 +1038,43 @@ fn check_array_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
     diagnostics.err_or(())
 }
 
+/// Check padding fields.
+/// Raises error diagnostics for the following cases:
+///      - padding field not following an array field
+fn check_padding_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
+    let mut diagnostics: Diagnostics = Default::default();
+    for decl in &file.declarations {
+        let mut previous_is_array = false;
+        for field in decl.fields() {
+            match &field.desc {
+                FieldDesc::Padding { .. } if !previous_is_array => diagnostics.push(
+                    Diagnostic::error()
+                        .with_code(ErrorCode::InvalidPaddingField)
+                        .with_message("padding field does not follow an array field".to_owned())
+                        .with_labels(vec![field.loc.primary()]),
+                ),
+                FieldDesc::Array { .. } => previous_is_array = true,
+                _ => previous_is_array = false,
+            }
+        }
+    }
+
+    diagnostics.err_or(())
+}
+
+/// Check checksum fields.
+/// Raises error diagnostics for the following cases:
+///      - checksum field precedes checksum start
+///      - undeclared checksum field
+///      - invalid checksum field
+fn check_checksum_fields(
+    _file: &parser_ast::File,
+    _scope: &Scope<parser_ast::Annotation>,
+) -> Result<(), Diagnostics> {
+    // TODO
+    Ok(())
+}
+
 /// Check correct definition of packet sizes.
 /// Annotate fields and declarations with the size in bits.
 fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
@@ -1184,8 +1222,8 @@ pub fn analyze(file: &parser_ast::File) -> Result<ast::File, Diagnostics> {
     check_fixed_fields(file, &scope)?;
     check_payload_fields(file)?;
     check_array_fields(file)?;
-    // TODO check_checksum_fields(file, &scope)?;
-    // TODO check_padding_fields(file, &scope)?;
+    check_padding_fields(file)?;
+    check_checksum_fields(file, &scope)?;
     let mut file = compute_field_sizes(file);
     inline_groups(&mut file)?;
     Ok(file)
@@ -1211,6 +1249,15 @@ mod test {
             println!("{}", std::str::from_utf8(buffer.as_slice()).unwrap());
             assert_eq!(diagnostics.diagnostics.len(), 1);
             assert_eq!(diagnostics.diagnostics[0].code, Some(analyzer::ErrorCode::$code.into()));
+        }};
+    }
+
+    macro_rules! valid {
+        ($text:literal) => {{
+            let mut db = SourceDatabase::new();
+            let file = parse_inline(&mut db, "stdin".to_owned(), $text.to_owned())
+                .expect("parsing failure");
+            assert!(analyzer::analyze(&file).is_ok());
         }};
     }
 
@@ -1965,6 +2012,42 @@ mod test {
         packet A {
             _count_ (x) : 8,
             x : 8[8]
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e39() {
+        raises!(
+            InvalidPaddingField,
+            r#"
+        little_endian_packets
+        packet A {
+            _padding_ [16],
+            x : 8[]
+        }
+        "#
+        );
+
+        raises!(
+            InvalidPaddingField,
+            r#"
+        little_endian_packets
+        enum A : 8 { X = 0 }
+        packet B {
+            x : A,
+            _padding_ [16]
+        }
+        "#
+        );
+
+        valid!(
+            r#"
+        little_endian_packets
+        packet A {
+            x : 8[],
+            _padding_ [16]
         }
         "#
         );
