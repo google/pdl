@@ -65,7 +65,7 @@ impl<'a> FieldSerializer<'a> {
                 let field_type = types::Integer::new(*width);
                 if field_type.width > *width {
                     let packet_name = &self.packet_name;
-                    let max_value = mask_bits(*width);
+                    let max_value = mask_bits(*width, "u64");
                     self.code.push(quote! {
                         if self.#field_name > #max_value {
                             panic!(
@@ -105,7 +105,7 @@ impl<'a> FieldSerializer<'a> {
             }
             ast::FieldDesc::Size { field_id, width, .. } => {
                 let packet_name = &self.packet_name;
-                let max_value = mask_bits(*width);
+                let max_value = mask_bits(*width, "usize");
 
                 let decl = self.scope.typedef.get(self.packet_name).unwrap();
                 let scope = self.scope.scopes.get(decl).unwrap();
@@ -165,7 +165,7 @@ impl<'a> FieldSerializer<'a> {
                 let field_type = types::Integer::new(*width);
                 if field_type.width > *width {
                     let packet_name = &self.packet_name;
-                    let max_value = mask_bits(*width);
+                    let max_value = mask_bits(*width, "usize");
                     self.code.push(quote! {
                         if self.#field_name.len() > #max_value {
                             panic!(

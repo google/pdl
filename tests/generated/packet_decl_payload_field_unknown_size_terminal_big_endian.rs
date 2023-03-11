@@ -38,7 +38,7 @@ pub trait Packet {
     fn to_vec(self) -> Vec<u8>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FooDataChild {
     Payload(Bytes),
@@ -52,19 +52,19 @@ impl FooDataChild {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FooChild {
     Payload(Bytes),
     None,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FooData {
     a: u32,
     child: FooDataChild,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     #[cfg_attr(feature = "serde", serde(flatten))]
@@ -109,8 +109,8 @@ impl FooData {
             FooDataChild::Payload(payload) => buffer.put_slice(payload),
             FooDataChild::None => {}
         }
-        if self.a > 0xffffff {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "a", self.a, 0xffffff);
+        if self.a > 0xff_ffff {
+            panic!("Invalid value for {}::{}: {} > {}", "Foo", "a", self.a, 0xff_ffff);
         }
         buffer.put_uint(self.a as u64, 3);
     }

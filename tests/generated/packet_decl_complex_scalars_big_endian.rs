@@ -38,7 +38,7 @@ pub trait Packet {
     fn to_vec(self) -> Vec<u8>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FooData {
     a: u8,
@@ -48,7 +48,7 @@ pub struct FooData {
     e: u16,
     f: u8,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     #[cfg_attr(feature = "serde", serde(flatten))]
@@ -109,8 +109,8 @@ impl FooData {
         }
         let value = (self.a as u16) | ((self.b as u16) << 3) | ((self.c as u16) << 11);
         buffer.put_u16(value);
-        if self.d > 0xffffff {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "d", self.d, 0xffffff);
+        if self.d > 0xff_ffff {
+            panic!("Invalid value for {}::{}: {} > {}", "Foo", "d", self.d, 0xff_ffff);
         }
         buffer.put_uint(self.d as u64, 3);
         if self.e > 0xfff {
