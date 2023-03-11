@@ -38,10 +38,10 @@ pub trait Packet {
     fn to_vec(self) -> Vec<u8>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FooData {}
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     #[cfg_attr(feature = "serde", serde(flatten))]
@@ -62,6 +62,7 @@ impl FooData {
                 got: bytes.get().remaining(),
             });
         }
+        bytes.get_mut().advance(5);
         Ok(Self {})
     }
     fn write_to(&self, buffer: &mut BytesMut) {

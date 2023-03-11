@@ -38,12 +38,12 @@ pub trait Packet {
     fn to_vec(self) -> Vec<u8>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FooData {
     a: Vec<u16>,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     #[cfg_attr(feature = "serde", serde(flatten))]
@@ -56,17 +56,17 @@ pub struct FooBuilder {
 }
 impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
-        bytes.len() >= 1
+        bytes.len() >= 5
     }
     fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        if bytes.get().remaining() < 1 {
+        if bytes.get().remaining() < 5 {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
-                wanted: 1,
+                wanted: 5,
                 got: bytes.get().remaining(),
             });
         }
-        let a_count = bytes.get_mut().get_u8() as usize;
+        let a_count = bytes.get_mut().get_uint(5) as usize;
         if bytes.get().remaining() < a_count {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
@@ -80,7 +80,16 @@ impl FooData {
         Ok(Self { a })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
-        buffer.put_u8(self.a.len() as u8);
+        if self.a.len() > 0xff_ffff_ffff_usize {
+            panic!(
+                "Invalid length for {}::{}: {} > {}",
+                "Foo",
+                "a",
+                self.a.len(),
+                0xff_ffff_ffff_usize
+            );
+        }
+        buffer.put_uint(self.a.len() as u64, 5);
         for elem in &self.a {
             buffer.put_u16(*elem);
         }
@@ -89,7 +98,7 @@ impl FooData {
         self.get_size()
     }
     fn get_size(&self) -> usize {
-        1 + self.a.len() * 2
+        5 + self.a.len() * 2
     }
 }
 impl Packet for Foo {
@@ -150,12 +159,12 @@ impl From<FooBuilder> for Foo {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BarData {
     x: Vec<Foo>,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bar {
     #[cfg_attr(feature = "serde", serde(flatten))]
@@ -168,22 +177,31 @@ pub struct BarBuilder {
 }
 impl BarData {
     fn conforms(bytes: &[u8]) -> bool {
-        bytes.len() >= 1
+        bytes.len() >= 5
     }
     fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        if bytes.get().remaining() < 1 {
+        if bytes.get().remaining() < 5 {
             return Err(Error::InvalidLengthError {
                 obj: "Bar".to_string(),
-                wanted: 1,
+                wanted: 5,
                 got: bytes.get().remaining(),
             });
         }
-        let x_count = bytes.get_mut().get_u8() as usize;
+        let x_count = bytes.get_mut().get_uint(5) as usize;
         let x = (0..x_count).map(|_| Foo::parse_inner(bytes)).collect::<Result<Vec<_>>>()?;
         Ok(Self { x })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
-        buffer.put_u8(self.x.len() as u8);
+        if self.x.len() > 0xff_ffff_ffff_usize {
+            panic!(
+                "Invalid length for {}::{}: {} > {}",
+                "Bar",
+                "x",
+                self.x.len(),
+                0xff_ffff_ffff_usize
+            );
+        }
+        buffer.put_uint(self.x.len() as u64, 5);
         for elem in &self.x {
             elem.write_to(buffer);
         }
@@ -192,7 +210,7 @@ impl BarData {
         self.get_size()
     }
     fn get_size(&self) -> usize {
-        1 + self.x.iter().map(|elem| elem.get_size()).sum::<usize>()
+        5 + self.x.iter().map(|elem| elem.get_size()).sum::<usize>()
     }
 }
 impl Packet for Bar {
