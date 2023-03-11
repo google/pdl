@@ -203,14 +203,14 @@ impl<'a> FieldParser<'a> {
     }
 
     fn find_count_field(&self, id: &str) -> Option<proc_macro2::Ident> {
-        match self.packet_scope()?.sizes.get(id)?.desc {
+        match self.packet_scope()?.get_array_size_field(id)?.desc {
             ast::FieldDesc::Count { .. } => Some(format_ident!("{id}_count")),
             _ => None,
         }
     }
 
     fn find_size_field(&self, id: &str) -> Option<proc_macro2::Ident> {
-        match self.packet_scope()?.sizes.get(id)?.desc {
+        match self.packet_scope()?.get_array_size_field(id)?.desc {
             ast::FieldDesc::Size { .. } => Some(size_field_ident(id)),
             _ => None,
         }
@@ -573,9 +573,8 @@ impl<'a> FieldParser<'a> {
         }
 
         let packet_scope = &self.scope.scopes[&decl];
-        let children =
-            self.scope.children.get(self.packet_name).map(Vec::as_slice).unwrap_or_default();
-        if children.is_empty() && packet_scope.payload.is_none() {
+        let children = self.scope.iter_children(self.packet_name).collect::<Vec<_>>();
+        if children.is_empty() && packet_scope.get_payload_field().is_none() {
             return;
         }
 

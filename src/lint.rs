@@ -3,40 +3,6 @@ use std::collections::HashMap;
 
 use crate::{ast::*, parser};
 
-pub mod ast {
-    use serde::Serialize;
-
-    // Field and declaration size information.
-    #[derive(Default, Debug, Clone)]
-    #[allow(unused)]
-    pub enum Size {
-        // Constant size in bits.
-        Static(usize),
-        // Size indicated at packet parsing by
-        // a size or count field.
-        Dynamic,
-        // The size cannot be determined statically or at runtime.
-        // The packet assumes the largest possible size.
-        #[default]
-        Unknown,
-    }
-
-    #[derive(Debug, Serialize)]
-    pub struct Annotation();
-
-    impl crate::ast::Annotation for Annotation {
-        type FieldAnnotation = Size;
-        type DeclAnnotation = Size;
-    }
-
-    #[allow(unused)]
-    pub type Field = crate::ast::Field<Annotation>;
-    #[allow(unused)]
-    pub type Decl = crate::ast::Decl<Annotation>;
-    #[allow(unused)]
-    pub type File = crate::ast::File<Annotation>;
-}
-
 /// Aggregate linter diagnostics.
 #[derive(Debug)]
 pub struct LintDiagnostics {
@@ -46,33 +12,21 @@ pub struct LintDiagnostics {
 /// Gather information about the full AST.
 #[derive(Debug)]
 pub struct Scope<'d> {
+    // Original file.
+    file: &'d parser::ast::File,
+
     // Collection of Group, Packet, Enum, Struct, Checksum, and CustomField declarations.
     pub typedef: HashMap<String, &'d parser::ast::Decl>,
 
     // Collection of Packet, Struct, and Group scope declarations.
     pub scopes: HashMap<&'d parser::ast::Decl, PacketScope<'d>>,
-
-    // Children for the Decl with the given id.
-    pub children: HashMap<String, Vec<&'d parser::ast::Decl>>,
 }
 
 /// Gather information about a Packet, Struct, or Group declaration.
 #[derive(Debug)]
 pub struct PacketScope<'d> {
-    // Checksum starts, indexed by the checksum field id.
-    checksums: HashMap<String, &'d parser::ast::Field>,
-
-    // Size or count fields, indexed by the field id.
-    pub sizes: HashMap<String, &'d parser::ast::Field>,
-
-    // Payload or body field.
-    pub payload: Option<&'d parser::ast::Field>,
-
     // Typedef, scalar, array fields.
     pub named: HashMap<String, &'d parser::ast::Field>,
-
-    // Group fields.
-    groups: HashMap<String, &'d parser::ast::Field>,
 
     // Flattened field declarations.
     // Contains field declarations from the original Packet, Struct, or Group,
@@ -127,85 +81,8 @@ impl LintDiagnostics {
 
 impl<'d> PacketScope<'d> {
     /// Insert a field declaration into a packet scope.
-    fn insert(&mut self, field: &'d parser::ast::Field, result: &mut LintDiagnostics) {
-        match &field.desc {
-            FieldDesc::Checksum { field_id, .. } => {
-                self.checksums.insert(field_id.clone(), field).map(|prev| {
-                    result.push(
-                        Diagnostic::error()
-                            .with_message(format!(
-                                "redeclaration of checksum start for `{}`",
-                                field_id
-                            ))
-                            .with_labels(vec![
-                                field.loc.primary(),
-                                prev.loc
-                                    .secondary()
-                                    .with_message("checksum start is first declared here"),
-                            ]),
-                    )
-                })
-            }
-
-            FieldDesc::Padding { .. }
-            | FieldDesc::Reserved { .. }
-            | FieldDesc::FixedScalar { .. }
-            | FieldDesc::FixedEnum { .. }
-            | FieldDesc::ElementSize { .. } => None,
-
-            FieldDesc::Size { field_id, .. } | FieldDesc::Count { field_id, .. } => {
-                self.sizes.insert(field_id.clone(), field).map(|prev| {
-                    result.push(
-                        Diagnostic::error()
-                            .with_message(format!(
-                                "redeclaration of size or count for `{}`",
-                                field_id
-                            ))
-                            .with_labels(vec![
-                                field.loc.primary(),
-                                prev.loc.secondary().with_message("size is first declared here"),
-                            ]),
-                    )
-                })
-            }
-
-            FieldDesc::Body { .. } | FieldDesc::Payload { .. } => {
-                if let Some(prev) = self.payload.as_ref() {
-                    result.push(
-                        Diagnostic::error()
-                            .with_message("redeclaration of payload or body field")
-                            .with_labels(vec![
-                                field.loc.primary(),
-                                prev.loc.secondary().with_message("payload is first declared here"),
-                            ]),
-                    )
-                }
-                self.payload = Some(field);
-                None
-            }
-
-            FieldDesc::Array { id, .. }
-            | FieldDesc::Scalar { id, .. }
-            | FieldDesc::Typedef { id, .. } => self
-                .named
-                .insert(id.clone(), field)
-                .map(|prev| result.err_redeclared(id, "field", &field.loc, &prev.loc)),
-
-            FieldDesc::Group { group_id, .. } => {
-                self.groups.insert(group_id.clone(), field).map(|prev| {
-                    result.push(
-                        Diagnostic::error()
-                            .with_message(format!("duplicate group `{}` insertion", group_id))
-                            .with_labels(vec![
-                                field.loc.primary(),
-                                prev.loc
-                                    .secondary()
-                                    .with_message(format!("`{}` is first used here", group_id)),
-                            ]),
-                    )
-                })
-            }
-        };
+    fn insert(&mut self, field: &'d parser::ast::Field) {
+        field.id().and_then(|id| self.named.insert(id.to_owned(), field));
     }
 
     /// Add parent fields and constraints to the scope.
@@ -254,36 +131,6 @@ impl<'d> PacketScope<'d> {
             ]))
         }
 
-        for (id, field) in packet_scope.checksums.iter() {
-            if let Some(prev) = self.checksums.insert(id.clone(), field) {
-                err_redeclared_by_group(
-                    result,
-                    format!("inserted group redeclares checksum start for `{}`", id),
-                    &group.loc,
-                    &prev.loc,
-                )
-            }
-        }
-        for (id, field) in packet_scope.sizes.iter() {
-            if let Some(prev) = self.sizes.insert(id.clone(), field) {
-                err_redeclared_by_group(
-                    result,
-                    format!("inserted group redeclares size or count for `{}`", id),
-                    &group.loc,
-                    &prev.loc,
-                )
-            }
-        }
-        match (&self.payload, &packet_scope.payload) {
-            (Some(prev), Some(next)) => err_redeclared_by_group(
-                result,
-                "inserted group redeclares payload or body field",
-                &next.loc,
-                &prev.loc,
-            ),
-            (None, Some(payload)) => self.payload = Some(payload),
-            _ => (),
-        }
         for (id, field) in packet_scope.named.iter() {
             if let Some(prev) = self.named.insert(id.clone(), field) {
                 err_redeclared_by_group(
@@ -316,15 +163,42 @@ impl<'d> PacketScope<'d> {
     /// `_payload_` and `_body_` fields.
     pub fn get_packet_field(&self, id: &str) -> Option<&parser::ast::Field> {
         self.named.get(id).copied().or(match id {
-            "_payload_" | "_body_" => self.payload,
+            "_payload_" | "_body_" => self.get_payload_field(),
             _ => None,
         })
+    }
+
+    /// Find the payload or body field, if any.
+    pub fn get_payload_field(&self) -> Option<&parser::ast::Field> {
+        self.fields
+            .iter()
+            .find(|field| matches!(&field.desc, FieldDesc::Payload { .. } | FieldDesc::Body { .. }))
+            .copied()
+    }
+
+    /// Lookup the size field for an array field.
+    pub fn get_array_size_field(&self, id: &str) -> Option<&parser::ast::Field> {
+        self.fields
+            .iter()
+            .find(|field| match &field.desc {
+                FieldDesc::Size { field_id, .. } | FieldDesc::Count { field_id, .. } => {
+                    field_id == id
+                }
+                _ => false,
+            })
+            .copied()
     }
 
     /// Find the size field corresponding to the payload or body
     /// field of this packet.
     pub fn get_payload_size_field(&self) -> Option<&parser::ast::Field> {
-        self.sizes.get("_payload_").or_else(|| self.sizes.get("_body_")).copied()
+        self.fields
+            .iter()
+            .find(|field| match &field.desc {
+                FieldDesc::Size { field_id, .. } => field_id == "_payload_" || field_id == "_body_",
+                _ => false,
+            })
+            .copied()
     }
 
     /// Cleanup scope after processing all fields.
@@ -352,8 +226,7 @@ impl<'d> PacketScope<'d> {
 impl<'d> Scope<'d> {
     pub fn new(file: &parser::ast::File) -> Result<Scope<'_>, LintDiagnostics> {
         let mut diagnostics = LintDiagnostics::new();
-        let mut scope =
-            Scope { typedef: HashMap::new(), scopes: HashMap::new(), children: HashMap::new() };
+        let mut scope = Scope { file, typedef: HashMap::new(), scopes: HashMap::new() };
 
         // Gather top-level declarations.
         // Validate the top-level scopes (Group, Packet, Typedef).
@@ -365,14 +238,8 @@ impl<'d> Scope<'d> {
                     diagnostics.err_redeclared(id, decl.kind(), &decl.loc, &prev.loc)
                 }
             }
-            if let Some(lscope) = decl_scope(decl, &mut diagnostics) {
+            if let Some(lscope) = decl_scope(decl) {
                 scope.scopes.insert(decl, lscope);
-            }
-
-            if let DeclDesc::Packet { parent_id: Some(parent_id), .. }
-            | DeclDesc::Struct { parent_id: Some(parent_id), .. } = &decl.desc
-            {
-                scope.children.entry(parent_id.to_string()).or_default().push(decl);
             }
         }
 
@@ -436,7 +303,7 @@ impl<'d> Scope<'d> {
             };
 
             context.visited.insert(decl, Mark::Temporary);
-            let mut lscope = decl_scope(decl, result).unwrap();
+            let mut lscope = decl_scope(decl).unwrap();
 
             // Iterate over Struct and Group fields.
             for f in fields {
@@ -542,30 +409,33 @@ impl<'d> Scope<'d> {
         self.scopes = context.scopes;
         context.list
     }
+
+    pub fn iter_children<'a>(
+        &'a self,
+        id: &'a str,
+    ) -> impl Iterator<Item = &'d parser::ast::Decl> + 'a {
+        self.file.iter_children(self.typedef.get(id).unwrap())
+    }
+
+    pub fn has_children(&self, id: &str) -> bool {
+        self.iter_children(id).next().is_some()
+    }
 }
 
-fn decl_scope<'d>(
-    decl: &'d parser::ast::Decl,
-    result: &mut LintDiagnostics,
-) -> Option<PacketScope<'d>> {
+fn decl_scope(decl: &parser::ast::Decl) -> Option<PacketScope<'_>> {
     match &decl.desc {
         DeclDesc::Packet { fields, .. }
         | DeclDesc::Struct { fields, .. }
         | DeclDesc::Group { fields, .. } => {
             let mut scope = PacketScope {
-                checksums: HashMap::new(),
-                sizes: HashMap::new(),
-                payload: None,
                 named: HashMap::new(),
-                groups: HashMap::new(),
-
                 fields: Vec::new(),
                 constraints: HashMap::new(),
                 all_fields: HashMap::new(),
                 all_constraints: HashMap::new(),
             };
             for field in fields {
-                scope.insert(field, result)
+                scope.insert(field)
             }
             Some(scope)
         }

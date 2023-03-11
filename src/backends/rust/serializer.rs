@@ -297,10 +297,9 @@ impl<'a> FieldSerializer<'a> {
         let decl = self.scope.typedef[self.packet_name];
         let is_packet = matches!(&decl.desc, ast::DeclDesc::Packet { .. });
 
-        let children =
-            self.scope.children.get(self.packet_name).map(Vec::as_slice).unwrap_or_default();
-        let child_ids = children
-            .iter()
+        let child_ids = self
+            .scope
+            .iter_children(self.packet_name)
             .map(|child| format_ident!("{}", child.id().unwrap()))
             .collect::<Vec<_>>();
 
