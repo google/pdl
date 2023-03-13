@@ -77,7 +77,7 @@ array_field = { identifier ~ ":" ~ (integer|identifier) ~
 }
 scalar_field = { identifier ~ ":" ~ integer }
 typedef_field = { identifier ~ ":" ~ identifier }
-group_field = { identifier ~ ("{" ~ constraint_list ~ "}")? }
+group_field = { identifier ~ ("{" ~ constraint_list? ~ "}")? }
 
 field = _{
     checksum_field |
