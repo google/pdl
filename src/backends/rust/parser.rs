@@ -674,7 +674,7 @@ mod tests {
               }
             ";
         let file = parse_str(code);
-        let scope = lint::Scope::new(&file).unwrap();
+        let scope = lint::Scope::new(&file);
         let span = format_ident!("bytes");
         let parser = FieldParser::new(&scope, file.endianness.value, "P", &span);
         assert_eq!(parser.find_size_field("a"), None);
@@ -691,7 +691,7 @@ mod tests {
               }
             ";
         let file = parse_str(code);
-        let scope = lint::Scope::new(&file).unwrap();
+        let scope = lint::Scope::new(&file);
         let span = format_ident!("bytes");
         let parser = FieldParser::new(&scope, file.endianness.value, "P", &span);
         assert_eq!(parser.find_size_field("b"), None);
@@ -708,7 +708,7 @@ mod tests {
               }
             ";
         let file = parse_str(code);
-        let scope = lint::Scope::new(&file).unwrap();
+        let scope = lint::Scope::new(&file);
         let span = format_ident!("bytes");
         let parser = FieldParser::new(&scope, file.endianness.value, "P", &span);
         assert_eq!(parser.find_size_field("c"), Some(format_ident!("c_size")));

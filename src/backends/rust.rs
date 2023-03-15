@@ -757,7 +757,7 @@ pub fn generate(sources: &ast::SourceDatabase, file: &parser_ast::File) -> Strin
     let source = sources.get(file.file).expect("could not read source");
     code.push_str(&preamble::generate(Path::new(source.name())));
 
-    let scope = lint::Scope::new(file).unwrap();
+    let scope = lint::Scope::new(file);
     for decl in &file.declarations {
         code.push_str(&generate_decl(&scope, file, decl));
         code.push_str("\n\n");
@@ -812,7 +812,7 @@ mod tests {
               }
             ";
         let file = parse_str(code);
-        let scope = lint::Scope::new(&file).unwrap();
+        let scope = lint::Scope::new(&file);
         let find_fields =
             |id| find_constrained_parent_fields(&scope, id).map(|field| field.id().unwrap());
         assert_iter_eq(find_fields("Parent"), vec![]);

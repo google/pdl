@@ -1,13 +1,6 @@
-use codespan_reporting::diagnostic::Diagnostic;
 use std::collections::HashMap;
 
 use crate::{ast::*, parser};
-
-/// Aggregate linter diagnostics.
-#[derive(Debug)]
-pub struct LintDiagnostics {
-    pub diagnostics: Vec<Diagnostic<FileId>>,
-}
 
 /// Gather information about the full AST.
 #[derive(Debug)]
@@ -51,27 +44,6 @@ impl<'d> std::hash::Hash for &'d parser::ast::Decl {
     }
 }
 
-impl LintDiagnostics {
-    fn new() -> LintDiagnostics {
-        LintDiagnostics { diagnostics: vec![] }
-    }
-
-    fn push(&mut self, diagnostic: Diagnostic<FileId>) {
-        self.diagnostics.push(diagnostic)
-    }
-
-    fn err_redeclared(&mut self, id: &str, kind: &str, loc: &SourceRange, prev: &SourceRange) {
-        self.diagnostics.push(
-            Diagnostic::error()
-                .with_message(format!("redeclaration of {} identifier `{}`", kind, id))
-                .with_labels(vec![
-                    loc.primary(),
-                    prev.secondary().with_message(format!("`{}` is first declared here", id)),
-                ]),
-        )
-    }
-}
-
 impl<'d> PacketScope<'d> {
     /// Insert a field declaration into a packet scope.
     fn insert(&mut self, field: &'d parser::ast::Field) {
@@ -108,31 +80,10 @@ impl<'d> PacketScope<'d> {
     fn inline(
         &mut self,
         packet_scope: &PacketScope<'d>,
-        group: &'d parser::ast::Field,
         constraints: impl Iterator<Item = &'d Constraint>,
-        result: &mut LintDiagnostics,
     ) {
-        fn err_redeclared_by_group(
-            result: &mut LintDiagnostics,
-            message: impl Into<String>,
-            loc: &SourceRange,
-            prev: &SourceRange,
-        ) {
-            result.push(Diagnostic::error().with_message(message).with_labels(vec![
-                loc.primary(),
-                prev.secondary().with_message("first declared here"),
-            ]))
-        }
-
         for (id, field) in packet_scope.named.iter() {
-            if let Some(prev) = self.named.insert(id.clone(), field) {
-                err_redeclared_by_group(
-                    result,
-                    format!("inserted group redeclares field `{}`", id),
-                    &group.loc,
-                    &prev.loc,
-                )
-            }
+            self.named.insert(id.clone(), field);
         }
 
         // Append group fields to the finalizeed fields.
@@ -195,30 +146,18 @@ impl<'d> PacketScope<'d> {
     }
 
     /// Cleanup scope after processing all fields.
-    fn finalize(&mut self, result: &mut LintDiagnostics) {
+    fn finalize(&mut self) {
         // Check field shadowing.
         for f in self.fields.iter() {
             if let Some(id) = f.id() {
-                if let Some(prev) = self.all_fields.insert(id.to_string(), f) {
-                    result.push(
-                        Diagnostic::warning()
-                            .with_message(format!("declaration of `{}` shadows parent field", id))
-                            .with_labels(vec![
-                                f.loc.primary(),
-                                prev.loc
-                                    .secondary()
-                                    .with_message(format!("`{}` is first declared here", id)),
-                            ]),
-                    )
-                }
+                self.all_fields.insert(id.to_string(), f);
             }
         }
     }
 }
 
 impl<'d> Scope<'d> {
-    pub fn new(file: &parser::ast::File) -> Result<Scope<'_>, LintDiagnostics> {
-        let mut diagnostics = LintDiagnostics::new();
+    pub fn new(file: &parser::ast::File) -> Scope<'_> {
         let mut scope = Scope { file, typedef: HashMap::new(), scopes: HashMap::new() };
 
         // Gather top-level declarations.
@@ -227,22 +166,15 @@ impl<'d> Scope<'d> {
         // TODO: switch to try_insert when stable
         for decl in &file.declarations {
             if let Some(id) = decl.id() {
-                if let Some(prev) = scope.typedef.insert(id.to_string(), decl) {
-                    diagnostics.err_redeclared(id, decl.kind(), &decl.loc, &prev.loc)
-                }
+                scope.typedef.insert(id.to_string(), decl);
             }
             if let Some(lscope) = decl_scope(decl) {
                 scope.scopes.insert(decl, lscope);
             }
         }
 
-        scope.finalize(&mut diagnostics);
-
-        if !diagnostics.diagnostics.is_empty() {
-            return Err(diagnostics);
-        }
-
-        Ok(scope)
+        scope.finalize();
+        scope
     }
 
     // Sort Packet, Struct, and Group declarations by reverse topological
@@ -253,7 +185,7 @@ impl<'d> Scope<'d> {
     //      - undeclared Packet or Struct parents,
     //      - recursive Group insertion,
     //      - recursive Packet or Struct inheritance.
-    fn finalize(&mut self, result: &mut LintDiagnostics) -> Vec<&'d parser::ast::Decl> {
+    fn finalize(&mut self) -> Vec<&'d parser::ast::Decl> {
         // Auxiliary function implementing BFS on Packet tree.
         enum Mark {
             Temporary,
@@ -269,20 +201,10 @@ impl<'d> Scope<'d> {
             decl: &'d parser::ast::Decl,
             context: &'s mut Context<'d>,
             scope: &Scope<'d>,
-            result: &mut LintDiagnostics,
         ) -> Option<&'s PacketScope<'d>> {
             match context.visited.get(&decl) {
                 Some(Mark::Permanent) => return context.scopes.get(&decl),
                 Some(Mark::Temporary) => {
-                    result.push(
-                        Diagnostic::error()
-                            .with_message(format!(
-                                "recursive declaration of {} `{}`",
-                                decl.kind(),
-                                decl.id().unwrap()
-                            ))
-                            .with_labels(vec![decl.loc.primary()]),
-                    );
                     return None;
                 }
                 _ => (),
@@ -303,48 +225,24 @@ impl<'d> Scope<'d> {
                 match &f.desc {
                     FieldDesc::Group { group_id, constraints, .. } => {
                         match scope.typedef.get(group_id) {
-                            None => result.push(
-                                Diagnostic::error()
-                                    .with_message(format!(
-                                        "undeclared group identifier `{}`",
-                                        group_id
-                                    ))
-                                    .with_labels(vec![f.loc.primary()]),
-                            ),
                             Some(group_decl @ Decl { desc: DeclDesc::Group { .. }, .. }) => {
                                 // Recurse to flatten the inserted group.
-                                if let Some(rscope) = bfs(group_decl, context, scope, result) {
+                                if let Some(rscope) = bfs(group_decl, context, scope) {
                                     // Inline the group fields and constraints into
                                     // the current scope.
-                                    lscope.inline(rscope, f, constraints.iter(), result)
+                                    lscope.inline(rscope, constraints.iter())
                                 }
                             }
-                            Some(_) => result.push(
-                                Diagnostic::error()
-                                    .with_message(format!(
-                                        "invalid group field identifier `{}`",
-                                        group_id
-                                    ))
-                                    .with_labels(vec![f.loc.primary()])
-                                    .with_notes(vec!["hint: expected group identifier".to_owned()]),
-                            ),
+                            None | Some(_) => (),
                         }
                     }
                     FieldDesc::Typedef { type_id, .. } => {
                         lscope.fields.push(f);
                         match scope.typedef.get(type_id) {
-                            None => result.push(
-                                Diagnostic::error()
-                                    .with_message(format!(
-                                        "undeclared typedef identifier `{}`",
-                                        type_id
-                                    ))
-                                    .with_labels(vec![f.loc.primary()]),
-                            ),
                             Some(struct_decl @ Decl { desc: DeclDesc::Struct { .. }, .. }) => {
-                                bfs(struct_decl, context, scope, result);
+                                bfs(struct_decl, context, scope);
                             }
-                            Some(_) => (),
+                            None | Some(_) => (),
                         }
                     }
                     _ => lscope.fields.push(f),
@@ -353,39 +251,14 @@ impl<'d> Scope<'d> {
 
             // Iterate over parent declaration.
             let parent = parent_id.and_then(|id| scope.typedef.get(id));
-            match (&decl.desc, parent) {
-                (DeclDesc::Packet { parent_id: Some(_), .. }, None)
-                | (DeclDesc::Struct { parent_id: Some(_), .. }, None) => result.push(
-                    Diagnostic::error()
-                        .with_message(format!(
-                            "undeclared parent identifier `{}`",
-                            parent_id.unwrap()
-                        ))
-                        .with_labels(vec![decl.loc.primary()])
-                        .with_notes(vec![format!("hint: expected {} parent", decl.kind())]),
-                ),
-                (DeclDesc::Packet { .. }, Some(Decl { desc: DeclDesc::Struct { .. }, .. }))
-                | (DeclDesc::Struct { .. }, Some(Decl { desc: DeclDesc::Packet { .. }, .. })) => {
-                    result.push(
-                        Diagnostic::error()
-                            .with_message(format!(
-                                "invalid parent identifier `{}`",
-                                parent_id.unwrap()
-                            ))
-                            .with_labels(vec![decl.loc.primary()])
-                            .with_notes(vec![format!("hint: expected {} parent", decl.kind())]),
-                    )
+            if let Some(parent_decl) = parent {
+                if let Some(rscope) = bfs(parent_decl, context, scope) {
+                    // Import the parent fields and constraints into the current scope.
+                    lscope.inherit(rscope, decl.constraints())
                 }
-                (_, Some(parent_decl)) => {
-                    if let Some(rscope) = bfs(parent_decl, context, scope, result) {
-                        // Import the parent fields and constraints into the current scope.
-                        lscope.inherit(rscope, decl.constraints())
-                    }
-                }
-                _ => (),
             }
 
-            lscope.finalize(result);
+            lscope.finalize();
             context.list.push(decl);
             context.visited.insert(decl, Mark::Permanent);
             context.scopes.insert(decl, lscope);
@@ -396,7 +269,7 @@ impl<'d> Scope<'d> {
             Context::<'d> { list: vec![], visited: HashMap::new(), scopes: HashMap::new() };
 
         for decl in self.typedef.values() {
-            bfs(decl, &mut context, self, result);
+            bfs(decl, &mut context, self);
         }
 
         self.scopes = context.scopes;
