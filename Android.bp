@@ -38,23 +38,9 @@ rust_binary_host {
     ],
 }
 
-rust_test_host {
-    name: "pdl_tests",
-    defaults: ["pdl_defaults"],
-    srcs: ["src/main.rs"],
-    proc_macros: [
-        "libpaste",
-    ],
-    test_suites: ["general-tests"],
-    enabled: false, // rustfmt is only available on x86.
-    arch: {
-        x86_64: {
-            enabled: true,
-        },
-    },
-    data: [
-        ":rustfmt",
-        ":rustfmt.toml",
+filegroup {
+    name: "pdl_generated_files",
+    srcs: [
         "tests/generated/packet_decl_8bit_enum_array_big_endian.rs",
         "tests/generated/packet_decl_8bit_enum_array_little_endian.rs",
         "tests/generated/packet_decl_8bit_enum_big_endian.rs",
@@ -117,6 +103,44 @@ rust_test_host {
         "tests/generated/struct_decl_complex_scalars_big_endian.rs",
         "tests/generated/struct_decl_complex_scalars_little_endian.rs",
     ],
+}
+
+rust_test_host {
+    name: "pdl_tests",
+    defaults: ["pdl_defaults"],
+    srcs: ["src/main.rs"],
+    proc_macros: [
+        "libpaste",
+    ],
+    test_suites: ["general-tests"],
+    enabled: false, // rustfmt is only available on x86.
+    arch: {
+        x86_64: {
+            enabled: true,
+        },
+    },
+    data: [
+        ":rustfmt",
+        ":rustfmt.toml",
+        ":pdl_generated_files",
+    ],
+}
+
+genrule {
+    name: "pdl_generated_files_compile_rs",
+    cmd: "$(location tests/generated_files_compile.sh) $(in) > $(out)",
+    srcs: [":pdl_generated_files"],
+    out: ["generated_files_compile.rs"],
+    tool_files: ["tests/generated_files_compile.sh"],
+}
+
+rust_test_host {
+    name: "pdl_generated_files_compile",
+    srcs: [":pdl_generated_files_compile_rs"],
+    test_suites: ["general-tests"],
+    clippy_lints: "none",
+    lints: "none",
+    defaults: ["pdl_backend_defaults"],
 }
 
 genrule_defaults {
