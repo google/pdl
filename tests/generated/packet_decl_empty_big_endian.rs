@@ -54,7 +54,15 @@ impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
         true
     }
-    fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse(bytes: &[u8]) -> Result<Self> {
+        let mut cell = Cell::new(bytes);
+        let packet = Self::parse_inner(&mut cell)?;
+        if !cell.get().is_empty() {
+            return Err(Error::InvalidPacketError);
+        }
+        Ok(packet)
+    }
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         Ok(Self {})
     }
     fn write_to(&self, buffer: &mut BytesMut) {}
@@ -95,7 +103,7 @@ impl Foo {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        let data = FooData::parse(&mut bytes)?;
+        let data = FooData::parse_inner(&mut bytes)?;
         Ok(Self::new(Arc::new(data)).unwrap())
     }
     fn new(foo: Arc<FooData>) -> std::result::Result<Self, &'static str> {

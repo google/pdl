@@ -102,7 +102,15 @@ impl BarData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 8
     }
-    fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse(bytes: &[u8]) -> Result<Self> {
+        let mut cell = Cell::new(bytes);
+        let packet = Self::parse_inner(&mut cell)?;
+        if !cell.get().is_empty() {
+            return Err(Error::InvalidPacketError);
+        }
+        Ok(packet)
+    }
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         if bytes.get().remaining() < 8 {
             return Err(Error::InvalidLengthError {
                 obj: "Bar".to_string(),
@@ -153,7 +161,7 @@ impl Bar {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        let data = BarData::parse(&mut bytes)?;
+        let data = BarData::parse_inner(&mut bytes)?;
         Ok(Self::new(Arc::new(data)).unwrap())
     }
     fn new(bar: Arc<BarData>) -> std::result::Result<Self, &'static str> {

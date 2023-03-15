@@ -121,8 +121,11 @@ impl<'a> FieldSerializer<'a> {
                 let array_size = match (&value_field.desc, value_field_decl.map(|decl| &decl.desc))
                 {
                     (ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. }, _) => {
-                        //let span = format_ident!("{}", self.span);
-                        quote! { self.child.get_total_size() }
+                        if let ast::DeclDesc::Packet { .. } = &decl.desc {
+                            quote! { self.child.get_total_size() }
+                        } else {
+                            quote! { self.payload.len() }
+                        }
                     }
                     (ast::FieldDesc::Array { width: Some(width), .. }, _)
                     | (ast::FieldDesc::Array { .. }, Some(ast::DeclDesc::Enum { width, .. })) => {
@@ -291,6 +294,9 @@ impl<'a> FieldSerializer<'a> {
             panic!("Payload field does not start on an octet boundary");
         }
 
+        let decl = self.scope.typedef[self.packet_name];
+        let is_packet = matches!(&decl.desc, ast::DeclDesc::Packet { .. });
+
         let children =
             self.scope.children.get(self.packet_name).map(Vec::as_slice).unwrap_or_default();
         let child_ids = children
@@ -298,16 +304,22 @@ impl<'a> FieldSerializer<'a> {
             .map(|child| format_ident!("{}", child.id().unwrap()))
             .collect::<Vec<_>>();
 
+        let span = format_ident!("{}", self.span);
         if self.shift == 0 {
-            let span = format_ident!("{}", self.span);
-            let packet_data_child = format_ident!("{}DataChild", self.packet_name);
-            self.code.push(quote! {
-                match &self.child {
-                    #(#packet_data_child::#child_ids(child) => child.write_to(#span),)*
-                    #packet_data_child::Payload(payload) => #span.put_slice(payload),
-                    #packet_data_child::None => {},
-                }
-            })
+            if is_packet {
+                let packet_data_child = format_ident!("{}DataChild", self.packet_name);
+                self.code.push(quote! {
+                    match &self.child {
+                        #(#packet_data_child::#child_ids(child) => child.write_to(#span),)*
+                        #packet_data_child::Payload(payload) => #span.put_slice(payload),
+                        #packet_data_child::None => {},
+                    }
+                })
+            } else {
+                self.code.push(quote! {
+                    #span.put_slice(&self.payload);
+                });
+            }
         } else {
             todo!("Shifted payloads");
         }

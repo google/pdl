@@ -40,25 +40,22 @@ pub trait Packet {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct FooData {
-    a: Vec<u16>,
-}
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
-    #[cfg_attr(feature = "serde", serde(flatten))]
-    foo: Arc<FooData>,
-}
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct FooBuilder {
     pub a: Vec<u16>,
 }
-impl FooData {
+impl Foo {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 5
     }
-    fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    pub fn parse(bytes: &[u8]) -> Result<Self> {
+        let mut cell = Cell::new(bytes);
+        let packet = Self::parse_inner(&mut cell)?;
+        if !cell.get().is_empty() {
+            return Err(Error::InvalidPacketError);
+        }
+        Ok(packet)
+    }
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         if bytes.get().remaining() < 5 {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
@@ -101,63 +98,6 @@ impl FooData {
         5 + self.a.len() * 2
     }
 }
-impl Packet for Foo {
-    fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.foo.get_size());
-        self.foo.write_to(&mut buffer);
-        buffer.freeze()
-    }
-    fn to_vec(self) -> Vec<u8> {
-        self.to_bytes().to_vec()
-    }
-}
-impl From<Foo> for Bytes {
-    fn from(packet: Foo) -> Self {
-        packet.to_bytes()
-    }
-}
-impl From<Foo> for Vec<u8> {
-    fn from(packet: Foo) -> Self {
-        packet.to_vec()
-    }
-}
-impl Foo {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
-        let mut cell = Cell::new(bytes);
-        let packet = Self::parse_inner(&mut cell)?;
-        if !cell.get().is_empty() {
-            return Err(Error::InvalidPacketError);
-        }
-        Ok(packet)
-    }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        let data = FooData::parse(&mut bytes)?;
-        Ok(Self::new(Arc::new(data)).unwrap())
-    }
-    fn new(foo: Arc<FooData>) -> std::result::Result<Self, &'static str> {
-        Ok(Self { foo })
-    }
-    pub fn get_a(&self) -> &Vec<u16> {
-        &self.foo.as_ref().a
-    }
-    fn write_to(&self, buffer: &mut BytesMut) {
-        self.foo.write_to(buffer)
-    }
-    pub fn get_size(&self) -> usize {
-        self.foo.get_size()
-    }
-}
-impl FooBuilder {
-    pub fn build(self) -> Foo {
-        let foo = Arc::new(FooData { a: self.a });
-        Foo::new(foo).unwrap()
-    }
-}
-impl From<FooBuilder> for Foo {
-    fn from(builder: FooBuilder) -> Foo {
-        builder.build().into()
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -179,7 +119,15 @@ impl BarData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 5
     }
-    fn parse(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse(bytes: &[u8]) -> Result<Self> {
+        let mut cell = Cell::new(bytes);
+        let packet = Self::parse_inner(&mut cell)?;
+        if !cell.get().is_empty() {
+            return Err(Error::InvalidPacketError);
+        }
+        Ok(packet)
+    }
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         if bytes.get().remaining() < 5 {
             return Err(Error::InvalidLengthError {
                 obj: "Bar".to_string(),
@@ -243,7 +191,7 @@ impl Bar {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        let data = BarData::parse(&mut bytes)?;
+        let data = BarData::parse_inner(&mut bytes)?;
         Ok(Self::new(Arc::new(data)).unwrap())
     }
     fn new(bar: Arc<BarData>) -> std::result::Result<Self, &'static str> {
