@@ -1,4 +1,3 @@
-use crate::lint;
 use codespan_reporting::diagnostic;
 use codespan_reporting::files;
 use serde::Serialize;
@@ -384,31 +383,6 @@ impl<A: Annotation> Decl<A> {
         }
     }
 
-    /// Determine the size of a declaration type in bits, if possible.
-    ///
-    /// If the type is dynamically sized (e.g. contains an array or
-    /// payload), `None` is returned. If `skip_payload` is set,
-    /// payload and body fields are counted as having size `0` rather
-    /// than a variable size.
-    pub fn width(&self, scope: &lint::Scope<'_>, skip_payload: bool) -> Option<usize> {
-        match &self.desc {
-            DeclDesc::Enum { width, .. } | DeclDesc::Checksum { width, .. } => Some(*width),
-            DeclDesc::CustomField { width, .. } => *width,
-            DeclDesc::Packet { fields, parent_id, .. }
-            | DeclDesc::Struct { fields, parent_id, .. } => {
-                let mut packet_size = match parent_id {
-                    None => 0,
-                    Some(id) => scope.typedef.get(id.as_str())?.width(scope, true)?,
-                };
-                for field in fields.iter() {
-                    packet_size += field.width(scope, skip_payload)?;
-                }
-                Some(packet_size)
-            }
-            DeclDesc::Group { .. } | DeclDesc::Test { .. } => None,
-        }
-    }
-
     pub fn fields(&self) -> std::slice::Iter<'_, Field<A>> {
         match &self.desc {
             DeclDesc::Packet { fields, .. }
@@ -460,62 +434,6 @@ impl<A: Annotation> Field<A> {
             FieldDesc::Array { id, .. }
             | FieldDesc::Scalar { id, .. }
             | FieldDesc::Typedef { id, .. } => Some(id),
-        }
-    }
-
-    pub fn is_bitfield(&self, scope: &lint::Scope<'_>) -> bool {
-        match &self.desc {
-            FieldDesc::Size { .. }
-            | FieldDesc::Count { .. }
-            | FieldDesc::ElementSize { .. }
-            | FieldDesc::FixedScalar { .. }
-            | FieldDesc::FixedEnum { .. }
-            | FieldDesc::Reserved { .. }
-            | FieldDesc::Scalar { .. } => true,
-            FieldDesc::Typedef { type_id, .. } => {
-                let field = scope.typedef.get(type_id.as_str());
-                matches!(field, Some(Decl { desc: DeclDesc::Enum { .. }, .. }))
-            }
-            _ => false,
-        }
-    }
-
-    pub fn declaration<'a>(
-        &self,
-        scope: &'a lint::Scope<'a>,
-    ) -> Option<&'a crate::parser::ast::Decl> {
-        match &self.desc {
-            FieldDesc::FixedEnum { enum_id, .. } => scope.typedef.get(enum_id).copied(),
-            FieldDesc::Array { type_id: Some(type_id), .. } => scope.typedef.get(type_id).copied(),
-            FieldDesc::Typedef { type_id, .. } => scope.typedef.get(type_id.as_str()).copied(),
-            _ => None,
-        }
-    }
-
-    /// Determine the size of a field in bits, if possible.
-    ///
-    /// If the field is dynamically sized (e.g. unsized array or
-    /// payload field), `None` is returned. If `skip_payload` is set,
-    /// payload and body fields are counted as having size `0` rather
-    /// than a variable size.
-    pub fn width(&self, scope: &lint::Scope<'_>, skip_payload: bool) -> Option<usize> {
-        match &self.desc {
-            FieldDesc::Scalar { width, .. }
-            | FieldDesc::Size { width, .. }
-            | FieldDesc::Count { width, .. }
-            | FieldDesc::ElementSize { width, .. }
-            | FieldDesc::Reserved { width, .. }
-            | FieldDesc::FixedScalar { width, .. } => Some(*width),
-            FieldDesc::FixedEnum { .. } => self.declaration(scope)?.width(scope, false),
-            FieldDesc::Padding { .. } => todo!(),
-            FieldDesc::Array { size: Some(size), width, .. } => {
-                let width = width.or_else(|| self.declaration(scope)?.width(scope, false))?;
-                Some(width * size)
-            }
-            FieldDesc::Typedef { .. } => self.declaration(scope)?.width(scope, false),
-            FieldDesc::Checksum { .. } => Some(0),
-            FieldDesc::Payload { .. } | FieldDesc::Body { .. } if skip_payload => Some(0),
-            _ => None,
         }
     }
 

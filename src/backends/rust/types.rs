@@ -1,6 +1,6 @@
 //! Utility functions for dealing with Rust integer types.
 
-use crate::parser::ast as parser_ast;
+use crate::analyzer::ast as analyzer_ast;
 use crate::{ast, lint};
 use quote::{format_ident, quote};
 
@@ -34,7 +34,7 @@ impl quote::ToTokens for Integer {
     }
 }
 
-pub fn rust_type(field: &parser_ast::Field) -> proc_macro2::TokenStream {
+pub fn rust_type(field: &analyzer_ast::Field) -> proc_macro2::TokenStream {
     match &field.desc {
         ast::FieldDesc::Scalar { width, .. } => {
             let field_type = Integer::new(*width);
@@ -67,7 +67,10 @@ pub fn rust_type(field: &parser_ast::Field) -> proc_macro2::TokenStream {
     }
 }
 
-pub fn rust_borrow(field: &parser_ast::Field, scope: &lint::Scope<'_>) -> proc_macro2::TokenStream {
+pub fn rust_borrow(
+    field: &analyzer_ast::Field,
+    scope: &lint::Scope<'_>,
+) -> proc_macro2::TokenStream {
     match &field.desc {
         ast::FieldDesc::Scalar { .. } => quote!(),
         ast::FieldDesc::Typedef { type_id, .. } => match &scope.typedef[type_id].desc {

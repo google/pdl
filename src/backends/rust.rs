@@ -14,7 +14,7 @@ use quote::{format_ident, quote};
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use crate::parser::ast as parser_ast;
+use crate::analyzer::ast as analyzer_ast;
 
 mod parser;
 mod preamble;
@@ -56,19 +56,19 @@ pub fn mask_bits(n: usize, suffix: &str) -> syn::LitInt {
 
 fn generate_packet_size_getter(
     scope: &lint::Scope<'_>,
-    fields: &[&parser_ast::Field],
+    fields: &[&analyzer_ast::Field],
     is_packet: bool,
 ) -> (usize, proc_macro2::TokenStream) {
     let mut constant_width = 0;
     let mut dynamic_widths = Vec::new();
 
     for field in fields {
-        if let Some(width) = field.width(scope, false) {
+        if let Some(width) = scope.get_field_width(field, false) {
             constant_width += width;
             continue;
         }
 
-        let decl = field.declaration(scope);
+        let decl = scope.get_field_declaration(field);
         dynamic_widths.push(match &field.desc {
             ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. } => {
                 if is_packet {
@@ -88,7 +88,7 @@ fn generate_packet_size_getter(
             ast::FieldDesc::Array { id, width, .. } => {
                 let id = format_ident!("{id}");
                 match &decl {
-                    Some(parser_ast::Decl {
+                    Some(analyzer_ast::Decl {
                         desc: ast::DeclDesc::Struct { .. } | ast::DeclDesc::CustomField { .. },
                         ..
                     }) => {
@@ -96,9 +96,10 @@ fn generate_packet_size_getter(
                             self.#id.iter().map(|elem| elem.get_size()).sum::<usize>()
                         }
                     }
-                    Some(parser_ast::Decl { desc: ast::DeclDesc::Enum { .. }, .. }) => {
-                        let width =
-                            syn::Index::from(decl.unwrap().width(scope, false).unwrap() / 8);
+                    Some(analyzer_ast::Decl { desc: ast::DeclDesc::Enum { .. }, .. }) => {
+                        let width = syn::Index::from(
+                            scope.get_decl_width(decl.unwrap(), false).unwrap() / 8,
+                        );
                         let mul_width = (width.index > 1).then(|| quote!(* #width));
                         quote! {
                             self.#id.len() #mul_width
@@ -133,7 +134,7 @@ fn generate_packet_size_getter(
     )
 }
 
-fn top_level_packet<'a>(scope: &lint::Scope<'a>, packet_name: &'a str) -> &'a parser_ast::Decl {
+fn top_level_packet<'a>(scope: &lint::Scope<'a>, packet_name: &'a str) -> &'a analyzer_ast::Decl {
     let mut decl = scope.typedef[packet_name];
     while let ast::DeclDesc::Packet { parent_id: Some(parent_id), .. }
     | ast::DeclDesc::Struct { parent_id: Some(parent_id), .. } = &decl.desc
@@ -147,7 +148,7 @@ fn top_level_packet<'a>(scope: &lint::Scope<'a>, packet_name: &'a str) -> &'a pa
 fn find_constrained_fields<'a>(
     scope: &'a lint::Scope<'a>,
     id: &'a str,
-) -> Vec<&'a parser_ast::Field> {
+) -> Vec<&'a analyzer_ast::Field> {
     let mut fields = Vec::new();
     let mut field_names = BTreeSet::new();
     let mut children = scope.iter_children(id).collect::<Vec<_>>();
@@ -177,7 +178,7 @@ fn find_constrained_fields<'a>(
 fn find_constrained_parent_fields<'a>(
     scope: &'a lint::Scope<'a>,
     id: &'a str,
-) -> impl Iterator<Item = &'a parser_ast::Field> {
+) -> impl Iterator<Item = &'a analyzer_ast::Field> {
     let packet_scope = &scope.scopes[&scope.typedef[id]];
     find_constrained_fields(scope, id).into_iter().filter(|field| {
         let id = field.id().unwrap();
@@ -299,7 +300,7 @@ fn generate_data_struct(
 /// Find all parents from `id`.
 ///
 /// This includes the `Decl` for `id` itself.
-fn find_parents<'a>(scope: &lint::Scope<'a>, id: &str) -> Vec<&'a parser_ast::Decl> {
+fn find_parents<'a>(scope: &lint::Scope<'a>, id: &str) -> Vec<&'a analyzer_ast::Decl> {
     let mut decl = scope.typedef[id];
     let mut parents = vec![decl];
     while let ast::DeclDesc::Packet { parent_id: Some(parent_id), .. }
@@ -727,8 +728,8 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag]) -> proc_macro2::TokenStream {
 
 fn generate_decl(
     scope: &lint::Scope<'_>,
-    file: &parser_ast::File,
-    decl: &parser_ast::Decl,
+    file: &analyzer_ast::File,
+    decl: &analyzer_ast::Decl,
 ) -> String {
     match &decl.desc {
         ast::DeclDesc::Packet { id, .. } => {
@@ -751,7 +752,7 @@ fn generate_decl(
 ///
 /// The code is not formatted, pipe it through `rustfmt` to get
 /// readable source code.
-pub fn generate(sources: &ast::SourceDatabase, file: &parser_ast::File) -> String {
+pub fn generate(sources: &ast::SourceDatabase, file: &analyzer_ast::File) -> String {
     let mut code = String::new();
 
     let source = sources.get(file.file).expect("could not read source");
@@ -769,6 +770,7 @@ pub fn generate(sources: &ast::SourceDatabase, file: &parser_ast::File) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analyzer;
     use crate::ast;
     use crate::parser::parse_inline;
     use crate::test_utils::{assert_snapshot_eq, rustfmt};
@@ -779,9 +781,11 @@ mod tests {
     /// # Panics
     ///
     /// Panics on parse errors.
-    pub fn parse_str(text: &str) -> parser_ast::File {
+    pub fn parse_str(text: &str) -> analyzer_ast::File {
         let mut db = ast::SourceDatabase::new();
-        parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parse error")
+        let file =
+            parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parse error");
+        analyzer::analyze(&file).expect("analyzer error")
     }
 
     #[track_caller]
@@ -800,12 +804,15 @@ mod tests {
                 a: 8,
                 b: 8,
                 c: 8,
+                _payload_,
               }
               packet Child: Parent(a = 10) {
                 x: 8,
+                _payload_,
               }
               packet GrandChild: Child(b = 20) {
                 y: 8,
+                _payload_,
               }
               packet GrandGrandChild: GrandChild(c = 30) {
                 z: 8,
@@ -845,6 +852,7 @@ mod tests {
                     let code = format!("{endianness}_packets\n{}", $code);
                     let mut db = ast::SourceDatabase::new();
                     let file = parse_inline(&mut db, String::from("test"), code).unwrap();
+                    let file = analyzer::analyze(&file).unwrap();
                     let actual_code = generate(&db, &file);
                     assert_snapshot_eq(
                         &format!("tests/generated/{name}_{endianness}.rs"),

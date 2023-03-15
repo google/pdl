@@ -1,44 +1,45 @@
 use std::collections::HashMap;
 
-use crate::{ast::*, parser};
+use crate::analyzer::ast as analyzer_ast;
+use crate::ast::*;
 
 /// Gather information about the full AST.
 #[derive(Debug)]
 pub struct Scope<'d> {
     // Original file.
-    file: &'d parser::ast::File,
+    file: &'d analyzer_ast::File,
 
     // Collection of Group, Packet, Enum, Struct, Checksum, and CustomField declarations.
-    pub typedef: HashMap<String, &'d parser::ast::Decl>,
+    pub typedef: HashMap<String, &'d analyzer_ast::Decl>,
 
     // Collection of Packet, Struct, and Group scope declarations.
-    pub scopes: HashMap<&'d parser::ast::Decl, PacketScope<'d>>,
+    pub scopes: HashMap<&'d analyzer_ast::Decl, PacketScope<'d>>,
 }
 
 /// Gather information about a Packet, Struct, or Group declaration.
 #[derive(Debug)]
 pub struct PacketScope<'d> {
     // Typedef, scalar, array fields.
-    pub named: HashMap<String, &'d parser::ast::Field>,
+    pub named: HashMap<String, &'d analyzer_ast::Field>,
 
     // Flattened field declarations.
     // Contains field declarations from the original Packet, Struct, or Group,
     // where Group fields have been substituted by their body.
-    pub fields: Vec<&'d parser::ast::Field>,
+    pub fields: Vec<&'d analyzer_ast::Field>,
 
     // Constraint declarations gathered from Group inlining.
     pub constraints: HashMap<String, &'d Constraint>,
 
     // Local and inherited field declarations. Only named fields are preserved.
     // Saved here for reference for parent constraint resolving.
-    pub all_fields: HashMap<String, &'d parser::ast::Field>,
+    pub all_fields: HashMap<String, &'d analyzer_ast::Field>,
 
     // Local and inherited constraint declarations.
     // Saved here for constraint conflict checks.
     pub all_constraints: HashMap<String, &'d Constraint>,
 }
 
-impl<'d> std::hash::Hash for &'d parser::ast::Decl {
+impl<'d> std::hash::Hash for &'d analyzer_ast::Decl {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::ptr::hash(*self, state);
     }
@@ -46,7 +47,7 @@ impl<'d> std::hash::Hash for &'d parser::ast::Decl {
 
 impl<'d> PacketScope<'d> {
     /// Insert a field declaration into a packet scope.
-    fn insert(&mut self, field: &'d parser::ast::Field) {
+    fn insert(&mut self, field: &'d analyzer_ast::Field) {
         field.id().and_then(|id| self.named.insert(id.to_owned(), field));
     }
 
@@ -105,7 +106,7 @@ impl<'d> PacketScope<'d> {
 
     /// Lookup a field by name. This will also find the special
     /// `_payload_` and `_body_` fields.
-    pub fn get_packet_field(&self, id: &str) -> Option<&parser::ast::Field> {
+    pub fn get_packet_field(&self, id: &str) -> Option<&analyzer_ast::Field> {
         self.named.get(id).copied().or(match id {
             "_payload_" | "_body_" => self.get_payload_field(),
             _ => None,
@@ -113,7 +114,7 @@ impl<'d> PacketScope<'d> {
     }
 
     /// Find the payload or body field, if any.
-    pub fn get_payload_field(&self) -> Option<&parser::ast::Field> {
+    pub fn get_payload_field(&self) -> Option<&analyzer_ast::Field> {
         self.fields
             .iter()
             .find(|field| matches!(&field.desc, FieldDesc::Payload { .. } | FieldDesc::Body { .. }))
@@ -121,7 +122,7 @@ impl<'d> PacketScope<'d> {
     }
 
     /// Lookup the size field for an array field.
-    pub fn get_array_size_field(&self, id: &str) -> Option<&parser::ast::Field> {
+    pub fn get_array_size_field(&self, id: &str) -> Option<&analyzer_ast::Field> {
         self.fields
             .iter()
             .find(|field| match &field.desc {
@@ -135,7 +136,7 @@ impl<'d> PacketScope<'d> {
 
     /// Find the size field corresponding to the payload or body
     /// field of this packet.
-    pub fn get_payload_size_field(&self) -> Option<&parser::ast::Field> {
+    pub fn get_payload_size_field(&self) -> Option<&analyzer_ast::Field> {
         self.fields
             .iter()
             .find(|field| match &field.desc {
@@ -157,7 +158,7 @@ impl<'d> PacketScope<'d> {
 }
 
 impl<'d> Scope<'d> {
-    pub fn new(file: &parser::ast::File) -> Scope<'_> {
+    pub fn new(file: &analyzer_ast::File) -> Scope<'_> {
         let mut scope = Scope { file, typedef: HashMap::new(), scopes: HashMap::new() };
 
         // Gather top-level declarations.
@@ -185,20 +186,20 @@ impl<'d> Scope<'d> {
     //      - undeclared Packet or Struct parents,
     //      - recursive Group insertion,
     //      - recursive Packet or Struct inheritance.
-    fn finalize(&mut self) -> Vec<&'d parser::ast::Decl> {
+    fn finalize(&mut self) -> Vec<&'d analyzer_ast::Decl> {
         // Auxiliary function implementing BFS on Packet tree.
         enum Mark {
             Temporary,
             Permanent,
         }
         struct Context<'d> {
-            list: Vec<&'d parser::ast::Decl>,
-            visited: HashMap<&'d parser::ast::Decl, Mark>,
-            scopes: HashMap<&'d parser::ast::Decl, PacketScope<'d>>,
+            list: Vec<&'d analyzer_ast::Decl>,
+            visited: HashMap<&'d analyzer_ast::Decl, Mark>,
+            scopes: HashMap<&'d analyzer_ast::Decl, PacketScope<'d>>,
         }
 
         fn bfs<'s, 'd>(
-            decl: &'d parser::ast::Decl,
+            decl: &'d analyzer_ast::Decl,
             context: &'s mut Context<'d>,
             scope: &Scope<'d>,
         ) -> Option<&'s PacketScope<'d>> {
@@ -279,16 +280,102 @@ impl<'d> Scope<'d> {
     pub fn iter_children<'a>(
         &'a self,
         id: &'a str,
-    ) -> impl Iterator<Item = &'d parser::ast::Decl> + 'a {
+    ) -> impl Iterator<Item = &'d analyzer_ast::Decl> + 'a {
         self.file.iter_children(self.typedef.get(id).unwrap())
     }
 
-    pub fn has_children(&self, id: &str) -> bool {
-        self.iter_children(id).next().is_some()
+    /// Return the declaration of the typedef type backing the
+    /// selected field.
+    pub fn get_field_declaration(
+        &self,
+        field: &analyzer_ast::Field,
+    ) -> Option<&'d analyzer_ast::Decl> {
+        match &field.desc {
+            FieldDesc::FixedEnum { enum_id, .. } => self.typedef.get(enum_id).copied(),
+            FieldDesc::Array { type_id: Some(type_id), .. } => self.typedef.get(type_id).copied(),
+            FieldDesc::Typedef { type_id, .. } => self.typedef.get(type_id.as_str()).copied(),
+            _ => None,
+        }
+    }
+
+    /// Test if the selected field is a bitfield.
+    pub fn is_bitfield(&self, field: &analyzer_ast::Field) -> bool {
+        match &field.desc {
+            FieldDesc::Size { .. }
+            | FieldDesc::Count { .. }
+            | FieldDesc::ElementSize { .. }
+            | FieldDesc::FixedScalar { .. }
+            | FieldDesc::FixedEnum { .. }
+            | FieldDesc::Reserved { .. }
+            | FieldDesc::Scalar { .. } => true,
+            FieldDesc::Typedef { type_id, .. } => {
+                let field = self.typedef.get(type_id.as_str());
+                matches!(field, Some(Decl { desc: DeclDesc::Enum { .. }, .. }))
+            }
+            _ => false,
+        }
+    }
+
+    /// Determine the size of a field in bits, if possible.
+    ///
+    /// If the field is dynamically sized (e.g. unsized array or
+    /// payload field), `None` is returned. If `skip_payload` is set,
+    /// payload and body fields are counted as having size `0` rather
+    /// than a variable size.
+    pub fn get_field_width(
+        &self,
+        field: &analyzer_ast::Field,
+        skip_payload: bool,
+    ) -> Option<usize> {
+        match &field.desc {
+            FieldDesc::Scalar { width, .. }
+            | FieldDesc::Size { width, .. }
+            | FieldDesc::Count { width, .. }
+            | FieldDesc::ElementSize { width, .. }
+            | FieldDesc::Reserved { width, .. }
+            | FieldDesc::FixedScalar { width, .. } => Some(*width),
+            FieldDesc::Padding { .. } => todo!(),
+            FieldDesc::Array { size: Some(size), width, .. } => {
+                let element_width = width
+                    .or_else(|| self.get_decl_width(self.get_field_declaration(field)?, false))?;
+                Some(element_width * size)
+            }
+            FieldDesc::FixedEnum { .. } | FieldDesc::Typedef { .. } => {
+                self.get_decl_width(self.get_field_declaration(field)?, false)
+            }
+            FieldDesc::Checksum { .. } => Some(0),
+            FieldDesc::Payload { .. } | FieldDesc::Body { .. } if skip_payload => Some(0),
+            _ => None,
+        }
+    }
+
+    /// Determine the size of a declaration type in bits, if possible.
+    ///
+    /// If the type is dynamically sized (e.g. contains an array or
+    /// payload), `None` is returned. If `skip_payload` is set,
+    /// payload and body fields are counted as having size `0` rather
+    /// than a variable size.
+    pub fn get_decl_width(&self, decl: &analyzer_ast::Decl, skip_payload: bool) -> Option<usize> {
+        match &decl.desc {
+            DeclDesc::Enum { width, .. } | DeclDesc::Checksum { width, .. } => Some(*width),
+            DeclDesc::CustomField { width, .. } => *width,
+            DeclDesc::Packet { fields, parent_id, .. }
+            | DeclDesc::Struct { fields, parent_id, .. } => {
+                let mut packet_size = match parent_id {
+                    None => 0,
+                    Some(id) => self.get_decl_width(self.typedef.get(id.as_str())?, true)?,
+                };
+                for field in fields.iter() {
+                    packet_size += self.get_field_width(field, skip_payload)?;
+                }
+                Some(packet_size)
+            }
+            DeclDesc::Group { .. } | DeclDesc::Test { .. } => None,
+        }
     }
 }
 
-fn decl_scope(decl: &parser::ast::Decl) -> Option<PacketScope<'_>> {
+fn decl_scope(decl: &analyzer_ast::Decl) -> Option<PacketScope<'_>> {
     match &decl.desc {
         DeclDesc::Packet { fields, .. }
         | DeclDesc::Struct { fields, .. }
