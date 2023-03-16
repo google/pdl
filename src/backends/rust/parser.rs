@@ -218,7 +218,7 @@ impl<'a> FieldParser<'a> {
 
     fn payload_field_offset_from_end(&self) -> Option<usize> {
         let packet_scope = self.packet_scope().unwrap();
-        let mut fields = packet_scope.fields.iter();
+        let mut fields = packet_scope.iter_fields();
         fields.find(|f| {
             matches!(f.desc, ast::FieldDesc::Body { .. } | ast::FieldDesc::Payload { .. })
         })?;
