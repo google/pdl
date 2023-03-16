@@ -629,9 +629,7 @@ impl<'a> FieldParser<'a> {
                 #(#match_values => {
                     let mut cell = Cell::new(payload);
                     let child_data = #child_ids_data::parse_inner(&mut cell #child_parse_args)?;
-                    if !cell.get().is_empty() {
-                        return Err(Error::InvalidPacketError);
-                    }
+                    // TODO(mgeisler): communicate back to user if !cell.get().is_empty()?
                     #packet_data_child::#child_ids(Arc::new(child_data))
                 }),*
                 _ if !payload.is_empty() => {
