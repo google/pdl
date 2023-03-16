@@ -426,7 +426,7 @@ fn generate_packet_decl(
         let named_fields = {
             let mut names =
                 parent_packet_scope.iter_fields().filter_map(ast::Field::id).collect::<Vec<_>>();
-            names.sort();
+            names.sort_unstable();
             names
         };
 

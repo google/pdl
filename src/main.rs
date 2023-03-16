@@ -51,12 +51,12 @@ struct Opt {
     input_file: String,
 }
 
-fn main() -> std::process::ExitCode {
+fn main() -> Result<(), String> {
     let opt = Opt::parse();
 
     if opt.version {
         println!("Packet Description Language parser version 1.0");
-        return std::process::ExitCode::SUCCESS;
+        return Ok(());
     }
 
     let mut sources = ast::SourceDatabase::new();
@@ -72,7 +72,7 @@ fn main() -> std::process::ExitCode {
                                 .lock(),
                         )
                         .expect("Could not print analyzer diagnostics");
-                    return std::process::ExitCode::FAILURE;
+                    return Err(String::from("Analysis failed"));
                 }
             };
 
@@ -94,14 +94,14 @@ fn main() -> std::process::ExitCode {
                     )
                 }
             }
-            std::process::ExitCode::SUCCESS
+            Ok(())
         }
 
         Err(err) => {
             let writer = termcolor::StandardStream::stderr(termcolor::ColorChoice::Always);
             let config = term::Config::default();
             term::emit(&mut writer.lock(), &config, &sources, &err).expect("Could not print error");
-            std::process::ExitCode::FAILURE
+            Err(String::from("Error while parsing input"))
         }
     }
 }
