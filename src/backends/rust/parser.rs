@@ -1,9 +1,8 @@
 use crate::analyzer::ast as analyzer_ast;
 use crate::backends::rust::{
-    constraint_to_value, find_constrained_parent_fields, mask_bits, types,
+    constraint_to_value, find_constrained_parent_fields, mask_bits, types, ToUpperCamelCase,
 };
 use crate::{ast, lint};
-use heck::ToUpperCamelCase;
 use quote::{format_ident, quote};
 use std::collections::{BTreeSet, HashMap};
 
