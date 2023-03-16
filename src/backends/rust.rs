@@ -1,13 +1,5 @@
 //! Rust compiler backend.
 
-// The `format-push-string` lint was briefly enabled present in Rust
-// 1.62. It is now moved the disabled "restriction" category instead.
-// See https://github.com/rust-lang/rust-clippy/issues/9077 for the
-// problems with this lint.
-//
-// Remove this when we use Rust 1.63 or later.
-#![allow(clippy::format_push_string)]
-
 use crate::{ast, lint};
 use heck::ToUpperCamelCase;
 use quote::{format_ident, quote};
