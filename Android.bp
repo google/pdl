@@ -292,6 +292,15 @@ genrule_defaults {
     ],
 }
 
+// Defaults for PDL python backend generation.
+genrule_defaults {
+    name: "pdl_cxx_generator_defaults",
+    tools: [
+        ":pdl",
+        ":pdl_cxx_generator",
+    ],
+}
+
 // Generate the python parser+serializer backend for the
 // little endian test file located at tests/canonical/le_test_file.pdl.
 genrule {
@@ -413,4 +422,118 @@ rust_test_host {
         ":pdl_rust_noalloc_le_test_backend_srcs",
     ],
     test_suites: ["general-tests"],
+}
+
+// Generate the C++ parser+serializer backend for the
+// little endian test file located at tests/canonical/le_test_file.pdl.
+genrule {
+    name: "pdl_cxx_canonical_le_src_gen",
+    defaults: ["pdl_cxx_generator_defaults"],
+    cmd: "set -o pipefail;" +
+        " $(location :pdl) $(in) |" +
+        " $(location :pdl_cxx_generator)" +
+        " --namespace le_test" +
+        " --output $(out)",
+    srcs: [
+        "tests/canonical/le_test_file.pdl",
+    ],
+    out: [
+        "canonical_le_test_file.h",
+    ],
+}
+
+// Generate the C++ parser+serializer backend tests for the
+// little endian test file located at tests/canonical/le_test_file.pdl.
+genrule {
+    name: "pdl_cxx_canonical_le_test_gen",
+    cmd: "set -o pipefail;" +
+        " inputs=( $(in) ) &&" +
+        " $(location :pdl) $${inputs[0]} |" +
+        " $(location :pdl_cxx_unittest_generator)" +
+        " --output $(out)" +
+        " --test-vectors $${inputs[1]}" +
+        " --include-header $$(basename $${inputs[2]})" +
+        " --using-namespace le_test" +
+        " --namespace le_test" +
+        " --parser-test-suite LeParserTest" +
+        " --serializer-test-suite LeSerializerTest",
+    tools: [
+        ":pdl",
+        ":pdl_cxx_unittest_generator",
+    ],
+    srcs: [
+        "tests/canonical/le_test_file.pdl",
+        "tests/canonical/le_test_vectors.json",
+        ":pdl_cxx_canonical_le_src_gen",
+    ],
+    out: [
+        "canonical_le_test.cc",
+    ],
+}
+
+// Generate the C++ parser+serializer backend for the
+// big endian test file.
+genrule {
+    name: "pdl_cxx_canonical_be_src_gen",
+    defaults: ["pdl_cxx_generator_defaults"],
+    cmd: "set -o pipefail;" +
+        " $(location :pdl) $(in) |" +
+        " $(location :pdl_cxx_generator)" +
+        " --namespace be_test" +
+        " --output $(out)",
+    srcs: [
+        ":pdl_be_test_file",
+    ],
+    out: [
+        "canonical_be_test_file.h",
+    ],
+}
+
+// Generate the C++ parser+serializer backend tests for the
+// big endian test file.
+genrule {
+    name: "pdl_cxx_canonical_be_test_gen",
+    cmd: "set -o pipefail;" +
+        " inputs=( $(in) ) &&" +
+        " $(location :pdl) $${inputs[0]} |" +
+        " $(location :pdl_cxx_unittest_generator)" +
+        " --output $(out)" +
+        " --test-vectors $${inputs[1]}" +
+        " --include-header $$(basename $${inputs[2]})" +
+        " --using-namespace be_test" +
+        " --namespace be_test" +
+        " --parser-test-suite BeParserTest" +
+        " --serializer-test-suite BeSerializerTest",
+    tools: [
+        ":pdl",
+        ":pdl_cxx_unittest_generator",
+    ],
+    srcs: [
+        ":pdl_be_test_file",
+        "tests/canonical/be_test_vectors.json",
+        ":pdl_cxx_canonical_be_src_gen",
+    ],
+    out: [
+        "canonical_be_test.cc",
+    ],
+}
+
+// Test the generated C++ parser+serializer against
+// pre-generated binary inputs.
+cc_test_host {
+    name: "pdl_cxx_generator_test",
+    local_include_dirs: [
+        "scripts",
+    ],
+    generated_headers: [
+        "pdl_cxx_canonical_le_src_gen",
+        "pdl_cxx_canonical_be_src_gen",
+    ],
+    generated_sources: [
+        "pdl_cxx_canonical_le_test_gen",
+        "pdl_cxx_canonical_be_test_gen",
+    ],
+    static_libs: [
+        "libgtest",
+    ],
 }
