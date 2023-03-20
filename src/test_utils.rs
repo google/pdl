@@ -22,54 +22,14 @@
 use std::fs;
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use tempfile::NamedTempFile;
 
-/// Search for a binary in `$PATH` or as a sibling to the current
-/// executable (typically the test binary).
-pub fn find_binary(name: &str) -> Result<std::path::PathBuf, String> {
-    let mut current_exe = std::env::current_exe().unwrap();
-    current_exe.pop();
-    let paths = std::env::var_os("PATH").unwrap();
-    for mut path in std::iter::once(current_exe.clone()).chain(std::env::split_paths(&paths)) {
-        path.push(name);
-        if path.exists() {
-            return Ok(path);
-        }
-    }
-
-    Err(format!(
-        "could not find '{}' in the directory of the binary ({}) or in $PATH ({})",
-        name,
-        current_exe.to_string_lossy(),
-        paths.to_string_lossy(),
-    ))
-}
-
-/// Run `input` through `rustfmt`.
-///
-/// # Panics
-///
-/// Panics if `rustfmt` cannot be found in the same directory as the
-/// test executable or if it returns a non-zero exit code.
-pub fn rustfmt(input: &str) -> String {
-    let rustfmt_path = find_binary("rustfmt").expect("cannot find rustfmt");
-    let mut rustfmt = Command::new(&rustfmt_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap_or_else(|_| panic!("failed to start {:?}", &rustfmt_path));
-
-    let mut stdin = rustfmt.stdin.take().unwrap();
-    // Owned copy which we can move into the writing thread.
-    let input = String::from(input);
-    std::thread::spawn(move || {
-        stdin.write_all(input.as_bytes()).expect("could not write to stdin");
-    });
-
-    let output = rustfmt.wait_with_output().expect("error executing rustfmt");
-    assert!(output.status.success(), "rustfmt failed: {}", output.status);
-    String::from_utf8(output.stdout).expect("rustfmt output was not UTF-8")
+/// Format Rust code in `input`.
+pub fn format_rust(input: &str) -> String {
+    let syntax_tree = syn::parse_file(input).expect("Could not parse {input:#?} as Rust code");
+    let formatted = prettyplease::unparse(&syntax_tree);
+    format!("#![rustfmt::skip]\n{formatted}")
 }
 
 /// Find the unified diff between two strings using `diff`.
