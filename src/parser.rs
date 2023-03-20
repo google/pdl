@@ -17,7 +17,6 @@ pub mod ast {
 
     pub type Field = crate::ast::Field<Annotation>;
     pub type Decl = crate::ast::Decl<Annotation>;
-    pub type DeclDesc = crate::ast::DeclDesc<Annotation>;
     pub type File = crate::ast::File<Annotation>;
 }
 
@@ -77,7 +76,7 @@ array_field = { identifier ~ ":" ~ (integer|identifier) ~
 }
 scalar_field = { identifier ~ ":" ~ integer }
 typedef_field = { identifier ~ ":" ~ identifier }
-group_field = { identifier ~ ("{" ~ constraint_list ~ "}")? }
+group_field = { identifier ~ ("{" ~ constraint_list? ~ "}")? }
 
 field = _{
     checksum_field |

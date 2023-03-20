@@ -10,6 +10,7 @@ mod lint;
 mod parser;
 #[cfg(test)]
 mod test_utils;
+mod utils;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum OutputFormat {
@@ -61,7 +62,7 @@ fn main() -> std::process::ExitCode {
     let mut sources = ast::SourceDatabase::new();
     match parser::parse_file(&mut sources, opt.input_file) {
         Ok(file) => {
-            let _analyzed_file = match analyzer::analyze(&file) {
+            let analyzed_file = match analyzer::analyze(&file) {
                 Ok(file) => file,
                 Err(diagnostics) => {
                     diagnostics
@@ -80,7 +81,7 @@ fn main() -> std::process::ExitCode {
                     println!("{}", backends::json::generate(&file).unwrap())
                 }
                 OutputFormat::Rust => {
-                    println!("{}", backends::rust::generate(&sources, &file))
+                    println!("{}", backends::rust::generate(&sources, &analyzed_file))
                 }
                 OutputFormat::RustNoAlloc => {
                     let schema = backends::intermediate::generate(&file).unwrap();
