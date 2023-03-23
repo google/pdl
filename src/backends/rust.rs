@@ -46,9 +46,9 @@ pub fn mask_bits(n: usize, suffix: &str) -> syn::LitInt {
     syn::parse_str::<syn::LitInt>(&format!("0x{hex_digits}{suffix}")).unwrap()
 }
 
-fn generate_packet_size_getter(
-    scope: &lint::Scope<'_>,
-    fields: &[&analyzer_ast::Field],
+fn generate_packet_size_getter<'a>(
+    scope: &lint::Scope<'a>,
+    fields: impl Iterator<Item = &'a analyzer_ast::Field>,
     is_packet: bool,
 ) -> (usize, proc_macro2::TokenStream) {
     let mut constant_width = 0;
@@ -174,7 +174,7 @@ fn find_constrained_parent_fields<'a>(
     let packet_scope = &scope.scopes[&scope.typedef[id]];
     find_constrained_fields(scope, id).into_iter().filter(|field| {
         let id = field.id().unwrap();
-        packet_scope.all_fields.contains_key(id) && !packet_scope.named.contains_key(id)
+        packet_scope.all_fields.contains_key(id) && packet_scope.get_packet_field(id).is_none()
     })
 }
 
@@ -195,7 +195,7 @@ fn generate_data_struct(
     let serializer_span = format_ident!("buffer");
     let mut field_parser = FieldParser::new(scope, endianness, id, &span);
     let mut field_serializer = FieldSerializer::new(scope, endianness, id, &serializer_span);
-    for field in &packet_scope.fields {
+    for field in packet_scope.iter_fields() {
         field_parser.add(field);
         field_serializer.add(field);
     }
@@ -211,7 +211,7 @@ fn generate_data_struct(
     };
 
     let (constant_width, packet_size) =
-        generate_packet_size_getter(scope, &packet_scope.fields, is_packet);
+        generate_packet_size_getter(scope, packet_scope.iter_fields(), is_packet);
     let conforms = if constant_width == 0 {
         quote! { true }
     } else {
@@ -225,7 +225,7 @@ fn generate_data_struct(
 
     let struct_name = if is_packet { format_ident!("{id}Data") } else { format_ident!("{id}") };
     let fields_with_ids =
-        packet_scope.fields.iter().filter(|f| f.id().is_some()).collect::<Vec<_>>();
+        packet_scope.iter_fields().filter(|f| f.id().is_some()).collect::<Vec<_>>();
     let mut field_names =
         fields_with_ids.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
     let mut field_types = fields_with_ids.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
@@ -376,7 +376,7 @@ fn generate_packet_decl(
     let all_field_getter_names = all_field_names.iter().map(|id| format_ident!("get_{id}"));
     let all_field_self_field = all_fields.iter().map(|f| {
         for (parent, parent_id) in parents.iter().zip(parent_lower_ids.iter()) {
-            if scope.scopes[parent].fields.contains(f) {
+            if scope.scopes[parent].iter_fields().any(|ff| ff.id() == f.id()) {
                 return quote!(self.#parent_id);
             }
         }
@@ -402,7 +402,8 @@ fn generate_packet_decl(
         let parent_packet_scope = &scope.scopes[&scope.typedef[parent_id]];
 
         let named_fields = {
-            let mut names = parent_packet_scope.named.keys().collect::<Vec<_>>();
+            let mut names =
+                parent_packet_scope.iter_fields().filter_map(ast::Field::id).collect::<Vec<_>>();
             names.sort();
             names
         };
