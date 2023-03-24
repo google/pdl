@@ -120,7 +120,6 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
         "{}",
         &quote! {
             use #module::Packet;
-            use num_traits::{FromPrimitive, ToPrimitive};
             use serde_json::json;
 
             #(#tests)*
