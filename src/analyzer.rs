@@ -26,7 +26,7 @@ pub mod ast {
     use serde::Serialize;
 
     /// Field and declaration size information.
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     #[allow(unused)]
     pub enum Size {
         /// Constant size in bits.
@@ -50,7 +50,7 @@ pub mod ast {
     #[derive(Debug, Serialize, Default, Clone, PartialEq)]
     pub struct Annotation;
 
-    #[derive(Default, Debug, Clone)]
+    #[derive(Default, Debug, Clone, PartialEq, Eq)]
     pub struct FieldAnnotation {
         // Size of field.
         pub size: Size,
@@ -59,7 +59,7 @@ pub mod ast {
         pub padded_size: Option<usize>,
     }
 
-    #[derive(Default, Debug, Clone)]
+    #[derive(Default, Debug, Clone, PartialEq, Eq)]
     pub struct DeclAnnotation {
         // Size computed excluding the payload.
         pub size: Size,
@@ -1309,15 +1309,17 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
             }
             DeclDesc::Enum { width, .. }
             | DeclDesc::Checksum { width, .. }
-            | DeclDesc::CustomField { width: Some(width), .. } => {
-                ast::DeclAnnotation { size: ast::Size::Static(*width), ..decl.annot }
-            }
+            | DeclDesc::CustomField { width: Some(width), .. } => ast::DeclAnnotation {
+                size: ast::Size::Static(*width),
+                payload_size: ast::Size::Static(0),
+            },
             DeclDesc::CustomField { width: None, .. } => {
-                ast::DeclAnnotation { size: ast::Size::Dynamic, ..decl.annot }
+                ast::DeclAnnotation { size: ast::Size::Dynamic, payload_size: ast::Size::Static(0) }
             }
-            DeclDesc::Test { .. } => {
-                ast::DeclAnnotation { size: ast::Size::Static(0), ..decl.annot }
-            }
+            DeclDesc::Test { .. } => ast::DeclAnnotation {
+                size: ast::Size::Static(0),
+                payload_size: ast::Size::Static(0),
+            },
         };
         decl
     }
@@ -1520,6 +1522,8 @@ mod test {
     use crate::ast::*;
     use crate::parser::parse_inline;
     use codespan_reporting::term::termcolor;
+
+    use googletest::prelude::{assert_that, eq};
 
     macro_rules! raises {
         ($code:ident, $text:literal) => {{
@@ -2531,6 +2535,492 @@ mod test {
             X = 101,
         }
         "#
+        );
+    }
+
+    use analyzer::ast::Size;
+    use Size::*;
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct Annotations {
+        size: Size,
+        payload_size: Size,
+        fields: Vec<Size>,
+    }
+
+    fn annotations(text: &str) -> Vec<Annotations> {
+        let mut db = SourceDatabase::new();
+        let file =
+            parse_inline(&mut db, "stdin".to_owned(), text.to_owned()).expect("parsing failure");
+        let file = analyzer::analyze(&file).expect("analyzer failure");
+        file.declarations
+            .iter()
+            .map(|decl| Annotations {
+                size: decl.annot.size,
+                payload_size: decl.annot.payload_size,
+                fields: decl.fields().map(|field| field.annot.size).collect(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_bitfield_annotations() {
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        enum E : 6 { X=0, Y=1 }
+        packet A {
+            a : 14,
+            b : E,
+            _reserved_ : 3,
+            _fixed_ = 3 : 4,
+            _fixed_ = X : E,
+            _size_(_payload_) : 7,
+            _payload_,
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations { size: Static(6), payload_size: Static(0), fields: vec![] },
+                Annotations {
+                    size: Static(40),
+                    payload_size: Dynamic,
+                    fields: vec![
+                        Static(14),
+                        Static(6),
+                        Static(3),
+                        Static(4),
+                        Static(6),
+                        Static(7),
+                        Dynamic
+                    ]
+                },
+            ])
+        )
+    }
+
+    #[test]
+    fn test_typedef_annotations() {
+        // Struct with constant size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        struct S {
+            a: 8[4],
+        }
+        packet A {
+            a: 16,
+            s: S,
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations { size: Static(32), payload_size: Static(0), fields: vec![Static(32)] },
+                Annotations {
+                    size: Static(48),
+                    payload_size: Static(0),
+                    fields: vec![Static(16), Static(32)]
+                },
+            ])
+        );
+
+        // Struct with dynamic size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        struct S {
+            _size_ (a) : 8,
+            a: 8[],
+        }
+        packet A {
+            a: 16,
+            s: S,
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Static(0),
+                    fields: vec![Static(8), Dynamic]
+                },
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Static(0),
+                    fields: vec![Static(16), Dynamic]
+                },
+            ])
+        );
+
+        // Struct with unknown size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        struct S {
+            a: 8[],
+        }
+        packet A {
+            a: 16,
+            s: S,
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations { size: Unknown, payload_size: Static(0), fields: vec![Unknown] },
+                Annotations {
+                    size: Unknown,
+                    payload_size: Static(0),
+                    fields: vec![Static(16), Unknown]
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn test_array_annotations() {
+        // Array with constant size element and constant count.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        enum E : 8 { X=0, Y=1 }
+        packet A {
+            a: E[8],
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations { size: Static(8), payload_size: Static(0), fields: vec![] },
+                Annotations { size: Static(64), payload_size: Static(0), fields: vec![Static(64)] },
+            ])
+        );
+
+        // Array with dynamic size element and constant count.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        struct S { _size_(a): 8, a: 8[] }
+        packet A {
+            a: S[8],
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Static(0),
+                    fields: vec![Static(8), Dynamic]
+                },
+                Annotations { size: Dynamic, payload_size: Static(0), fields: vec![Dynamic] },
+            ])
+        );
+
+        // Array with constant size element and dynamic size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        struct S { a: 7, _reserved_: 1 }
+        packet A {
+            _size_ (a) : 8,
+            a: S[],
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Static(8),
+                    payload_size: Static(0),
+                    fields: vec![Static(7), Static(1)]
+                },
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Static(0),
+                    fields: vec![Static(8), Dynamic]
+                },
+            ])
+        );
+
+        // Array with dynamic size element and dynamic size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        struct S { _size_(a): 8, a: 8[] }
+        packet A {
+            _size_ (a) : 8,
+            a: S[],
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Static(0),
+                    fields: vec![Static(8), Dynamic]
+                },
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Static(0),
+                    fields: vec![Static(8), Dynamic]
+                },
+            ])
+        );
+
+        // Array with constant size element and dynamic count.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        struct S { a: 7, _reserved_: 1 }
+        packet A {
+            _count_ (a) : 8,
+            a: S[],
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Static(8),
+                    payload_size: Static(0),
+                    fields: vec![Static(7), Static(1)]
+                },
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Static(0),
+                    fields: vec![Static(8), Dynamic]
+                },
+            ])
+        );
+
+        // Array with dynamic size element and dynamic count.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        struct S { _size_(a): 8, a: 8[] }
+        packet A {
+            _count_ (a) : 8,
+            a: S[],
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Static(0),
+                    fields: vec![Static(8), Dynamic]
+                },
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Static(0),
+                    fields: vec![Static(8), Dynamic]
+                },
+            ])
+        );
+
+        // Array with constant size element and unknown size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        struct S { a: 7, _fixed_ = 1 : 1 }
+        packet A {
+            a: S[],
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Static(8),
+                    payload_size: Static(0),
+                    fields: vec![Static(7), Static(1)]
+                },
+                Annotations { size: Unknown, payload_size: Static(0), fields: vec![Unknown] },
+            ])
+        );
+
+        // Array with dynamic size element and unknown size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        struct S { _size_(a): 8, a: 8[] }
+        packet A {
+            a: S[],
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Static(0),
+                    fields: vec![Static(8), Dynamic]
+                },
+                Annotations { size: Unknown, payload_size: Static(0), fields: vec![Unknown] },
+            ])
+        );
+    }
+
+    #[test]
+    fn test_payload_annotations() {
+        // Payload with dynamic size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        packet A {
+            _size_(_payload_) : 8,
+            _payload_
+        }
+        "#
+            ),
+            eq(vec![Annotations {
+                size: Static(8),
+                payload_size: Dynamic,
+                fields: vec![Static(8), Dynamic]
+            },])
+        );
+
+        // Payload with unknown size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        packet A {
+            a : 8,
+            _payload_
+        }
+        "#
+            ),
+            eq(vec![Annotations {
+                size: Static(8),
+                payload_size: Unknown,
+                fields: vec![Static(8), Unknown]
+            },])
+        );
+    }
+
+    #[test]
+    fn test_body_annotations() {
+        // Body with dynamic size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        packet A {
+            _size_(_body_) : 8,
+            _body_
+        }
+        "#
+            ),
+            eq(vec![Annotations {
+                size: Static(8),
+                payload_size: Dynamic,
+                fields: vec![Static(8), Dynamic]
+            },])
+        );
+
+        // Body with unknown size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        packet A {
+            a : 8,
+            _body_
+        }
+        "#
+            ),
+            eq(vec![Annotations {
+                size: Static(8),
+                payload_size: Unknown,
+                fields: vec![Static(8), Unknown]
+            },])
+        );
+    }
+
+    #[test]
+    fn test_decl_annotations() {
+        // Test parent with constant size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        packet A {
+            a: 2,
+            _reserved_: 6,
+            _payload_
+        }
+        packet B : A {
+            b: 8,
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Static(8),
+                    payload_size: Unknown,
+                    fields: vec![Static(2), Static(6), Unknown]
+                },
+                Annotations { size: Static(16), payload_size: Static(0), fields: vec![Static(8)] },
+            ])
+        );
+
+        // Test parent with dynamic size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        packet A {
+            _size_(a) : 8,
+            a: 8[],
+            _size_(_payload_) : 8,
+            _payload_
+        }
+        packet B : A {
+            b: 8,
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Dynamic,
+                    fields: vec![Static(8), Dynamic, Static(8), Dynamic]
+                },
+                Annotations { size: Dynamic, payload_size: Static(0), fields: vec![Static(8)] },
+            ])
+        );
+
+        // Test parent with unknown size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        packet A {
+            _size_(_payload_) : 8,
+            a: 8[],
+            _payload_
+        }
+        packet B : A {
+            b: 8,
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Unknown,
+                    payload_size: Dynamic,
+                    fields: vec![Static(8), Unknown, Dynamic]
+                },
+                Annotations { size: Unknown, payload_size: Static(0), fields: vec![Static(8)] },
+            ])
         );
     }
 
