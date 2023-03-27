@@ -92,7 +92,7 @@ fn generate_packet_size_getter<'a>(
     let mut dynamic_widths = Vec::new();
 
     for field in fields {
-        if let Some(width) = scope.get_field_width(field, false) {
+        if let Some(width) = field.annot.static_() {
             constant_width += width;
             continue;
         }
@@ -125,10 +125,10 @@ fn generate_packet_size_getter<'a>(
                             self.#id.iter().map(|elem| elem.get_size()).sum::<usize>()
                         }
                     }
-                    Some(analyzer_ast::Decl { desc: ast::DeclDesc::Enum { .. }, .. }) => {
-                        let width = syn::Index::from(
-                            scope.get_decl_width(decl.unwrap(), false).unwrap() / 8,
-                        );
+                    Some(analyzer_ast::Decl {
+                        desc: ast::DeclDesc::Enum { width, .. }, ..
+                    }) => {
+                        let width = syn::Index::from(width / 8);
                         let mul_width = (width.index > 1).then(|| quote!(* #width));
                         quote! {
                             self.#id.len() #mul_width

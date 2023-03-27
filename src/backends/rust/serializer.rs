@@ -74,7 +74,7 @@ impl<'a> FieldSerializer<'a> {
     }
 
     fn add_bit_field(&mut self, field: &analyzer_ast::Field) {
-        let width = self.scope.get_field_width(field, false).unwrap();
+        let width = field.annot.size.static_().unwrap();
         let shift = self.shift;
 
         match &field.desc {

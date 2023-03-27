@@ -68,12 +68,6 @@ pub mod ast {
         pub payload_size: Size,
     }
 
-    impl FieldAnnotation {
-        pub fn new(size: Size) -> Self {
-            FieldAnnotation { size, padded_size: None }
-        }
-    }
-
     impl std::ops::Add for Size {
         type Output = Size;
         fn add(self, rhs: Size) -> Self::Output {
@@ -103,6 +97,36 @@ pub mod ast {
                 Size::Unknown => Size::Unknown,
                 Size::Dynamic => Size::Dynamic,
                 Size::Static(lhs) => Size::Static(lhs * rhs),
+            }
+        }
+    }
+
+    impl Size {
+        // Returns the width if the size is static.
+        pub fn static_(&self) -> Option<usize> {
+            match self {
+                Size::Static(size) => Some(*size),
+                Size::Dynamic | Size::Unknown => None,
+            }
+        }
+    }
+
+    impl DeclAnnotation {
+        pub fn total_size(&self) -> Size {
+            self.size + self.payload_size
+        }
+    }
+
+    impl FieldAnnotation {
+        pub fn new(size: Size) -> Self {
+            FieldAnnotation { size, padded_size: None }
+        }
+
+        // Returns the field width or padded width if static.
+        pub fn static_(&self) -> Option<usize> {
+            match self.padded_size {
+                Some(padding) => Some(8 * padding),
+                None => self.size.static_(),
             }
         }
     }
@@ -1282,8 +1306,19 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
         scope: &HashMap<String, ast::DeclAnnotation>,
     ) -> ast::Decl {
         // Annotate the declaration fields.
+        // Add the padding information to the fields in the same pass.
         let mut decl = decl.annotate(Default::default(), |fields| {
-            fields.iter().map(|field| annotate_field(decl, field, scope)).collect()
+            let mut fields: Vec<_> =
+                fields.iter().map(|field| annotate_field(decl, field, scope)).collect();
+            let mut padding = None;
+            for field in fields.iter_mut().rev() {
+                field.annot.padded_size = padding;
+                padding = match &field.desc {
+                    FieldDesc::Padding { size } => Some(*size),
+                    _ => None,
+                };
+            }
+            fields
         });
 
         // Compute the declaration annotation.
@@ -1302,7 +1337,13 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
                         FieldDesc::Payload { .. } | FieldDesc::Body { .. } => {
                             payload_size = field.annot.size
                         }
-                        _ => size = size + field.annot.size,
+                        _ => {
+                            size = size
+                                + match field.annot.padded_size {
+                                    Some(padding) => ast::Size::Static(8 * padding),
+                                    None => field.annot.size,
+                                }
+                        }
                     }
                 }
                 ast::DeclAnnotation { size, payload_size }
@@ -1409,28 +1450,6 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
     }
 }
 
-/// Inline padding fields.
-/// The padding information is added directly to the targeted fields.
-fn inline_paddings(file: &mut ast::File) {
-    for decl in file.declarations.iter_mut() {
-        match &mut decl.desc {
-            DeclDesc::Struct { fields, .. }
-            | DeclDesc::Packet { fields, .. }
-            | DeclDesc::Group { fields, .. } => {
-                let mut padding = None;
-                for field in fields.iter_mut().rev() {
-                    field.annot.padded_size = padding;
-                    padding = match &field.desc {
-                        FieldDesc::Padding { size } => Some(*size),
-                        _ => None,
-                    };
-                }
-            }
-            _ => (),
-        }
-    }
-}
-
 /// Inline group fields and remove group declarations.
 fn inline_groups(file: &mut ast::File) -> Result<(), Diagnostics> {
     fn inline_fields<'a>(
@@ -1511,7 +1530,6 @@ pub fn analyze(file: &parser_ast::File) -> Result<ast::File, Diagnostics> {
     check_padding_fields(file)?;
     check_checksum_fields(file, &scope)?;
     let mut file = compute_field_sizes(file);
-    inline_paddings(&mut file);
     inline_groups(&mut file)?;
     Ok(file)
 }
@@ -2863,6 +2881,35 @@ mod test {
                     fields: vec![Static(8), Dynamic]
                 },
                 Annotations { size: Unknown, payload_size: Static(0), fields: vec![Unknown] },
+            ])
+        );
+
+        // Array with padded size.
+        assert_that!(
+            annotations(
+                r#"
+        little_endian_packets
+        struct S {
+            _count_(a): 40,
+            a: 16[],
+        }
+        packet A {
+            a: S[],
+            _padding_ [128],
+        }
+        "#
+            ),
+            eq(vec![
+                Annotations {
+                    size: Dynamic,
+                    payload_size: Static(0),
+                    fields: vec![Static(40), Dynamic]
+                },
+                Annotations {
+                    size: Static(1024),
+                    payload_size: Static(0),
+                    fields: vec![Unknown, Static(0)]
+                },
             ])
         );
     }
