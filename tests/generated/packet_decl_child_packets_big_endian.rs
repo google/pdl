@@ -172,12 +172,12 @@ impl FooData {
         let payload = &bytes.get()[..payload_size];
         bytes.get_mut().advance(payload_size);
         let child = match (a, b) {
-            (100, _) => {
+            (100, _) if BarData::conforms(&payload) => {
                 let mut cell = Cell::new(payload);
                 let child_data = BarData::parse_inner(&mut cell)?;
                 FooDataChild::Bar(Arc::new(child_data))
             }
-            (_, Enum16::B) => {
+            (_, Enum16::B) if BazData::conforms(&payload) => {
                 let mut cell = Cell::new(payload);
                 let child_data = BazData::parse_inner(&mut cell)?;
                 FooDataChild::Baz(Arc::new(child_data))
