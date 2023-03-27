@@ -179,7 +179,7 @@ impl ParentData {
         let payload = &bytes.get()[..payload_size];
         bytes.get_mut().advance(payload_size);
         let child = match (foo) {
-            (Enum16::A) => {
+            (Enum16::A) if ChildData::conforms(&payload) => {
                 let mut cell = Cell::new(payload);
                 let child_data = ChildData::parse_inner(&mut cell, bar, baz)?;
                 ParentDataChild::Child(Arc::new(child_data))
@@ -360,7 +360,7 @@ impl ChildData {
         let payload = bytes.get();
         bytes.get_mut().advance(payload.len());
         let child = match (bar, quux) {
-            (Enum16::A, Enum16::A) => {
+            (Enum16::A, Enum16::A) if GrandChildData::conforms(&payload) => {
                 let mut cell = Cell::new(payload);
                 let child_data = GrandChildData::parse_inner(&mut cell, baz)?;
                 ChildDataChild::GrandChild(Arc::new(child_data))
@@ -547,7 +547,7 @@ impl GrandChildData {
         let payload = bytes.get();
         bytes.get_mut().advance(payload.len());
         let child = match (baz) {
-            (Enum16::A) => {
+            (Enum16::A) if GrandGrandChildData::conforms(&payload) => {
                 let mut cell = Cell::new(payload);
                 let child_data = GrandGrandChildData::parse_inner(&mut cell)?;
                 GrandChildDataChild::GrandGrandChild(Arc::new(child_data))

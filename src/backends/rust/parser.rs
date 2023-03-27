@@ -625,7 +625,7 @@ impl<'a> FieldParser<'a> {
         let packet_data_child = format_ident!("{}DataChild", self.packet_name);
         self.code.push(quote! {
             let child = match (#(#constrained_field_idents),*) {
-                #(#match_values => {
+                #(#match_values if #child_ids_data::conforms(&payload) => {
                     let mut cell = Cell::new(payload);
                     let child_data = #child_ids_data::parse_inner(&mut cell #child_parse_args)?;
                     // TODO(mgeisler): communicate back to user if !cell.get().is_empty()?
