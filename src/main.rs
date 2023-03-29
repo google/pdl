@@ -1,6 +1,5 @@
 //! PDL parser and analyzer.
 
-use clap::Parser;
 use codespan_reporting::term::{self, termcolor};
 
 mod analyzer;
@@ -34,29 +33,54 @@ impl std::str::FromStr for OutputFormat {
     }
 }
 
-#[derive(Parser, Debug)]
-#[clap(name = "pdl-parser", about = "Packet Description Language parser tool.")]
+#[derive(Debug)]
 struct Opt {
     /// Print tool version and exit.
-    #[clap(short, long = "version")]
     version: bool,
 
     /// Generate output in this format ("json", "rust", "rust_no_alloc", "rust_no_alloc_test"). The output
     /// will be printed on stdout in both cases.
-    #[clap(short, long = "output-format", name = "FORMAT", default_value = "JSON")]
     output_format: OutputFormat,
 
     /// Input file.
-    #[clap(name = "FILE")]
     input_file: String,
 }
 
-fn main() -> std::process::ExitCode {
+impl Opt {
+    fn parse() -> Opt {
+        let app = clap::App::new("Packet Description Language parser")
+            .version("1.0")
+            .arg(
+                clap::Arg::with_name("input-file")
+                    .value_name("FILE")
+                    .help("Input PDL file")
+                    .required(true),
+            )
+            .arg(
+                clap::Arg::with_name("output-format")
+                    .value_name("FORMAT")
+                    .long("output-format")
+                    .help("Output file format")
+                    .takes_value(true)
+                    .default_value("json")
+                    .possible_values(["json", "rust", "rust_no_alloc", "rust_no_alloc_test"]),
+            );
+        let matches = app.get_matches();
+
+        Opt {
+            version: matches.is_present("version"),
+            input_file: matches.value_of("input-file").unwrap().into(),
+            output_format: matches.value_of("output-format").unwrap().parse().unwrap(),
+        }
+    }
+}
+
+fn main() -> Result<(), String> {
     let opt = Opt::parse();
 
     if opt.version {
         println!("Packet Description Language parser version 1.0");
-        return std::process::ExitCode::SUCCESS;
+        return Ok(());
     }
 
     let mut sources = ast::SourceDatabase::new();
@@ -72,7 +96,7 @@ fn main() -> std::process::ExitCode {
                                 .lock(),
                         )
                         .expect("Could not print analyzer diagnostics");
-                    return std::process::ExitCode::FAILURE;
+                    return Err(String::from("Analysis failed"));
                 }
             };
 
@@ -94,25 +118,14 @@ fn main() -> std::process::ExitCode {
                     )
                 }
             }
-            std::process::ExitCode::SUCCESS
+            Ok(())
         }
 
         Err(err) => {
             let writer = termcolor::StandardStream::stderr(termcolor::ColorChoice::Always);
             let config = term::Config::default();
             term::emit(&mut writer.lock(), &config, &sources, &err).expect("Could not print error");
-            std::process::ExitCode::FAILURE
+            Err(String::from("Error while parsing input"))
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use clap::CommandFactory;
-
-    #[test]
-    fn verify_opt() {
-        Opt::command().debug_assert();
     }
 }

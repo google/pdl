@@ -1,9 +1,8 @@
 use crate::analyzer::ast as analyzer_ast;
 use crate::backends::rust::{
-    constraint_to_value, find_constrained_parent_fields, mask_bits, types,
+    constraint_to_value, find_constrained_parent_fields, mask_bits, types, ToUpperCamelCase,
 };
 use crate::{ast, lint};
-use heck::ToUpperCamelCase;
 use quote::{format_ident, quote};
 use std::collections::{BTreeSet, HashMap};
 
@@ -319,15 +318,16 @@ impl<'a> FieldParser<'a> {
                     }
                 });
             }
-            (ElementWidth::Unknown, ArrayShape::Static(_)) => {
+            (ElementWidth::Unknown, ArrayShape::Static(count)) => {
                 // The element width is not known, but the array
                 // element count is known statically. Parse elements
                 // item by item as an array.
+                let count = syn::Index::from(*count);
                 self.code.push(quote! {
                     // TODO(mgeisler): use
                     // https://doc.rust-lang.org/std/array/fn.try_from_fn.html
                     // when stabilized.
-                    let #id = std::array::from_fn(|_| #parse_element.unwrap());
+                    let #id = [0; #count].map(|_| #parse_element.unwrap());
                 });
             }
             (ElementWidth::Unknown, ArrayShape::CountField(count_field)) => {
@@ -366,7 +366,7 @@ impl<'a> FieldParser<'a> {
                     // TODO(mgeisler): use
                     // https://doc.rust-lang.org/std/array/fn.try_from_fn.html
                     // when stabilized.
-                    let #id = std::array::from_fn(|_| #parse_element.unwrap());
+                    let #id = [0; #count].map(|_| #parse_element.unwrap());
                 });
             }
             (ElementWidth::Static(_), ArrayShape::CountField(count_field)) => {

@@ -71,7 +71,7 @@ impl FooData {
                 got: bytes.get().remaining(),
             });
         }
-        let x = std::array::from_fn(|_| Ok::<_, Error>(bytes.get_mut().get_u8()).unwrap());
+        let x = [0; 3].map(|_| Ok::<_, Error>(bytes.get_mut().get_u8()).unwrap());
         Ok(Self { x })
     }
     fn write_to(&self, buffer: &mut BytesMut) {

@@ -115,7 +115,7 @@ impl BarData {
                 got: bytes.get().remaining(),
             });
         }
-        let x = std::array::from_fn(|_| {
+        let x = [0; 7].map(|_| {
             Foo::from_u64(bytes.get_mut().get_u64())
                 .ok_or_else(|| Error::InvalidEnumValueError {
                     obj: "Bar".to_string(),

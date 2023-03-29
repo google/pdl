@@ -1,7 +1,6 @@
 //! Rust compiler backend.
 
 use crate::{ast, lint};
-use heck::ToUpperCamelCase;
 use quote::{format_ident, quote};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -15,6 +14,29 @@ mod types;
 
 use parser::FieldParser;
 use serializer::FieldSerializer;
+
+#[cfg(not(tm_mainline_prod))]
+pub use heck::ToUpperCamelCase;
+
+#[cfg(tm_mainline_prod)]
+pub trait ToUpperCamelCase {
+    fn to_upper_camel_case(&self) -> String;
+}
+
+#[cfg(tm_mainline_prod)]
+impl ToUpperCamelCase for str {
+    fn to_upper_camel_case(&self) -> String {
+        use heck::CamelCase;
+        let camel_case = self.to_camel_case();
+        if camel_case.is_empty() {
+            camel_case
+        } else {
+            // PDL identifiers are a-zA-z0-9, so we're dealing with
+            // simple ASCII text.
+            format!("{}{}", &camel_case[..1].to_ascii_uppercase(), &camel_case[1..])
+        }
+    }
+}
 
 /// Generate a block of code.
 ///
@@ -404,7 +426,7 @@ fn generate_packet_decl(
         let named_fields = {
             let mut names =
                 parent_packet_scope.iter_fields().filter_map(ast::Field::id).collect::<Vec<_>>();
-            names.sort();
+            names.sort_unstable();
             names
         };
 
