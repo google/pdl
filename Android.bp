@@ -41,6 +41,8 @@ rust_binary_host {
 filegroup {
     name: "pdl_generated_files",
     srcs: [
+        "tests/generated/enum_declaration_big_endian.rs",
+        "tests/generated/enum_declaration_little_endian.rs",
         "tests/generated/packet_decl_8bit_enum_array_big_endian.rs",
         "tests/generated/packet_decl_8bit_enum_array_little_endian.rs",
         "tests/generated/packet_decl_8bit_enum_big_endian.rs",
