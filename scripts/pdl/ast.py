@@ -240,6 +240,10 @@ class File:
     def byteorder(self) -> str:
         return 'little' if self.endianness.value == 'little_endian' else 'big'
 
+    @property
+    def byteorder_short(self, short: bool = False) -> str:
+        return 'le' if self.endianness.value == 'little_endian' else 'be'
+
 
 def convert_(obj: object) -> object:
     if obj is None:
