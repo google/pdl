@@ -33,8 +33,8 @@ rust_binary_host {
     defaults: ["pdl_defaults"],
     srcs: ["src/main.rs"],
     visibility: [
-        "//packages/modules/Bluetooth:__subpackages__",
         "//external/uwb/src",
+        "//packages/modules/Bluetooth:__subpackages__",
     ],
 }
 
@@ -155,8 +155,8 @@ genrule_defaults {
         ":rustfmt",
     ],
     defaults_visibility: [
-        "//packages/modules/Bluetooth:__subpackages__",
         "//external/uwb/src",
+        "//packages/modules/Bluetooth:__subpackages__",
     ],
 }
 
