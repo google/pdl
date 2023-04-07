@@ -395,20 +395,6 @@ python_test_host {
     },
 }
 
-// Test the python parser against the rust parser
-// on selected PDL source files.
-python_test_host {
-    name: "pdl_python_parser_test",
-    main: "tests/python_parser_test.py",
-    srcs: ["tests/python_parser_test.py"],
-    data: [
-        ":BluetoothHciPackets",
-        ":RootCanalLinkLayerPackets",
-        ":pdl",
-        ":pypdl",
-    ],
-}
-
 // Defaults for the rust_noalloc backend
 genrule_defaults {
     name: "pdl_rust_noalloc_generator_defaults",

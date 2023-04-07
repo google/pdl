@@ -7,12 +7,6 @@ package {
     default_applicable_licenses: ["system_bt_license"],
 }
 
-python_binary_host {
-    name: "pypdl",
-    main: "pdl/parser.py",
-    srcs: ["pdl/parser.py"],
-}
-
 // Python generator.
 python_binary_host {
     name: "pdl_python_generator",
