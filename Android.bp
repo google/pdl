@@ -431,6 +431,7 @@ rust_test_host {
     name: "pdl_rust_noalloc_le_test",
     srcs: [
         ":pdl_rust_noalloc_le_test_gen_harness",
+
         ":pdl_rust_noalloc_le_test_backend_srcs",
     ],
     test_suites: ["general-tests"],
