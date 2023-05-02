@@ -147,7 +147,7 @@ impl<'a> FieldParser<'a> {
                     let enum_id = format_ident!("{enum_id}");
                     let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
                     quote! {
-                        if #v != #enum_id::#tag_id.into()  {
+                        if #v != #value_type::from(#enum_id::#tag_id)  {
                             return Err(Error::InvalidFixedValue {
                                 expected: #value_type::from(#enum_id::#tag_id) as u64,
                                 actual: #v as u64,

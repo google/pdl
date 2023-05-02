@@ -150,7 +150,7 @@ impl FooData {
             });
         }
         let chunk = bytes.get_mut().get_u64();
-        if (chunk & 0x7f) as u8 != Enum7::A.into() {
+        if (chunk & 0x7f) as u8 != u8::from(Enum7::A) {
             return Err(Error::InvalidFixedValue {
                 expected: u8::from(Enum7::A) as u64,
                 actual: (chunk & 0x7f) as u8 as u64,
