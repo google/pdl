@@ -770,6 +770,7 @@ fn generate_enum_decl(
     // Generate the variant cases for the enum declaration.
     // Tags declared in ranges are flattened in the same declaration.
     let use_variant_values = is_primitive && (is_complete || !open);
+    let repr_u64 = use_variant_values.then(|| quote! { #[repr(u64)] });
     let mut variants = vec![];
     for tag in tags.iter() {
         match tag {
@@ -857,6 +858,7 @@ fn generate_enum_decl(
     let derived_into_types = derived_signed_into_types.chain(derived_unsigned_into_types);
 
     quote! {
+        #repr_u64
         #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         #[cfg_attr(feature = "serde", serde(try_from = #backing_type_str, into = #backing_type_str))]
