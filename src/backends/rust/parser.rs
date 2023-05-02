@@ -167,12 +167,19 @@ impl<'a> FieldParser<'a> {
                     }
                 }
                 ast::FieldDesc::Typedef { id, type_id } => {
-                    // TODO(mgeisler): Remove the `unwrap` from the
-                    // generated code and return the error to the
-                    // caller.
+                    let field_name = id;
+                    let type_name = type_id;
+                    let packet_name = &self.packet_name;
                     let id = format_ident!("{id}");
                     let type_id = format_ident!("{type_id}");
-                    quote! { let #id = #type_id::try_from(#v).unwrap(); }
+                    quote! {
+                        let #id = #type_id::try_from(#v).map_err(|_| Error::InvalidEnumValueError {
+                            obj: #packet_name.to_string(),
+                            field: #field_name.to_string(),
+                            value: #v as u64,
+                            type_: #type_name.to_string(),
+                        })?;
+                    }
                 }
                 ast::FieldDesc::Reserved { .. } => {
                     if single_value {

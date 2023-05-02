@@ -163,7 +163,14 @@ impl ParentData {
                 got: bytes.get().remaining(),
             });
         }
-        let foo = Enum16::try_from(bytes.get_mut().get_u16_le()).unwrap();
+        let foo = Enum16::try_from(bytes.get_mut().get_u16_le()).map_err(|_| {
+            Error::InvalidEnumValueError {
+                obj: "Parent".to_string(),
+                field: "foo".to_string(),
+                value: bytes.get_mut().get_u16_le() as u64,
+                type_: "Enum16".to_string(),
+            }
+        })?;
         if bytes.get().remaining() < 2 {
             return Err(Error::InvalidLengthError {
                 obj: "Parent".to_string(),
@@ -171,7 +178,14 @@ impl ParentData {
                 got: bytes.get().remaining(),
             });
         }
-        let bar = Enum16::try_from(bytes.get_mut().get_u16_le()).unwrap();
+        let bar = Enum16::try_from(bytes.get_mut().get_u16_le()).map_err(|_| {
+            Error::InvalidEnumValueError {
+                obj: "Parent".to_string(),
+                field: "bar".to_string(),
+                value: bytes.get_mut().get_u16_le() as u64,
+                type_: "Enum16".to_string(),
+            }
+        })?;
         if bytes.get().remaining() < 2 {
             return Err(Error::InvalidLengthError {
                 obj: "Parent".to_string(),
@@ -179,7 +193,14 @@ impl ParentData {
                 got: bytes.get().remaining(),
             });
         }
-        let baz = Enum16::try_from(bytes.get_mut().get_u16_le()).unwrap();
+        let baz = Enum16::try_from(bytes.get_mut().get_u16_le()).map_err(|_| {
+            Error::InvalidEnumValueError {
+                obj: "Parent".to_string(),
+                field: "baz".to_string(),
+                value: bytes.get_mut().get_u16_le() as u64,
+                type_: "Enum16".to_string(),
+            }
+        })?;
         if bytes.get().remaining() < 1 {
             return Err(Error::InvalidLengthError {
                 obj: "Parent".to_string(),
@@ -375,7 +396,14 @@ impl ChildData {
                 got: bytes.get().remaining(),
             });
         }
-        let quux = Enum16::try_from(bytes.get_mut().get_u16_le()).unwrap();
+        let quux = Enum16::try_from(bytes.get_mut().get_u16_le()).map_err(|_| {
+            Error::InvalidEnumValueError {
+                obj: "Child".to_string(),
+                field: "quux".to_string(),
+                value: bytes.get_mut().get_u16_le() as u64,
+                type_: "Enum16".to_string(),
+            }
+        })?;
         let payload = bytes.get();
         bytes.get_mut().advance(payload.len());
         let child = match (bar, quux) {

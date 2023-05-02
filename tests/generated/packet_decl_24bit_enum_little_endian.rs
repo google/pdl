@@ -129,7 +129,14 @@ impl BarData {
                 got: bytes.get().remaining(),
             });
         }
-        let x = Foo::try_from(bytes.get_mut().get_uint_le(3) as u32).unwrap();
+        let x = Foo::try_from(bytes.get_mut().get_uint_le(3) as u32).map_err(|_| {
+            Error::InvalidEnumValueError {
+                obj: "Bar".to_string(),
+                field: "x".to_string(),
+                value: bytes.get_mut().get_uint_le(3) as u32 as u64,
+                type_: "Foo".to_string(),
+            }
+        })?;
         Ok(Self { x })
     }
     fn write_to(&self, buffer: &mut BytesMut) {

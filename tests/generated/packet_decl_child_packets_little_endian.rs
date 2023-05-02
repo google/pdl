@@ -172,7 +172,14 @@ impl FooData {
                 got: bytes.get().remaining(),
             });
         }
-        let b = Enum16::try_from(bytes.get_mut().get_u16_le()).unwrap();
+        let b = Enum16::try_from(bytes.get_mut().get_u16_le()).map_err(|_| {
+            Error::InvalidEnumValueError {
+                obj: "Foo".to_string(),
+                field: "b".to_string(),
+                value: bytes.get_mut().get_u16_le() as u64,
+                type_: "Enum16".to_string(),
+            }
+        })?;
         if bytes.get().remaining() < 1 {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),

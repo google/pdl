@@ -114,7 +114,13 @@ impl BarData {
                 got: bytes.get().remaining(),
             });
         }
-        let x = Foo::try_from(bytes.get_mut().get_u64()).unwrap();
+        let x =
+            Foo::try_from(bytes.get_mut().get_u64()).map_err(|_| Error::InvalidEnumValueError {
+                obj: "Bar".to_string(),
+                field: "x".to_string(),
+                value: bytes.get_mut().get_u64() as u64,
+                type_: "Foo".to_string(),
+            })?;
         Ok(Self { x })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
