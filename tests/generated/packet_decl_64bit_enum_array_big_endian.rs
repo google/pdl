@@ -112,16 +112,18 @@ impl BarData {
                 got: bytes.get().remaining(),
             });
         }
-        let x = [0; 7].map(|_| {
-            Foo::try_from(bytes.get_mut().get_u64())
-                .map_err(|_| Error::InvalidEnumValueError {
+        let x = (0..7)
+            .map(|_| {
+                Foo::try_from(bytes.get_mut().get_u64()).map_err(|_| Error::InvalidEnumValueError {
                     obj: "Bar".to_string(),
                     field: String::new(),
                     value: 0,
                     type_: "Foo".to_string(),
                 })
-                .unwrap()
-        });
+            })
+            .collect::<Result<Vec<_>>>()?
+            .try_into()
+            .map_err(|_| Error::InvalidPacketError)?;
         Ok(Self { x })
     }
     fn write_to(&self, buffer: &mut BytesMut) {

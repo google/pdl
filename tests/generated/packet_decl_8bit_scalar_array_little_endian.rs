@@ -80,7 +80,11 @@ impl FooData {
                 got: bytes.get().remaining(),
             });
         }
-        let x = [0; 3].map(|_| Ok::<_, Error>(bytes.get_mut().get_u8()).unwrap());
+        let x = (0..3)
+            .map(|_| Ok::<_, Error>(bytes.get_mut().get_u8()))
+            .collect::<Result<Vec<_>>>()?
+            .try_into()
+            .map_err(|_| Error::InvalidPacketError)?;
         Ok(Self { x })
     }
     fn write_to(&self, buffer: &mut BytesMut) {

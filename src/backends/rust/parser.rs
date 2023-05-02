@@ -345,7 +345,11 @@ impl<'a> FieldParser<'a> {
                     // TODO(mgeisler): use
                     // https://doc.rust-lang.org/std/array/fn.try_from_fn.html
                     // when stabilized.
-                    let #id = [0; #count].map(|_| #parse_element.unwrap());
+                    let #id = (0..#count)
+                        .map(|_| #parse_element)
+                        .collect::<Result<Vec<_>>>()?
+                        .try_into()
+                        .map_err(|_| Error::InvalidPacketError)?;
                 });
             }
             (ElementWidth::Unknown, ArrayShape::CountField(count_field)) => {
@@ -384,7 +388,11 @@ impl<'a> FieldParser<'a> {
                     // TODO(mgeisler): use
                     // https://doc.rust-lang.org/std/array/fn.try_from_fn.html
                     // when stabilized.
-                    let #id = [0; #count].map(|_| #parse_element.unwrap());
+                    let #id = (0..#count)
+                        .map(|_| #parse_element)
+                        .collect::<Result<Vec<_>>>()?
+                        .try_into()
+                        .map_err(|_| Error::InvalidPacketError)?;
                 });
             }
             (ElementWidth::Static(_), ArrayShape::CountField(count_field)) => {
