@@ -38,11 +38,9 @@ pub enum Error {
     ImpossibleStructError,
     #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
     InvalidEnumValueError { obj: String, field: String, value: u64, type_: String },
+    #[error("expected child {expected}, got {actual}")]
+    InvalidChildError { expected: &'static str, actual: String },
 }
-
-#[derive(Debug, Error)]
-#[error("{0}")]
-pub struct TryFromError(&'static str);
 
 pub trait Packet {
     fn to_bytes(self) -> Bytes;
@@ -284,7 +282,7 @@ impl Parent {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse_inner(&mut bytes)?;
-        Ok(Self::new(Arc::new(data)).unwrap())
+        Self::new(Arc::new(data))
     }
     pub fn specialize(&self) -> ParentChild {
         match &self.parent.child {
@@ -295,7 +293,7 @@ impl Parent {
             ParentDataChild::None => ParentChild::None,
         }
     }
-    fn new(parent: Arc<ParentData>) -> std::result::Result<Self, &'static str> {
+    fn new(parent: Arc<ParentData>) -> Result<Self> {
         Ok(Self { parent })
     }
     pub fn get_bar(&self) -> Enum16 {
@@ -458,9 +456,9 @@ impl From<Child> for Parent {
     }
 }
 impl TryFrom<Parent> for Child {
-    type Error = TryFromError;
-    fn try_from(packet: Parent) -> std::result::Result<Child, TryFromError> {
-        Child::new(packet.parent).map_err(TryFromError)
+    type Error = Error;
+    fn try_from(packet: Parent) -> Result<Child> {
+        Child::new(packet.parent)
     }
 }
 impl Child {
@@ -471,7 +469,7 @@ impl Child {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse_inner(&mut bytes)?;
-        Ok(Self::new(Arc::new(data)).unwrap())
+        Self::new(Arc::new(data))
     }
     pub fn specialize(&self) -> ChildChild {
         match &self.child.child {
@@ -482,10 +480,15 @@ impl Child {
             ChildDataChild::None => ChildChild::None,
         }
     }
-    fn new(parent: Arc<ParentData>) -> std::result::Result<Self, &'static str> {
+    fn new(parent: Arc<ParentData>) -> Result<Self> {
         let child = match &parent.child {
             ParentDataChild::Child(value) => value.clone(),
-            _ => return Err("Could not parse data, wrong child type"),
+            _ => {
+                return Err(Error::InvalidChildError {
+                    expected: stringify!(ParentDataChild::Child),
+                    actual: format!("{:?}", &parent.child),
+                })
+            }
         };
         Ok(Self { parent, child })
     }
@@ -651,9 +654,9 @@ impl From<GrandChild> for Child {
     }
 }
 impl TryFrom<Parent> for GrandChild {
-    type Error = TryFromError;
-    fn try_from(packet: Parent) -> std::result::Result<GrandChild, TryFromError> {
-        GrandChild::new(packet.parent).map_err(TryFromError)
+    type Error = Error;
+    fn try_from(packet: Parent) -> Result<GrandChild> {
+        GrandChild::new(packet.parent)
     }
 }
 impl GrandChild {
@@ -664,7 +667,7 @@ impl GrandChild {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse_inner(&mut bytes)?;
-        Ok(Self::new(Arc::new(data)).unwrap())
+        Self::new(Arc::new(data))
     }
     pub fn specialize(&self) -> GrandChildChild {
         match &self.grandchild.child {
@@ -675,14 +678,24 @@ impl GrandChild {
             GrandChildDataChild::None => GrandChildChild::None,
         }
     }
-    fn new(parent: Arc<ParentData>) -> std::result::Result<Self, &'static str> {
+    fn new(parent: Arc<ParentData>) -> Result<Self> {
         let child = match &parent.child {
             ParentDataChild::Child(value) => value.clone(),
-            _ => return Err("Could not parse data, wrong child type"),
+            _ => {
+                return Err(Error::InvalidChildError {
+                    expected: stringify!(ParentDataChild::Child),
+                    actual: format!("{:?}", &parent.child),
+                })
+            }
         };
         let grandchild = match &child.child {
             ChildDataChild::GrandChild(value) => value.clone(),
-            _ => return Err("Could not parse data, wrong child type"),
+            _ => {
+                return Err(Error::InvalidChildError {
+                    expected: stringify!(ChildDataChild::GrandChild),
+                    actual: format!("{:?}", &child.child),
+                })
+            }
         };
         Ok(Self { parent, child, grandchild })
     }
@@ -851,9 +864,9 @@ impl From<GrandGrandChild> for GrandChild {
     }
 }
 impl TryFrom<Parent> for GrandGrandChild {
-    type Error = TryFromError;
-    fn try_from(packet: Parent) -> std::result::Result<GrandGrandChild, TryFromError> {
-        GrandGrandChild::new(packet.parent).map_err(TryFromError)
+    type Error = Error;
+    fn try_from(packet: Parent) -> Result<GrandGrandChild> {
+        GrandGrandChild::new(packet.parent)
     }
 }
 impl GrandGrandChild {
@@ -864,7 +877,7 @@ impl GrandGrandChild {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse_inner(&mut bytes)?;
-        Ok(Self::new(Arc::new(data)).unwrap())
+        Self::new(Arc::new(data))
     }
     pub fn specialize(&self) -> GrandGrandChildChild {
         match &self.grandgrandchild.child {
@@ -874,18 +887,33 @@ impl GrandGrandChild {
             GrandGrandChildDataChild::None => GrandGrandChildChild::None,
         }
     }
-    fn new(parent: Arc<ParentData>) -> std::result::Result<Self, &'static str> {
+    fn new(parent: Arc<ParentData>) -> Result<Self> {
         let child = match &parent.child {
             ParentDataChild::Child(value) => value.clone(),
-            _ => return Err("Could not parse data, wrong child type"),
+            _ => {
+                return Err(Error::InvalidChildError {
+                    expected: stringify!(ParentDataChild::Child),
+                    actual: format!("{:?}", &parent.child),
+                })
+            }
         };
         let grandchild = match &child.child {
             ChildDataChild::GrandChild(value) => value.clone(),
-            _ => return Err("Could not parse data, wrong child type"),
+            _ => {
+                return Err(Error::InvalidChildError {
+                    expected: stringify!(ChildDataChild::GrandChild),
+                    actual: format!("{:?}", &child.child),
+                })
+            }
         };
         let grandgrandchild = match &grandchild.child {
             GrandChildDataChild::GrandGrandChild(value) => value.clone(),
-            _ => return Err("Could not parse data, wrong child type"),
+            _ => {
+                return Err(Error::InvalidChildError {
+                    expected: stringify!(GrandChildDataChild::GrandGrandChild),
+                    actual: format!("{:?}", &grandchild.child),
+                })
+            }
         };
         Ok(Self { parent, child, grandchild, grandgrandchild })
     }

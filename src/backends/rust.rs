@@ -565,9 +565,9 @@ fn generate_packet_decl(
             )*
 
             impl TryFrom<#top_level_packet> for #id_packet {
-                type Error = TryFromError;
-                fn try_from(packet: #top_level_packet) -> std::result::Result<#id_packet, TryFromError> {
-                    #id_packet::new(packet.#top_level_id_lower).map_err(TryFromError)
+                type Error = Error;
+                fn try_from(packet: #top_level_packet) -> Result<#id_packet> {
+                    #id_packet::new(packet.#top_level_id_lower)
                 }
             }
         }
@@ -634,17 +634,19 @@ fn generate_packet_decl(
 
             fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
                 let data = #top_level_data::parse_inner(&mut bytes)?;
-                Ok(Self::new(Arc::new(data)).unwrap())
+                Self::new(Arc::new(data))
             }
 
             #specialize
 
-            fn new(#top_level_id_lower: Arc<#top_level_data>)
-                   -> std::result::Result<Self, &'static str> {
+            fn new(#top_level_id_lower: Arc<#top_level_data>) -> Result<Self> {
                 #(
                     let #parent_shifted_lower_ids = match &#parent_lower_ids.child {
                         #parent_data_child::#parent_shifted_ids(value) => value.clone(),
-                        _ => return Err("Could not parse data, wrong child type"),
+                        _ => return Err(Error::InvalidChildError {
+                            expected: stringify!(#parent_data_child::#parent_shifted_ids),
+                            actual: format!("{:?}", &#parent_lower_ids.child),
+                        }),
                     };
                 )*
                 Ok(Self { #(#parent_lower_ids),* })

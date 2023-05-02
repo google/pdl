@@ -82,13 +82,9 @@ pub fn generate(path: &Path) -> String {
             ImpossibleStructError,
             #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
             InvalidEnumValueError { obj: String, field: String, value: u64, type_: String },
+            #[error("expected child {expected}, got {actual}")]
+            InvalidChildError { expected: &'static str, actual: String },
         }
-    });
-
-    code.push_str(&quote_block! {
-        #[derive(Debug, Error)]
-        #[error("{0}")]
-        pub struct TryFromError(&'static str);
     });
 
     code.push_str(&quote_block! {
