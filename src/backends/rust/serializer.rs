@@ -302,8 +302,25 @@ impl<'a> FieldSerializer<'a> {
 
         let id = format_ident!("{id}");
         let span = format_ident!("{}", self.span);
-        self.code.push(quote! {
-            self.#id.write_to(#span);
+
+        self.code.push(match &decl.desc {
+            ast::DeclDesc::Checksum { .. } => todo!(),
+            ast::DeclDesc::CustomField { width: Some(width), .. } => {
+                let backing_type = types::Integer::new(*width);
+                let put_uint = types::put_uint(
+                    self.endianness,
+                    &quote! { #backing_type::from(self.#id) },
+                    *width,
+                    self.span,
+                );
+                quote! {
+                    #put_uint;
+                }
+            }
+            ast::DeclDesc::Struct { .. } => quote! {
+                self.#id.write_to(#span);
+            },
+            _ => unreachable!(),
         });
     }
 

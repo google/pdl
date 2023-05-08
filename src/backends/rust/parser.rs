@@ -459,27 +459,40 @@ impl<'a> FieldParser<'a> {
         let id = format_ident!("{id}");
         let type_id = format_ident!("{type_id}");
 
-        match self.scope.get_decl_width(decl, true) {
-            None => self.code.push(quote! {
+        self.code.push(match self.scope.get_decl_width(decl, true) {
+            None => quote! {
                 let #id = #type_id::parse_inner(&mut #span)?;
-            }),
+            },
             Some(width) => {
                 assert_eq!(width % 8, 0, "Typedef field type size is not a multiple of 8");
-                let width = syn::Index::from(width / 8);
-                self.code.push(if let ast::DeclDesc::Checksum { .. } = &decl.desc {
-                    // TODO: handle checksum fields.
-                    quote! {
-                        #span.get_mut().advance(#width);
+                match &decl.desc {
+                    ast::DeclDesc::Checksum { .. } => todo!(),
+                    ast::DeclDesc::CustomField { .. } if [8, 16, 32, 64].contains(&width) => {
+                        let get_uint = types::get_uint(self.endianness, width, span);
+                        quote! {
+                            let #id = #get_uint.into();
+                        }
                     }
-                } else {
-                    quote! {
-                        let (head, tail) = #span.get().split_at(#width);
-                        #span.replace(tail);
-                        let #id = #type_id::parse(head)?;
+                    ast::DeclDesc::CustomField { .. } => {
+                        let get_uint = types::get_uint(self.endianness, width, span);
+                        quote! {
+                            let #id = (#get_uint)
+                                .try_into()
+                                .unwrap(); // Value is masked and conversion must succeed.
+                        }
                     }
-                });
+                    ast::DeclDesc::Struct { .. } => {
+                        let width = syn::Index::from(width / 8);
+                        quote! {
+                            let (head, tail) = #span.get().split_at(#width);
+                            #span.replace(tail);
+                            let #id = #type_id::parse(head)?;
+                        }
+                    }
+                    _ => unreachable!(),
+                }
             }
-        }
+        });
     }
 
     /// Parse body and payload fields.

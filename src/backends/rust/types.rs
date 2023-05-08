@@ -90,6 +90,7 @@ pub fn rust_borrow(
         ast::FieldDesc::Typedef { type_id, .. } => match &scope.typedef[type_id].desc {
             ast::DeclDesc::Enum { .. } => quote!(),
             ast::DeclDesc::Struct { .. } => quote!(&),
+            ast::DeclDesc::CustomField { .. } => quote!(&),
             desc => unreachable!("unexpected declaration: {desc:?}"),
         },
         ast::FieldDesc::Array { .. } => quote!(&),
