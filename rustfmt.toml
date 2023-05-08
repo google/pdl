@@ -1,0 +1,9 @@
+# Android Format Style
+#
+# Note that this is not a symlink back to soong/scripts/rustfmt.toml
+# since the ChromeOS team imports this repository. See
+# https://r.android.com/1998210 for details.
+
+edition = "2021"
+use_small_heuristics = "Max"
+newline_style = "Unix"
