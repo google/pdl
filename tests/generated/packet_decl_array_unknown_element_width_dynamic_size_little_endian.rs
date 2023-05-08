@@ -70,10 +70,10 @@ impl Foo {
             });
         }
         let a_count = bytes.get_mut().get_uint_le(5) as usize;
-        if bytes.get().remaining() < a_count {
+        if bytes.get().remaining() < a_count * 2usize {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
-                wanted: a_count,
+                wanted: a_count * 2usize,
                 got: bytes.get().remaining(),
             });
         }

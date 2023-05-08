@@ -54,6 +54,9 @@ pub mod ast {
     pub struct FieldAnnotation {
         // Size of field.
         pub size: Size,
+        // Size of field with padding bytes.
+        // This information exists only for array fields.
+        pub padded_size: Option<usize>,
     }
 
     #[derive(Default, Debug, Clone)]
@@ -63,6 +66,12 @@ pub mod ast {
         // Payload size, or Static(0) if the declaration does not
         // have a payload.
         pub payload_size: Size,
+    }
+
+    impl FieldAnnotation {
+        pub fn new(size: Size) -> Self {
+            FieldAnnotation { size, padded_size: None }
+        }
     }
 
     impl std::ops::Add for Size {
@@ -1320,7 +1329,7 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
     ) -> ast::Field {
         field.annotate(match &field.desc {
             FieldDesc::Checksum { .. } | FieldDesc::Padding { .. } => {
-                ast::FieldAnnotation { size: ast::Size::Static(0) }
+                ast::FieldAnnotation::new(ast::Size::Static(0))
             }
             FieldDesc::Size { width, .. }
             | FieldDesc::Count { width, .. }
@@ -1328,7 +1337,7 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
             | FieldDesc::FixedScalar { width, .. }
             | FieldDesc::Reserved { width }
             | FieldDesc::Scalar { width, .. } => {
-                ast::FieldAnnotation { size: ast::Size::Static(*width) }
+                ast::FieldAnnotation::new(ast::Size::Static(*width))
             }
             FieldDesc::Body | FieldDesc::Payload { .. } => {
                 let has_payload_size = decl.fields().any(|field| match &field.desc {
@@ -1337,22 +1346,24 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
                     }
                     _ => false,
                 });
-                ast::FieldAnnotation {
-                    size: if has_payload_size { ast::Size::Dynamic } else { ast::Size::Unknown },
-                }
+                ast::FieldAnnotation::new(if has_payload_size {
+                    ast::Size::Dynamic
+                } else {
+                    ast::Size::Unknown
+                })
             }
             FieldDesc::Typedef { type_id, .. }
             | FieldDesc::FixedEnum { enum_id: type_id, .. }
             | FieldDesc::Group { group_id: type_id, .. } => {
                 let type_annot = scope.get(type_id).unwrap();
-                ast::FieldAnnotation { size: type_annot.size + type_annot.payload_size }
+                ast::FieldAnnotation::new(type_annot.size + type_annot.payload_size)
             }
             FieldDesc::Array { width: Some(width), size: Some(size), .. } => {
-                ast::FieldAnnotation { size: ast::Size::Static(*size * *width) }
+                ast::FieldAnnotation::new(ast::Size::Static(*size * *width))
             }
             FieldDesc::Array { width: None, size: Some(size), type_id: Some(type_id), .. } => {
                 let type_annot = scope.get(type_id).unwrap();
-                ast::FieldAnnotation { size: (type_annot.size + type_annot.payload_size) * *size }
+                ast::FieldAnnotation::new((type_annot.size + type_annot.payload_size) * *size)
             }
             FieldDesc::Array { id, size: None, .. } => {
                 // The element does not matter when the size of the array is
@@ -1364,9 +1375,11 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
                     }
                     _ => false,
                 });
-                ast::FieldAnnotation {
-                    size: if has_array_size { ast::Size::Dynamic } else { ast::Size::Unknown },
-                }
+                ast::FieldAnnotation::new(if has_array_size {
+                    ast::Size::Dynamic
+                } else {
+                    ast::Size::Unknown
+                })
             }
             FieldDesc::Array { .. } => unreachable!(),
         })
@@ -1391,6 +1404,28 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
         comments: file.comments.clone(),
         endianness: file.endianness,
         declarations,
+    }
+}
+
+/// Inline padding fields.
+/// The padding information is added directly to the targeted fields.
+fn inline_paddings(file: &mut ast::File) {
+    for decl in file.declarations.iter_mut() {
+        match &mut decl.desc {
+            DeclDesc::Struct { fields, .. }
+            | DeclDesc::Packet { fields, .. }
+            | DeclDesc::Group { fields, .. } => {
+                let mut padding = None;
+                for field in fields.iter_mut().rev() {
+                    field.annot.padded_size = padding;
+                    padding = match &field.desc {
+                        FieldDesc::Padding { size } => Some(*size),
+                        _ => None,
+                    };
+                }
+            }
+            _ => (),
+        }
     }
 }
 
@@ -1474,6 +1509,7 @@ pub fn analyze(file: &parser_ast::File) -> Result<ast::File, Diagnostics> {
     check_padding_fields(file)?;
     check_checksum_fields(file, &scope)?;
     let mut file = compute_field_sizes(file);
+    inline_paddings(&mut file);
     inline_groups(&mut file)?;
     Ok(file)
 }

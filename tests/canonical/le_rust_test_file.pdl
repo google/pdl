@@ -260,6 +260,21 @@ packet Packet_Array_Field_UnsizedElement_UnknownSize {
     array: UnsizedStruct[],
 }
 
+// The parser must be able to handle arrays with padded size.
+packet Packet_Array_Field_SizedElement_VariableSize_Padded {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: 16[],
+    _padding_ [16],
+}
+
+// The parser must be able to handle arrays with padded size.
+packet Packet_Array_Field_UnsizedElement_VariableCount_Padded {
+    _count_(array) : 8,
+    array: UnsizedStruct[],
+    _padding_ [16],
+}
+
 // Packet inheritance
 
 // The parser must handle specialization into
@@ -536,3 +551,23 @@ packet Struct_Array_Field_UnsizedElement_UnknownSize {
     s: Struct_Array_Field_UnsizedElement_UnknownSize_,
 }
 
+// The parser must be able to handle arrays with padded size.
+struct Struct_Array_Field_SizedElement_VariableSize_Padded_ {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: 16[],
+    _padding_ [16],
+}
+packet Struct_Array_Field_SizedElement_VariableSize_Padded {
+    s: Struct_Array_Field_SizedElement_VariableSize_Padded_,
+}
+
+// The parser must be able to handle arrays with padded size.
+struct Struct_Array_Field_UnsizedElement_VariableCount_Padded_ {
+    _count_(array) : 8,
+    array: UnsizedStruct[],
+    _padding_ [16],
+}
+packet Struct_Array_Field_UnsizedElement_VariableCount_Padded {
+    s: Struct_Array_Field_UnsizedElement_VariableCount_Padded_,
+}

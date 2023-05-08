@@ -1330,6 +1330,21 @@ mod tests {
     );
 
     test_pdl!(
+        packet_decl_array_with_padding,
+        "
+          struct Foo {
+            _count_(a): 40,
+            a: 16[],
+          }
+
+          packet Bar {
+            a: Foo[],
+            _padding_ [128],
+          }
+        "
+    );
+
+    test_pdl!(
         packet_decl_reserved_field,
         "
           packet Foo {
