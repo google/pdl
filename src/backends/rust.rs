@@ -565,9 +565,9 @@ fn generate_packet_decl(
             )*
 
             impl TryFrom<#top_level_packet> for #id_packet {
-                type Error = TryFromError;
-                fn try_from(packet: #top_level_packet) -> std::result::Result<#id_packet, TryFromError> {
-                    #id_packet::new(packet.#top_level_id_lower).map_err(TryFromError)
+                type Error = Error;
+                fn try_from(packet: #top_level_packet) -> Result<#id_packet> {
+                    #id_packet::new(packet.#top_level_id_lower)
                 }
             }
         }
@@ -634,17 +634,19 @@ fn generate_packet_decl(
 
             fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
                 let data = #top_level_data::parse_inner(&mut bytes)?;
-                Ok(Self::new(Arc::new(data)).unwrap())
+                Self::new(Arc::new(data))
             }
 
             #specialize
 
-            fn new(#top_level_id_lower: Arc<#top_level_data>)
-                   -> std::result::Result<Self, &'static str> {
+            fn new(#top_level_id_lower: Arc<#top_level_data>) -> Result<Self> {
                 #(
                     let #parent_shifted_lower_ids = match &#parent_lower_ids.child {
                         #parent_data_child::#parent_shifted_ids(value) => value.clone(),
-                        _ => return Err("Could not parse data, wrong child type"),
+                        _ => return Err(Error::InvalidChildError {
+                            expected: stringify!(#parent_data_child::#parent_shifted_ids),
+                            actual: format!("{:?}", &#parent_lower_ids.child),
+                        }),
                     };
                 )*
                 Ok(Self { #(#parent_lower_ids),* })
@@ -770,6 +772,7 @@ fn generate_enum_decl(
     // Generate the variant cases for the enum declaration.
     // Tags declared in ranges are flattened in the same declaration.
     let use_variant_values = is_primitive && (is_complete || !open);
+    let repr_u64 = use_variant_values.then(|| quote! { #[repr(u64)] });
     let mut variants = vec![];
     for tag in tags.iter() {
         match tag {
@@ -857,6 +860,7 @@ fn generate_enum_decl(
     let derived_into_types = derived_signed_into_types.chain(derived_unsigned_into_types);
 
     quote! {
+        #repr_u64
         #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         #[cfg_attr(feature = "serde", serde(try_from = #backing_type_str, into = #backing_type_str))]

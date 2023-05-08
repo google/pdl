@@ -38,17 +38,16 @@ pub enum Error {
     ImpossibleStructError,
     #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
     InvalidEnumValueError { obj: String, field: String, value: u64, type_: String },
+    #[error("expected child {expected}, got {actual}")]
+    InvalidChildError { expected: &'static str, actual: String },
 }
-
-#[derive(Debug, Error)]
-#[error("{0}")]
-pub struct TryFromError(&'static str);
 
 pub trait Packet {
     fn to_bytes(self) -> Bytes;
     fn to_vec(self) -> Vec<u8>;
 }
 
+#[repr(u64)]
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u16", into = "u16"))]
@@ -171,7 +170,14 @@ impl FooData {
                 got: bytes.get().remaining(),
             });
         }
-        let b = Enum16::try_from(bytes.get_mut().get_u16()).unwrap();
+        let b = Enum16::try_from(bytes.get_mut().get_u16()).map_err(|_| {
+            Error::InvalidEnumValueError {
+                obj: "Foo".to_string(),
+                field: "b".to_string(),
+                value: bytes.get_mut().get_u16() as u64,
+                type_: "Enum16".to_string(),
+            }
+        })?;
         if bytes.get().remaining() < 1 {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
@@ -260,7 +266,7 @@ impl Foo {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = FooData::parse_inner(&mut bytes)?;
-        Ok(Self::new(Arc::new(data)).unwrap())
+        Self::new(Arc::new(data))
     }
     pub fn specialize(&self) -> FooChild {
         match &self.foo.child {
@@ -270,7 +276,7 @@ impl Foo {
             FooDataChild::None => FooChild::None,
         }
     }
-    fn new(foo: Arc<FooData>) -> std::result::Result<Self, &'static str> {
+    fn new(foo: Arc<FooData>) -> Result<Self> {
         Ok(Self { foo })
     }
     pub fn get_a(&self) -> u8 {
@@ -380,9 +386,9 @@ impl From<Bar> for Foo {
     }
 }
 impl TryFrom<Foo> for Bar {
-    type Error = TryFromError;
-    fn try_from(packet: Foo) -> std::result::Result<Bar, TryFromError> {
-        Bar::new(packet.foo).map_err(TryFromError)
+    type Error = Error;
+    fn try_from(packet: Foo) -> Result<Bar> {
+        Bar::new(packet.foo)
     }
 }
 impl Bar {
@@ -393,12 +399,17 @@ impl Bar {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = FooData::parse_inner(&mut bytes)?;
-        Ok(Self::new(Arc::new(data)).unwrap())
+        Self::new(Arc::new(data))
     }
-    fn new(foo: Arc<FooData>) -> std::result::Result<Self, &'static str> {
+    fn new(foo: Arc<FooData>) -> Result<Self> {
         let bar = match &foo.child {
             FooDataChild::Bar(value) => value.clone(),
-            _ => return Err("Could not parse data, wrong child type"),
+            _ => {
+                return Err(Error::InvalidChildError {
+                    expected: stringify!(FooDataChild::Bar),
+                    actual: format!("{:?}", &foo.child),
+                })
+            }
         };
         Ok(Self { foo, bar })
     }
@@ -511,9 +522,9 @@ impl From<Baz> for Foo {
     }
 }
 impl TryFrom<Foo> for Baz {
-    type Error = TryFromError;
-    fn try_from(packet: Foo) -> std::result::Result<Baz, TryFromError> {
-        Baz::new(packet.foo).map_err(TryFromError)
+    type Error = Error;
+    fn try_from(packet: Foo) -> Result<Baz> {
+        Baz::new(packet.foo)
     }
 }
 impl Baz {
@@ -524,12 +535,17 @@ impl Baz {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = FooData::parse_inner(&mut bytes)?;
-        Ok(Self::new(Arc::new(data)).unwrap())
+        Self::new(Arc::new(data))
     }
-    fn new(foo: Arc<FooData>) -> std::result::Result<Self, &'static str> {
+    fn new(foo: Arc<FooData>) -> Result<Self> {
         let baz = match &foo.child {
             FooDataChild::Baz(value) => value.clone(),
-            _ => return Err("Could not parse data, wrong child type"),
+            _ => {
+                return Err(Error::InvalidChildError {
+                    expected: stringify!(FooDataChild::Baz),
+                    actual: format!("{:?}", &foo.child),
+                })
+            }
         };
         Ok(Self { foo, baz })
     }

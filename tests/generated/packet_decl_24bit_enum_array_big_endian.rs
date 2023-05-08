@@ -38,17 +38,16 @@ pub enum Error {
     ImpossibleStructError,
     #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
     InvalidEnumValueError { obj: String, field: String, value: u64, type_: String },
+    #[error("expected child {expected}, got {actual}")]
+    InvalidChildError { expected: &'static str, actual: String },
 }
-
-#[derive(Debug, Error)]
-#[error("{0}")]
-pub struct TryFromError(&'static str);
 
 pub trait Packet {
     fn to_bytes(self) -> Bytes;
     fn to_vec(self) -> Vec<u8>;
 }
 
+#[repr(u64)]
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u32", into = "u32"))]
@@ -128,16 +127,20 @@ impl BarData {
                 got: bytes.get().remaining(),
             });
         }
-        let x = [0; 5].map(|_| {
-            Foo::try_from(bytes.get_mut().get_uint(3) as u32)
-                .map_err(|_| Error::InvalidEnumValueError {
-                    obj: "Bar".to_string(),
-                    field: String::new(),
-                    value: 0,
-                    type_: "Foo".to_string(),
+        let x = (0..5)
+            .map(|_| {
+                Foo::try_from(bytes.get_mut().get_uint(3) as u32).map_err(|_| {
+                    Error::InvalidEnumValueError {
+                        obj: "Bar".to_string(),
+                        field: String::new(),
+                        value: 0,
+                        type_: "Foo".to_string(),
+                    }
                 })
-                .unwrap()
-        });
+            })
+            .collect::<Result<Vec<_>>>()?
+            .try_into()
+            .map_err(|_| Error::InvalidPacketError)?;
         Ok(Self { x })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
@@ -180,9 +183,9 @@ impl Bar {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = BarData::parse_inner(&mut bytes)?;
-        Ok(Self::new(Arc::new(data)).unwrap())
+        Self::new(Arc::new(data))
     }
-    fn new(bar: Arc<BarData>) -> std::result::Result<Self, &'static str> {
+    fn new(bar: Arc<BarData>) -> Result<Self> {
         Ok(Self { bar })
     }
     pub fn get_x(&self) -> &[Foo; 5] {

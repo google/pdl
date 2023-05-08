@@ -38,17 +38,16 @@ pub enum Error {
     ImpossibleStructError,
     #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
     InvalidEnumValueError { obj: String, field: String, value: u64, type_: String },
+    #[error("expected child {expected}, got {actual}")]
+    InvalidChildError { expected: &'static str, actual: String },
 }
-
-#[derive(Debug, Error)]
-#[error("{0}")]
-pub struct TryFromError(&'static str);
 
 pub trait Packet {
     fn to_bytes(self) -> Bytes;
     fn to_vec(self) -> Vec<u8>;
 }
 
+#[repr(u64)]
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
@@ -149,7 +148,7 @@ impl FooData {
             });
         }
         let chunk = bytes.get_mut().get_u64();
-        if (chunk & 0x7f) as u8 != Enum7::A.into() {
+        if (chunk & 0x7f) as u8 != u8::from(Enum7::A) {
             return Err(Error::InvalidFixedValue {
                 expected: u8::from(Enum7::A) as u64,
                 actual: (chunk & 0x7f) as u8 as u64,
@@ -203,9 +202,9 @@ impl Foo {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = FooData::parse_inner(&mut bytes)?;
-        Ok(Self::new(Arc::new(data)).unwrap())
+        Self::new(Arc::new(data))
     }
-    fn new(foo: Arc<FooData>) -> std::result::Result<Self, &'static str> {
+    fn new(foo: Arc<FooData>) -> Result<Self> {
         Ok(Self { foo })
     }
     pub fn get_b(&self) -> u64 {

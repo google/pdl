@@ -147,7 +147,7 @@ impl<'a> FieldParser<'a> {
                     let enum_id = format_ident!("{enum_id}");
                     let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
                     quote! {
-                        if #v != #enum_id::#tag_id.into()  {
+                        if #v != #value_type::from(#enum_id::#tag_id)  {
                             return Err(Error::InvalidFixedValue {
                                 expected: #value_type::from(#enum_id::#tag_id) as u64,
                                 actual: #v as u64,
@@ -167,12 +167,19 @@ impl<'a> FieldParser<'a> {
                     }
                 }
                 ast::FieldDesc::Typedef { id, type_id } => {
-                    // TODO(mgeisler): Remove the `unwrap` from the
-                    // generated code and return the error to the
-                    // caller.
+                    let field_name = id;
+                    let type_name = type_id;
+                    let packet_name = &self.packet_name;
                     let id = format_ident!("{id}");
                     let type_id = format_ident!("{type_id}");
-                    quote! { let #id = #type_id::try_from(#v).unwrap(); }
+                    quote! {
+                        let #id = #type_id::try_from(#v).map_err(|_| Error::InvalidEnumValueError {
+                            obj: #packet_name.to_string(),
+                            field: #field_name.to_string(),
+                            value: #v as u64,
+                            type_: #type_name.to_string(),
+                        })?;
+                    }
                 }
                 ast::FieldDesc::Reserved { .. } => {
                     if single_value {
@@ -338,7 +345,11 @@ impl<'a> FieldParser<'a> {
                     // TODO(mgeisler): use
                     // https://doc.rust-lang.org/std/array/fn.try_from_fn.html
                     // when stabilized.
-                    let #id = [0; #count].map(|_| #parse_element.unwrap());
+                    let #id = (0..#count)
+                        .map(|_| #parse_element)
+                        .collect::<Result<Vec<_>>>()?
+                        .try_into()
+                        .map_err(|_| Error::InvalidPacketError)?;
                 });
             }
             (ElementWidth::Unknown, ArrayShape::CountField(count_field)) => {
@@ -377,7 +388,11 @@ impl<'a> FieldParser<'a> {
                     // TODO(mgeisler): use
                     // https://doc.rust-lang.org/std/array/fn.try_from_fn.html
                     // when stabilized.
-                    let #id = [0; #count].map(|_| #parse_element.unwrap());
+                    let #id = (0..#count)
+                        .map(|_| #parse_element)
+                        .collect::<Result<Vec<_>>>()?
+                        .try_into()
+                        .map_err(|_| Error::InvalidPacketError)?;
                 });
             }
             (ElementWidth::Static(_), ArrayShape::CountField(count_field)) => {
