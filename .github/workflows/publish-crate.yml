@@ -1,0 +1,14 @@
+name: Publish Crate
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - Cargo.toml
+
+jobs:
+  publish:
+    uses: mgeisler/rust-release-gh-action/.github/workflows/publish-crate.yml@main
+    secrets:
+      CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
