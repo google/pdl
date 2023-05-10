@@ -1,0 +1,8 @@
+# Android Format Style
+#
+# Copied from Android:
+# https://cs.android.com/android/platform/superproject/+/master:packages/modules/Bluetooth/rustfmt.toml.
+
+edition = "2021"
+use_small_heuristics = "Max"
+newline_style = "Unix"
