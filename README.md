@@ -1,5 +1,10 @@
 # Packet Description Language (PDL)
 
+[![Crate](https://img.shields.io/crates/v/pdl-compiler?style=flat-square)](https://crates.io/crates/pdl-compiler)
+[![Build workflow](https://img.shields.io/github/actions/workflow/status/google/pdl/build.yml?style=flat-square)](https://github.com/google/pdl/actions/workflows/build.yml?query=branch%3Amain)
+[![GitHub contributors](https://img.shields.io/github/contributors/google/pdl?style=flat-square)](https://github.com/google/pdl/graphs/contributors)
+[![GitHub stars](https://img.shields.io/github/stars/google/pdl?style=flat-square)](https://github.com/google/pdl/stargazers)
+
 PDL is a domain specific language for writing the definition of binary protocol
 packets. Parsing and validating packets from raw bytes is tedious and error
 prone in any language. PDL generates memory safe and tailored backends for
