@@ -1,0 +1,65 @@
+name: build
+
+on:
+  - push
+
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_COLOR: 3
+  RUSTFLAGS: -D warnings
+
+jobs:
+
+  build:
+    name: Build
+    strategy:
+      matrix:
+        rust:
+          - 1.59.0  # This is the Rust version used in Android.
+          - stable
+        os:
+          - ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install ${{ matrix.rust }} Rust
+        run: rustup default ${{ matrix.rust }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install rustfmt
+        run: rustup component add rustfmt
+
+      - name: Rust tests
+        run: cargo test
+
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: --deny rustdoc::broken_intra_doc_links
+        run: cargo doc --no-deps
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clippy
+        run: cargo clippy --no-deps

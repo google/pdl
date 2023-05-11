@@ -26,6 +26,7 @@ mod parser;
 mod test_utils;
 mod utils;
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum OutputFormat {
     JSON,
