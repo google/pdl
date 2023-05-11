@@ -1,8 +1,23 @@
 [package]
-name = "pdl"
+name = "pdl-compiler"
 version = "0.1.0"
 edition = "2021"
-default-run = "pdl"
+description = "Parser and serializer generator for protocol binary packets"
+repository = "https://github.com/google/pdl/"
+license-file = "LICENSE"
+readme = "README.md"
+keywords = ["pdl", "parser", "serializer", "grammar"]
+authors = [
+    "Henri Chataing <henrichataing@google.com>",
+    "David de Jesus Duarte <licorne@google.com>",
+    "Martin Geisler <mgeisler@google.com>"
+]
+categories = ["parsing"]
+default-run = "pdlc"
+
+[[bin]]
+name = "pdlc"
+path = "src/main.rs"
 
 [workspace]
 
