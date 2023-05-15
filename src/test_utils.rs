@@ -19,69 +19,15 @@
 // rest of the `pdl` crate. To make this work, avoid `use crate::`
 // statements below.
 
+use googletest::prelude::{assert_that, eq};
 use std::fs;
-use std::io::Write;
 use std::path::Path;
-use std::process::Command;
-use tempfile::NamedTempFile;
 
 /// Format Rust code in `input`.
 pub fn format_rust(input: &str) -> String {
     let syntax_tree = syn::parse_file(input).expect("Could not parse {input:#?} as Rust code");
     let formatted = prettyplease::unparse(&syntax_tree);
     format!("#![rustfmt::skip]\n{formatted}")
-}
-
-/// Find the unified diff between two strings using `diff`.
-///
-/// # Panics
-///
-/// Panics if `diff` cannot be found on `$PATH` or if it returns an
-/// error.
-pub fn diff(left_label: &str, left: &str, right_label: &str, right: &str) -> String {
-    let mut temp_left = NamedTempFile::new().unwrap();
-    temp_left.write_all(left.as_bytes()).unwrap();
-    let mut temp_right = NamedTempFile::new().unwrap();
-    temp_right.write_all(right.as_bytes()).unwrap();
-
-    // We expect `diff` to be available on PATH.
-    let output = Command::new("diff")
-        .arg("--unified")
-        .arg("--color=always")
-        .arg("--label")
-        .arg(left_label)
-        .arg("--label")
-        .arg(right_label)
-        .arg(temp_left.path())
-        .arg(temp_right.path())
-        .output()
-        .expect("failed to run diff");
-    let diff_trouble_exit_code = 2; // from diff(1)
-    assert_ne!(
-        output.status.code().unwrap(),
-        diff_trouble_exit_code,
-        "diff failed: {}",
-        output.status
-    );
-    String::from_utf8(output.stdout).expect("diff output was not UTF-8")
-}
-
-/// Compare two strings and output a diff if they are not equal.
-#[track_caller]
-pub fn assert_eq_with_diff(left_label: &str, left: &str, right_label: &str, right: &str) {
-    assert!(
-        left == right,
-        "texts did not match, diff:\n{}\n",
-        diff(left_label, left, right_label, right)
-    );
-}
-
-/// Check that `haystack` contains `needle`.
-///
-/// Panic with a nice message if not.
-#[track_caller]
-pub fn assert_contains(haystack: &str, needle: &str) {
-    assert!(haystack.contains(needle), "Could not find {:?} in {:?}", needle, haystack);
 }
 
 /// Compare a string with a snapshot file.
@@ -115,12 +61,7 @@ pub fn assert_snapshot_eq<P: AsRef<Path>>(snapshot_path: P, actual_content: &str
 
     // Normal comparison if UPDATE_SNAPSHOTS is unset.
     if !update_snapshots {
-        return assert_eq_with_diff(
-            snapshot.to_str().unwrap(),
-            &snapshot_content,
-            "actual",
-            actual_content,
-        );
+        assert_that!(actual_content, eq(&snapshot_content));
     }
 
     // Bail out if we are not using Cargo.
@@ -138,33 +79,5 @@ pub fn assert_snapshot_eq<P: AsRef<Path>>(snapshot_path: P, actual_content: &str
         fs::write(&snapshot_path, actual_content).unwrap_or_else(|err| {
             panic!("Could not write snapshot to {}: {}", snapshot.display(), err)
         });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_diff_labels_with_special_chars() {
-        // Check that special characters in labels are passed
-        // correctly to diff.
-        let patch = diff("left 'file'", "foo\nbar\n", "right ~file!", "foo\nnew line\nbar\n");
-        assert_contains(&patch, "left 'file'");
-        assert_contains(&patch, "right ~file!");
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_assert_eq_with_diff_on_diff() {
-        // We use identical labels to check that we haven't
-        // accidentally mixed up the labels with the file content.
-        assert_eq_with_diff("", "foo\nbar\n", "", "foo\nnew line\nbar\n");
-    }
-
-    #[test]
-    fn test_assert_eq_with_diff_on_eq() {
-        // No panic when there is no diff.
-        assert_eq_with_diff("left", "foo\nbar\n", "right", "foo\nbar\n");
     }
 }
