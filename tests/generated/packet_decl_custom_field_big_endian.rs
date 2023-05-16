@@ -159,11 +159,11 @@ impl Foo {
     fn new(foo: Arc<FooData>) -> Result<Self> {
         Ok(Self { foo })
     }
-    pub fn get_a(&self) -> &Bar1 {
-        &self.foo.as_ref().a
+    pub fn get_a(&self) -> Bar1 {
+        self.foo.as_ref().a
     }
-    pub fn get_b(&self) -> &Bar2 {
-        &self.foo.as_ref().b
+    pub fn get_b(&self) -> Bar2 {
+        self.foo.as_ref().b
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.foo.write_to(buffer)

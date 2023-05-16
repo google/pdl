@@ -672,6 +672,17 @@ impl<'a> FieldParser<'a> {
             quote!(#(, #fields)*)
         });
         let packet_data_child = format_ident!("{}DataChild", self.packet_name);
+        // Parsing of packet children requires having a payload field;
+        // it is allowed to inherit from a packet with empty payload, in this
+        // case generate an empty payload value.
+        if !decl
+            .fields()
+            .any(|f| matches!(&f.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body))
+        {
+            self.code.push(quote! {
+                let payload: &[u8] = &[];
+            })
+        }
         self.code.push(quote! {
             let child = match (#(#constrained_field_idents),*) {
                 #(#match_values if #child_ids_data::conforms(&payload) => {
