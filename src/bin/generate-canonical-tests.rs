@@ -128,17 +128,16 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
     }
 
     // TODO(mgeisler): make the generated code clean from warnings.
-    println!("#![allow(warnings, missing_docs)]");
-    println!();
-    println!(
-        "{}",
-        &quote! {
-            use #module::Packet;
-            use serde_json::json;
+    let code = quote! {
+        #![allow(warnings, missing_docs)]
 
-            #(#tests)*
-        }
-    );
+        use #module::Packet;
+        use serde_json::json;
+
+        #(#tests)*
+    };
+    let syntax_tree = syn::parse2::<syn::File>(code).expect("Could not parse {code:#?}");
+    println!("{}", prettyplease::unparse(&syntax_tree));
 }
 
 fn main() {

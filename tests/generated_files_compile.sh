@@ -25,7 +25,9 @@
 
 for input_path in "$@"; do
     echo "mod $(basename -s .rs "$input_path") {"
-    cat "$input_path"
+    # The inner (module) attribute needs to be removed to produce a
+    # valid file.
+    grep -v '#!\[rustfmt::skip\]' "$input_path"
     echo "}"
 done
 

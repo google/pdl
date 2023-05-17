@@ -964,24 +964,20 @@ fn generate_decl(
     scope: &lint::Scope<'_>,
     file: &analyzer_ast::File,
     decl: &analyzer_ast::Decl,
-) -> String {
+) -> proc_macro2::TokenStream {
     match &decl.desc {
-        ast::DeclDesc::Packet { id, .. } => {
-            generate_packet_decl(scope, file.endianness.value, id).to_string()
-        }
+        ast::DeclDesc::Packet { id, .. } => generate_packet_decl(scope, file.endianness.value, id),
         ast::DeclDesc::Struct { id, parent_id: None, .. } => {
             // TODO(mgeisler): handle structs with parents. We could
             // generate code for them, but the code is not useful
             // since it would require the caller to unpack everything
             // manually. We either need to change the API, or
             // implement the recursive (de)serialization.
-            generate_struct_decl(scope, file.endianness.value, id).to_string()
+            generate_struct_decl(scope, file.endianness.value, id)
         }
-        ast::DeclDesc::Enum { id, tags, width } => {
-            generate_enum_decl(id, tags, *width, false).to_string()
-        }
+        ast::DeclDesc::Enum { id, tags, width } => generate_enum_decl(id, tags, *width, false),
         ast::DeclDesc::CustomField { id, width: Some(width), .. } => {
-            generate_custom_field_decl(id, *width).to_string()
+            generate_custom_field_decl(id, *width)
         }
         _ => todo!("unsupported Decl::{:?}", decl),
     }
@@ -992,18 +988,18 @@ fn generate_decl(
 /// The code is not formatted, pipe it through `rustfmt` to get
 /// readable source code.
 pub fn generate(sources: &ast::SourceDatabase, file: &analyzer_ast::File) -> String {
-    let mut code = String::new();
-
     let source = sources.get(file.file).expect("could not read source");
-    code.push_str(&preamble::generate(Path::new(source.name())));
+    let preamble = preamble::generate(Path::new(source.name()));
 
     let scope = lint::Scope::new(file);
-    for decl in &file.declarations {
-        code.push_str(&generate_decl(&scope, file, decl));
-        code.push_str("\n\n");
-    }
+    let decls = file.declarations.iter().map(|decl| generate_decl(&scope, file, decl));
+    let code = quote! {
+        #preamble
 
-    code
+        #(#decls)*
+    };
+    let syntax_tree = syn::parse2(code).expect("Could not parse code");
+    prettyplease::unparse(&syntax_tree)
 }
 
 #[cfg(test)]
@@ -1012,7 +1008,7 @@ mod tests {
     use crate::analyzer;
     use crate::ast;
     use crate::parser::parse_inline;
-    use crate::test_utils::{assert_snapshot_eq, rustfmt};
+    use crate::test_utils::{assert_snapshot_eq, format_rust};
     use paste::paste;
 
     /// Parse a string fragment as a PDL file.
@@ -1095,7 +1091,7 @@ mod tests {
                     let actual_code = generate(&db, &file);
                     assert_snapshot_eq(
                         &format!("tests/generated/{name}_{endianness}.rs"),
-                        &rustfmt(&actual_code),
+                        &format_rust(&actual_code),
                     );
                 }
             }

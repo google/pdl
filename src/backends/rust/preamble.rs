@@ -12,14 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use quote::quote;
 use std::path::Path;
 
-use crate::quote_block;
-
 /// Generate the file preamble.
-pub fn generate(path: &Path) -> String {
-    let mut code = String::new();
-    let filename = path.file_name().unwrap().to_str().expect("non UTF-8 filename");
+pub fn generate(path: &Path) -> proc_macro2::TokenStream {
     // TODO(mgeisler): Make the  generated code free from warnings.
     //
     // The code either needs
@@ -34,22 +31,35 @@ pub fn generate(path: &Path) -> String {
     // to the generated code. We cannot add the module-level attribute
     // here because of how the generated code is used with include! in
     // lmp/src/packets.rs.
-    code.push_str(&format!("// @generated rust packets from {filename}\n\n"));
+    let filename = path.file_name().unwrap().to_str().expect("non UTF-8 filename");
+    let module_doc_string = format!(" @generated rust packets from {filename}.");
+    // TODO(mgeisler): the doc comment below should be an outer
+    // comment (#![doc = ...]). However, people include the generated
+    // code in the middle of another module via include_str!:
+    //
+    // fn before() {}
+    // include_str!("generated.rs")
+    // fn after() {}
+    //
+    // It is illegal to have a //! comment in the middle of a file. We
+    // should refactor such usages to instead look like this:
+    //
+    // fn before() {}
+    // mod foo { include_str!("generated.rs") }
+    // use foo::*;
+    // fn after() {}
+    quote! {
+        #[doc = #module_doc_string]
 
-    code.push_str(&quote_block! {
         use bytes::{Buf, BufMut, Bytes, BytesMut};
         use std::convert::{TryFrom, TryInto};
         use std::cell::Cell;
         use std::fmt;
         use std::sync::Arc;
         use thiserror::Error;
-    });
 
-    code.push_str(&quote_block! {
         type Result<T> = std::result::Result<T, Error>;
-    });
 
-    code.push_str(&quote_block! {
         /// Private prevents users from creating arbitrary scalar values
         /// in situations where the value needs to be validated.
         /// Users can freely deref the value, but only the backend
@@ -63,9 +73,7 @@ pub fn generate(path: &Path) -> String {
                 &self.0
             }
         }
-    });
 
-    code.push_str(&quote_block! {
         #[derive(Debug, Error)]
         pub enum Error {
             #[error("Packet parsing failed")]
@@ -85,26 +93,22 @@ pub fn generate(path: &Path) -> String {
             #[error("expected child {expected}, got {actual}")]
             InvalidChildError { expected: &'static str, actual: String },
         }
-    });
 
-    code.push_str(&quote_block! {
         pub trait Packet {
             fn to_bytes(self) -> Bytes;
             fn to_vec(self) -> Vec<u8>;
         }
-    });
-
-    code
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{assert_snapshot_eq, rustfmt};
+    use crate::test_utils::{assert_snapshot_eq, format_rust};
 
     #[test]
     fn test_generate_preamble() {
-        let actual_code = generate(Path::new("some/path/foo.pdl"));
-        assert_snapshot_eq("tests/generated/preamble.rs", &rustfmt(&actual_code));
+        let actual_code = generate(Path::new("some/path/foo.pdl")).to_string();
+        assert_snapshot_eq("tests/generated/preamble.rs", &format_rust(&actual_code));
     }
 }
