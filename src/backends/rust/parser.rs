@@ -63,12 +63,13 @@ impl<'a> FieldParser<'a> {
     pub fn add(&mut self, field: &'a analyzer_ast::Field) {
         match &field.desc {
             _ if self.scope.is_bitfield(field) => self.add_bit_field(field),
-            ast::FieldDesc::Padding { .. } => todo!("Padding fields are not supported"),
+            ast::FieldDesc::Padding { .. } => (),
             ast::FieldDesc::Array { id, width, type_id, size, .. } => self.add_array_field(
                 id,
                 *width,
                 type_id.as_deref(),
                 *size,
+                field.annot.padded_size,
                 self.scope.get_field_declaration(field),
             ),
             ast::FieldDesc::Typedef { id, type_id } => self.add_typedef_field(id, type_id),
@@ -91,7 +92,7 @@ impl<'a> FieldParser<'a> {
         let end_offset = self.offset + size;
 
         let wanted = proc_macro2::Literal::usize_unsuffixed(size);
-        self.check_size(&quote!(#wanted));
+        self.check_size(self.span, &quote!(#wanted));
 
         let chunk_type = types::Integer::new(self.shift);
         // TODO(mgeisler): generate Rust variable names which cannot
@@ -252,9 +253,8 @@ impl<'a> FieldParser<'a> {
         Some(offset)
     }
 
-    fn check_size(&mut self, wanted: &proc_macro2::TokenStream) {
+    fn check_size(&mut self, span: &proc_macro2::Ident, wanted: &proc_macro2::TokenStream) {
         let packet_name = &self.packet_name;
-        let span = self.span;
         self.code.push(quote! {
             if #span.get().remaining() < #wanted {
                 return Err(Error::InvalidLengthError {
@@ -277,6 +277,7 @@ impl<'a> FieldParser<'a> {
         // `size`: the size of the array in number of elements (if
         // known). If None, the array is a Vec with a dynamic size.
         size: Option<usize>,
+        padding_size: Option<usize>,
         decl: Option<&analyzer_ast::Decl>,
     ) {
         enum ElementWidth {
@@ -312,18 +313,29 @@ impl<'a> FieldParser<'a> {
 
         // TODO size modifier
 
-        // TODO padded_size
+        let span = match padding_size {
+            Some(padding_size) => {
+                let span = self.span;
+                self.check_size(span, &quote!(#padding_size));
+                self.code.push(quote! {
+                    let (head, tail) = #span.get().split_at(#padding_size);
+                    let mut head = &mut Cell::new(head);
+                    #span.replace(tail);
+                });
+                format_ident!("head")
+            }
+            None => self.span.clone(),
+        };
 
         let id = format_ident!("{id}");
-        let span = self.span;
 
-        let parse_element = self.parse_array_element(self.span, width, type_id, decl);
+        let parse_element = self.parse_array_element(&span, width, type_id, decl);
         match (element_width, &array_shape) {
             (ElementWidth::Unknown, ArrayShape::SizeField(size_field)) => {
                 // The element width is not known, but the array full
                 // octet size is known by size field. Parse elements
                 // item by item as a vector.
-                self.check_size(&quote!(#size_field));
+                self.check_size(&span, &quote!(#size_field));
                 let parse_element =
                     self.parse_array_element(&format_ident!("head"), width, type_id, decl);
                 self.code.push(quote! {
@@ -383,7 +395,7 @@ impl<'a> FieldParser<'a> {
                     let element_width = syn::Index::from(element_width);
                     quote!(#count * #element_width)
                 };
-                self.check_size(&array_size);
+                self.check_size(&span, &quote! { #array_size });
                 self.code.push(quote! {
                     // TODO(mgeisler): use
                     // https://doc.rust-lang.org/std/array/fn.try_from_fn.html
@@ -395,10 +407,10 @@ impl<'a> FieldParser<'a> {
                         .map_err(|_| Error::InvalidPacketError)?;
                 });
             }
-            (ElementWidth::Static(_), ArrayShape::CountField(count_field)) => {
+            (ElementWidth::Static(element_width), ArrayShape::CountField(count_field)) => {
                 // The element width is known, and the array element
                 // count is known dynamically by the count field.
-                self.check_size(&quote!(#count_field));
+                self.check_size(&span, &quote!(#count_field * #element_width));
                 self.code.push(quote! {
                     let #id = (0..#count_field)
                         .map(|_| #parse_element)
@@ -411,7 +423,7 @@ impl<'a> FieldParser<'a> {
                 // is known by size field, or unknown (in which case
                 // it is the remaining span length).
                 let array_size = if let ArrayShape::SizeField(size_field) = &array_shape {
-                    self.check_size(&quote!(#size_field));
+                    self.check_size(&span, &quote!(#size_field));
                     quote!(#size_field)
                 } else {
                     quote!(#span.get().remaining())
@@ -459,27 +471,40 @@ impl<'a> FieldParser<'a> {
         let id = format_ident!("{id}");
         let type_id = format_ident!("{type_id}");
 
-        match self.scope.get_decl_width(decl, true) {
-            None => self.code.push(quote! {
+        self.code.push(match self.scope.get_decl_width(decl, true) {
+            None => quote! {
                 let #id = #type_id::parse_inner(&mut #span)?;
-            }),
+            },
             Some(width) => {
                 assert_eq!(width % 8, 0, "Typedef field type size is not a multiple of 8");
-                let width = syn::Index::from(width / 8);
-                self.code.push(if let ast::DeclDesc::Checksum { .. } = &decl.desc {
-                    // TODO: handle checksum fields.
-                    quote! {
-                        #span.get_mut().advance(#width);
+                match &decl.desc {
+                    ast::DeclDesc::Checksum { .. } => todo!(),
+                    ast::DeclDesc::CustomField { .. } if [8, 16, 32, 64].contains(&width) => {
+                        let get_uint = types::get_uint(self.endianness, width, span);
+                        quote! {
+                            let #id = #get_uint.into();
+                        }
                     }
-                } else {
-                    quote! {
-                        let (head, tail) = #span.get().split_at(#width);
-                        #span.replace(tail);
-                        let #id = #type_id::parse(head)?;
+                    ast::DeclDesc::CustomField { .. } => {
+                        let get_uint = types::get_uint(self.endianness, width, span);
+                        quote! {
+                            let #id = (#get_uint)
+                                .try_into()
+                                .unwrap(); // Value is masked and conversion must succeed.
+                        }
                     }
-                });
+                    ast::DeclDesc::Struct { .. } => {
+                        let width = syn::Index::from(width / 8);
+                        quote! {
+                            let (head, tail) = #span.get().split_at(#width);
+                            #span.replace(tail);
+                            let #id = #type_id::parse(head)?;
+                        }
+                    }
+                    _ => unreachable!(),
+                }
             }
-        }
+        });
     }
 
     /// Parse body and payload fields.
@@ -518,7 +543,7 @@ impl<'a> FieldParser<'a> {
             // payload and update the span in case fields are placed
             // after the payload.
             let size_field = size_field_ident(field_id);
-            self.check_size(&quote!(#size_field ));
+            self.check_size(self.span, &quote!(#size_field ));
             self.code.push(quote! {
                 let payload = &#span.get()[..#size_field];
                 #span.get_mut().advance(#size_field);
@@ -540,7 +565,7 @@ impl<'a> FieldParser<'a> {
                 "Payload field offset from end of packet is not a multiple of 8"
             );
             let offset_from_end = syn::Index::from(offset_from_end / 8);
-            self.check_size(&quote!(#offset_from_end));
+            self.check_size(self.span, &quote!(#offset_from_end));
             self.code.push(quote! {
                 let payload = &#span.get()[..#span.get().len() - #offset_from_end];
                 #span.get_mut().advance(payload.len());

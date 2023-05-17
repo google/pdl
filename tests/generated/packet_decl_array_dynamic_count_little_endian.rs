@@ -85,10 +85,10 @@ impl FooData {
         let chunk = bytes.get_mut().get_u8();
         let x_count = (chunk & 0x1f) as usize;
         let padding = ((chunk >> 5) & 0x7);
-        if bytes.get().remaining() < x_count {
+        if bytes.get().remaining() < x_count * 3usize {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
-                wanted: x_count,
+                wanted: x_count * 3usize,
                 got: bytes.get().remaining(),
             });
         }

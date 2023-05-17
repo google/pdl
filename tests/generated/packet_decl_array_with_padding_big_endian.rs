@@ -69,7 +69,7 @@ impl Foo {
                 got: bytes.get().remaining(),
             });
         }
-        let a_count = bytes.get_mut().get_uint_le(5) as usize;
+        let a_count = bytes.get_mut().get_uint(5) as usize;
         if bytes.get().remaining() < a_count * 2usize {
             return Err(Error::InvalidLengthError {
                 obj: "Foo".to_string(),
@@ -78,7 +78,7 @@ impl Foo {
             });
         }
         let a = (0..a_count)
-            .map(|_| Ok::<_, Error>(bytes.get_mut().get_u16_le()))
+            .map(|_| Ok::<_, Error>(bytes.get_mut().get_u16()))
             .collect::<Result<Vec<_>>>()?;
         Ok(Self { a })
     }
@@ -92,9 +92,9 @@ impl Foo {
                 0xff_ffff_ffff_usize
             );
         }
-        buffer.put_uint_le(self.a.len() as u64, 5);
+        buffer.put_uint(self.a.len() as u64, 5);
         for elem in &self.a {
-            buffer.put_u16_le(*elem);
+            buffer.put_u16(*elem);
         }
     }
     fn get_total_size(&self) -> usize {
@@ -108,7 +108,7 @@ impl Foo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BarData {
-    x: Vec<Foo>,
+    a: Vec<Foo>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -119,11 +119,11 @@ pub struct Bar {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BarBuilder {
-    pub x: Vec<Foo>,
+    pub a: Vec<Foo>,
 }
 impl BarData {
     fn conforms(bytes: &[u8]) -> bool {
-        bytes.len() >= 5
+        bytes.len() >= 128
     }
     fn parse(bytes: &[u8]) -> Result<Self> {
         let mut cell = Cell::new(bytes);
@@ -131,37 +131,38 @@ impl BarData {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        if bytes.get().remaining() < 5 {
+        if bytes.get().remaining() < 128usize {
             return Err(Error::InvalidLengthError {
                 obj: "Bar".to_string(),
-                wanted: 5,
+                wanted: 128usize,
                 got: bytes.get().remaining(),
             });
         }
-        let x_count = bytes.get_mut().get_uint_le(5) as usize;
-        let x = (0..x_count).map(|_| Foo::parse_inner(bytes)).collect::<Result<Vec<_>>>()?;
-        Ok(Self { x })
+        let (head, tail) = bytes.get().split_at(128usize);
+        let mut head = &mut Cell::new(head);
+        bytes.replace(tail);
+        let mut a = Vec::new();
+        while !head.get().is_empty() {
+            a.push(Foo::parse_inner(head)?);
+        }
+        Ok(Self { a })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
-        if self.x.len() > 0xff_ffff_ffff_usize {
-            panic!(
-                "Invalid length for {}::{}: {} > {}",
-                "Bar",
-                "x",
-                self.x.len(),
-                0xff_ffff_ffff_usize
-            );
-        }
-        buffer.put_uint_le(self.x.len() as u64, 5);
-        for elem in &self.x {
+        let current_size = buffer.len();
+        for elem in &self.a {
             elem.write_to(buffer);
         }
+        let array_size = buffer.len() - current_size;
+        if array_size > 128usize {
+            panic!("attempted to serialize an array larger than the enclosing padding size");
+        }
+        buffer.put_bytes(0, 128usize - array_size);
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
     }
     fn get_size(&self) -> usize {
-        5 + self.x.iter().map(|elem| elem.get_size()).sum::<usize>()
+        128
     }
 }
 impl Packet for Bar {
@@ -197,8 +198,8 @@ impl Bar {
     fn new(bar: Arc<BarData>) -> Result<Self> {
         Ok(Self { bar })
     }
-    pub fn get_x(&self) -> &Vec<Foo> {
-        &self.bar.as_ref().x
+    pub fn get_a(&self) -> &Vec<Foo> {
+        &self.bar.as_ref().a
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.bar.write_to(buffer)
@@ -209,7 +210,7 @@ impl Bar {
 }
 impl BarBuilder {
     pub fn build(self) -> Bar {
-        let bar = Arc::new(BarData { x: self.x });
+        let bar = Arc::new(BarData { a: self.a });
         Bar::new(bar).unwrap()
     }
 }

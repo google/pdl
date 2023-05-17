@@ -899,6 +899,67 @@ fn generate_enum_decl(
     }
 }
 
+/// Generate the declaration for a custom field of static size.
+///
+/// * `id` - Enum identifier.
+/// * `width` - Width of the backing type of the enum, in bits.
+fn generate_custom_field_decl(id: &str, width: usize) -> proc_macro2::TokenStream {
+    let id = format_ident!("{}", id);
+    let backing_type = types::Integer::new(width);
+    let backing_type_str = proc_macro2::Literal::string(&format!("u{}", backing_type.width));
+    let max_value = mask_bits(width, "usize");
+    let common = quote! {
+        impl From<&#id> for #backing_type {
+            fn from(value: &#id) -> #backing_type {
+                value.0
+            }
+        }
+
+        impl From<#id> for #backing_type {
+            fn from(value: #id) -> #backing_type {
+                value.0
+            }
+        }
+    };
+
+    if backing_type.width == width {
+        quote! {
+            #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+            #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+            #[cfg_attr(feature = "serde", serde(from = #backing_type_str, into = #backing_type_str))]
+            pub struct #id(#backing_type);
+
+            #common
+
+            impl From<#backing_type> for #id {
+                fn from(value: #backing_type) -> Self {
+                    #id(value)
+                }
+            }
+        }
+    } else {
+        quote! {
+            #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+            #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+            #[cfg_attr(feature = "serde", serde(try_from = #backing_type_str, into = #backing_type_str))]
+            pub struct #id(#backing_type);
+
+            #common
+
+            impl TryFrom<#backing_type> for #id {
+                type Error = #backing_type;
+                fn try_from(value: #backing_type) -> std::result::Result<Self, Self::Error> {
+                    if value > #max_value {
+                        Err(value)
+                    } else {
+                        Ok(#id(value))
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn generate_decl(
     scope: &lint::Scope<'_>,
     file: &analyzer_ast::File,
@@ -918,6 +979,9 @@ fn generate_decl(
         }
         ast::DeclDesc::Enum { id, tags, width } => {
             generate_enum_decl(id, tags, *width, false).to_string()
+        }
+        ast::DeclDesc::CustomField { id, width: Some(width), .. } => {
+            generate_custom_field_decl(id, *width).to_string()
         }
         _ => todo!("unsupported Decl::{:?}", decl),
     }
@@ -1105,6 +1169,20 @@ mod tests {
     );
 
     test_pdl!(
+        custom_field_declaration,
+        r#"
+        // Still unsupported.
+        // custom_field Dynamic "dynamic"
+
+        // Should generate a type with From<u32> implementation.
+        custom_field ExactSize : 32 "exact_size"
+
+        // Should generate a type with TryFrom<u32> implementation.
+        custom_field TruncatedSize : 24 "truncated_size"
+        "#
+    );
+
+    test_pdl!(
         packet_decl_simple_scalars,
         r#"
           packet Foo {
@@ -1252,12 +1330,40 @@ mod tests {
     );
 
     test_pdl!(
+        packet_decl_array_with_padding,
+        "
+          struct Foo {
+            _count_(a): 40,
+            a: 16[],
+          }
+
+          packet Bar {
+            a: Foo[],
+            _padding_ [128],
+          }
+        "
+    );
+
+    test_pdl!(
         packet_decl_reserved_field,
         "
           packet Foo {
             _reserved_: 40,
           }
         "
+    );
+
+    test_pdl!(
+        packet_decl_custom_field,
+        r#"
+          custom_field Bar1 : 24 "exact"
+          custom_field Bar2 : 32 "truncated"
+
+          packet Foo {
+            a: Bar1,
+            b: Bar2,
+          }
+        "#
     );
 
     test_pdl!(

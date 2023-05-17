@@ -55,15 +55,20 @@ impl<'a> FieldSerializer<'a> {
     pub fn add(&mut self, field: &analyzer_ast::Field) {
         match &field.desc {
             _ if self.scope.is_bitfield(field) => self.add_bit_field(field),
-            ast::FieldDesc::Array { id, width, .. } => {
-                self.add_array_field(id, *width, self.scope.get_field_declaration(field))
-            }
+            ast::FieldDesc::Array { id, width, .. } => self.add_array_field(
+                id,
+                *width,
+                field.annot.padded_size,
+                self.scope.get_field_declaration(field),
+            ),
             ast::FieldDesc::Typedef { id, type_id } => {
                 self.add_typedef_field(id, type_id);
             }
             ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. } => {
                 self.add_payload_field()
             }
+            // Padding field handled in serialization of associated array field.
+            ast::FieldDesc::Padding { .. } => (),
             _ => todo!("Cannot yet serialize {field:?}"),
         }
     }
@@ -258,10 +263,10 @@ impl<'a> FieldSerializer<'a> {
         &mut self,
         id: &str,
         width: Option<usize>,
+        padding_size: Option<usize>,
         decl: Option<&analyzer_ast::Decl>,
     ) {
-        // TODO: padding
-
+        let span = format_ident!("{}", self.span);
         let serialize = match width {
             Some(width) => {
                 let value = quote!(*elem);
@@ -277,7 +282,6 @@ impl<'a> FieldSerializer<'a> {
                         self.span,
                     )
                 } else {
-                    let span = format_ident!("{}", self.span);
                     quote! {
                         elem.write_to(#span)
                     }
@@ -286,10 +290,26 @@ impl<'a> FieldSerializer<'a> {
         };
 
         let id = format_ident!("{id}");
-        self.code.push(quote! {
-            for elem in &self.#id {
-                #serialize;
-            }
+
+        self.code.push(match padding_size {
+            Some(padding_size) =>
+                quote! {
+                    let current_size = #span.len();
+                    for elem in &self.#id {
+                        #serialize;
+                    }
+                    let array_size = #span.len() - current_size;
+                    if array_size > #padding_size {
+                        panic!("attempted to serialize an array larger than the enclosing padding size");
+                    }
+                    #span.put_bytes(0, #padding_size - array_size);
+                },
+            None =>
+                quote! {
+                    for elem in &self.#id {
+                        #serialize;
+                    }
+                }
         });
     }
 
@@ -302,8 +322,25 @@ impl<'a> FieldSerializer<'a> {
 
         let id = format_ident!("{id}");
         let span = format_ident!("{}", self.span);
-        self.code.push(quote! {
-            self.#id.write_to(#span);
+
+        self.code.push(match &decl.desc {
+            ast::DeclDesc::Checksum { .. } => todo!(),
+            ast::DeclDesc::CustomField { width: Some(width), .. } => {
+                let backing_type = types::Integer::new(*width);
+                let put_uint = types::put_uint(
+                    self.endianness,
+                    &quote! { #backing_type::from(self.#id) },
+                    *width,
+                    self.span,
+                );
+                quote! {
+                    #put_uint;
+                }
+            }
+            ast::DeclDesc::Struct { .. } => quote! {
+                self.#id.write_to(#span);
+            },
+            _ => unreachable!(),
         });
     }
 

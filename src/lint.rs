@@ -275,7 +275,10 @@ impl<'d> Scope<'d> {
             | FieldDesc::ElementSize { width, .. }
             | FieldDesc::Reserved { width, .. }
             | FieldDesc::FixedScalar { width, .. } => Some(*width),
-            FieldDesc::Padding { .. } => todo!(),
+            FieldDesc::Padding { .. } => Some(0),
+            FieldDesc::Array { .. } if field.annot.padded_size.is_some() => {
+                Some(field.annot.padded_size.unwrap() * 8)
+            }
             FieldDesc::Array { size: Some(size), width, .. } => {
                 let element_width = width
                     .or_else(|| self.get_decl_width(self.get_field_declaration(field)?, false))?;

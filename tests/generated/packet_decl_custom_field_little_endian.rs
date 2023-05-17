@@ -47,11 +47,56 @@ pub trait Packet {
     fn to_vec(self) -> Vec<u8>;
 }
 
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "u32", into = "u32"))]
+pub struct Bar1(u32);
+impl From<&Bar1> for u32 {
+    fn from(value: &Bar1) -> u32 {
+        value.0
+    }
+}
+impl From<Bar1> for u32 {
+    fn from(value: Bar1) -> u32 {
+        value.0
+    }
+}
+impl TryFrom<u32> for Bar1 {
+    type Error = u32;
+    fn try_from(value: u32) -> std::result::Result<Self, Self::Error> {
+        if value > 0xff_ffff {
+            Err(value)
+        } else {
+            Ok(Bar1(value))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(from = "u32", into = "u32"))]
+pub struct Bar2(u32);
+impl From<&Bar2> for u32 {
+    fn from(value: &Bar2) -> u32 {
+        value.0
+    }
+}
+impl From<Bar2> for u32 {
+    fn from(value: Bar2) -> u32 {
+        value.0
+    }
+}
+impl From<u32> for Bar2 {
+    fn from(value: u32) -> Self {
+        Bar2(value)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FooData {
-    padding: u8,
-    x: Vec<u32>,
+    a: Bar1,
+    b: Bar2,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -62,12 +107,12 @@ pub struct Foo {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FooBuilder {
-    pub padding: u8,
-    pub x: Vec<u32>,
+    pub a: Bar1,
+    pub b: Bar2,
 }
 impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
-        bytes.len() >= 1
+        bytes.len() >= 7
     }
     fn parse(bytes: &[u8]) -> Result<Self> {
         let mut cell = Cell::new(bytes);
@@ -75,46 +120,19 @@ impl FooData {
         Ok(packet)
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
-        if bytes.get().remaining() < 1 {
-            return Err(Error::InvalidLengthError {
-                obj: "Foo".to_string(),
-                wanted: 1,
-                got: bytes.get().remaining(),
-            });
-        }
-        let chunk = bytes.get_mut().get_u8();
-        let x_count = (chunk & 0x1f) as usize;
-        let padding = ((chunk >> 5) & 0x7);
-        if bytes.get().remaining() < x_count * 3usize {
-            return Err(Error::InvalidLengthError {
-                obj: "Foo".to_string(),
-                wanted: x_count * 3usize,
-                got: bytes.get().remaining(),
-            });
-        }
-        let x = (0..x_count)
-            .map(|_| Ok::<_, Error>(bytes.get_mut().get_uint(3) as u32))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(Self { padding, x })
+        let a = (bytes.get_mut().get_uint_le(3) as u32).try_into().unwrap();
+        let b = bytes.get_mut().get_u32_le().into();
+        Ok(Self { a, b })
     }
     fn write_to(&self, buffer: &mut BytesMut) {
-        if self.x.len() > 0x1f {
-            panic!("Invalid length for {}::{}: {} > {}", "Foo", "x", self.x.len(), 0x1f);
-        }
-        if self.padding > 0x7 {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "padding", self.padding, 0x7);
-        }
-        let value = self.x.len() as u8 | (self.padding << 5);
-        buffer.put_u8(value);
-        for elem in &self.x {
-            buffer.put_uint(*elem as u64, 3);
-        }
+        buffer.put_uint_le(u32::from(self.a) as u64, 3);
+        buffer.put_u32_le(u32::from(self.b));
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
     }
     fn get_size(&self) -> usize {
-        1 + self.x.len() * 3
+        7
     }
 }
 impl Packet for Foo {
@@ -150,11 +168,11 @@ impl Foo {
     fn new(foo: Arc<FooData>) -> Result<Self> {
         Ok(Self { foo })
     }
-    pub fn get_padding(&self) -> u8 {
-        self.foo.as_ref().padding
+    pub fn get_a(&self) -> &Bar1 {
+        &self.foo.as_ref().a
     }
-    pub fn get_x(&self) -> &Vec<u32> {
-        &self.foo.as_ref().x
+    pub fn get_b(&self) -> &Bar2 {
+        &self.foo.as_ref().b
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.foo.write_to(buffer)
@@ -165,7 +183,7 @@ impl Foo {
 }
 impl FooBuilder {
     pub fn build(self) -> Foo {
-        let foo = Arc::new(FooData { padding: self.padding, x: self.x });
+        let foo = Arc::new(FooData { a: self.a, b: self.b });
         Foo::new(foo).unwrap()
     }
 }
