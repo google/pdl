@@ -1494,6 +1494,36 @@ mod tests {
         "
     );
 
+    test_pdl!(
+        packet_decl_parent_with_alias_child,
+        "
+          enum Enum8 : 8 {
+            A = 0,
+            B = 1,
+            C = 2,
+          }
+
+          packet Parent {
+            v : Enum8,
+            _payload_,
+          }
+
+          packet AliasChild : Parent {
+            _payload_
+          }
+
+          packet NormalChild : Parent (v = A) {
+          }
+
+          packet NormalGrandChild1 : AliasChild (v = B) {
+          }
+
+          packet NormalGrandChild2 : AliasChild (v = C) {
+              _payload_
+          }
+        "
+    );
+
     // TODO(mgeisler): enable this test when we have an approach to
     // struct fields with parents.
     //
