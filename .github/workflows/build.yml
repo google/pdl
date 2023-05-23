@@ -3,6 +3,7 @@ name: build
 on:
   - pull_request
   - push
+  - workflow_dispatch
 
 env:
   CARGO_TERM_COLOR: always
