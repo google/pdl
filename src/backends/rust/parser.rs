@@ -18,7 +18,7 @@ use crate::backends::rust::{
 };
 use crate::{ast, lint};
 use quote::{format_ident, quote};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 
 fn size_field_ident(id: &str) -> proc_macro2::Ident {
     format_ident!("{}_size", id.trim_matches('_'))
@@ -627,51 +627,75 @@ impl<'a> FieldParser<'a> {
             return;
         }
 
-        let child_ids = children
+        // Gather fields that are constrained in immediate child declarations.
+        // Keep the fields sorted by name.
+        // TODO: fields that are only matched in grand children will not be included.
+        let constrained_fields = children
             .iter()
-            .map(|child| format_ident!("{}", child.id().unwrap()))
-            .collect::<Vec<_>>();
-        let child_ids_data = child_ids.iter().map(|ident| format_ident!("{ident}Data"));
+            .flat_map(|child| child.constraints().map(|c| &c.id))
+            .collect::<BTreeSet<_>>();
 
-        // Set of field names (sorted by name).
-        let mut constrained_fields = BTreeSet::new();
-        // Maps (child name, field name) -> value.
-        let mut constraint_values = HashMap::new();
+        let mut match_values = Vec::new();
+        let mut child_parse_args = Vec::new();
+        let mut child_ids_data = Vec::new();
+        let mut child_ids = Vec::new();
+        let get_constraint_value = |mut constraints: std::slice::Iter<'_, ast::Constraint>,
+                                    id: &str|
+         -> Option<proc_macro2::TokenStream> {
+            constraints.find(|c| c.id == id).map(|c| constraint_to_value(packet_scope, c))
+        };
 
         for child in children.iter() {
-            match &child.desc {
-                ast::DeclDesc::Packet { id, constraints, .. }
-                | ast::DeclDesc::Struct { id, constraints, .. } => {
-                    for constraint in constraints.iter() {
-                        constrained_fields.insert(&constraint.id);
-                        constraint_values.insert(
-                            (id.as_str(), &constraint.id),
-                            constraint_to_value(packet_scope, constraint),
-                        );
-                    }
-                }
-                _ => unreachable!("Invalid child: {child:?}"),
-            }
-        }
+            let tuple_values = constrained_fields
+                .iter()
+                .map(|id| {
+                    get_constraint_value(child.constraints(), id).map(|v| vec![v]).unwrap_or_else(
+                        || {
+                            self.scope
+                                .file
+                                .iter_children(child)
+                                .filter_map(|d| get_constraint_value(d.constraints(), id))
+                                .collect()
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
 
-        let wildcard = quote!(_);
-        let match_values = children.iter().map(|child| {
-            let child_id = child.id().unwrap();
-            let values = constrained_fields.iter().map(|field_name| {
-                constraint_values.get(&(child_id, field_name)).unwrap_or(&wildcard)
-            });
-            quote! {
-                (#(#values),*)
+            // If no constraint values are found for the tuple just skip the child
+            // packet as it would capture unwanted input packets.
+            if tuple_values.iter().all(|v| v.is_empty()) {
+                continue;
             }
-        });
-        let constrained_field_idents =
-            constrained_fields.iter().map(|field| format_ident!("{field}"));
-        let child_parse_args = children.iter().map(|child| {
+
+            let tuple_values = tuple_values
+                .iter()
+                .map(|v| v.is_empty().then_some(quote!(_)).unwrap_or_else(|| quote!( #(#v)|* )))
+                .collect::<Vec<_>>();
+
             let fields = find_constrained_parent_fields(self.scope, child.id().unwrap())
                 .map(|field| format_ident!("{}", field.id().unwrap()));
-            quote!(#(, #fields)*)
-        });
+
+            match_values.push(quote!( (#(#tuple_values),*) ));
+            child_parse_args.push(quote!( #(, #fields)*));
+            child_ids_data.push(format_ident!("{}Data", child.id().unwrap()));
+            child_ids.push(format_ident!("{}", child.id().unwrap()));
+        }
+
+        let constrained_field_idents =
+            constrained_fields.iter().map(|field| format_ident!("{field}"));
         let packet_data_child = format_ident!("{}DataChild", self.packet_name);
+
+        // Parsing of packet children requires having a payload field;
+        // it is allowed to inherit from a packet with empty payload, in this
+        // case generate an empty payload value.
+        if !decl
+            .fields()
+            .any(|f| matches!(&f.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body))
+        {
+            self.code.push(quote! {
+                let payload: &[u8] = &[];
+            })
+        }
         self.code.push(quote! {
             let child = match (#(#constrained_field_idents),*) {
                 #(#match_values if #child_ids_data::conforms(&payload) => {

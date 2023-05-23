@@ -477,6 +477,9 @@ fn generate_packet_decl(
                     #parent_data_child::#prev_parent_id(#prev_parent_id_lower)
                 });
             }
+        } else if scope.iter_children(parent_id).next().is_some() {
+            field.push(format_ident!("child"));
+            value.push(quote! { #parent_data_child::None });
         }
 
         quote! {
@@ -907,7 +910,7 @@ fn generate_custom_field_decl(id: &str, width: usize) -> proc_macro2::TokenStrea
     let id = format_ident!("{}", id);
     let backing_type = types::Integer::new(width);
     let backing_type_str = proc_macro2::Literal::string(&format!("u{}", backing_type.width));
-    let max_value = mask_bits(width, "usize");
+    let max_value = mask_bits(width, &format!("u{}", backing_type.width));
     let common = quote! {
         impl From<&#id> for #backing_type {
             fn from(value: &#id) -> #backing_type {
@@ -1471,6 +1474,52 @@ mod tests {
 
           packet GrandGrandChild : GrandChild (baz = A) {
               _body_,
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_parent_with_no_payload,
+        "
+          enum Enum8 : 8 {
+            A = 0,
+          }
+
+          packet Parent {
+            v : Enum8,
+          }
+
+          packet Child : Parent (v = A) {
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_parent_with_alias_child,
+        "
+          enum Enum8 : 8 {
+            A = 0,
+            B = 1,
+            C = 2,
+          }
+
+          packet Parent {
+            v : Enum8,
+            _payload_,
+          }
+
+          packet AliasChild : Parent {
+            _payload_
+          }
+
+          packet NormalChild : Parent (v = A) {
+          }
+
+          packet NormalGrandChild1 : AliasChild (v = B) {
+          }
+
+          packet NormalGrandChild2 : AliasChild (v = C) {
+              _payload_
           }
         "
     );

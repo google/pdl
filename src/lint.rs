@@ -21,7 +21,7 @@ use crate::ast::*;
 #[derive(Debug)]
 pub struct Scope<'d> {
     // Original file.
-    file: &'d analyzer_ast::File,
+    pub file: &'d analyzer_ast::File,
 
     // Collection of Group, Packet, Enum, Struct, Checksum, and CustomField declarations.
     pub typedef: HashMap<String, &'d analyzer_ast::Decl>,
