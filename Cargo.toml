@@ -1,6 +1,6 @@
 [package]
 name = "pdl-compiler"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Parser and serializer generator for protocol binary packets"
 repository = "https://github.com/google/pdl/"
@@ -12,6 +12,7 @@ authors = [
     "David de Jesus Duarte <licorne@google.com>",
     "Martin Geisler <mgeisler@google.com>"
 ]
+exclude = [".github/*"]
 categories = ["parsing"]
 default-run = "pdlc"
 
