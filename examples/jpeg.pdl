@@ -1,0 +1,88 @@
+// Grammar file for the Jpeg File Format.
+// https://www.w3.org/Graphics/JPEG/jfif3.pdf
+
+big_endian_packets
+
+enum MarkerType : 8 {
+    NUL = 0x00, // JPEG reserved
+    TEM = 0x01, // temporary marker for arithmetic coding
+
+    // frame types
+    SOF0 = 0xc0, // start of frame (baseline jpeg)
+    SOF1 = 0xc1, // start of frame (extended sequential, huffman)
+    SOF2 = 0xc2, // start of frame (progressive, huffman)
+    SOF3 = 0xc3, // start of frame (lossless, huffman) libjpeg-unsupported
+    SOF5 = 0xc5, // start of frame (differential sequential, huffman) libjpeg-unsupported
+    SOF6 = 0xc6, // start of frame (differential progressive, huffman) libjpeg-unsupported
+    SOF7 = 0xc7, // start of frame (differential lossless, huffman) libjpeg-unsupported
+    SOF9 = 0xc9, // start of frame (extended sequential, arithmetic)
+    SOF10 = 0xca, // start of frame (progressive, arithmetic)
+    SOF11 = 0xcb, // start of frame (lossless, arithmetic) libjpeg-unsupported
+    SOF13 = 0xcd, // start of frame (differential sequential, arithmetic) libjpeg-unsupported
+    SOF14 = 0xce, // start of frame (differential progressive, arithmetic) libjpeg-unsupported
+    SOF15 = 0xcf, // start of frame (differential lossless, arithmetic) libjpeg-unsupported
+
+    DHT = 0xc4, // define huffman tables
+    JPG = 0xc8, // reserved for JPEG extension libjpeg-unsupported
+    DAC = 0xcc, // define arithmetic coding conditioning libjpeg-skipped
+
+    // restart markers (parameterless), only in scans data
+    RST = 0xd0..0xd7,
+
+    // delimiters
+    SOI = 0xd8, // start of image (parameterless)
+    EOI = 0xd9, // end of image (parameterless)
+    SOS = 0xda, // start of scan
+    DQT = 0xdb, // define quantization table(s)
+    DNL = 0xdc, // define number of lines # libjpeg-skipped
+    DRI = 0xdd, // define restart interval
+    DHP = 0xde, // define hierarchical progression
+    EXP = 0xdf, // expand reference components
+    COM = 0xfe, // extension data (comment)
+
+    // application segments
+    APP0 = 0xe0, // application segment 0 (JFIF (len >=14) / JFXX (len >= 6) / AVI MJPEG)
+    APP1 = 0xe1, // application segment 1 (EXIF/XMP/XAP ?)
+    APP2 = 0xe2, // application segment 2 (FlashPix / ICC)
+    APP3 = 0xe3, // application segment 3 (Kodak/...)
+    APP4 = 0xe4, // application segment 4 (FlashPix/...)
+    APP5 = 0xe5, // application segment 5 (Ricoh...)
+    APP6 = 0xe6, // application segment 6 (GoPro...)
+    APP7 = 0xe7, // application segment 7 (Pentax/Qualcomm)
+    APP8 = 0xe8, // application segment 8 (Spiff)
+    APP9 = 0xe9, // application segment 9 (MediaJukebox)
+    APP10 = 0xea, // application segment 10 (PhotoStudio)
+    APP11 = 0xeb, // application segment 11 (HDR)
+    APP12 = 0xec, // application segment 12 (photoshoP ducky / savE foR web)
+    APP13 = 0xed, // application segment 13 (photoshoP savE As)
+    APP14 = 0xee, // application segment 14 ("adobe" (length = 12))
+    APP15 = 0xef, // application segment 15 (GraphicConverter)
+}
+
+struct Marker {
+    _fixed_ = 0xff : 8,
+    type: MarkerType,
+    _payload_,
+}
+
+struct Segment: Marker {
+    _size_(_payload_): 16,
+    _payload_ [+2],
+}
+
+struct StartOfImage : Marker(type = SOI) {}
+struct EndOfImage : Marker(type = EOI) {}
+
+packet Image {
+    start: StartOfImage,
+    segments: Segment[],
+    // The payload contains the Entropy-Coded Segment, which doesn't follow any
+    // similar convention despite the same segment name. They represent most of
+    // the file's data. Its length is unknown in advance, nor defined in the
+    // file. The only way to get its length is to either decode it or to
+    // fast-forward over it: just scan forward for a FF byte.
+    // If it's a restart marker (followed by D0 - D7) or a data FF
+    // (followed by 00), continue.
+    _payload_,
+    end: EndOfImage,
+}
