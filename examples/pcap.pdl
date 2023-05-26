@@ -1,0 +1,27 @@
+// Grammar file for the Libpcap File Format.
+// https://wiki.wireshark.org/Development/LibpcapFileFormat
+
+little_endian_packets
+
+struct PcapHeader {
+  _fixed_ = 0xa1b2c3d4: 32, /* magic number */
+  version_major: 16,
+  version_minor: 16,
+  thiszone: 32,  /* GMT to local correction */
+  sigfigs: 32,  /* accuracy of timestamps */
+  snaplen: 32,  /* max length of captured packets, in octets */
+  network: 32,  /* data link type */
+}
+
+struct PcapRecord {
+  ts_sec: 32,  /* timestamp seconds */
+  ts_usec: 32,  /* timestamp microseconds */
+  _size_(_payload_): 32, /* number of octets of packet saved in file */
+  orig_len: 32,  /* actual length of packet */
+  _payload_,  /* packet octets */
+}
+
+packet PcapFile {
+  header: PcapHeader,
+  records: PcapRecord[],
+}
