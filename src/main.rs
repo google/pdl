@@ -64,6 +64,27 @@ struct Opt {
     #[argh(positional)]
     /// input file.
     input_file: String,
+
+    #[argh(option)]
+    /// exclude declarations from the generated output.
+    exclude_declaration: Vec<String>,
+}
+
+/// Remove declarations listed in the input filter.
+fn filter_declarations(
+    file: parser::ast::File,
+    exclude_declarations: &[String],
+) -> parser::ast::File {
+    ast::File {
+        declarations: file
+            .declarations
+            .into_iter()
+            .filter(|decl| {
+                decl.id().map(|id| !exclude_declarations.contains(&id.to_owned())).unwrap_or(true)
+            })
+            .collect(),
+        ..file
+    }
 }
 
 fn main() -> Result<(), String> {
@@ -77,6 +98,7 @@ fn main() -> Result<(), String> {
     let mut sources = ast::SourceDatabase::new();
     match parser::parse_file(&mut sources, opt.input_file) {
         Ok(file) => {
+            let file = filter_declarations(file, &opt.exclude_declaration);
             let analyzed_file = match analyzer::analyze(&file) {
                 Ok(file) => file,
                 Err(diagnostics) => {
