@@ -12,7 +12,7 @@ authors = [
     "David de Jesus Duarte <licorne@google.com>",
     "Martin Geisler <mgeisler@google.com>"
 ]
-exclude = [".github/*"]
+exclude = [".github/*", "editors/*"]
 categories = ["parsing"]
 default-run = "pdlc"
 

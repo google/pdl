@@ -1,0 +1,96 @@
+%YAML 1.2
+---
+# See http://www.sublimetext.com/docs/syntax.html
+file_extensions:
+  - pdl
+scope: source.pdl
+contexts:
+  main:
+    - match: '"'
+      scope: punctuation.definition.string.begin.pdl
+      push: double-quoted-string
+
+    - match: '//'
+      scope: punctuation.definition.comment.pdl
+      push: line-comment
+
+    - match: '/\*'
+      scope: punctuation.definition.comment.pdl
+      push: block-comment
+
+    - match: '\b(little_endian_packets|big_endian_packets)\b'
+      scope: keyword.control.pdl
+
+    - match: '\b[0-9]+\b'
+      scope: constant.numeric.integer.pdl
+
+    - match: '\b0x[0-9A-Fa-f]+\b'
+      scope: constant.numeric.hexadecimal.pdl
+
+    - match: '\b(custom_field|checksum)\b'
+      scope: keyword.control.pdl
+      set: typedef-name
+
+    - match: '\b(struct|packet|group)\b'
+      scope: keyword.control.pdl
+      set: [struct-block-begin, typedef-name]
+
+    - match: '\benum\b'
+      scope: keyword.control.pdl
+      set: [enum-block-begin, integer, typedef-name]
+
+    - match: '\b(_fixed_|_reserved_|_padding_|_payload_|_body_|_size_|_count_)\b'
+      scope: keyword.control.pdl
+
+  double-quoted-string:
+    - meta_scope: string.quoted.double.pdl
+    - match: '\\.'
+      scope: constant.character.escape.pdl
+    - match: '"'
+      scope: punctuation.definition.string.end.pdl
+      pop: true
+
+  integer:
+    - match: '\b[0-9]+\b'
+      scope: constant.numeric.integer.pdl
+      pop: true
+
+  line-comment:
+    - meta_scope: comment.line.pdl
+    - match: $
+      pop: true
+
+  block-comment:
+    - meta_scope: comment.block.pdl
+    - match: '\*/'
+      scope: punctuation.definition.comment.pdl
+      pop: true
+
+  typedef-name:
+    - match: '\b[A-Za-z_][A-Za-z_0-9]*\b'
+      scope: entity.name.type
+      pop: true
+
+  struct-block-begin:
+    - match: '\{'
+      scope: punctuation.section.begin.pdl
+      set: struct-block
+
+  struct-block:
+    - meta_scope: meta.struct
+    - match: '\}'
+      scope: punctuation.section.end.pdl
+      pop: true
+    - include: main
+
+  enum-block-begin:
+    - match: '\{'
+      scope: punctuation.section.begin.pdl
+      set: enum-block
+
+  enum-block:
+    - meta_scope: meta.enum
+    - match: '\}'
+      scope: punctuation.section.end.pdl
+      pop: true
+    - include: main
