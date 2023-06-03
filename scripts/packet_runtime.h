@@ -16,15 +16,11 @@
 
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
-
-#ifndef ASSERT
-#include <cassert>
-#define ASSERT assert
-#endif  // !ASSERT
 
 namespace pdl::packet {
 
@@ -46,7 +42,7 @@ class slice {
   /// current slice. The range ['offset', 'offset' + 'slice') must be
   /// contained within the bonuds of the current slice.
   slice subrange(size_t offset, size_t size) const {
-    ASSERT((offset + size) <= size_);
+    assert((offset + size) <= size_);
     return slice(packet_, offset_ + offset, size);
   }
 
@@ -57,7 +53,7 @@ class slice {
   template <typename T, size_t N = sizeof(T)>
   T read_le() {
     static_assert(N <= sizeof(T));
-    ASSERT(N <= size_);
+    assert(N <= size_);
     T value = 0;
     for (size_t n = 0; n < N; n++) {
       value |= (T)at(n) << (8 * n);
@@ -73,7 +69,7 @@ class slice {
   template <typename T, size_t N = sizeof(T)>
   T read_be() {
     static_assert(N <= sizeof(T));
-    ASSERT(N <= size_);
+    assert(N <= size_);
     T value = 0;
     for (size_t n = 0; n < N; n++) {
       value = (value << 8) | (T)at(n);
@@ -85,14 +81,14 @@ class slice {
   /// Return the value of the byte at the given offset.
   /// `offset` must be within the bounds of the slice.
   uint8_t at(size_t offset) const {
-    ASSERT(offset <= size_);
+    assert(offset <= size_);
     return packet_->at(offset_ + offset);
   }
 
   /// Skip `size` bytes at the front of the slice.
   /// `size` must be lower than or equal to the slice size.
   void skip(size_t size) {
-    ASSERT(size <= size_);
+    assert(size <= size_);
     offset_ += size;
     size_ -= size;
   }
@@ -107,6 +103,13 @@ class slice {
   std::vector<uint8_t> bytes() const {
     return std::vector<uint8_t>(packet_->cbegin() + offset_,
                                 packet_->cbegin() + offset_ + size_);
+  }
+
+  bool operator==(slice const& other) const {
+    return size_ == other.size_ &&
+           std::equal(packet_->begin() + offset_,
+                      packet_->begin() + offset_ + size_,
+                      other.packet_->begin());
   }
 
  private:
@@ -147,7 +150,7 @@ class Builder {
   }
 
   /// Helper method to serialize the packet to a byte vector.
-  std::vector<uint8_t> Serialize() const {
+  virtual std::vector<uint8_t> Serialize() const {
     std::vector<uint8_t> output;
     Serialize(output);
     return output;
