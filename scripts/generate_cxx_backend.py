@@ -278,8 +278,36 @@ class FieldParser:
                 f"pdl::packet::slice remaining_span = span.subrange({padded_size}, span.size() - {padded_size});")
             self.append_(f"span = span.subrange(0, {padded_size});")
 
+        # The array count is known statically, elements are scalar.
+        if field.width and field.size:
+            assert size is not None
+            self.check_size_(size)
+            element_size = int(field.width / 8)
+            self.append_(f"for (size_t n = 0; n < {field.size}; n++) {{")
+            self.append_(f"    {field.id}_[n] = span.read_{self.byteorder}<{element_type}, {element_size}>();")
+            self.append_("}")
+
+        # The array count is known statically, elements are enum values.
+        elif isinstance(field.type, ast.EnumDeclaration) and field.size:
+            assert size is not None
+            self.check_size_(size)
+            element_size = int(field.type.width / 8)
+            backing_type = get_cxx_scalar_type(field.type.width)
+            self.append_(f"for (size_t n = 0; n < {field.size}; n++) {{")
+            self.append_(
+                f"    {field.id}_[n] = {element_type}(span.read_{self.byteorder}<{backing_type}, {element_size}>());")
+            self.append_("}")
+
+        # The array count is known statically, elements have variable size.
+        elif field.size:
+            self.append_(f"for (size_t n = 0; n < {field.size}; n++) {{")
+            self.append_(f"    if (!{element_type}::Parse(span, &{field.id}_[n])) {{")
+            self.append_("        return false;")
+            self.append_("    }")
+            self.append_("}")
+
         # The array size is known in bytes.
-        if size is not None:
+        elif size is not None:
             self.check_size_(size)
             self.append_("{")
             self.append_(f"pdl::packet::slice temp_span = span.subrange(0, {size});")
@@ -715,25 +743,48 @@ def generate_enum_to_text(decl: ast.EnumDeclaration) -> str:
         """).format(enum_name=enum_name, tag_cases=indent(tag_cases, 2))
 
 
-def generate_packet_field_members(decl: ast.Declaration, view: bool) -> List[str]:
+def generate_packet_view_field_members(decl: ast.Declaration) -> List[str]:
     """Return the declaration of fields that are backed in the view
     class declaration.
 
     Backed fields include all named fields that do not have a constrained
     value in the selected declaration and its parents.
 
-    :param decl: target declaration
-    :param view: if true the payload and array fields are generated as slices"""
+    :param decl: target declaration"""
 
     fields = core.get_unconstrained_parent_fields(decl) + decl.fields
     members = []
     for field in fields:
-        if isinstance(field, (ast.PayloadField, ast.BodyField)) and view:
+        if isinstance(field, (ast.PayloadField, ast.BodyField)):
             members.append("pdl::packet::slice payload_;")
-        elif isinstance(field, (ast.PayloadField, ast.BodyField)):
-            members.append("std::vector<uint8_t> payload_;")
-        elif isinstance(field, ast.ArrayField) and view:
+        elif isinstance(field, ast.ArrayField):
             members.append(f"pdl::packet::slice {field.id}_;")
+        elif isinstance(field, ast.ScalarField):
+            members.append(f"{get_cxx_scalar_type(field.width)} {field.id}_{{0}};")
+        elif isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration):
+            members.append(f"{field.type_id} {field.id}_{{{field.type_id}::{field.type.tags[0].id}}};")
+        elif isinstance(field, ast.TypedefField):
+            members.append(f"{field.type_id} {field.id}_;")
+
+    return members
+
+
+def generate_packet_field_members(decl: ast.Declaration) -> List[str]:
+    """Return the declaration of fields that are backed in the view
+    class declaration.
+
+    Backed fields include all named fields that do not have a constrained
+    value in the selected declaration and its parents.
+
+    :param decl: target declaration"""
+
+    members = []
+    for field in decl.fields:
+        if isinstance(field, (ast.PayloadField, ast.BodyField)) and not decl.parent:
+            members.append("std::vector<uint8_t> payload_;")
+        elif isinstance(field, ast.ArrayField) and field.size:
+            element_type = field.type_id or get_cxx_scalar_type(field.width)
+            members.append(f"std::array<{element_type}, {field.size}> {field.id}_;")
         elif isinstance(field, ast.ArrayField):
             element_type = field.type_id or get_cxx_scalar_type(field.width)
             members.append(f"std::vector<{element_type}> {field.id}_;")
@@ -774,16 +825,29 @@ def generate_scalar_array_field_accessor(field: ast.ArrayField) -> str:
     element_size = int(field.width / 8)
     backing_type = get_cxx_scalar_type(field.width)
     byteorder = field.parent.file.byteorder_short
-    return dedent("""\
-        pdl::packet::slice span = {field_id}_;
-        std::vector<{backing_type}> elements;
-        while (span.size() >= {element_size}) {{
-            elements.push_back(span.read_{byteorder}<{backing_type}, {element_size}>());
-        }}
-        return elements;""").format(field_id=field.id,
-                                    backing_type=backing_type,
-                                    element_size=element_size,
-                                    byteorder=byteorder)
+    if field.size:
+        return dedent("""\
+            pdl::packet::slice span = {field_id}_;
+            std::array<{backing_type}, {array_size}> elements;
+            for (int n = 0; n < {array_size}; n++) {{
+                elements[n] = span.read_{byteorder}<{backing_type}, {element_size}>();
+            }}
+            return elements;""").format(field_id=field.id,
+                                        backing_type=backing_type,
+                                        element_size=element_size,
+                                        array_size=field.size,
+                                        byteorder=byteorder)
+    else:
+        return dedent("""\
+            pdl::packet::slice span = {field_id}_;
+            std::vector<{backing_type}> elements;
+            while (span.size() >= {element_size}) {{
+                elements.push_back(span.read_{byteorder}<{backing_type}, {element_size}>());
+            }}
+            return elements;""").format(field_id=field.id,
+                                        backing_type=backing_type,
+                                        element_size=element_size,
+                                        byteorder=byteorder)
 
 
 def generate_enum_array_field_accessor(field: ast.ArrayField) -> str:
@@ -791,32 +855,55 @@ def generate_enum_array_field_accessor(field: ast.ArrayField) -> str:
     element_size = int(field.type.width / 8)
     backing_type = get_cxx_scalar_type(field.type.width)
     byteorder = field.parent.file.byteorder_short
-    return dedent("""\
-        pdl::packet::slice span = {field_id}_;
-        std::vector<{enum_type}> elements;
-        while (span.size() >= {element_size}) {{
-            elements.push_back({enum_type}(span.read_{byteorder}<{backing_type}, {element_size}>()));
-        }}
-        return elements;""").format(field_id=field.id,
-                                    enum_type=field.type_id,
-                                    backing_type=backing_type,
-                                    element_size=element_size,
-                                    byteorder=byteorder)
+    if field.size:
+        return dedent("""\
+            pdl::packet::slice span = {field_id}_;
+            std::array<{enum_type}, {array_size}> elements;
+            for (int n = 0; n < {array_size}; n++) {{
+                elements[n] = {enum_type}(span.read_{byteorder}<{backing_type}, {element_size}>());
+            }}
+            return elements;""").format(field_id=field.id,
+                                        enum_type=field.type.id,
+                                        backing_type=backing_type,
+                                        element_size=element_size,
+                                        array_size=field.size,
+                                        byteorder=byteorder)
+    else:
+        return dedent("""\
+            pdl::packet::slice span = {field_id}_;
+            std::vector<{enum_type}> elements;
+            while (span.size() >= {element_size}) {{
+                elements.push_back({enum_type}(span.read_{byteorder}<{backing_type}, {element_size}>()));
+            }}
+            return elements;""").format(field_id=field.id,
+                                        enum_type=field.type_id,
+                                        backing_type=backing_type,
+                                        element_size=element_size,
+                                        byteorder=byteorder)
 
 
 def generate_typedef_array_field_accessor(field: ast.ArrayField) -> str:
     """Parse the selected typedef array field."""
-    return dedent("""\
-        pdl::packet::slice span = {field_id}_;
-        std::vector<{struct_type}> elements;
-        for (;;) {{
-            {struct_type} element;
-            if (!{struct_type}::Parse(span, &element)) {{
-                break;
+    if field.size:
+        return dedent("""\
+            pdl::packet::slice span = {field_id}_;
+            std::array<{struct_type}, {array_size}> elements;
+            for (int n = 0; n < {array_size}; n++) {{
+                {struct_type}::Parse(span, &elements[n]);
             }}
-            elements.emplace_back(std::move(element));
-        }}
-        return elements;""").format(field_id=field.id, struct_type=field.type_id)
+            return elements;""").format(field_id=field.id, struct_type=field.type_id, array_size=field.size)
+    else:
+        return dedent("""\
+                pdl::packet::slice span = {field_id}_;
+                std::vector<{struct_type}> elements;
+                for (;;) {{
+                    {struct_type} element;
+                    if (!{struct_type}::Parse(span, &element)) {{
+                        break;
+                    }}
+                    elements.emplace_back(std::move(element));
+                }}
+                return elements;""").format(field_id=field.id, struct_type=field.type_id)
 
 
 def generate_array_field_accessor(field: ast.ArrayField):
@@ -923,15 +1010,16 @@ def generate_packet_view_field_accessors(packet: ast.PacketDeclaration) -> List[
                 """))
         elif isinstance(field, ast.ArrayField):
             element_type = field.type_id or get_cxx_scalar_type(field.width)
+            array_type = (f"std::array<{element_type}, {field.size}>" if field.size else f"std::vector<{element_type}>")
             accessor_name = to_pascal_case(field.id)
             accessors.append(
                 dedent("""\
-                std::vector<{element_type}> Get{accessor_name}() const {{
+                {array_type} Get{accessor_name}() const {{
                     ASSERT(valid_);
                     {accessor}
                 }}
 
-                """).format(element_type=element_type,
+                """).format(array_type=array_type,
                             accessor_name=accessor_name,
                             accessor=indent(generate_array_field_accessor(field), 1)))
         elif isinstance(field, ast.ScalarField):
@@ -1072,11 +1160,12 @@ def generate_packet_view(packet: ast.PacketDeclaration) -> str:
     packet declaration."""
 
     parent_class = f"{packet.parent.id}View" if packet.parent else "pdl::packet::slice"
-    field_members = generate_packet_field_members(packet, view=True)
+    field_members = generate_packet_view_field_members(packet)
     field_accessors = generate_packet_view_field_accessors(packet)
     field_parsers = generate_packet_view_field_parsers(packet)
     friend_classes = generate_packet_view_friend_classes(packet)
     stringifier = generate_packet_stringifier(packet)
+    bytes_initializer = f"parent.bytes_" if packet.parent else "parent"
 
     return dedent("""\
 
@@ -1093,8 +1182,13 @@ def generate_packet_view(packet: ast.PacketDeclaration) -> str:
                 return valid_;
             }}
 
+            pdl::packet::slice bytes() const {{
+                return bytes_;
+            }}
+
         protected:
-            explicit {packet_name}View({parent_class} const& parent) {{
+            explicit {packet_name}View({parent_class} const& parent)
+                  : bytes_({bytes_initializer}) {{
                 valid_ = Parse(parent);
             }}
 
@@ -1103,12 +1197,14 @@ def generate_packet_view(packet: ast.PacketDeclaration) -> str:
             }}
 
             bool valid_{{false}};
+            pdl::packet::slice bytes_;
             {field_members}
 
             {friend_classes}
         }};
         """).format(packet_name=packet.id,
                     parent_class=parent_class,
+                    bytes_initializer=bytes_initializer,
                     field_accessors=indent(field_accessors, 1),
                     field_members=indent(field_members, 1),
                     field_parsers=indent(field_parsers, 2),
@@ -1122,12 +1218,36 @@ def generate_packet_constructor(struct: ast.StructDeclaration, constructor_name:
 
     constructor_params = []
     constructor_initializers = []
-    fields = core.get_unconstrained_parent_fields(struct) + struct.fields
+    inherited_fields = core.get_unconstrained_parent_fields(struct)
+    payload_initializer = ''
+    parent_initializer = []
 
-    for field in fields:
+    for field in inherited_fields:
+        if isinstance(field, ast.ArrayField) and field.size:
+            element_type = field.type_id or get_cxx_scalar_type(field.width)
+            constructor_params.append(f"std::array<{element_type}, {field.size}> {field.id}")
+        elif isinstance(field, ast.ArrayField):
+            element_type = field.type_id or get_cxx_scalar_type(field.width)
+            constructor_params.append(f"std::vector<{element_type}> {field.id}")
+        elif isinstance(field, ast.ScalarField):
+            backing_type = get_cxx_scalar_type(field.width)
+            constructor_params.append(f"{backing_type} {field.id}")
+        elif (isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration)):
+            constructor_params.append(f"{field.type_id} {field.id}")
+        elif isinstance(field, ast.TypedefField):
+            constructor_params.append(f"{field.type_id} {field.id}")
+
+    for field in struct.fields:
         if isinstance(field, (ast.PayloadField, ast.BodyField)):
             constructor_params.append("std::vector<uint8_t> payload")
-            constructor_initializers.append("payload_(std::move(payload))")
+            if struct.parent:
+                payload_initializer = f"payload_ = std::move(payload);"
+            else:
+                constructor_initializers.append("payload_(std::move(payload))")
+        elif isinstance(field, ast.ArrayField) and field.size:
+            element_type = field.type_id or get_cxx_scalar_type(field.width)
+            constructor_params.append(f"std::array<{element_type}, {field.size}> {field.id}")
+            constructor_initializers.append(f"{field.id}_(std::move({field.id}))")
         elif isinstance(field, ast.ArrayField):
             element_type = field.type_id or get_cxx_scalar_type(field.width)
             constructor_params.append(f"std::vector<{element_type}> {field.id}")
@@ -1146,16 +1266,84 @@ def generate_packet_constructor(struct: ast.StructDeclaration, constructor_name:
     if not constructor_params:
         return ""
 
+    if struct.parent:
+        fields = core.get_unconstrained_parent_fields(struct.parent) + struct.parent.fields
+        parent_constructor_params = []
+        for field in fields:
+            constraints = [c for c in struct.constraints if c.id == getattr(field, 'id', None)]
+            if isinstance(field, (ast.PayloadField, ast.BodyField)):
+                parent_constructor_params.append("std::vector<uint8_t>{}")
+            elif isinstance(field, ast.ArrayField):
+                parent_constructor_params.append(f"std::move({field.id})")
+            elif isinstance(field, ast.ScalarField) and constraints:
+                parent_constructor_params.append(f"{constraints[0].value}")
+            elif isinstance(field, ast.ScalarField):
+                parent_constructor_params.append(f"{field.id}")
+            elif (isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration) and constraints):
+                parent_constructor_params.append(f"{field.type_id}::{constraints[0].tag_id}")
+            elif (isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration)):
+                parent_constructor_params.append(f"{field.id}")
+            elif isinstance(field, ast.TypedefField):
+                parent_constructor_params.append(f"std::move({field.id})")
+        parent_constructor_params = ', '.join(parent_constructor_params)
+        parent_initializer = [f"{struct.parent_id}Builder({parent_constructor_params})"]
+
     explicit = 'explicit ' if len(constructor_params) == 1 else ''
     constructor_params = ', '.join(constructor_params)
-    constructor_initializers = ', '.join(constructor_initializers)
+    constructor_initializers = ', '.join(parent_initializer + constructor_initializers)
 
     return dedent("""\
         {explicit}{constructor_name}({constructor_params})
-            : {constructor_initializers} {{}}""").format(explicit=explicit,
-                                                         constructor_name=constructor_name,
-                                                         constructor_params=constructor_params,
-                                                         constructor_initializers=constructor_initializers)
+            : {constructor_initializers} {{
+        {payload_initializer}
+    }}""").format(explicit=explicit,
+                  constructor_name=constructor_name,
+                  constructor_params=constructor_params,
+                  payload_initializer=payload_initializer,
+                  constructor_initializers=constructor_initializers)
+
+
+def generate_packet_creator(packet: ast.PacketDeclaration) -> str:
+    """Generate the implementation of the creator for a
+    struct declaration."""
+
+    constructor_name = f"{packet.id}Builder"
+    creator_params = []
+    constructor_params = []
+    fields = core.get_unconstrained_parent_fields(packet) + packet.fields
+
+    for field in fields:
+        if isinstance(field, (ast.PayloadField, ast.BodyField)):
+            creator_params.append("std::vector<uint8_t> payload")
+            constructor_params.append("std::move(payload)")
+        elif isinstance(field, ast.ArrayField) and field.size:
+            element_type = field.type_id or get_cxx_scalar_type(field.width)
+            creator_params.append(f"std::array<{element_type}, {field.size}> {field.id}")
+            constructor_params.append(f"std::move({field.id})")
+        elif isinstance(field, ast.ArrayField):
+            element_type = field.type_id or get_cxx_scalar_type(field.width)
+            creator_params.append(f"std::vector<{element_type}> {field.id}")
+            constructor_params.append(f"std::move({field.id})")
+        elif isinstance(field, ast.ScalarField):
+            backing_type = get_cxx_scalar_type(field.width)
+            creator_params.append(f"{backing_type} {field.id}")
+            constructor_params.append(f"{field.id}")
+        elif (isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration)):
+            creator_params.append(f"{field.type_id} {field.id}")
+            constructor_params.append(f"{field.id}")
+        elif isinstance(field, ast.TypedefField):
+            creator_params.append(f"{field.type_id} {field.id}")
+            constructor_params.append(f"std::move({field.id})")
+
+    creator_params = ', '.join(creator_params)
+    constructor_params = ', '.join(constructor_params)
+
+    return dedent("""\
+        static std::unique_ptr<{constructor_name}> Create({creator_params}) {{
+            return std::make_unique<{constructor_name}>({constructor_params});
+        }}""").format(constructor_name=constructor_name,
+                      creator_params=creator_params,
+                      constructor_params=constructor_params)
 
 
 def generate_packet_builder(packet: ast.PacketDeclaration) -> str:
@@ -1163,15 +1351,17 @@ def generate_packet_builder(packet: ast.PacketDeclaration) -> str:
     packet declaration."""
 
     class_name = f'{packet.id}Builder'
+    parent_class = f'{packet.parent_id}Builder' if packet.parent_id else "pdl::packet::Builder"
     builder_constructor = generate_packet_constructor(packet, constructor_name=class_name)
-    field_members = generate_packet_field_members(packet, view=False)
+    builder_creator = generate_packet_creator(packet)
+    field_members = generate_packet_field_members(packet)
     field_serializers = generate_packet_field_serializers(packet)
     size_getter = generate_packet_size_getter(packet)
     array_field_size_getters = generate_array_field_size_getters(packet)
 
     return dedent("""\
 
-        class {class_name} : public pdl::packet::Builder {{
+        class {class_name} : public {parent_class} {{
         public:
             ~{class_name}() override = default;
             {class_name}() = default;
@@ -1179,6 +1369,7 @@ def generate_packet_builder(packet: ast.PacketDeclaration) -> str:
             {class_name}({class_name}&&) = default;
             {class_name}& operator=({class_name} const&) = default;
             {builder_constructor}
+            {builder_creator}
 
             void Serialize(std::vector<uint8_t>& output) const override {{
                 {field_serializers}
@@ -1192,7 +1383,9 @@ def generate_packet_builder(packet: ast.PacketDeclaration) -> str:
             {field_members}
         }};
         """).format(class_name=f'{packet.id}Builder',
+                    parent_class=parent_class,
                     builder_constructor=builder_constructor,
+                    builder_creator=builder_creator,
                     field_members=indent(field_members, 1),
                     field_serializers=indent(field_serializers, 2),
                     size_getter=indent(size_getter, 1),
@@ -1211,6 +1404,10 @@ def generate_struct_field_parsers(struct: ast.StructDeclaration) -> str:
         if isinstance(field, (ast.PayloadField, ast.BodyField)):
             code.append("std::vector<uint8_t> payload_;")
             parsed_fields.append("std::move(payload_)")
+        elif isinstance(field, ast.ArrayField) and field.size:
+            element_type = field.type_id or get_cxx_scalar_type(field.width)
+            code.append(f"std::array<{element_type}, {field.size}> {field.id}_;")
+            parsed_fields.append(f"std::move({field.id}_)")
         elif isinstance(field, ast.ArrayField):
             element_type = field.type_id or get_cxx_scalar_type(field.width)
             code.append(f"std::vector<{element_type}> {field.id}_;")
@@ -1250,7 +1447,7 @@ def generate_struct_declaration(struct: ast.StructDeclaration) -> str:
         raise Exception("Struct declaration with parents are not supported")
 
     struct_constructor = generate_packet_constructor(struct, constructor_name=struct.id)
-    field_members = generate_packet_field_members(struct, view=False)
+    field_members = generate_packet_field_members(struct)
     field_parsers = generate_struct_field_parsers(struct)
     field_serializers = generate_packet_field_serializers(struct)
     size_getter = generate_packet_size_getter(struct)

@@ -80,11 +80,26 @@ def generate_packet_parser_test(parser_test_suite: str, packet: ast.PacketDeclar
                 checks.append("};")
                 checks.append(f"ASSERT_EQ({get_field(decl, var, id)}, expected_{field_var});")
 
+            elif isinstance(field, ast.ArrayField) and field.size and field.width:
+                checks.append(f"std::array<{get_cxx_scalar_type(field.width)}, {field.size}> expected_{field_var} {{")
+                step = int(16 * 8 / field.width)
+                for i in range(0, len(value), step):
+                    checks.append('    ' + ' '.join([f"0x{v:x}," for v in value[i:i + step]]))
+                checks.append("};")
+                checks.append(f"ASSERT_EQ({get_field(decl, var, id)}, expected_{field_var});")
+
             elif isinstance(field, ast.ArrayField) and field.width:
                 checks.append(f"std::vector<{get_cxx_scalar_type(field.width)}> expected_{field_var} {{")
                 step = int(16 * 8 / field.width)
                 for i in range(0, len(value), step):
                     checks.append('    ' + ' '.join([f"0x{v:x}," for v in value[i:i + step]]))
+                checks.append("};")
+                checks.append(f"ASSERT_EQ({get_field(decl, var, id)}, expected_{field_var});")
+
+            elif (isinstance(field, ast.ArrayField) and field.size and isinstance(field.type, ast.EnumDeclaration)):
+                checks.append(f"std::array<{field.type_id}, {field.size}> expected_{field_var} {{")
+                for v in value:
+                    checks.append(f"    {field.type_id}({v}),")
                 checks.append("};")
                 checks.append(f"ASSERT_EQ({get_field(decl, var, id)}, expected_{field_var});")
 
@@ -94,6 +109,12 @@ def generate_packet_parser_test(parser_test_suite: str, packet: ast.PacketDeclar
                     checks.append(f"    {field.type_id}({v}),")
                 checks.append("};")
                 checks.append(f"ASSERT_EQ({get_field(decl, var, id)}, expected_{field_var});")
+
+            elif isinstance(field, ast.ArrayField) and field.size:
+                checks.append(f"std::array<{field.type_id}, {field.size}> {field_var} = {get_field(decl, var, id)};")
+                checks.append(f"ASSERT_EQ({field_var}.size(), {len(value)});")
+                for (n, value) in enumerate(value):
+                    checks.extend(check_members(field.type, f"{field_var}[{n}]", value))
 
             elif isinstance(field, ast.ArrayField):
                 checks.append(f"std::vector<{field.type_id}> {field_var} = {get_field(decl, var, id)};")
@@ -166,6 +187,14 @@ def generate_packet_serializer_test(serializer_test_suite: str, packet: ast.Pack
                 declarations.append("};")
                 parameters.append(f"std::move({field_var})")
 
+            elif isinstance(field, ast.ArrayField) and field.size and field.width:
+                declarations.append(f"std::array<{get_cxx_scalar_type(field.width)}, {field.size}> {field_var} {{")
+                step = int(16 * 8 / field.width)
+                for i in range(0, len(value), step):
+                    declarations.append('    ' + ' '.join([f"0x{v:x}," for v in value[i:i + step]]))
+                declarations.append("};")
+                parameters.append(f"std::move({field_var})")
+
             elif isinstance(field, ast.ArrayField) and field.width:
                 declarations.append(f"std::vector<{get_cxx_scalar_type(field.width)}> {field_var} {{")
                 step = int(16 * 8 / field.width)
@@ -174,10 +203,29 @@ def generate_packet_serializer_test(serializer_test_suite: str, packet: ast.Pack
                 declarations.append("};")
                 parameters.append(f"std::move({field_var})")
 
+            elif isinstance(field, ast.ArrayField) and field.size and isinstance(field.type, ast.EnumDeclaration):
+                declarations.append(f"std::array<{field.type_id}, {field.size}> {field_var} {{")
+                for v in value:
+                    declarations.append(f"    {field.type_id}({v}),")
+                declarations.append("};")
+                parameters.append(f"std::move({field_var})")
+
             elif isinstance(field, ast.ArrayField) and isinstance(field.type, ast.EnumDeclaration):
                 declarations.append(f"std::vector<{field.type_id}> {field_var} {{")
                 for v in value:
                     declarations.append(f"    {field.type_id}({v}),")
+                declarations.append("};")
+                parameters.append(f"std::move({field_var})")
+
+            elif isinstance(field, ast.ArrayField) and field.size:
+                elements = []
+                for (n, value) in enumerate(value):
+                    (element, intermediate_declarations) = build_packet(field.type, f'{field_var}_{n}', value)
+                    elements.append(element)
+                    declarations.extend(intermediate_declarations)
+                declarations.append(f"std::array<{field.type_id}, {field.size}> {field_var} {{")
+                for element in elements:
+                    declarations.append(f"    {element},")
                 declarations.append("};")
                 parameters.append(f"std::move({field_var})")
 
