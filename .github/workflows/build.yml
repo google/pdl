@@ -12,7 +12,6 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-
   build:
     name: Build
     strategy:
@@ -66,3 +65,26 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --no-deps
+
+  test:
+    name: Canonical Tests
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install stable Rust
+        run: rustup default stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: sudo apt install libgtest-dev
+
+      - name: Install pdlc
+        run: cargo install --path .
+
+      - name: Run CXX generator tests
+        run: tests/run_cxx_generator_tests.sh
