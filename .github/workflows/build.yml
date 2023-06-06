@@ -81,10 +81,15 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install dependencies
-        run: sudo apt install libgtest-dev
+        run: |
+          sudo apt install libgtest-dev
+          python3 -m pip install typing_extensions
 
       - name: Install pdlc
         run: cargo install --path .
 
       - name: Run CXX generator tests
         run: tests/run_cxx_generator_tests.sh
+
+      - name: Run Python generator tests
+        run: tests/run_python_generator_tests.sh
