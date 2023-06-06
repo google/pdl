@@ -25,12 +25,12 @@ import typing_extensions
 import unittest
 from importlib import resources
 
-# (le|be)_pdl_test are the names of the modules generated from the canonical
+# (le|be)_backend are the names of the modules generated from the canonical
 # little endian and big endian test grammars. The purpose of this module
 # is to validate the generated parsers against the set of pre-generated
 # test vectors in canonical/(le|be)_test_vectors.json.
-import le_pdl_test
-import be_pdl_test
+import le_backend
+import be_backend
 
 
 def match_object(self, left, right):
@@ -94,7 +94,7 @@ class PacketParserTest(unittest.TestCase):
                 # Retrieve the class object from the generated
                 # module, in order to invoke the proper parse
                 # method for this test.
-                cls = getattr(le_pdl_test, packet)
+                cls = getattr(le_backend, packet)
                 for test in tests:
                     result = cls.parse_all(bytes.fromhex(test['packed']))
                     match_object(self, result, test['unpacked'])
@@ -113,7 +113,7 @@ class PacketParserTest(unittest.TestCase):
                 # Retrieve the class object from the generated
                 # module, in order to invoke the proper constructor
                 # method for this test.
-                cls = getattr(be_pdl_test, packet)
+                cls = getattr(be_backend, packet)
                 for test in tests:
                     result = cls.parse_all(bytes.fromhex(test['packed']))
                     match_object(self, result, test['unpacked'])
@@ -138,7 +138,7 @@ class PacketSerializerTest(unittest.TestCase):
                 # module, in order to invoke the proper constructor
                 # method for this test.
                 for test in tests:
-                    cls = getattr(le_pdl_test, test.get('packet', packet))
+                    cls = getattr(le_backend, test.get('packet', packet))
                     obj = create_object(cls, test['unpacked'])
                     result = obj.serialize()
                     self.assertEqual(result, bytes.fromhex(test['packed']))
@@ -158,7 +158,7 @@ class PacketSerializerTest(unittest.TestCase):
                 # module, in order to invoke the proper parse
                 # method for this test.
                 for test in tests:
-                    cls = getattr(be_pdl_test, test.get('packet', packet))
+                    cls = getattr(be_backend, test.get('packet', packet))
                     obj = create_object(cls, test['unpacked'])
                     result = obj.serialize()
                     self.assertEqual(result, bytes.fromhex(test['packed']))
@@ -168,28 +168,28 @@ class CustomPacketParserTest(unittest.TestCase):
     """Manual testing for custom fields."""
 
     def testCustomField(self):
-        result = le_pdl_test.Packet_Custom_Field_ConstantSize.parse_all([1])
+        result = le_backend.Packet_Custom_Field_ConstantSize.parse_all([1])
         self.assertEqual(result.a.value, 1)
 
-        result = le_pdl_test.Packet_Custom_Field_VariableSize.parse_all([1])
+        result = le_backend.Packet_Custom_Field_VariableSize.parse_all([1])
         self.assertEqual(result.a.value, 1)
 
-        result = le_pdl_test.Struct_Custom_Field_ConstantSize.parse_all([1])
+        result = le_backend.Struct_Custom_Field_ConstantSize.parse_all([1])
         self.assertEqual(result.s.a.value, 1)
 
-        result = le_pdl_test.Struct_Custom_Field_VariableSize.parse_all([1])
+        result = le_backend.Struct_Custom_Field_VariableSize.parse_all([1])
         self.assertEqual(result.s.a.value, 1)
 
-        result = be_pdl_test.Packet_Custom_Field_ConstantSize.parse_all([1])
+        result = be_backend.Packet_Custom_Field_ConstantSize.parse_all([1])
         self.assertEqual(result.a.value, 1)
 
-        result = be_pdl_test.Packet_Custom_Field_VariableSize.parse_all([1])
+        result = be_backend.Packet_Custom_Field_VariableSize.parse_all([1])
         self.assertEqual(result.a.value, 1)
 
-        result = be_pdl_test.Struct_Custom_Field_ConstantSize.parse_all([1])
+        result = be_backend.Struct_Custom_Field_ConstantSize.parse_all([1])
         self.assertEqual(result.s.a.value, 1)
 
-        result = be_pdl_test.Struct_Custom_Field_VariableSize.parse_all([1])
+        result = be_backend.Struct_Custom_Field_VariableSize.parse_all([1])
         self.assertEqual(result.s.a.value, 1)
 
 
