@@ -1012,6 +1012,7 @@ mod tests {
     use crate::ast;
     use crate::parser::parse_inline;
     use crate::test_utils::{assert_snapshot_eq, format_rust};
+    use googletest::prelude::{elements_are, eq, expect_that};
     use paste::paste;
 
     /// Parse a string fragment as a PDL file.
@@ -1026,16 +1027,8 @@ mod tests {
         analyzer::analyze(&file).expect("analyzer error")
     }
 
-    #[track_caller]
-    fn assert_iter_eq<T: std::cmp::PartialEq + std::fmt::Debug>(
-        left: impl IntoIterator<Item = T>,
-        right: impl IntoIterator<Item = T>,
-    ) {
-        assert_eq!(left.into_iter().collect::<Vec<T>>(), right.into_iter().collect::<Vec<T>>());
-    }
-
-    #[test]
-    fn test_find_constrained_parent_fields() {
+    #[googletest::test]
+    fn test_find_constrained_parent_fields() -> googletest::Result<()> {
         let code = "
               little_endian_packets
               packet Parent {
@@ -1058,12 +1051,17 @@ mod tests {
             ";
         let file = parse_str(code);
         let scope = lint::Scope::new(&file);
-        let find_fields =
-            |id| find_constrained_parent_fields(&scope, id).map(|field| field.id().unwrap());
-        assert_iter_eq(find_fields("Parent"), vec![]);
-        assert_iter_eq(find_fields("Child"), vec!["b", "c"]);
-        assert_iter_eq(find_fields("GrandChild"), vec!["c"]);
-        assert_iter_eq(find_fields("GrandGrandChild"), vec![]);
+        let find_fields = |id| {
+            find_constrained_parent_fields(&scope, id)
+                .map(|field| field.id().unwrap())
+                .collect::<Vec<_>>()
+        };
+
+        expect_that!(find_fields("Parent"), elements_are![]);
+        expect_that!(find_fields("Child"), elements_are![eq("b"), eq("c")]);
+        expect_that!(find_fields("GrandChild"), elements_are![eq("c")]);
+        expect_that!(find_fields("GrandGrandChild"), elements_are![]);
+        Ok(())
     }
 
     /// Create a unit test for the given PDL `code`.
