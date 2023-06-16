@@ -1,6 +1,6 @@
 [package]
 name = "pdl-compiler"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "Parser and serializer generator for protocol binary packets"
 repository = "https://github.com/google/pdl/"
