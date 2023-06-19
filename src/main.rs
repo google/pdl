@@ -17,14 +17,7 @@
 use argh::FromArgs;
 use codespan_reporting::term::{self, termcolor};
 
-mod analyzer;
-mod ast;
-mod backends;
-mod lint;
-mod parser;
-#[cfg(test)]
-mod test_utils;
-mod utils;
+use pdl_compiler::{analyzer, ast, backends, parser};
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
