@@ -269,7 +269,7 @@ def generate_packet_serializer_test(serializer_test_suite: str, packet: ast.Pack
                 }};
                 {intermediate_declarations}
                 {child_packet_id}Builder packet = {built_packet};
-                ASSERT_EQ(packet.pdl::packet::Builder::Serialize(), expected_output);
+                ASSERT_EQ(packet.SerializeToBytes(), expected_output);
             }}
             """).format(serializer_test_suite=serializer_test_suite,
                         packet_id=packet.id,

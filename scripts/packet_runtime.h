@@ -150,7 +150,7 @@ class Builder {
   }
 
   /// Helper method to serialize the packet to a byte vector.
-  virtual std::vector<uint8_t> Serialize() const {
+  virtual std::vector<uint8_t> SerializeToBytes() const {
     std::vector<uint8_t> output;
     Serialize(output);
     return output;
