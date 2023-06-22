@@ -1003,7 +1003,7 @@ def generate_packet_view_field_accessors(packet: ast.PacketDeclaration) -> List[
             accessors.append(
                 dedent("""\
                 std::vector<uint8_t> GetPayload() const {
-                    ASSERT(valid_);
+                    _ASSERT_VALID(valid_);
                     return payload_.bytes();
                 }
 
@@ -1015,7 +1015,7 @@ def generate_packet_view_field_accessors(packet: ast.PacketDeclaration) -> List[
             accessors.append(
                 dedent("""\
                 {array_type} Get{accessor_name}() const {{
-                    ASSERT(valid_);
+                    _ASSERT_VALID(valid_);
                     {accessor}
                 }}
 
@@ -1028,7 +1028,7 @@ def generate_packet_view_field_accessors(packet: ast.PacketDeclaration) -> List[
             accessors.append(
                 dedent("""\
                 {field_type} Get{accessor_name}() const {{
-                    ASSERT(valid_);
+                    _ASSERT_VALID(valid_);
                     return {member_name}_;
                 }}
 
@@ -1039,7 +1039,7 @@ def generate_packet_view_field_accessors(packet: ast.PacketDeclaration) -> List[
             accessors.append(
                 dedent("""\
                 {field_type}{field_qualifier} Get{accessor_name}() const {{
-                    ASSERT(valid_);
+                    _ASSERT_VALID(valid_);
                     return {member_name}_;
                 }}
 
@@ -1542,10 +1542,12 @@ def run(input: argparse.FileType, output: argparse.FileType, namespace: Optional
         {include_header}
         {using_namespace}
 
-        #ifndef ASSERT
+        #ifdef ASSERT
+        #define _ASSERT_VALID ASSERT
+        #else
         #include <cassert>
-        #define ASSERT assert
-        #endif  // !ASSERT
+        #define _ASSERT_VALID assert
+        #endif  // ASSERT
 
         {open_namespace}
         """).format(input_name=input.name,
