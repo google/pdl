@@ -4,7 +4,6 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use std::sync::Arc;
 use thiserror::Error;
 type Result<T> = std::result::Result<T, Error>;
 /// Private prevents users from creating arbitrary scalar values
@@ -178,7 +177,7 @@ pub struct FooData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    foo: Arc<FooData>,
+    foo: FooData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -270,22 +269,22 @@ impl Foo {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = FooData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
-    fn new(foo: Arc<FooData>) -> Result<Self> {
+    fn new(foo: FooData) -> Result<Self> {
         Ok(Self { foo })
     }
     pub fn get_w(&self) -> u8 {
-        self.foo.as_ref().w
+        self.foo.w
     }
     pub fn get_x(&self) -> Enum7 {
-        self.foo.as_ref().x
+        self.foo.x
     }
     pub fn get_y(&self) -> u8 {
-        self.foo.as_ref().y
+        self.foo.y
     }
     pub fn get_z(&self) -> Enum9 {
-        self.foo.as_ref().z
+        self.foo.z
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.foo.write_to(buffer)
@@ -296,12 +295,12 @@ impl Foo {
 }
 impl FooBuilder {
     pub fn build(self) -> Foo {
-        let foo = Arc::new(FooData {
+        let foo = FooData {
             w: self.w,
             x: self.x,
             y: self.y,
             z: self.z,
-        });
+        };
         Foo::new(foo).unwrap()
     }
 }

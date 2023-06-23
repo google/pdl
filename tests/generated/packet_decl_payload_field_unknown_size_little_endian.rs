@@ -4,7 +4,6 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use std::sync::Arc;
 use thiserror::Error;
 type Result<T> = std::result::Result<T, Error>;
 /// Private prevents users from creating arbitrary scalar values
@@ -74,7 +73,7 @@ pub struct FooData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    foo: Arc<FooData>,
+    foo: FooData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -155,7 +154,7 @@ impl Foo {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = FooData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
     pub fn specialize(&self) -> FooChild {
         match &self.foo.child {
@@ -163,11 +162,11 @@ impl Foo {
             FooDataChild::None => FooChild::None,
         }
     }
-    fn new(foo: Arc<FooData>) -> Result<Self> {
+    fn new(foo: FooData) -> Result<Self> {
         Ok(Self { foo })
     }
     pub fn get_a(&self) -> u32 {
-        self.foo.as_ref().a
+        self.foo.a
     }
     pub fn get_payload(&self) -> &[u8] {
         match &self.foo.child {
@@ -184,13 +183,13 @@ impl Foo {
 }
 impl FooBuilder {
     pub fn build(self) -> Foo {
-        let foo = Arc::new(FooData {
+        let foo = FooData {
             a: self.a,
             child: match self.payload {
                 None => FooDataChild::None,
                 Some(bytes) => FooDataChild::Payload(bytes),
             },
-        });
+        };
         Foo::new(foo).unwrap()
     }
 }

@@ -483,9 +483,9 @@ fn generate_packet_decl(
         }
 
         quote! {
-            let #parent_id_lower = Arc::new(#parent_data {
+            let #parent_id_lower = #parent_data {
                 #(#field: #value,)*
-            });
+            };
         }
     });
 
@@ -510,7 +510,7 @@ fn generate_packet_decl(
             #[derive(Debug, Clone, PartialEq, Eq)]
             #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
             pub enum #id_data_child {
-                #(#child(Arc<#child_data>),)*
+                #(#child(#child_data),)*
                 Payload(Bytes),
                 None,
             }
@@ -588,7 +588,7 @@ fn generate_packet_decl(
         pub struct #id_packet {
             #(
                 #[cfg_attr(feature = "serde", serde(flatten))]
-                #parent_lower_ids: Arc<#parent_data>,
+                #parent_lower_ids: #parent_data,
             )*
         }
 
@@ -637,12 +637,12 @@ fn generate_packet_decl(
 
             fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
                 let data = #top_level_data::parse_inner(&mut bytes)?;
-                Self::new(Arc::new(data))
+                Self::new(data)
             }
 
             #specialize
 
-            fn new(#top_level_id_lower: Arc<#top_level_data>) -> Result<Self> {
+            fn new(#top_level_id_lower: #top_level_data) -> Result<Self> {
                 #(
                     let #parent_shifted_lower_ids = match &#parent_lower_ids.child {
                         #parent_data_child::#parent_shifted_ids(value) => value.clone(),
@@ -656,7 +656,7 @@ fn generate_packet_decl(
             }
 
             #(pub fn #all_field_getter_names(&self) -> #all_field_borrows #all_field_types {
-                #all_field_borrows #all_field_self_field.as_ref().#all_field_names
+                #all_field_borrows #all_field_self_field.#all_field_names
             })*
 
             #get_payload

@@ -4,7 +4,6 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use std::sync::Arc;
 use thiserror::Error;
 type Result<T> = std::result::Result<T, Error>;
 /// Private prevents users from creating arbitrary scalar values
@@ -98,8 +97,8 @@ impl From<Enum16> for u64 {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FooDataChild {
-    Bar(Arc<BarData>),
-    Baz(Arc<BazData>),
+    Bar(BarData),
+    Baz(BazData),
     Payload(Bytes),
     None,
 }
@@ -132,7 +131,7 @@ pub struct FooData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    foo: Arc<FooData>,
+    foo: FooData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -194,12 +193,12 @@ impl FooData {
             (100, _) if BarData::conforms(&payload) => {
                 let mut cell = Cell::new(payload);
                 let child_data = BarData::parse_inner(&mut cell)?;
-                FooDataChild::Bar(Arc::new(child_data))
+                FooDataChild::Bar(child_data)
             }
             (_, Enum16::B) if BazData::conforms(&payload) => {
                 let mut cell = Cell::new(payload);
                 let child_data = BazData::parse_inner(&mut cell)?;
-                FooDataChild::Baz(Arc::new(child_data))
+                FooDataChild::Baz(child_data)
             }
             _ if !payload.is_empty() => {
                 FooDataChild::Payload(Bytes::copy_from_slice(payload))
@@ -260,7 +259,7 @@ impl Foo {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = FooData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
     pub fn specialize(&self) -> FooChild {
         match &self.foo.child {
@@ -270,14 +269,14 @@ impl Foo {
             FooDataChild::None => FooChild::None,
         }
     }
-    fn new(foo: Arc<FooData>) -> Result<Self> {
+    fn new(foo: FooData) -> Result<Self> {
         Ok(Self { foo })
     }
     pub fn get_a(&self) -> u8 {
-        self.foo.as_ref().a
+        self.foo.a
     }
     pub fn get_b(&self) -> Enum16 {
-        self.foo.as_ref().b
+        self.foo.b
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.foo.write_to(buffer)
@@ -288,14 +287,14 @@ impl Foo {
 }
 impl FooBuilder {
     pub fn build(self) -> Foo {
-        let foo = Arc::new(FooData {
+        let foo = FooData {
             a: self.a,
             b: self.b,
             child: match self.payload {
                 None => FooDataChild::None,
                 Some(bytes) => FooDataChild::Payload(bytes),
             },
-        });
+        };
         Foo::new(foo).unwrap()
     }
 }
@@ -313,9 +312,9 @@ pub struct BarData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bar {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    foo: Arc<FooData>,
+    foo: FooData,
     #[cfg_attr(feature = "serde", serde(flatten))]
-    bar: Arc<BarData>,
+    bar: BarData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -392,9 +391,9 @@ impl Bar {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = FooData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
-    fn new(foo: Arc<FooData>) -> Result<Self> {
+    fn new(foo: FooData) -> Result<Self> {
         let bar = match &foo.child {
             FooDataChild::Bar(value) => value.clone(),
             _ => {
@@ -407,13 +406,13 @@ impl Bar {
         Ok(Self { foo, bar })
     }
     pub fn get_a(&self) -> u8 {
-        self.foo.as_ref().a
+        self.foo.a
     }
     pub fn get_b(&self) -> Enum16 {
-        self.foo.as_ref().b
+        self.foo.b
     }
     pub fn get_x(&self) -> u8 {
-        self.bar.as_ref().x
+        self.bar.x
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.bar.write_to(buffer)
@@ -424,12 +423,12 @@ impl Bar {
 }
 impl BarBuilder {
     pub fn build(self) -> Bar {
-        let bar = Arc::new(BarData { x: self.x });
-        let foo = Arc::new(FooData {
+        let bar = BarData { x: self.x };
+        let foo = FooData {
             a: 100,
             b: self.b,
             child: FooDataChild::Bar(bar),
-        });
+        };
         Bar::new(foo).unwrap()
     }
 }
@@ -452,9 +451,9 @@ pub struct BazData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Baz {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    foo: Arc<FooData>,
+    foo: FooData,
     #[cfg_attr(feature = "serde", serde(flatten))]
-    baz: Arc<BazData>,
+    baz: BazData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -531,9 +530,9 @@ impl Baz {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = FooData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
-    fn new(foo: Arc<FooData>) -> Result<Self> {
+    fn new(foo: FooData) -> Result<Self> {
         let baz = match &foo.child {
             FooDataChild::Baz(value) => value.clone(),
             _ => {
@@ -546,13 +545,13 @@ impl Baz {
         Ok(Self { foo, baz })
     }
     pub fn get_a(&self) -> u8 {
-        self.foo.as_ref().a
+        self.foo.a
     }
     pub fn get_b(&self) -> Enum16 {
-        self.foo.as_ref().b
+        self.foo.b
     }
     pub fn get_y(&self) -> u16 {
-        self.baz.as_ref().y
+        self.baz.y
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.baz.write_to(buffer)
@@ -563,12 +562,12 @@ impl Baz {
 }
 impl BazBuilder {
     pub fn build(self) -> Baz {
-        let baz = Arc::new(BazData { y: self.y });
-        let foo = Arc::new(FooData {
+        let baz = BazData { y: self.y };
+        let foo = FooData {
             a: self.a,
             b: Enum16::B,
             child: FooDataChild::Baz(baz),
-        });
+        };
         Baz::new(foo).unwrap()
     }
 }

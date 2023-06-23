@@ -4,7 +4,6 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use std::sync::Arc;
 use thiserror::Error;
 type Result<T> = std::result::Result<T, Error>;
 /// Private prevents users from creating arbitrary scalar values
