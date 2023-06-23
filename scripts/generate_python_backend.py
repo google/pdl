@@ -908,7 +908,11 @@ def generate_enum_declaration(decl: ast.EnumDeclaration) -> str:
     enum_name = decl.id
     tag_decls = []
     for t in decl.tags:
-        tag_decls.append(f"{t.id} = {hex(t.value)}")
+        if t.value is not None:
+            tag_decls.append(f"{t.id} = {hex(t.value)}")
+        if t.range is not None:
+            tag_decls.append(f"{t.id}_START = {hex(t.range[0])}")
+            tag_decls.append(f"{t.id}_END = {hex(t.range[1])}")
 
     return dedent("""\
 

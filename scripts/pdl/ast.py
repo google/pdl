@@ -268,7 +268,7 @@ def convert_(obj: object) -> object:
         return [convert_(elt) for elt in obj]
     if isinstance(obj, object):
         if 'start' in obj.keys() and 'end' in obj.keys():
-            return (objs.start, obj.end)
+            return (obj['start'], obj['end'])
         kind = obj['kind']
         loc = obj['loc']
         loc = SourceRange(loc['file'], SourceLocation(**loc['start']), SourceLocation(**loc['end']))
