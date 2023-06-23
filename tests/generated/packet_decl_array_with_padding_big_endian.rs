@@ -4,7 +4,6 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use std::sync::Arc;
 use thiserror::Error;
 type Result<T> = std::result::Result<T, Error>;
 /// Private prevents users from creating arbitrary scalar values
@@ -107,7 +106,7 @@ pub struct BarData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bar {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    bar: Arc<BarData>,
+    bar: BarData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -188,13 +187,13 @@ impl Bar {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = BarData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
-    fn new(bar: Arc<BarData>) -> Result<Self> {
+    fn new(bar: BarData) -> Result<Self> {
         Ok(Self { bar })
     }
     pub fn get_a(&self) -> &Vec<Foo> {
-        &self.bar.as_ref().a
+        &self.bar.a
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.bar.write_to(buffer)
@@ -205,7 +204,7 @@ impl Bar {
 }
 impl BarBuilder {
     pub fn build(self) -> Bar {
-        let bar = Arc::new(BarData { a: self.a });
+        let bar = BarData { a: self.a };
         Bar::new(bar).unwrap()
     }
 }

@@ -4,7 +4,6 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use std::sync::Arc;
 use thiserror::Error;
 type Result<T> = std::result::Result<T, Error>;
 /// Private prevents users from creating arbitrary scalar values
@@ -105,7 +104,7 @@ impl From<Enum8> for u64 {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParentDataChild {
-    Child(Arc<ChildData>),
+    Child(ChildData),
     Payload(Bytes),
     None,
 }
@@ -135,7 +134,7 @@ pub struct ParentData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Parent {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    parent: Arc<ParentData>,
+    parent: ParentData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -172,7 +171,7 @@ impl ParentData {
             (Enum8::A) if ChildData::conforms(&payload) => {
                 let mut cell = Cell::new(payload);
                 let child_data = ChildData::parse_inner(&mut cell)?;
-                ParentDataChild::Child(Arc::new(child_data))
+                ParentDataChild::Child(child_data)
             }
             _ if !payload.is_empty() => {
                 ParentDataChild::Payload(Bytes::copy_from_slice(payload))
@@ -219,7 +218,7 @@ impl Parent {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
     pub fn specialize(&self) -> ParentChild {
         match &self.parent.child {
@@ -230,11 +229,11 @@ impl Parent {
             ParentDataChild::None => ParentChild::None,
         }
     }
-    fn new(parent: Arc<ParentData>) -> Result<Self> {
+    fn new(parent: ParentData) -> Result<Self> {
         Ok(Self { parent })
     }
     pub fn get_v(&self) -> Enum8 {
-        self.parent.as_ref().v
+        self.parent.v
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.parent.write_to(buffer)
@@ -245,10 +244,10 @@ impl Parent {
 }
 impl ParentBuilder {
     pub fn build(self) -> Parent {
-        let parent = Arc::new(ParentData {
+        let parent = ParentData {
             v: self.v,
             child: ParentDataChild::None,
-        });
+        };
         Parent::new(parent).unwrap()
     }
 }
@@ -264,9 +263,9 @@ pub struct ChildData {}
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Child {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    parent: Arc<ParentData>,
+    parent: ParentData,
     #[cfg_attr(feature = "serde", serde(flatten))]
-    child: Arc<ChildData>,
+    child: ChildData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -330,9 +329,9 @@ impl Child {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
-    fn new(parent: Arc<ParentData>) -> Result<Self> {
+    fn new(parent: ParentData) -> Result<Self> {
         let child = match &parent.child {
             ParentDataChild::Child(value) => value.clone(),
             _ => {
@@ -345,7 +344,7 @@ impl Child {
         Ok(Self { parent, child })
     }
     pub fn get_v(&self) -> Enum8 {
-        self.parent.as_ref().v
+        self.parent.v
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.child.write_to(buffer)
@@ -356,11 +355,11 @@ impl Child {
 }
 impl ChildBuilder {
     pub fn build(self) -> Child {
-        let child = Arc::new(ChildData {});
-        let parent = Arc::new(ParentData {
+        let child = ChildData {};
+        let parent = ParentData {
             v: Enum8::A,
             child: ParentDataChild::None,
-        });
+        };
         Child::new(parent).unwrap()
     }
 }

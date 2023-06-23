@@ -4,7 +4,6 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use std::sync::Arc;
 use thiserror::Error;
 type Result<T> = std::result::Result<T, Error>;
 /// Private prevents users from creating arbitrary scalar values
@@ -98,7 +97,7 @@ impl From<Enum16> for u64 {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParentDataChild {
-    Child(Arc<ChildData>),
+    Child(ChildData),
     Payload(Bytes),
     None,
 }
@@ -130,7 +129,7 @@ pub struct ParentData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Parent {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    parent: Arc<ParentData>,
+    parent: ParentData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -213,7 +212,7 @@ impl ParentData {
             (Enum16::A) if ChildData::conforms(&payload) => {
                 let mut cell = Cell::new(payload);
                 let child_data = ChildData::parse_inner(&mut cell, bar, baz)?;
-                ParentDataChild::Child(Arc::new(child_data))
+                ParentDataChild::Child(child_data)
             }
             _ if !payload.is_empty() => {
                 ParentDataChild::Payload(Bytes::copy_from_slice(payload))
@@ -274,7 +273,7 @@ impl Parent {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
     pub fn specialize(&self) -> ParentChild {
         match &self.parent.child {
@@ -285,17 +284,17 @@ impl Parent {
             ParentDataChild::None => ParentChild::None,
         }
     }
-    fn new(parent: Arc<ParentData>) -> Result<Self> {
+    fn new(parent: ParentData) -> Result<Self> {
         Ok(Self { parent })
     }
     pub fn get_bar(&self) -> Enum16 {
-        self.parent.as_ref().bar
+        self.parent.bar
     }
     pub fn get_baz(&self) -> Enum16 {
-        self.parent.as_ref().baz
+        self.parent.baz
     }
     pub fn get_foo(&self) -> Enum16 {
-        self.parent.as_ref().foo
+        self.parent.foo
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.parent.write_to(buffer)
@@ -306,7 +305,7 @@ impl Parent {
 }
 impl ParentBuilder {
     pub fn build(self) -> Parent {
-        let parent = Arc::new(ParentData {
+        let parent = ParentData {
             bar: self.bar,
             baz: self.baz,
             foo: self.foo,
@@ -314,7 +313,7 @@ impl ParentBuilder {
                 None => ParentDataChild::None,
                 Some(bytes) => ParentDataChild::Payload(bytes),
             },
-        });
+        };
         Parent::new(parent).unwrap()
     }
 }
@@ -326,7 +325,7 @@ impl From<ParentBuilder> for Parent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ChildDataChild {
-    GrandChild(Arc<GrandChildData>),
+    GrandChild(GrandChildData),
     Payload(Bytes),
     None,
 }
@@ -356,9 +355,9 @@ pub struct ChildData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Child {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    parent: Arc<ParentData>,
+    parent: ParentData,
     #[cfg_attr(feature = "serde", serde(flatten))]
-    child: Arc<ChildData>,
+    child: ChildData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -402,7 +401,7 @@ impl ChildData {
             (Enum16::A, Enum16::A) if GrandChildData::conforms(&payload) => {
                 let mut cell = Cell::new(payload);
                 let child_data = GrandChildData::parse_inner(&mut cell, baz)?;
-                ChildDataChild::GrandChild(Arc::new(child_data))
+                ChildDataChild::GrandChild(child_data)
             }
             _ if !payload.is_empty() => {
                 ChildDataChild::Payload(Bytes::copy_from_slice(payload))
@@ -465,7 +464,7 @@ impl Child {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
     pub fn specialize(&self) -> ChildChild {
         match &self.child.child {
@@ -476,7 +475,7 @@ impl Child {
             ChildDataChild::None => ChildChild::None,
         }
     }
-    fn new(parent: Arc<ParentData>) -> Result<Self> {
+    fn new(parent: ParentData) -> Result<Self> {
         let child = match &parent.child {
             ParentDataChild::Child(value) => value.clone(),
             _ => {
@@ -489,16 +488,16 @@ impl Child {
         Ok(Self { parent, child })
     }
     pub fn get_bar(&self) -> Enum16 {
-        self.parent.as_ref().bar
+        self.parent.bar
     }
     pub fn get_baz(&self) -> Enum16 {
-        self.parent.as_ref().baz
+        self.parent.baz
     }
     pub fn get_foo(&self) -> Enum16 {
-        self.parent.as_ref().foo
+        self.parent.foo
     }
     pub fn get_quux(&self) -> Enum16 {
-        self.child.as_ref().quux
+        self.child.quux
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.child.write_to(buffer)
@@ -509,19 +508,19 @@ impl Child {
 }
 impl ChildBuilder {
     pub fn build(self) -> Child {
-        let child = Arc::new(ChildData {
+        let child = ChildData {
             quux: self.quux,
             child: match self.payload {
                 None => ChildDataChild::None,
                 Some(bytes) => ChildDataChild::Payload(bytes),
             },
-        });
-        let parent = Arc::new(ParentData {
+        };
+        let parent = ParentData {
             bar: self.bar,
             baz: self.baz,
             foo: Enum16::A,
             child: ParentDataChild::Child(child),
-        });
+        };
         Child::new(parent).unwrap()
     }
 }
@@ -538,7 +537,7 @@ impl From<ChildBuilder> for Child {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GrandChildDataChild {
-    GrandGrandChild(Arc<GrandGrandChildData>),
+    GrandGrandChild(GrandGrandChildData),
     Payload(Bytes),
     None,
 }
@@ -567,11 +566,11 @@ pub struct GrandChildData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GrandChild {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    parent: Arc<ParentData>,
+    parent: ParentData,
     #[cfg_attr(feature = "serde", serde(flatten))]
-    child: Arc<ChildData>,
+    child: ChildData,
     #[cfg_attr(feature = "serde", serde(flatten))]
-    grandchild: Arc<GrandChildData>,
+    grandchild: GrandChildData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -595,7 +594,7 @@ impl GrandChildData {
             (Enum16::A) if GrandGrandChildData::conforms(&payload) => {
                 let mut cell = Cell::new(payload);
                 let child_data = GrandGrandChildData::parse_inner(&mut cell)?;
-                GrandChildDataChild::GrandGrandChild(Arc::new(child_data))
+                GrandChildDataChild::GrandGrandChild(child_data)
             }
             _ if !payload.is_empty() => {
                 GrandChildDataChild::Payload(Bytes::copy_from_slice(payload))
@@ -662,7 +661,7 @@ impl GrandChild {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
     pub fn specialize(&self) -> GrandChildChild {
         match &self.grandchild.child {
@@ -677,7 +676,7 @@ impl GrandChild {
             GrandChildDataChild::None => GrandChildChild::None,
         }
     }
-    fn new(parent: Arc<ParentData>) -> Result<Self> {
+    fn new(parent: ParentData) -> Result<Self> {
         let child = match &parent.child {
             ParentDataChild::Child(value) => value.clone(),
             _ => {
@@ -699,16 +698,16 @@ impl GrandChild {
         Ok(Self { parent, child, grandchild })
     }
     pub fn get_bar(&self) -> Enum16 {
-        self.parent.as_ref().bar
+        self.parent.bar
     }
     pub fn get_baz(&self) -> Enum16 {
-        self.parent.as_ref().baz
+        self.parent.baz
     }
     pub fn get_foo(&self) -> Enum16 {
-        self.parent.as_ref().foo
+        self.parent.foo
     }
     pub fn get_quux(&self) -> Enum16 {
-        self.child.as_ref().quux
+        self.child.quux
     }
     fn write_to(&self, buffer: &mut BytesMut) {
         self.grandchild.write_to(buffer)
@@ -719,22 +718,22 @@ impl GrandChild {
 }
 impl GrandChildBuilder {
     pub fn build(self) -> GrandChild {
-        let grandchild = Arc::new(GrandChildData {
+        let grandchild = GrandChildData {
             child: match self.payload {
                 None => GrandChildDataChild::None,
                 Some(bytes) => GrandChildDataChild::Payload(bytes),
             },
-        });
-        let child = Arc::new(ChildData {
+        };
+        let child = ChildData {
             quux: Enum16::A,
             child: ChildDataChild::GrandChild(grandchild),
-        });
-        let parent = Arc::new(ParentData {
+        };
+        let parent = ParentData {
             bar: Enum16::A,
             baz: self.baz,
             foo: Enum16::A,
             child: ParentDataChild::Child(child),
-        });
+        };
         GrandChild::new(parent).unwrap()
     }
 }
@@ -782,13 +781,13 @@ pub struct GrandGrandChildData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GrandGrandChild {
     #[cfg_attr(feature = "serde", serde(flatten))]
-    parent: Arc<ParentData>,
+    parent: ParentData,
     #[cfg_attr(feature = "serde", serde(flatten))]
-    child: Arc<ChildData>,
+    child: ChildData,
     #[cfg_attr(feature = "serde", serde(flatten))]
-    grandchild: Arc<GrandChildData>,
+    grandchild: GrandChildData,
     #[cfg_attr(feature = "serde", serde(flatten))]
-    grandgrandchild: Arc<GrandGrandChildData>,
+    grandgrandchild: GrandGrandChildData,
 }
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -877,7 +876,7 @@ impl GrandGrandChild {
     }
     fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
         let data = ParentData::parse_inner(&mut bytes)?;
-        Self::new(Arc::new(data))
+        Self::new(data)
     }
     pub fn specialize(&self) -> GrandGrandChildChild {
         match &self.grandgrandchild.child {
@@ -887,7 +886,7 @@ impl GrandGrandChild {
             GrandGrandChildDataChild::None => GrandGrandChildChild::None,
         }
     }
-    fn new(parent: Arc<ParentData>) -> Result<Self> {
+    fn new(parent: ParentData) -> Result<Self> {
         let child = match &parent.child {
             ParentDataChild::Child(value) => value.clone(),
             _ => {
@@ -923,16 +922,16 @@ impl GrandGrandChild {
         })
     }
     pub fn get_bar(&self) -> Enum16 {
-        self.parent.as_ref().bar
+        self.parent.bar
     }
     pub fn get_baz(&self) -> Enum16 {
-        self.parent.as_ref().baz
+        self.parent.baz
     }
     pub fn get_foo(&self) -> Enum16 {
-        self.parent.as_ref().foo
+        self.parent.foo
     }
     pub fn get_quux(&self) -> Enum16 {
-        self.child.as_ref().quux
+        self.child.quux
     }
     pub fn get_payload(&self) -> &[u8] {
         match &self.grandgrandchild.child {
@@ -949,25 +948,25 @@ impl GrandGrandChild {
 }
 impl GrandGrandChildBuilder {
     pub fn build(self) -> GrandGrandChild {
-        let grandgrandchild = Arc::new(GrandGrandChildData {
+        let grandgrandchild = GrandGrandChildData {
             child: match self.payload {
                 None => GrandGrandChildDataChild::None,
                 Some(bytes) => GrandGrandChildDataChild::Payload(bytes),
             },
-        });
-        let grandchild = Arc::new(GrandChildData {
+        };
+        let grandchild = GrandChildData {
             child: GrandChildDataChild::GrandGrandChild(grandgrandchild),
-        });
-        let child = Arc::new(ChildData {
+        };
+        let child = ChildData {
             quux: Enum16::A,
             child: ChildDataChild::GrandChild(grandchild),
-        });
-        let parent = Arc::new(ParentData {
+        };
+        let parent = ParentData {
             bar: Enum16::A,
             baz: Enum16::A,
             foo: Enum16::A,
             child: ParentDataChild::Child(child),
-        });
+        };
         GrandGrandChild::new(parent).unwrap()
     }
 }

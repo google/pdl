@@ -55,7 +55,6 @@ pub fn generate(path: &Path) -> proc_macro2::TokenStream {
         use std::convert::{TryFrom, TryInto};
         use std::cell::Cell;
         use std::fmt;
-        use std::sync::Arc;
         use thiserror::Error;
 
         type Result<T> = std::result::Result<T, Error>;
