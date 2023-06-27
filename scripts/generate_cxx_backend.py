@@ -1542,12 +1542,14 @@ def run(input: argparse.FileType, output: argparse.FileType, namespace: Optional
         {include_header}
         {using_namespace}
 
+        #ifndef _ASSERT_VALID
         #ifdef ASSERT
         #define _ASSERT_VALID ASSERT
         #else
         #include <cassert>
         #define _ASSERT_VALID assert
         #endif  // ASSERT
+        #endif  // !_ASSERT_VALID
 
         {open_namespace}
         """).format(input_name=input.name,
