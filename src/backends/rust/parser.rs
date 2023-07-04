@@ -148,10 +148,11 @@ impl<'a> FieldParser<'a> {
                     let enum_id = format_ident!("{enum_id}");
                     let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
                     quote! {
-                        if #v != #value_type::from(#enum_id::#tag_id)  {
+                        let fixed_value = #v;
+                        if fixed_value != #value_type::from(#enum_id::#tag_id)  {
                             return Err(Error::InvalidFixedValue {
                                 expected: #value_type::from(#enum_id::#tag_id) as u64,
-                                actual: #v as u64,
+                                actual: fixed_value as u64,
                             });
                         }
                     }
@@ -159,10 +160,11 @@ impl<'a> FieldParser<'a> {
                 ast::FieldDesc::FixedScalar { value, .. } => {
                     let value = proc_macro2::Literal::usize_unsuffixed(*value);
                     quote! {
+                        let fixed_value = #v;
                         if #v != #value {
                             return Err(Error::InvalidFixedValue {
                                 expected: #value,
-                                actual: #v as u64,
+                                actual: fixed_value as u64,
                             });
                         }
                     }
@@ -174,10 +176,10 @@ impl<'a> FieldParser<'a> {
                     let id = format_ident!("{id}");
                     let type_id = format_ident!("{type_id}");
                     quote! {
-                        let #id = #type_id::try_from(#v).map_err(|_| Error::InvalidEnumValueError {
+                        let #id = #type_id::try_from(#v).map_err(|unknown_val| Error::InvalidEnumValueError {
                             obj: #packet_name.to_string(),
                             field: #field_name.to_string(),
-                            value: #v as u64,
+                            value: unknown_val as u64,
                             type_: #type_name.to_string(),
                         })?;
                     }
@@ -600,10 +602,10 @@ impl<'a> FieldParser<'a> {
             let type_id = format_ident!("{id}");
             let packet_name = &self.packet_name;
             return quote! {
-                #type_id::try_from(#get_uint).map_err(|_| Error::InvalidEnumValueError {
+                #type_id::try_from(#get_uint).map_err(|unknown_val| Error::InvalidEnumValueError {
                     obj: #packet_name.to_string(),
                     field: String::new(), // TODO(mgeisler): fill out or remove
-                    value: 0,
+                    value: unknown_val as u64,
                     type_: #id.to_string(),
                 })
             };
