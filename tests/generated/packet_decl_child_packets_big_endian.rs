@@ -166,10 +166,10 @@ impl FooData {
             });
         }
         let b = Enum16::try_from(bytes.get_mut().get_u16())
-            .map_err(|_| Error::InvalidEnumValueError {
+            .map_err(|unknown_val| Error::InvalidEnumValueError {
                 obj: "Foo".to_string(),
                 field: "b".to_string(),
-                value: bytes.get_mut().get_u16() as u64,
+                value: unknown_val as u64,
                 type_: "Enum16".to_string(),
             })?;
         if bytes.get().remaining() < 1 {

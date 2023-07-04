@@ -77,10 +77,11 @@ impl FooData {
             });
         }
         let chunk = bytes.get_mut().get_u64();
+        let fixed_value = (chunk & 0x7f) as u8;
         if (chunk & 0x7f) as u8 != 7 {
             return Err(Error::InvalidFixedValue {
                 expected: 7,
-                actual: (chunk & 0x7f) as u8 as u64,
+                actual: fixed_value as u64,
             });
         }
         let b = ((chunk >> 7) & 0x1ff_ffff_ffff_ffff_u64);

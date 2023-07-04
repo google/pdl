@@ -169,10 +169,10 @@ impl ParentData {
             });
         }
         let v = Enum8::try_from(bytes.get_mut().get_u8())
-            .map_err(|_| Error::InvalidEnumValueError {
+            .map_err(|unknown_val| Error::InvalidEnumValueError {
                 obj: "Parent".to_string(),
                 field: "v".to_string(),
-                value: bytes.get_mut().get_u8() as u64,
+                value: unknown_val as u64,
                 type_: "Enum8".to_string(),
             })?;
         let payload = bytes.get();

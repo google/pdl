@@ -157,10 +157,10 @@ impl ParentData {
             });
         }
         let foo = Enum16::try_from(bytes.get_mut().get_u16())
-            .map_err(|_| Error::InvalidEnumValueError {
+            .map_err(|unknown_val| Error::InvalidEnumValueError {
                 obj: "Parent".to_string(),
                 field: "foo".to_string(),
-                value: bytes.get_mut().get_u16() as u64,
+                value: unknown_val as u64,
                 type_: "Enum16".to_string(),
             })?;
         if bytes.get().remaining() < 2 {
@@ -171,10 +171,10 @@ impl ParentData {
             });
         }
         let bar = Enum16::try_from(bytes.get_mut().get_u16())
-            .map_err(|_| Error::InvalidEnumValueError {
+            .map_err(|unknown_val| Error::InvalidEnumValueError {
                 obj: "Parent".to_string(),
                 field: "bar".to_string(),
-                value: bytes.get_mut().get_u16() as u64,
+                value: unknown_val as u64,
                 type_: "Enum16".to_string(),
             })?;
         if bytes.get().remaining() < 2 {
@@ -185,10 +185,10 @@ impl ParentData {
             });
         }
         let baz = Enum16::try_from(bytes.get_mut().get_u16())
-            .map_err(|_| Error::InvalidEnumValueError {
+            .map_err(|unknown_val| Error::InvalidEnumValueError {
                 obj: "Parent".to_string(),
                 field: "baz".to_string(),
-                value: bytes.get_mut().get_u16() as u64,
+                value: unknown_val as u64,
                 type_: "Enum16".to_string(),
             })?;
         if bytes.get().remaining() < 1 {
@@ -389,10 +389,10 @@ impl ChildData {
             });
         }
         let quux = Enum16::try_from(bytes.get_mut().get_u16())
-            .map_err(|_| Error::InvalidEnumValueError {
+            .map_err(|unknown_val| Error::InvalidEnumValueError {
                 obj: "Child".to_string(),
                 field: "quux".to_string(),
-                value: bytes.get_mut().get_u16() as u64,
+                value: unknown_val as u64,
                 type_: "Enum16".to_string(),
             })?;
         let payload = bytes.get();

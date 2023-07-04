@@ -206,18 +206,18 @@ impl FooData {
         }
         let chunk = bytes.get_mut().get_uint(3) as u32;
         let x = Enum7::try_from((chunk & 0x7f) as u8)
-            .map_err(|_| Error::InvalidEnumValueError {
+            .map_err(|unknown_val| Error::InvalidEnumValueError {
                 obj: "Foo".to_string(),
                 field: "x".to_string(),
-                value: (chunk & 0x7f) as u8 as u64,
+                value: unknown_val as u64,
                 type_: "Enum7".to_string(),
             })?;
         let y = ((chunk >> 7) & 0x1f) as u8;
         let z = Enum9::try_from(((chunk >> 12) & 0x1ff) as u16)
-            .map_err(|_| Error::InvalidEnumValueError {
+            .map_err(|unknown_val| Error::InvalidEnumValueError {
                 obj: "Foo".to_string(),
                 field: "z".to_string(),
-                value: ((chunk >> 12) & 0x1ff) as u16 as u64,
+                value: unknown_val as u64,
                 type_: "Enum9".to_string(),
             })?;
         let w = ((chunk >> 21) & 0x7) as u8;

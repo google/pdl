@@ -125,10 +125,10 @@ impl BarData {
         let x = (0..5)
             .map(|_| {
                 Foo::try_from(bytes.get_mut().get_uint_le(3) as u32)
-                    .map_err(|_| Error::InvalidEnumValueError {
+                    .map_err(|unknown_val| Error::InvalidEnumValueError {
                         obj: "Bar".to_string(),
                         field: String::new(),
-                        value: 0,
+                        value: unknown_val as u64,
                         type_: "Foo".to_string(),
                     })
             })
