@@ -18,7 +18,7 @@ use crate::backends::rust::{
 };
 use crate::{ast, lint};
 use quote::{format_ident, quote};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 fn size_field_ident(id: &str) -> proc_macro2::Ident {
     format_ident!("{}_size", id.trim_matches('_'))
@@ -218,27 +218,22 @@ impl<'a> FieldParser<'a> {
         self.shift = 0;
     }
 
-    fn packet_scope(&self) -> Option<&lint::PacketScope> {
-        self.scope.scopes.get(self.scope.typedef.get(self.packet_name)?)
-    }
-
     fn find_count_field(&self, id: &str) -> Option<proc_macro2::Ident> {
-        match self.packet_scope()?.get_array_size_field(id)?.desc {
+        match self.scope.get_array_size_field(self.packet_name, id)?.desc {
             ast::FieldDesc::Count { .. } => Some(format_ident!("{id}_count")),
             _ => None,
         }
     }
 
     fn find_size_field(&self, id: &str) -> Option<proc_macro2::Ident> {
-        match self.packet_scope()?.get_array_size_field(id)?.desc {
+        match self.scope.get_array_size_field(self.packet_name, id)?.desc {
             ast::FieldDesc::Size { .. } => Some(size_field_ident(id)),
             _ => None,
         }
     }
 
     fn payload_field_offset_from_end(&self) -> Option<usize> {
-        let packet_scope = self.packet_scope().unwrap();
-        let mut fields = packet_scope.iter_fields();
+        let mut fields = self.scope.iter_fields(self.packet_name);
         fields.find(|f| {
             matches!(f.desc, ast::FieldDesc::Body { .. } | ast::FieldDesc::Payload { .. })
         })?;
@@ -512,8 +507,7 @@ impl<'a> FieldParser<'a> {
     /// Parse body and payload fields.
     fn add_payload_field(&mut self, size_modifier: Option<&str>) {
         let span = self.span;
-        let packet_scope = self.packet_scope().unwrap();
-        let payload_size_field = packet_scope.get_payload_size_field();
+        let payload_size_field = self.scope.get_payload_size_field(self.packet_name);
         let offset_from_end = self.payload_field_offset_from_end();
 
         if size_modifier.is_some() {
@@ -623,11 +617,16 @@ impl<'a> FieldParser<'a> {
             return; // Structs don't parse the child structs recursively.
         }
 
-        let packet_scope = &self.scope.scopes[&decl];
         let children = self.scope.iter_children(self.packet_name).collect::<Vec<_>>();
-        if children.is_empty() && packet_scope.get_payload_field().is_none() {
+        if children.is_empty() && self.scope.get_payload_field(self.packet_name).is_none() {
             return;
         }
+
+        let all_fields = HashMap::<String, _>::from_iter(
+            self.scope
+                .iter_all_fields(self.packet_name)
+                .filter_map(|f| f.id().map(|id| (id.to_string(), f))),
+        );
 
         // Gather fields that are constrained in immediate child declarations.
         // Keep the fields sorted by name.
@@ -641,10 +640,11 @@ impl<'a> FieldParser<'a> {
         let mut child_parse_args = Vec::new();
         let mut child_ids_data = Vec::new();
         let mut child_ids = Vec::new();
+
         let get_constraint_value = |mut constraints: std::slice::Iter<'_, ast::Constraint>,
                                     id: &str|
          -> Option<proc_macro2::TokenStream> {
-            constraints.find(|c| c.id == id).map(|c| constraint_to_value(packet_scope, c))
+            constraints.find(|c| c.id == id).map(|c| constraint_to_value(&all_fields, c))
         };
 
         for child in children.iter() {
@@ -675,7 +675,9 @@ impl<'a> FieldParser<'a> {
                 .collect::<Vec<_>>();
 
             let fields = find_constrained_parent_fields(self.scope, child.id().unwrap())
-                .map(|field| format_ident!("{}", field.id().unwrap()));
+                .iter()
+                .map(|field| format_ident!("{}", field.id().unwrap()))
+                .collect::<Vec<_>>();
 
             match_values.push(quote!( (#(#tuple_values),*) ));
             child_parse_args.push(quote!( #(, #fields)*));

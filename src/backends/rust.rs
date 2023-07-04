@@ -17,6 +17,7 @@
 use crate::{ast, lint};
 use quote::{format_ident, quote};
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::path::Path;
 use syn::LitInt;
 
@@ -173,11 +174,19 @@ fn top_level_packet<'a>(scope: &lint::Scope<'a>, packet_name: &'a str) -> &'a an
     decl
 }
 
-/// Find all constrained fields in children of `id`.
-fn find_constrained_fields<'a>(
-    scope: &'a lint::Scope<'a>,
-    id: &'a str,
+/// Find parent fields which are constrained in child packets.
+///
+/// These fields are the fields which need to be passed in when
+/// parsing a `id` packet since their values are needed for one or
+/// more child packets.
+fn find_constrained_parent_fields<'a>(
+    scope: &lint::Scope<'a>,
+    id: &str,
 ) -> Vec<&'a analyzer_ast::Field> {
+    let all_parent_fields: HashMap<String, &'a analyzer_ast::Field> = HashMap::from_iter(
+        scope.iter_all_parent_fields(id).filter_map(|f| f.id().map(|id| (id.to_string(), f))),
+    );
+
     let mut fields = Vec::new();
     let mut field_names = BTreeSet::new();
     let mut children = scope.iter_children(id).collect::<Vec<_>>();
@@ -186,10 +195,11 @@ fn find_constrained_fields<'a>(
         if let ast::DeclDesc::Packet { id, constraints, .. }
         | ast::DeclDesc::Struct { id, constraints, .. } = &child.desc
         {
-            let packet_scope = &scope.scopes[&scope.typedef[id]];
             for constraint in constraints {
-                if field_names.insert(&constraint.id) {
-                    fields.push(packet_scope.all_fields[&constraint.id]);
+                if field_names.insert(&constraint.id)
+                    && all_parent_fields.contains_key(&constraint.id)
+                {
+                    fields.push(all_parent_fields[&constraint.id]);
                 }
             }
             children.extend(scope.iter_children(id).collect::<Vec<_>>());
@@ -197,22 +207,6 @@ fn find_constrained_fields<'a>(
     }
 
     fields
-}
-
-/// Find parent fields which are constrained in child packets.
-///
-/// These fields are the fields which need to be passed in when
-/// parsing a `id` packet since their values are needed for one or
-/// more child packets.
-fn find_constrained_parent_fields<'a>(
-    scope: &'a lint::Scope<'a>,
-    id: &'a str,
-) -> impl Iterator<Item = &'a analyzer_ast::Field> {
-    let packet_scope = &scope.scopes[&scope.typedef[id]];
-    find_constrained_fields(scope, id).into_iter().filter(|field| {
-        let id = field.id().unwrap();
-        packet_scope.all_fields.contains_key(id) && packet_scope.get_packet_field(id).is_none()
-    })
 }
 
 /// Generate the declaration and implementation for a data struct.
@@ -225,21 +219,20 @@ fn generate_data_struct(
     id: &str,
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
     let decl = scope.typedef[id];
-    let packet_scope = &scope.scopes[&decl];
     let is_packet = matches!(&decl.desc, ast::DeclDesc::Packet { .. });
 
     let span = format_ident!("bytes");
     let serializer_span = format_ident!("buffer");
     let mut field_parser = FieldParser::new(scope, endianness, id, &span);
     let mut field_serializer = FieldSerializer::new(scope, endianness, id, &serializer_span);
-    for field in packet_scope.iter_fields() {
+    for field in scope.iter_fields(id) {
         field_parser.add(field);
         field_serializer.add(field);
     }
     field_parser.done();
 
     let (parse_arg_names, parse_arg_types) = if is_packet {
-        let fields = find_constrained_parent_fields(scope, id).collect::<Vec<_>>();
+        let fields = find_constrained_parent_fields(scope, id);
         let names = fields.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
         let types = fields.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
         (names, types)
@@ -248,7 +241,7 @@ fn generate_data_struct(
     };
 
     let (constant_width, packet_size) =
-        generate_packet_size_getter(scope, packet_scope.iter_fields(), is_packet);
+        generate_packet_size_getter(scope, scope.iter_fields(id), is_packet);
     let conforms = if constant_width == 0 {
         quote! { true }
     } else {
@@ -257,12 +250,11 @@ fn generate_data_struct(
     };
 
     let visibility = if is_packet { quote!() } else { quote!(pub) };
-    let has_payload = packet_scope.get_payload_field().is_some();
+    let has_payload = scope.get_payload_field(id).is_some();
     let has_children = scope.iter_children(id).next().is_some();
 
     let struct_name = if is_packet { format_ident!("{id}Data") } else { format_ident!("{id}") };
-    let fields_with_ids =
-        packet_scope.iter_fields().filter(|f| f.id().is_some()).collect::<Vec<_>>();
+    let fields_with_ids = scope.iter_fields(id).filter(|f| f.id().is_some()).collect::<Vec<_>>();
     let mut field_names =
         fields_with_ids.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
     let mut field_types = fields_with_ids.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
@@ -345,7 +337,7 @@ fn find_parents<'a>(scope: &lint::Scope<'a>, id: &str) -> Vec<&'a analyzer_ast::
 /// Turn the constraint into a value (such as `10` or
 /// `SomeEnum::Foo`).
 pub fn constraint_to_value(
-    packet_scope: &lint::PacketScope<'_>,
+    all_fields: &HashMap<String, &'_ analyzer_ast::Field>,
     constraint: &ast::Constraint,
 ) -> proc_macro2::TokenStream {
     match constraint {
@@ -356,7 +348,7 @@ pub fn constraint_to_value(
         // TODO(mgeisler): include type_id in `ast::Constraint` and
         // drop the packet_scope argument.
         ast::Constraint { tag_id: Some(tag_id), .. } => {
-            let type_id = match &packet_scope.all_fields[&constraint.id].desc {
+            let type_id = match &all_fields[&constraint.id].desc {
                 ast::FieldDesc::Typedef { type_id, .. } => format_ident!("{type_id}"),
                 _ => unreachable!("Invalid constraint: {constraint:?}"),
             };
@@ -373,8 +365,6 @@ fn generate_packet_decl(
     endianness: ast::EndiannessValue,
     id: &str,
 ) -> proc_macro2::TokenStream {
-    let packet_scope = &scope.scopes[&scope.typedef[id]];
-
     let top_level = top_level_packet(scope, id);
     let top_level_id = top_level.id().unwrap();
     let top_level_packet = format_ident!("{top_level_id}");
@@ -401,10 +391,13 @@ fn generate_packet_decl(
     let parent_data_child = parent_ids.iter().map(|id| format_ident!("{id}DataChild"));
 
     let all_fields = {
-        let mut fields = packet_scope.all_fields.values().collect::<Vec<_>>();
+        let mut fields = scope.iter_all_fields(id).filter(|d| d.id().is_some()).collect::<Vec<_>>();
         fields.sort_by_key(|f| f.id());
         fields
     };
+    let all_named_fields =
+        HashMap::from_iter(all_fields.iter().map(|f| (f.id().unwrap().to_string(), f.clone())));
+
     let all_field_names =
         all_fields.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
     let all_field_types = all_fields.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
@@ -413,16 +406,20 @@ fn generate_packet_decl(
     let all_field_getter_names = all_field_names.iter().map(|id| format_ident!("get_{id}"));
     let all_field_self_field = all_fields.iter().map(|f| {
         for (parent, parent_id) in parents.iter().zip(parent_lower_ids.iter()) {
-            if scope.scopes[parent].iter_fields().any(|ff| ff.id() == f.id()) {
+            if scope.iter_fields(parent.id().unwrap()).any(|ff| ff.id() == f.id()) {
                 return quote!(self.#parent_id);
             }
         }
         unreachable!("Could not find {f:?} in parent chain");
     });
 
+    let all_constraints = HashMap::<String, _>::from_iter(
+        scope.iter_all_constraints(id).map(|c| (c.id.to_string(), c)),
+    );
+
     let unconstrained_fields = all_fields
         .iter()
-        .filter(|f| !packet_scope.all_constraints.contains_key(f.id().unwrap()))
+        .filter(|f| !all_constraints.contains_key(f.id().unwrap()))
         .collect::<Vec<_>>();
     let unconstrained_field_names = unconstrained_fields
         .iter()
@@ -436,11 +433,10 @@ fn generate_packet_decl(
         let parent_id_lower = format_ident!("{}", parent_id.to_lowercase());
         let parent_data = format_ident!("{parent_id}Data");
         let parent_data_child = format_ident!("{parent_id}DataChild");
-        let parent_packet_scope = &scope.scopes[&scope.typedef[parent_id]];
 
         let named_fields = {
             let mut names =
-                parent_packet_scope.iter_fields().filter_map(ast::Field::id).collect::<Vec<_>>();
+                scope.iter_fields(parent_id).filter_map(ast::Field::id).collect::<Vec<_>>();
             names.sort_unstable();
             names
         };
@@ -448,8 +444,8 @@ fn generate_packet_decl(
         let mut field = named_fields.iter().map(|id| format_ident!("{id}")).collect::<Vec<_>>();
         let mut value = named_fields
             .iter()
-            .map(|&id| match packet_scope.all_constraints.get(id) {
-                Some(constraint) => constraint_to_value(packet_scope, constraint),
+            .map(|&id| match all_constraints.get(id) {
+                Some(constraint) => constraint_to_value(&all_named_fields, constraint),
                 None => {
                     let id = format_ident!("{id}");
                     quote!(self.#id)
@@ -457,7 +453,7 @@ fn generate_packet_decl(
             })
             .collect::<Vec<_>>();
 
-        if parent_packet_scope.get_payload_field().is_some() {
+        if scope.get_payload_field(parent_id).is_some() {
             field.push(format_ident!("child"));
             if idx == 0 {
                 // Top-most parent, the child is simply created from
@@ -490,7 +486,7 @@ fn generate_packet_decl(
     });
 
     let children = scope.iter_children(id).collect::<Vec<_>>();
-    let has_payload = packet_scope.get_payload_field().is_some();
+    let has_payload = scope.get_payload_field(id).is_some();
     let has_children_or_payload = !children.is_empty() || has_payload;
     let child =
         children.iter().map(|child| format_ident!("{}", child.id().unwrap())).collect::<Vec<_>>();
@@ -1065,6 +1061,7 @@ mod tests {
         let scope = lint::Scope::new(&file);
         let find_fields = |id| {
             find_constrained_parent_fields(&scope, id)
+                .iter()
                 .map(|field| field.id().unwrap())
                 .collect::<Vec<_>>()
         };

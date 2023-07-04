@@ -127,8 +127,7 @@ impl<'a> FieldSerializer<'a> {
                 let max_value = mask_bits(*width, "usize");
 
                 let decl = self.scope.typedef.get(self.packet_name).unwrap();
-                let scope = self.scope.scopes.get(decl).unwrap();
-                let value_field = scope.get_packet_field(field_id).unwrap();
+                let value_field = self.scope.get_packet_field(self.packet_name, field_id).unwrap();
 
                 let field_name = format_ident!("{field_id}");
                 let field_type = types::Integer::new(*width);
