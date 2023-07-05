@@ -69,7 +69,8 @@ enum_range = {
         enum_value_list ~
     "}")?
 }
-enum_tag = { enum_range | enum_value }
+enum_other = { identifier ~ "=" ~ ".." }
+enum_tag = { enum_range | enum_value | enum_other }
 enum_tag_list = { enum_tag ~ ("," ~ enum_tag)* ~ ","? }
 enum_declaration = {
     "enum" ~ identifier ~ ":" ~ integer ~ "{" ~
@@ -350,6 +351,17 @@ fn parse_enum_range(node: Node<'_>, context: &Context) -> Result<crate::ast::Tag
     }
 }
 
+fn parse_enum_other(node: Node<'_>, context: &Context) -> Result<crate::ast::TagOther, String> {
+    if node.as_rule() != Rule::enum_other {
+        err_unexpected_rule(Rule::enum_other, node.as_rule())
+    } else {
+        let loc = node.as_loc(context);
+        let mut children = node.children();
+        let id = parse_identifier(&mut children)?;
+        Ok(crate::ast::TagOther { id, loc })
+    }
+}
+
 fn parse_enum_tag(node: Node<'_>, context: &Context) -> Result<crate::ast::Tag, String> {
     if node.as_rule() != Rule::enum_tag {
         err_unexpected_rule(Rule::enum_tag, node.as_rule())
@@ -360,6 +372,9 @@ fn parse_enum_tag(node: Node<'_>, context: &Context) -> Result<crate::ast::Tag, 
             }
             Some(node) if node.as_rule() == Rule::enum_range => {
                 Ok(crate::ast::Tag::Range(parse_enum_range(node, context)?))
+            }
+            Some(node) if node.as_rule() == Rule::enum_other => {
+                Ok(crate::ast::Tag::Other(parse_enum_other(node, context)?))
             }
             Some(node) => Err(format!(
                 "expected rule {:?} or {:?}, got {:?}",

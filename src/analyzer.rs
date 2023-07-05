@@ -190,6 +190,7 @@ pub enum ErrorCode {
     DuplicateTagRange = 41,
     E42 = 42,
     E43 = 43,
+    DuplicateDefaultTag = 44,
 }
 
 impl From<ErrorCode> for String {
@@ -682,6 +683,39 @@ fn check_enum_declarations(file: &parser_ast::File) -> Result<(), Diagnostics> {
         }
     }
 
+    fn check_tag_other<'a>(
+        tag: &'a TagOther,
+        tags_by_id: &mut HashMap<&'a str, SourceRange>,
+        tag_other: &mut Option<SourceRange>,
+        diagnostics: &mut Diagnostics,
+    ) {
+        if let Some(prev) = tags_by_id.insert(&tag.id, tag.loc) {
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_code(ErrorCode::DuplicateTagIdentifier)
+                    .with_message(format!("duplicate tag identifier `{}`", tag.id))
+                    .with_labels(vec![
+                        tag.loc.primary(),
+                        prev.secondary()
+                            .with_message(format!("`{}` is first declared here", tag.id)),
+                    ]),
+            )
+        }
+        if let Some(prev) = tag_other {
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_code(ErrorCode::DuplicateDefaultTag)
+                    .with_message("duplicate default tag".to_owned())
+                    .with_labels(vec![
+                        tag.loc.primary(),
+                        prev.secondary()
+                            .with_message("the default tag is first declared here".to_owned()),
+                    ]),
+            )
+        }
+        *tag_other = Some(tag.loc)
+    }
+
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
         if let DeclDesc::Enum { tags, width, .. } = &decl.desc {
@@ -694,6 +728,7 @@ fn check_enum_declarations(file: &parser_ast::File) -> Result<(), Diagnostics> {
                     _ => None,
                 })
                 .collect::<Vec<_>>();
+            let mut tag_other = None;
 
             for tag in tags {
                 match tag {
@@ -712,6 +747,9 @@ fn check_enum_declarations(file: &parser_ast::File) -> Result<(), Diagnostics> {
                         &mut tags_by_value,
                         &mut diagnostics,
                     ),
+                    Tag::Other(other) => {
+                        check_tag_other(other, &mut tags_by_id, &mut tag_other, &mut diagnostics)
+                    }
                 }
             }
 
@@ -1842,6 +1880,17 @@ mod test {
         }
         "#
         );
+
+        raises!(
+            DuplicateTagIdentifier,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            X = 0,
+            X = ..,
+        }
+        "#
+        );
     }
 
     #[test]
@@ -2520,6 +2569,22 @@ mod test {
     }
 
     #[test]
+    fn test_e44() {
+        raises!(
+            DuplicateDefaultTag,
+            r#"
+        little_endian_packets
+        enum A : 8 {
+            A = 0,
+            X = ..,
+            B = 1,
+            Y = ..,
+        }
+        "#
+        );
+    }
+
+    #[test]
     fn test_enum_declaration() {
         valid!(
             r#"
@@ -2551,6 +2616,17 @@ mod test {
         enum A : 7 {
             A = 50..100,
             X = 101,
+        }
+        "#
+        );
+
+        valid!(
+            r#"
+        little_endian_packets
+        enum A : 7 {
+            A = 50..100,
+            X = 101,
+            UNKNOWN = ..,
         }
         "#
         );

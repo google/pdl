@@ -86,11 +86,19 @@ pub struct TagRange {
     pub tags: Vec<TagValue>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename = "tag")]
+pub struct TagOther {
+    pub id: String,
+    pub loc: SourceRange,
+}
+
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum Tag {
     Value(TagValue),
     Range(TagRange),
+    Other(TagOther),
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -288,23 +296,35 @@ impl PartialEq for TagRange {
     }
 }
 
+impl Eq for TagOther {}
+impl PartialEq for TagOther {
+    fn eq(&self, other: &Self) -> bool {
+        // Implement structual equality, leave out loc.
+        self.id == other.id
+    }
+}
+
 impl Tag {
     pub fn id(&self) -> &str {
         match self {
-            Tag::Value(TagValue { id, .. }) | Tag::Range(TagRange { id, .. }) => id,
+            Tag::Value(TagValue { id, .. })
+            | Tag::Range(TagRange { id, .. })
+            | Tag::Other(TagOther { id, .. }) => id,
         }
     }
 
     pub fn loc(&self) -> &SourceRange {
         match self {
-            Tag::Value(TagValue { loc, .. }) | Tag::Range(TagRange { loc, .. }) => loc,
+            Tag::Value(TagValue { loc, .. })
+            | Tag::Range(TagRange { loc, .. })
+            | Tag::Other(TagOther { loc, .. }) => loc,
         }
     }
 
     pub fn value(&self) -> Option<usize> {
         match self {
             Tag::Value(TagValue { value, .. }) => Some(*value),
-            Tag::Range(_) => None,
+            Tag::Range(_) | Tag::Other(_) => None,
         }
     }
 }

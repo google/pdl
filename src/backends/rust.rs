@@ -710,20 +710,26 @@ fn generate_struct_decl(
 ///            an additional Unknown case for unmatched valued. Complete
 ///            enums (where the full range of values is covered) are
 ///            automatically closed.
-fn generate_enum_decl(
-    id: &str,
-    tags: &[ast::Tag],
-    width: usize,
-    open: bool,
-) -> proc_macro2::TokenStream {
+fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2::TokenStream {
+    // Determine if the enum is open, i.e. a default tag is defined.
+    fn enum_default_tag(tags: &[ast::Tag]) -> Option<ast::TagOther> {
+        tags.iter()
+            .filter_map(|tag| match tag {
+                ast::Tag::Other(tag) => Some(tag.clone()),
+                _ => None,
+            })
+            .next()
+    }
+
     // Determine if the enum is complete, i.e. all values in the backing
     // integer range have a matching tag in the original declaration.
     fn enum_is_complete(tags: &[ast::Tag], max: usize) -> bool {
         let mut ranges = tags
             .iter()
-            .map(|tag| match tag {
-                ast::Tag::Value(tag) => (tag.value, tag.value),
-                ast::Tag::Range(tag) => tag.range.clone().into_inner(),
+            .filter_map(|tag| match tag {
+                ast::Tag::Value(tag) => Some((tag.value, tag.value)),
+                ast::Tag::Range(tag) => Some(tag.range.clone().into_inner()),
+                _ => None,
             })
             .collect::<Vec<_>>();
         ranges.sort_unstable();
@@ -738,8 +744,7 @@ fn generate_enum_decl(
             })
     }
 
-    // Determine if the enum is primitive, i.e. does not contain any
-    // tag range.
+    // Determine if the enum is primitive, i.e. does not contain any tag range.
     fn enum_is_primitive(tags: &[ast::Tag]) -> bool {
         tags.iter().all(|tag| matches!(tag, ast::Tag::Value(_)))
     }
@@ -768,13 +773,15 @@ fn generate_enum_decl(
     let backing_type = types::Integer::new(width);
     let backing_type_str = proc_macro2::Literal::string(&format!("u{}", backing_type.width));
     let range_max = scalar_max(width);
+    let default_tag = enum_default_tag(tags);
+    let is_open = default_tag.is_some();
     let is_complete = enum_is_complete(tags, scalar_max(width));
     let is_primitive = enum_is_primitive(tags);
     let name = format_ident!("{id}");
 
     // Generate the variant cases for the enum declaration.
     // Tags declared in ranges are flattened in the same declaration.
-    let use_variant_values = is_primitive && (is_complete || !open);
+    let use_variant_values = is_primitive && (is_complete || !is_open);
     let repr_u64 = use_variant_values.then(|| quote! { #[repr(u64)] });
     let mut variants = vec![];
     for tag in tags.iter() {
@@ -790,6 +797,7 @@ fn generate_enum_decl(
                 let id = format_tag_ident(&tag.id);
                 variants.push(quote! { #id(Private<#backing_type>) })
             }
+            ast::Tag::Other(_) => (),
         }
     }
 
@@ -813,6 +821,7 @@ fn generate_enum_decl(
                 let end = format_value(*tag.range.end());
                 from_cases.push(quote! { #start ..= #end => Ok(#name::#id(Private(value))) })
             }
+            ast::Tag::Other(_) => (),
         }
     }
 
@@ -834,19 +843,22 @@ fn generate_enum_decl(
                 let id = format_tag_ident(&tag.id);
                 into_cases.push(quote! { #name::#id(Private(value)) => *value })
             }
+            ast::Tag::Other(_) => (),
         }
     }
 
     // Generate a default case if the enum is open and incomplete.
-    if !is_complete && open {
-        variants.push(quote! { Unknown(Private<#backing_type>) });
-        from_cases.push(quote! { 0..#range_max => Ok(#name::Unknown(Private(value))) });
-        into_cases.push(quote! { #name::Unknown(Private(value)) => *value });
+    if !is_complete && is_open {
+        let unknown_id = format_tag_ident(&default_tag.unwrap().id);
+        let range_max = format_value(range_max);
+        variants.push(quote! { #unknown_id(Private<#backing_type>) });
+        from_cases.push(quote! { 0..=#range_max => Ok(#name::#unknown_id(Private(value))) });
+        into_cases.push(quote! { #name::#unknown_id(Private(value)) => *value });
     }
 
     // Generate an error case if the enum size is lower than the backing
     // type size, or if the enum is closed or incomplete.
-    if backing_type.width != width || (!is_complete && !open) {
+    if backing_type.width != width || (!is_complete && !is_open) {
         from_cases.push(quote! { _ => Err(value) });
     }
 
@@ -978,7 +990,7 @@ fn generate_decl(
             // implement the recursive (de)serialization.
             generate_struct_decl(scope, file.endianness.value, id)
         }
-        ast::DeclDesc::Enum { id, tags, width } => generate_enum_decl(id, tags, *width, false),
+        ast::DeclDesc::Enum { id, tags, width } => generate_enum_decl(id, tags, *width),
         ast::DeclDesc::CustomField { id, width: Some(width), .. } => {
             generate_custom_field_decl(id, *width)
         }
@@ -1120,14 +1132,18 @@ mod tests {
     test_pdl!(
         enum_declaration,
         r#"
-        // Should generate unknown case.
-        enum IncompleteTruncated : 3 {
+        enum IncompleteTruncatedClosed : 3 {
             A = 0,
             B = 1,
         }
 
-        // Should generate unknown case.
-        enum IncompleteTruncatedWithRange : 3 {
+        enum IncompleteTruncatedOpen : 3 {
+            A = 0,
+            B = 1,
+            UNKNOWN = ..
+        }
+
+        enum IncompleteTruncatedClosedWithRange : 3 {
             A = 0,
             B = 1..6 {
                 X = 1,
@@ -1135,7 +1151,15 @@ mod tests {
             }
         }
 
-        // Should generate unreachable case.
+        enum IncompleteTruncatedOpenWithRange : 3 {
+            A = 0,
+            B = 1..6 {
+                X = 1,
+                Y = 2,
+            },
+            UNKNOWN = ..
+        }
+
         enum CompleteTruncated : 3 {
             A = 0,
             B = 1,
@@ -1147,7 +1171,6 @@ mod tests {
             H = 7,
         }
 
-        // Should generate unreachable case.
         enum CompleteTruncatedWithRange : 3 {
             A = 0,
             B = 1..7 {
@@ -1156,7 +1179,6 @@ mod tests {
             }
         }
 
-        // Should generate no unknown or unreachable case.
         enum CompleteWithRange : 8 {
             A = 0,
             B = 1,
