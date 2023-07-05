@@ -47,136 +47,278 @@ pub trait Packet {
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
-pub enum IncompleteTruncated {
+pub enum IncompleteTruncatedClosed {
     A = 0x0,
     B = 0x1,
 }
-impl TryFrom<u8> for IncompleteTruncated {
+impl TryFrom<u8> for IncompleteTruncatedClosed {
     type Error = u8;
     fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
         match value {
-            0x0 => Ok(IncompleteTruncated::A),
-            0x1 => Ok(IncompleteTruncated::B),
+            0x0 => Ok(IncompleteTruncatedClosed::A),
+            0x1 => Ok(IncompleteTruncatedClosed::B),
             _ => Err(value),
         }
     }
 }
-impl From<&IncompleteTruncated> for u8 {
-    fn from(value: &IncompleteTruncated) -> Self {
+impl From<&IncompleteTruncatedClosed> for u8 {
+    fn from(value: &IncompleteTruncatedClosed) -> Self {
         match value {
-            IncompleteTruncated::A => 0x0,
-            IncompleteTruncated::B => 0x1,
+            IncompleteTruncatedClosed::A => 0x0,
+            IncompleteTruncatedClosed::B => 0x1,
         }
     }
 }
-impl From<IncompleteTruncated> for u8 {
-    fn from(value: IncompleteTruncated) -> Self {
+impl From<IncompleteTruncatedClosed> for u8 {
+    fn from(value: IncompleteTruncatedClosed) -> Self {
         (&value).into()
     }
 }
-impl From<IncompleteTruncated> for i8 {
-    fn from(value: IncompleteTruncated) -> Self {
+impl From<IncompleteTruncatedClosed> for i8 {
+    fn from(value: IncompleteTruncatedClosed) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncated> for i16 {
-    fn from(value: IncompleteTruncated) -> Self {
+impl From<IncompleteTruncatedClosed> for i16 {
+    fn from(value: IncompleteTruncatedClosed) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncated> for i32 {
-    fn from(value: IncompleteTruncated) -> Self {
+impl From<IncompleteTruncatedClosed> for i32 {
+    fn from(value: IncompleteTruncatedClosed) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncated> for i64 {
-    fn from(value: IncompleteTruncated) -> Self {
+impl From<IncompleteTruncatedClosed> for i64 {
+    fn from(value: IncompleteTruncatedClosed) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncated> for u16 {
-    fn from(value: IncompleteTruncated) -> Self {
+impl From<IncompleteTruncatedClosed> for u16 {
+    fn from(value: IncompleteTruncatedClosed) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncated> for u32 {
-    fn from(value: IncompleteTruncated) -> Self {
+impl From<IncompleteTruncatedClosed> for u32 {
+    fn from(value: IncompleteTruncatedClosed) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncated> for u64 {
-    fn from(value: IncompleteTruncated) -> Self {
+impl From<IncompleteTruncatedClosed> for u64 {
+    fn from(value: IncompleteTruncatedClosed) -> Self {
         u8::from(value) as Self
     }
 }
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
-pub enum IncompleteTruncatedWithRange {
+pub enum IncompleteTruncatedOpen {
+    A,
+    B,
+    Unknown(Private<u8>),
+}
+impl TryFrom<u8> for IncompleteTruncatedOpen {
+    type Error = u8;
+    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0x0 => Ok(IncompleteTruncatedOpen::A),
+            0x1 => Ok(IncompleteTruncatedOpen::B),
+            0..=0x7 => Ok(IncompleteTruncatedOpen::Unknown(Private(value))),
+            _ => Err(value),
+        }
+    }
+}
+impl From<&IncompleteTruncatedOpen> for u8 {
+    fn from(value: &IncompleteTruncatedOpen) -> Self {
+        match value {
+            IncompleteTruncatedOpen::A => 0x0,
+            IncompleteTruncatedOpen::B => 0x1,
+            IncompleteTruncatedOpen::Unknown(Private(value)) => *value,
+        }
+    }
+}
+impl From<IncompleteTruncatedOpen> for u8 {
+    fn from(value: IncompleteTruncatedOpen) -> Self {
+        (&value).into()
+    }
+}
+impl From<IncompleteTruncatedOpen> for i8 {
+    fn from(value: IncompleteTruncatedOpen) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpen> for i16 {
+    fn from(value: IncompleteTruncatedOpen) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpen> for i32 {
+    fn from(value: IncompleteTruncatedOpen) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpen> for i64 {
+    fn from(value: IncompleteTruncatedOpen) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpen> for u16 {
+    fn from(value: IncompleteTruncatedOpen) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpen> for u32 {
+    fn from(value: IncompleteTruncatedOpen) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpen> for u64 {
+    fn from(value: IncompleteTruncatedOpen) -> Self {
+        u8::from(value) as Self
+    }
+}
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
+pub enum IncompleteTruncatedClosedWithRange {
     A,
     X,
     Y,
     B(Private<u8>),
 }
-impl TryFrom<u8> for IncompleteTruncatedWithRange {
+impl TryFrom<u8> for IncompleteTruncatedClosedWithRange {
     type Error = u8;
     fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
         match value {
-            0x0 => Ok(IncompleteTruncatedWithRange::A),
-            0x1 => Ok(IncompleteTruncatedWithRange::X),
-            0x2 => Ok(IncompleteTruncatedWithRange::Y),
-            0x1..=0x6 => Ok(IncompleteTruncatedWithRange::B(Private(value))),
+            0x0 => Ok(IncompleteTruncatedClosedWithRange::A),
+            0x1 => Ok(IncompleteTruncatedClosedWithRange::X),
+            0x2 => Ok(IncompleteTruncatedClosedWithRange::Y),
+            0x1..=0x6 => Ok(IncompleteTruncatedClosedWithRange::B(Private(value))),
             _ => Err(value),
         }
     }
 }
-impl From<&IncompleteTruncatedWithRange> for u8 {
-    fn from(value: &IncompleteTruncatedWithRange) -> Self {
+impl From<&IncompleteTruncatedClosedWithRange> for u8 {
+    fn from(value: &IncompleteTruncatedClosedWithRange) -> Self {
         match value {
-            IncompleteTruncatedWithRange::A => 0x0,
-            IncompleteTruncatedWithRange::X => 0x1,
-            IncompleteTruncatedWithRange::Y => 0x2,
-            IncompleteTruncatedWithRange::B(Private(value)) => *value,
+            IncompleteTruncatedClosedWithRange::A => 0x0,
+            IncompleteTruncatedClosedWithRange::X => 0x1,
+            IncompleteTruncatedClosedWithRange::Y => 0x2,
+            IncompleteTruncatedClosedWithRange::B(Private(value)) => *value,
         }
     }
 }
-impl From<IncompleteTruncatedWithRange> for u8 {
-    fn from(value: IncompleteTruncatedWithRange) -> Self {
+impl From<IncompleteTruncatedClosedWithRange> for u8 {
+    fn from(value: IncompleteTruncatedClosedWithRange) -> Self {
         (&value).into()
     }
 }
-impl From<IncompleteTruncatedWithRange> for i8 {
-    fn from(value: IncompleteTruncatedWithRange) -> Self {
+impl From<IncompleteTruncatedClosedWithRange> for i8 {
+    fn from(value: IncompleteTruncatedClosedWithRange) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncatedWithRange> for i16 {
-    fn from(value: IncompleteTruncatedWithRange) -> Self {
+impl From<IncompleteTruncatedClosedWithRange> for i16 {
+    fn from(value: IncompleteTruncatedClosedWithRange) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncatedWithRange> for i32 {
-    fn from(value: IncompleteTruncatedWithRange) -> Self {
+impl From<IncompleteTruncatedClosedWithRange> for i32 {
+    fn from(value: IncompleteTruncatedClosedWithRange) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncatedWithRange> for i64 {
-    fn from(value: IncompleteTruncatedWithRange) -> Self {
+impl From<IncompleteTruncatedClosedWithRange> for i64 {
+    fn from(value: IncompleteTruncatedClosedWithRange) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncatedWithRange> for u16 {
-    fn from(value: IncompleteTruncatedWithRange) -> Self {
+impl From<IncompleteTruncatedClosedWithRange> for u16 {
+    fn from(value: IncompleteTruncatedClosedWithRange) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncatedWithRange> for u32 {
-    fn from(value: IncompleteTruncatedWithRange) -> Self {
+impl From<IncompleteTruncatedClosedWithRange> for u32 {
+    fn from(value: IncompleteTruncatedClosedWithRange) -> Self {
         u8::from(value) as Self
     }
 }
-impl From<IncompleteTruncatedWithRange> for u64 {
-    fn from(value: IncompleteTruncatedWithRange) -> Self {
+impl From<IncompleteTruncatedClosedWithRange> for u64 {
+    fn from(value: IncompleteTruncatedClosedWithRange) -> Self {
+        u8::from(value) as Self
+    }
+}
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
+pub enum IncompleteTruncatedOpenWithRange {
+    A,
+    X,
+    Y,
+    B(Private<u8>),
+    Unknown(Private<u8>),
+}
+impl TryFrom<u8> for IncompleteTruncatedOpenWithRange {
+    type Error = u8;
+    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0x0 => Ok(IncompleteTruncatedOpenWithRange::A),
+            0x1 => Ok(IncompleteTruncatedOpenWithRange::X),
+            0x2 => Ok(IncompleteTruncatedOpenWithRange::Y),
+            0x1..=0x6 => Ok(IncompleteTruncatedOpenWithRange::B(Private(value))),
+            0..=0x7 => Ok(IncompleteTruncatedOpenWithRange::Unknown(Private(value))),
+            _ => Err(value),
+        }
+    }
+}
+impl From<&IncompleteTruncatedOpenWithRange> for u8 {
+    fn from(value: &IncompleteTruncatedOpenWithRange) -> Self {
+        match value {
+            IncompleteTruncatedOpenWithRange::A => 0x0,
+            IncompleteTruncatedOpenWithRange::X => 0x1,
+            IncompleteTruncatedOpenWithRange::Y => 0x2,
+            IncompleteTruncatedOpenWithRange::B(Private(value)) => *value,
+            IncompleteTruncatedOpenWithRange::Unknown(Private(value)) => *value,
+        }
+    }
+}
+impl From<IncompleteTruncatedOpenWithRange> for u8 {
+    fn from(value: IncompleteTruncatedOpenWithRange) -> Self {
+        (&value).into()
+    }
+}
+impl From<IncompleteTruncatedOpenWithRange> for i8 {
+    fn from(value: IncompleteTruncatedOpenWithRange) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpenWithRange> for i16 {
+    fn from(value: IncompleteTruncatedOpenWithRange) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpenWithRange> for i32 {
+    fn from(value: IncompleteTruncatedOpenWithRange) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpenWithRange> for i64 {
+    fn from(value: IncompleteTruncatedOpenWithRange) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpenWithRange> for u16 {
+    fn from(value: IncompleteTruncatedOpenWithRange) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpenWithRange> for u32 {
+    fn from(value: IncompleteTruncatedOpenWithRange) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<IncompleteTruncatedOpenWithRange> for u64 {
+    fn from(value: IncompleteTruncatedOpenWithRange) -> Self {
         u8::from(value) as Self
     }
 }
