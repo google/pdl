@@ -18,7 +18,7 @@ use serde::Serialize;
 use std::fmt;
 use std::ops;
 
-/// File identfiier.
+/// File identifier.
 /// References a source file in the source database.
 pub type FileId = usize;
 
@@ -82,7 +82,7 @@ pub struct TagValue {
 pub struct TagRange {
     pub id: String,
     pub loc: SourceRange,
-    pub range: std::ops::RangeInclusive<usize>,
+    pub range: ops::RangeInclusive<usize>,
     pub tags: Vec<TagValue>,
 }
 
@@ -263,7 +263,7 @@ impl ops::Add<SourceRange> for SourceRange {
     type Output = SourceRange;
 
     fn add(self, rhs: SourceRange) -> SourceRange {
-        assert!(self.file == rhs.file);
+        assert_eq!(self.file, rhs.file);
         SourceRange {
             file: self.file,
             start: self.start.min(rhs.start),
@@ -275,7 +275,7 @@ impl ops::Add<SourceRange> for SourceRange {
 impl Eq for Endianness {}
 impl PartialEq for Endianness {
     fn eq(&self, other: &Self) -> bool {
-        // Implement structual equality, leave out loc.
+        // Implement structural equality, leave out loc.
         self.value == other.value
     }
 }
@@ -283,7 +283,7 @@ impl PartialEq for Endianness {
 impl Eq for TagValue {}
 impl PartialEq for TagValue {
     fn eq(&self, other: &Self) -> bool {
-        // Implement structual equality, leave out loc.
+        // Implement structural equality, leave out loc.
         self.id == other.id && self.value == other.value
     }
 }
@@ -291,7 +291,7 @@ impl PartialEq for TagValue {
 impl Eq for TagRange {}
 impl PartialEq for TagRange {
     fn eq(&self, other: &Self) -> bool {
-        // Implement structual equality, leave out loc.
+        // Implement structural equality, leave out loc.
         self.id == other.id && self.range == other.range && self.tags == other.tags
     }
 }
@@ -332,7 +332,7 @@ impl Tag {
 impl Eq for Constraint {}
 impl PartialEq for Constraint {
     fn eq(&self, other: &Self) -> bool {
-        // Implement structual equality, leave out loc.
+        // Implement structural equality, leave out loc.
         self.id == other.id && self.value == other.value && self.tag_id == other.tag_id
     }
 }
@@ -340,15 +340,15 @@ impl PartialEq for Constraint {
 impl Eq for TestCase {}
 impl PartialEq for TestCase {
     fn eq(&self, other: &Self) -> bool {
-        // Implement structual equality, leave out loc.
+        // Implement structural equality, leave out loc.
         self.input == other.input
     }
 }
 
-impl<A: Annotation + std::cmp::PartialEq> Eq for File<A> {}
-impl<A: Annotation + std::cmp::PartialEq> PartialEq for File<A> {
+impl<A: Annotation + PartialEq> Eq for File<A> {}
+impl<A: Annotation + PartialEq> PartialEq for File<A> {
     fn eq(&self, other: &Self) -> bool {
-        // Implement structual equality, leave out comments and PDL
+        // Implement structural equality, leave out comments and PDL
         // version information.
         self.endianness == other.endianness && self.declarations == other.declarations
     }
@@ -378,10 +378,10 @@ impl<A: Annotation> File<A> {
     }
 }
 
-impl<A: Annotation + std::cmp::PartialEq> Eq for Decl<A> {}
-impl<A: Annotation + std::cmp::PartialEq> PartialEq for Decl<A> {
+impl<A: Annotation + PartialEq> Eq for Decl<A> {}
+impl<A: Annotation + PartialEq> PartialEq for Decl<A> {
     fn eq(&self, other: &Self) -> bool {
-        // Implement structual equality, leave out loc and annot.
+        // Implement structural equality, leave out loc and annot.
         self.desc == other.desc
     }
 }
@@ -512,7 +512,7 @@ impl<A: Annotation> Decl<A> {
 impl<A: Annotation> Eq for Field<A> {}
 impl<A: Annotation> PartialEq for Field<A> {
     fn eq(&self, other: &Self) -> bool {
-        // Implement structual equality, leave out loc and annot.
+        // Implement structural equality, leave out loc and annot.
         self.desc == other.desc
     }
 }
