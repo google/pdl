@@ -27,12 +27,6 @@ pub struct Scope<'d> {
     pub typedef: HashMap<String, &'d analyzer_ast::Decl>,
 }
 
-impl<'d> std::hash::Hash for &'d analyzer_ast::Decl {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::ptr::hash(*self, state);
-    }
-}
-
 impl<'d> Scope<'d> {
     pub fn new(file: &analyzer_ast::File) -> Scope<'_> {
         let mut scope = Scope { file, typedef: HashMap::new() };
@@ -56,42 +50,42 @@ impl<'d> Scope<'d> {
         decl.parent_id().and_then(|parent_id| self.typedef.get(parent_id).cloned())
     }
 
-    pub fn iter_children<'a>(
-        &'a self,
-        id: &'a str,
-    ) -> impl Iterator<Item = &'d analyzer_ast::Decl> + 'a {
-        self.file.iter_children(self.typedef.get(id).unwrap())
+    pub fn iter_parents_and_self<'s>(
+        &'s self,
+        decl: &'d analyzer_ast::Decl,
+    ) -> impl Iterator<Item = &'d analyzer_ast::Decl> + 's {
+        std::iter::successors(Some(decl), |decl| self.get_parent(decl))
     }
 
-    /// Iterate over the packet's fields.
-    pub fn iter_fields(&'d self, id: &str) -> impl Iterator<Item = &'d analyzer_ast::Field> {
-        self.typedef.get(id).map(|d| analyzer_ast::Decl::fields(d)).unwrap_or([].iter())
+    pub fn iter_children<'a>(
+        &'a self,
+        decl: &'d analyzer_ast::Decl,
+    ) -> impl Iterator<Item = &'d analyzer_ast::Decl> + 'a {
+        self.file.iter_children(decl)
     }
 
     /// Iterate over the packet's fields and inherited fields.
     pub fn iter_all_fields<'s>(
         &'s self,
-        id: &str,
+        decl: &'d analyzer_ast::Decl,
     ) -> impl Iterator<Item = &'d analyzer_ast::Field> + 's {
-        std::iter::successors(self.typedef.get(id).cloned(), |decl| self.get_parent(decl))
-            .flat_map(Decl::fields)
+        std::iter::successors(Some(decl), |decl| self.get_parent(decl)).flat_map(Decl::fields)
     }
 
     pub fn iter_all_parent_fields<'s>(
         &'s self,
-        id: &str,
+        decl: &'d analyzer_ast::Decl,
     ) -> impl Iterator<Item = &'d analyzer_ast::Field> + 's {
-        let parent = self.typedef.get(id).and_then(|decl| self.get_parent(decl));
-        std::iter::successors(parent, |decl| self.get_parent(decl)).flat_map(Decl::fields)
+        std::iter::successors(self.get_parent(decl), |decl| self.get_parent(decl))
+            .flat_map(Decl::fields)
     }
 
     /// Iterate over the packet's constraints and inherited constraints.
     pub fn iter_all_constraints<'s>(
         &'s self,
-        id: &str,
+        decl: &'d analyzer_ast::Decl,
     ) -> impl Iterator<Item = &'d Constraint> + 's {
-        std::iter::successors(self.typedef.get(id).cloned(), |decl| self.get_parent(decl))
-            .flat_map(Decl::constraints)
+        std::iter::successors(Some(decl), |decl| self.get_parent(decl)).flat_map(Decl::constraints)
     }
 
     /// Return the declaration of the typedef type backing the
@@ -109,32 +103,10 @@ impl<'d> Scope<'d> {
     }
 
     pub fn get_packet_field(&self, decl_id: &str, field_id: &str) -> Option<&analyzer_ast::Field> {
-        self.iter_all_fields(decl_id).find(|field| match &field.desc {
+        self.iter_all_fields(self.typedef[decl_id]).find(|field| match &field.desc {
             FieldDesc::Payload { .. } => field_id == "_payload_",
             FieldDesc::Body { .. } => field_id == "_body_",
             _ => field.id() == Some(field_id),
-        })
-    }
-
-    pub fn get_payload_field(&self, id: &str) -> Option<&analyzer_ast::Field> {
-        self.iter_fields(id)
-            .find(|field| matches!(&field.desc, FieldDesc::Payload { .. } | FieldDesc::Body { .. }))
-    }
-
-    /// Lookup the size field for an array field.
-    pub fn get_array_size_field(&self, packet_id: &str, id: &str) -> Option<&analyzer_ast::Field> {
-        self.iter_fields(packet_id).find(|f| match &f.desc {
-            FieldDesc::Size { field_id, .. } | FieldDesc::Count { field_id, .. } => field_id == id,
-            _ => false,
-        })
-    }
-
-    /// Find the size field corresponding to the payload or body
-    /// field of this packet.
-    pub fn get_payload_size_field(&self, packet_id: &str) -> Option<&analyzer_ast::Field> {
-        self.iter_fields(packet_id).find(|f| match &f.desc {
-            FieldDesc::Size { field_id, .. } => field_id == "_payload_" || field_id == "_body_",
-            _ => false,
         })
     }
 

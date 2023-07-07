@@ -471,6 +471,31 @@ impl<A: Annotation> Decl<A> {
         }
     }
 
+    /// Return the reference to the payload or body field in a declaration,
+    /// if present.
+    pub fn payload(&self) -> Option<&Field<A>> {
+        self.fields()
+            .find(|field| matches!(&field.desc, FieldDesc::Payload { .. } | FieldDesc::Body { .. }))
+    }
+
+    /// Return the reference to the payload or body size field in a declaration,
+    /// if present.
+    pub fn payload_size(&self) -> Option<&Field<A>> {
+        self.fields().find(|field| match &field.desc {
+            FieldDesc::Size { field_id, .. } => field_id == "_payload_" || field_id == "_body_",
+            _ => false,
+        })
+    }
+
+    /// Return the reference to the array size or count field in a declaration,
+    /// if present.
+    pub fn array_size(&self, id: &str) -> Option<&Field<A>> {
+        self.fields().find(|field| match &field.desc {
+            FieldDesc::Size { field_id, .. } | FieldDesc::Count { field_id, .. } => field_id == id,
+            _ => false,
+        })
+    }
+
     pub fn kind(&self) -> &str {
         match &self.desc {
             DeclDesc::Checksum { .. } => "checksum",

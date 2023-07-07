@@ -33,6 +33,7 @@ struct BitField<'a> {
 pub struct FieldParser<'a> {
     scope: &'a lint::Scope<'a>,
     endianness: ast::EndiannessValue,
+    decl: &'a analyzer_ast::Decl,
     packet_name: &'a str,
     span: &'a proc_macro2::Ident,
     chunk: Vec<BitField<'a>>,
@@ -51,6 +52,7 @@ impl<'a> FieldParser<'a> {
         FieldParser {
             scope,
             endianness,
+            decl: scope.typedef[packet_name],
             packet_name,
             span,
             chunk: Vec::new(),
@@ -219,21 +221,22 @@ impl<'a> FieldParser<'a> {
     }
 
     fn find_count_field(&self, id: &str) -> Option<proc_macro2::Ident> {
-        match self.scope.get_array_size_field(self.packet_name, id)?.desc {
+        match self.decl.array_size(id)?.desc {
             ast::FieldDesc::Count { .. } => Some(format_ident!("{id}_count")),
             _ => None,
         }
     }
 
     fn find_size_field(&self, id: &str) -> Option<proc_macro2::Ident> {
-        match self.scope.get_array_size_field(self.packet_name, id)?.desc {
+        match self.decl.array_size(id)?.desc {
             ast::FieldDesc::Size { .. } => Some(size_field_ident(id)),
             _ => None,
         }
     }
 
     fn payload_field_offset_from_end(&self) -> Option<usize> {
-        let mut fields = self.scope.iter_fields(self.packet_name);
+        let decl = self.scope.typedef[self.packet_name];
+        let mut fields = decl.fields();
         fields.find(|f| {
             matches!(f.desc, ast::FieldDesc::Body { .. } | ast::FieldDesc::Payload { .. })
         })?;
@@ -507,7 +510,7 @@ impl<'a> FieldParser<'a> {
     /// Parse body and payload fields.
     fn add_payload_field(&mut self, size_modifier: Option<&str>) {
         let span = self.span;
-        let payload_size_field = self.scope.get_payload_size_field(self.packet_name);
+        let payload_size_field = self.decl.payload_size();
         let offset_from_end = self.payload_field_offset_from_end();
 
         if size_modifier.is_some() {
@@ -617,15 +620,13 @@ impl<'a> FieldParser<'a> {
             return; // Structs don't parse the child structs recursively.
         }
 
-        let children = self.scope.iter_children(self.packet_name).collect::<Vec<_>>();
-        if children.is_empty() && self.scope.get_payload_field(self.packet_name).is_none() {
+        let children = self.scope.iter_children(decl).collect::<Vec<_>>();
+        if children.is_empty() && self.decl.payload().is_none() {
             return;
         }
 
         let all_fields = HashMap::<String, _>::from_iter(
-            self.scope
-                .iter_all_fields(self.packet_name)
-                .filter_map(|f| f.id().map(|id| (id.to_string(), f))),
+            self.scope.iter_all_fields(decl).filter_map(|f| f.id().map(|id| (id.to_string(), f))),
         );
 
         // Gather fields that are constrained in immediate child declarations.

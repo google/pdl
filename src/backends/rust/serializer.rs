@@ -353,7 +353,7 @@ impl<'a> FieldSerializer<'a> {
 
         let child_ids = self
             .scope
-            .iter_children(self.packet_name)
+            .iter_children(decl)
             .map(|child| format_ident!("{}", child.id().unwrap()))
             .collect::<Vec<_>>();
 

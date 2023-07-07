@@ -184,12 +184,14 @@ fn find_constrained_parent_fields<'a>(
     id: &str,
 ) -> Vec<&'a analyzer_ast::Field> {
     let all_parent_fields: HashMap<String, &'a analyzer_ast::Field> = HashMap::from_iter(
-        scope.iter_all_parent_fields(id).filter_map(|f| f.id().map(|id| (id.to_string(), f))),
+        scope
+            .iter_all_parent_fields(scope.typedef[id])
+            .filter_map(|f| f.id().map(|id| (id.to_string(), f))),
     );
 
     let mut fields = Vec::new();
     let mut field_names = BTreeSet::new();
-    let mut children = scope.iter_children(id).collect::<Vec<_>>();
+    let mut children = scope.iter_children(scope.typedef[id]).collect::<Vec<_>>();
 
     while let Some(child) = children.pop() {
         if let ast::DeclDesc::Packet { id, constraints, .. }
@@ -202,7 +204,7 @@ fn find_constrained_parent_fields<'a>(
                     fields.push(all_parent_fields[&constraint.id]);
                 }
             }
-            children.extend(scope.iter_children(id).collect::<Vec<_>>());
+            children.extend(scope.iter_children(scope.typedef[id]).collect::<Vec<_>>());
         }
     }
 
@@ -225,7 +227,7 @@ fn generate_data_struct(
     let serializer_span = format_ident!("buffer");
     let mut field_parser = FieldParser::new(scope, endianness, id, &span);
     let mut field_serializer = FieldSerializer::new(scope, endianness, id, &serializer_span);
-    for field in scope.iter_fields(id) {
+    for field in decl.fields() {
         field_parser.add(field);
         field_serializer.add(field);
     }
@@ -241,7 +243,7 @@ fn generate_data_struct(
     };
 
     let (constant_width, packet_size) =
-        generate_packet_size_getter(scope, scope.iter_fields(id), is_packet);
+        generate_packet_size_getter(scope, decl.fields(), is_packet);
     let conforms = if constant_width == 0 {
         quote! { true }
     } else {
@@ -250,11 +252,11 @@ fn generate_data_struct(
     };
 
     let visibility = if is_packet { quote!() } else { quote!(pub) };
-    let has_payload = scope.get_payload_field(id).is_some();
-    let has_children = scope.iter_children(id).next().is_some();
+    let has_payload = decl.payload().is_some();
+    let has_children = scope.iter_children(decl).next().is_some();
 
     let struct_name = if is_packet { format_ident!("{id}Data") } else { format_ident!("{id}") };
-    let fields_with_ids = scope.iter_fields(id).filter(|f| f.id().is_some()).collect::<Vec<_>>();
+    let fields_with_ids = decl.fields().filter(|f| f.id().is_some()).collect::<Vec<_>>();
     let mut field_names =
         fields_with_ids.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
     let mut field_types = fields_with_ids.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
@@ -318,22 +320,6 @@ fn generate_data_struct(
     (data_struct_decl, data_struct_impl)
 }
 
-/// Find all parents from `id`.
-///
-/// This includes the `Decl` for `id` itself.
-fn find_parents<'a>(scope: &lint::Scope<'a>, id: &str) -> Vec<&'a analyzer_ast::Decl> {
-    let mut decl = scope.typedef[id];
-    let mut parents = vec![decl];
-    while let ast::DeclDesc::Packet { parent_id: Some(parent_id), .. }
-    | ast::DeclDesc::Struct { parent_id: Some(parent_id), .. } = &decl.desc
-    {
-        decl = scope.typedef[parent_id];
-        parents.push(decl);
-    }
-    parents.reverse();
-    parents
-}
-
 /// Turn the constraint into a value (such as `10` or
 /// `SomeEnum::Foo`).
 pub fn constraint_to_value(
@@ -365,6 +351,7 @@ fn generate_packet_decl(
     endianness: ast::EndiannessValue,
     id: &str,
 ) -> proc_macro2::TokenStream {
+    let decl = scope.typedef[id];
     let top_level = top_level_packet(scope, id);
     let top_level_id = top_level.id().unwrap();
     let top_level_packet = format_ident!("{top_level_id}");
@@ -380,7 +367,9 @@ fn generate_packet_decl(
     let id_data_child = format_ident!("{id}DataChild");
     let id_builder = format_ident!("{id}Builder");
 
-    let parents = find_parents(scope, id);
+    let mut parents = scope.iter_parents_and_self(decl).collect::<Vec<_>>();
+    parents.reverse();
+
     let parent_ids = parents.iter().map(|p| p.id().unwrap()).collect::<Vec<_>>();
     let parent_shifted_ids = parent_ids.iter().skip(1).map(|id| format_ident!("{id}"));
     let parent_lower_ids =
@@ -391,7 +380,8 @@ fn generate_packet_decl(
     let parent_data_child = parent_ids.iter().map(|id| format_ident!("{id}DataChild"));
 
     let all_fields = {
-        let mut fields = scope.iter_all_fields(id).filter(|d| d.id().is_some()).collect::<Vec<_>>();
+        let mut fields =
+            scope.iter_all_fields(decl).filter(|d| d.id().is_some()).collect::<Vec<_>>();
         fields.sort_by_key(|f| f.id());
         fields
     };
@@ -406,7 +396,7 @@ fn generate_packet_decl(
     let all_field_getter_names = all_field_names.iter().map(|id| format_ident!("get_{id}"));
     let all_field_self_field = all_fields.iter().map(|f| {
         for (parent, parent_id) in parents.iter().zip(parent_lower_ids.iter()) {
-            if scope.iter_fields(parent.id().unwrap()).any(|ff| ff.id() == f.id()) {
+            if parent.fields().any(|ff| ff.id() == f.id()) {
                 return quote!(self.#parent_id);
             }
         }
@@ -414,7 +404,7 @@ fn generate_packet_decl(
     });
 
     let all_constraints = HashMap::<String, _>::from_iter(
-        scope.iter_all_constraints(id).map(|c| (c.id.to_string(), c)),
+        scope.iter_all_constraints(decl).map(|c| (c.id.to_string(), c)),
     );
 
     let unconstrained_fields = all_fields
@@ -435,8 +425,7 @@ fn generate_packet_decl(
         let parent_data_child = format_ident!("{parent_id}DataChild");
 
         let named_fields = {
-            let mut names =
-                scope.iter_fields(parent_id).filter_map(ast::Field::id).collect::<Vec<_>>();
+            let mut names = parent.fields().filter_map(ast::Field::id).collect::<Vec<_>>();
             names.sort_unstable();
             names
         };
@@ -453,7 +442,7 @@ fn generate_packet_decl(
             })
             .collect::<Vec<_>>();
 
-        if scope.get_payload_field(parent_id).is_some() {
+        if parent.payload().is_some() {
             field.push(format_ident!("child"));
             if idx == 0 {
                 // Top-most parent, the child is simply created from
@@ -473,7 +462,7 @@ fn generate_packet_decl(
                     #parent_data_child::#prev_parent_id(#prev_parent_id_lower)
                 });
             }
-        } else if scope.iter_children(parent_id).next().is_some() {
+        } else if scope.iter_children(parent).next().is_some() {
             field.push(format_ident!("child"));
             value.push(quote! { #parent_data_child::None });
         }
@@ -485,8 +474,8 @@ fn generate_packet_decl(
         }
     });
 
-    let children = scope.iter_children(id).collect::<Vec<_>>();
-    let has_payload = scope.get_payload_field(id).is_some();
+    let children = scope.iter_children(decl).collect::<Vec<_>>();
+    let has_payload = decl.payload().is_some();
     let has_children_or_payload = !children.is_empty() || has_payload;
     let child =
         children.iter().map(|child| format_ident!("{}", child.id().unwrap())).collect::<Vec<_>>();
