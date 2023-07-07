@@ -206,8 +206,10 @@ pub struct Diagnostics {
 }
 
 /// Gather information about the full AST.
-#[derive(Debug, Default)]
-pub struct Scope<'d, A: Annotation> {
+#[derive(Debug)]
+pub struct Scope<'d, A: Annotation = ast::Annotation> {
+    /// Reference to the source file.
+    pub file: &'d crate::ast::File<A>,
     /// Collection of Group, Packet, Enum, Struct, Checksum, and CustomField
     /// declarations.
     pub typedef: HashMap<String, &'d crate::ast::Decl<A>>,
@@ -246,7 +248,7 @@ impl Diagnostics {
 impl<'d, A: Annotation + Default> Scope<'d, A> {
     pub fn new(file: &'d crate::ast::File<A>) -> Result<Scope<'d, A>, Diagnostics> {
         // Gather top-level declarations.
-        let mut scope: Scope<A> = Default::default();
+        let mut scope: Scope<A> = Scope { file, typedef: Default::default() };
         let mut diagnostics: Diagnostics = Default::default();
         for decl in &file.declarations {
             if let Some(id) = decl.id() {
@@ -276,6 +278,14 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
         } else {
             Err(diagnostics)
         }
+    }
+
+    /// Iterate over the child declarations of the selected declaration.
+    pub fn iter_children<'s>(
+        &'s self,
+        decl: &'d crate::ast::Decl<A>,
+    ) -> impl Iterator<Item = &'d crate::ast::Decl<A>> + 's {
+        self.file.iter_children(decl)
     }
 
     /// Return the parent declaration of the selected declaration,
@@ -327,9 +337,9 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
     }
 
     /// Return the type declaration for the selected field, if applicable.
-    pub fn get_declaration(
+    pub fn get_type_declaration(
         &self,
-        field: &'d crate::ast::Field<A>,
+        field: &crate::ast::Field<A>,
     ) -> Option<&'d crate::ast::Decl<A>> {
         match &field.desc {
             FieldDesc::Checksum { .. }
@@ -347,6 +357,24 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
             FieldDesc::FixedEnum { enum_id: type_id, .. }
             | FieldDesc::Array { type_id: Some(type_id), .. }
             | FieldDesc::Typedef { type_id, .. } => self.typedef.get(type_id).cloned(),
+        }
+    }
+
+    /// Test if the selected field is a bit-field.
+    pub fn is_bitfield(&self, field: &crate::ast::Field<A>) -> bool {
+        match &field.desc {
+            FieldDesc::Size { .. }
+            | FieldDesc::Count { .. }
+            | FieldDesc::ElementSize { .. }
+            | FieldDesc::FixedScalar { .. }
+            | FieldDesc::FixedEnum { .. }
+            | FieldDesc::Reserved { .. }
+            | FieldDesc::Scalar { .. } => true,
+            FieldDesc::Typedef { type_id, .. } => {
+                let field = self.typedef.get(type_id.as_str());
+                matches!(field, Some(Decl { desc: DeclDesc::Enum { .. }, .. }))
+            }
+            _ => false,
         }
     }
 }
