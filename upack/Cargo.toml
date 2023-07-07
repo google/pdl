@@ -1,0 +1,9 @@
+[package]
+name = "upack"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = "1.4.0"
+derive_more = "0.99.17"
+thiserror = "1.0.43"
