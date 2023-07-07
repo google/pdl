@@ -292,6 +292,15 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
         std::iter::successors(self.get_parent(decl), |decl| self.get_parent(decl))
     }
 
+    /// Iterate over the parent declarations of the selected declaration,
+    /// including the current declaration.
+    pub fn iter_parents_and_self<'s>(
+        &'s self,
+        decl: &'d crate::ast::Decl<A>,
+    ) -> impl Iterator<Item = &'d Decl<A>> + 's {
+        std::iter::successors(Some(decl), |decl| self.get_parent(decl))
+    }
+
     /// Iterate over the declaration and its parent's fields.
     pub fn iter_fields<'s>(
         &'s self,
@@ -300,8 +309,24 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
         std::iter::successors(Some(decl), |decl| self.get_parent(decl)).flat_map(Decl::fields)
     }
 
+    /// Iterate over the declaration parent's fields.
+    pub fn iter_parent_fields<'s>(
+        &'s self,
+        decl: &'d crate::ast::Decl<A>,
+    ) -> impl Iterator<Item = &'d crate::ast::Field<A>> + 's {
+        std::iter::successors(self.get_parent(decl), |decl| self.get_parent(decl))
+            .flat_map(Decl::fields)
+    }
+
+    /// Iterate over the declaration and its parent's constraints.
+    pub fn iter_constraints<'s>(
+        &'s self,
+        decl: &'d crate::ast::Decl<A>,
+    ) -> impl Iterator<Item = &'d Constraint> + 's {
+        std::iter::successors(Some(decl), |decl| self.get_parent(decl)).flat_map(Decl::constraints)
+    }
+
     /// Return the type declaration for the selected field, if applicable.
-    #[allow(dead_code)]
     pub fn get_declaration(
         &self,
         field: &'d crate::ast::Field<A>,
