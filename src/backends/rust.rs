@@ -14,7 +14,7 @@
 
 //! Rust compiler backend.
 
-use crate::{ast, lint};
+use crate::{analyzer, ast};
 use quote::{format_ident, quote};
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -85,7 +85,7 @@ pub fn mask_bits(n: usize, suffix: &str) -> syn::LitInt {
 }
 
 fn generate_packet_size_getter<'a>(
-    scope: &lint::Scope<'a>,
+    scope: &analyzer::Scope<'a>,
     fields: impl Iterator<Item = &'a analyzer_ast::Field>,
     is_packet: bool,
 ) -> (usize, proc_macro2::TokenStream) {
@@ -98,7 +98,7 @@ fn generate_packet_size_getter<'a>(
             continue;
         }
 
-        let decl = scope.get_field_declaration(field);
+        let decl = scope.get_type_declaration(field);
         dynamic_widths.push(match &field.desc {
             ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. } => {
                 if is_packet {
@@ -164,7 +164,10 @@ fn generate_packet_size_getter<'a>(
     )
 }
 
-fn top_level_packet<'a>(scope: &lint::Scope<'a>, packet_name: &'a str) -> &'a analyzer_ast::Decl {
+fn top_level_packet<'a>(
+    scope: &analyzer::Scope<'a>,
+    packet_name: &'a str,
+) -> &'a analyzer_ast::Decl {
     let mut decl = scope.typedef[packet_name];
     while let ast::DeclDesc::Packet { parent_id: Some(parent_id), .. }
     | ast::DeclDesc::Struct { parent_id: Some(parent_id), .. } = &decl.desc
@@ -180,12 +183,12 @@ fn top_level_packet<'a>(scope: &lint::Scope<'a>, packet_name: &'a str) -> &'a an
 /// parsing a `id` packet since their values are needed for one or
 /// more child packets.
 fn find_constrained_parent_fields<'a>(
-    scope: &lint::Scope<'a>,
+    scope: &analyzer::Scope<'a>,
     id: &str,
 ) -> Vec<&'a analyzer_ast::Field> {
     let all_parent_fields: HashMap<String, &'a analyzer_ast::Field> = HashMap::from_iter(
         scope
-            .iter_all_parent_fields(scope.typedef[id])
+            .iter_parent_fields(scope.typedef[id])
             .filter_map(|f| f.id().map(|id| (id.to_string(), f))),
     );
 
@@ -216,7 +219,7 @@ fn find_constrained_parent_fields<'a>(
 /// This struct will hold the data for a packet or a struct. It knows
 /// how to parse and serialize its own fields.
 fn generate_data_struct(
-    scope: &lint::Scope<'_>,
+    scope: &analyzer::Scope<'_>,
     endianness: ast::EndiannessValue,
     id: &str,
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
@@ -347,7 +350,7 @@ pub fn constraint_to_value(
 
 /// Generate code for a `ast::Decl::Packet`.
 fn generate_packet_decl(
-    scope: &lint::Scope<'_>,
+    scope: &analyzer::Scope<'_>,
     endianness: ast::EndiannessValue,
     id: &str,
 ) -> proc_macro2::TokenStream {
@@ -380,13 +383,12 @@ fn generate_packet_decl(
     let parent_data_child = parent_ids.iter().map(|id| format_ident!("{id}DataChild"));
 
     let all_fields = {
-        let mut fields =
-            scope.iter_all_fields(decl).filter(|d| d.id().is_some()).collect::<Vec<_>>();
+        let mut fields = scope.iter_fields(decl).filter(|d| d.id().is_some()).collect::<Vec<_>>();
         fields.sort_by_key(|f| f.id());
         fields
     };
     let all_named_fields =
-        HashMap::from_iter(all_fields.iter().map(|f| (f.id().unwrap().to_string(), f.clone())));
+        HashMap::from_iter(all_fields.iter().map(|f| (f.id().unwrap().to_string(), *f)));
 
     let all_field_names =
         all_fields.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
@@ -404,7 +406,7 @@ fn generate_packet_decl(
     });
 
     let all_constraints = HashMap::<String, _>::from_iter(
-        scope.iter_all_constraints(decl).map(|c| (c.id.to_string(), c)),
+        scope.iter_constraints(decl).map(|c| (c.id.to_string(), c)),
     );
 
     let unconstrained_fields = all_fields
@@ -674,7 +676,7 @@ fn generate_packet_decl(
 
 /// Generate code for a `ast::Decl::Struct`.
 fn generate_struct_decl(
-    scope: &lint::Scope<'_>,
+    scope: &analyzer::Scope<'_>,
     endianness: ast::EndiannessValue,
     id: &str,
 ) -> proc_macro2::TokenStream {
@@ -961,7 +963,7 @@ fn generate_custom_field_decl(id: &str, width: usize) -> proc_macro2::TokenStrea
 }
 
 fn generate_decl(
-    scope: &lint::Scope<'_>,
+    scope: &analyzer::Scope<'_>,
     file: &analyzer_ast::File,
     decl: &analyzer_ast::Decl,
 ) -> proc_macro2::TokenStream {
@@ -991,7 +993,7 @@ pub fn generate(sources: &ast::SourceDatabase, file: &analyzer_ast::File) -> Str
     let source = sources.get(file.file).expect("could not read source");
     let preamble = preamble::generate(Path::new(source.name()));
 
-    let scope = lint::Scope::new(file);
+    let scope = analyzer::Scope::new(file).expect("could not create scope");
     let decls = file.declarations.iter().map(|decl| generate_decl(&scope, file, decl));
     let code = quote! {
         #preamble
@@ -1047,7 +1049,7 @@ mod tests {
               }
             ";
         let file = parse_str(code);
-        let scope = lint::Scope::new(&file);
+        let scope = analyzer::Scope::new(&file).unwrap();
         let find_fields = |id| {
             find_constrained_parent_fields(&scope, id)
                 .iter()

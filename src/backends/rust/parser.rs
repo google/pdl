@@ -16,7 +16,7 @@ use crate::analyzer::ast as analyzer_ast;
 use crate::backends::rust::{
     constraint_to_value, find_constrained_parent_fields, mask_bits, types, ToUpperCamelCase,
 };
-use crate::{ast, lint};
+use crate::{analyzer, ast};
 use quote::{format_ident, quote};
 use std::collections::{BTreeSet, HashMap};
 
@@ -31,7 +31,7 @@ struct BitField<'a> {
 }
 
 pub struct FieldParser<'a> {
-    scope: &'a lint::Scope<'a>,
+    scope: &'a analyzer::Scope<'a>,
     endianness: ast::EndiannessValue,
     decl: &'a analyzer_ast::Decl,
     packet_name: &'a str,
@@ -44,7 +44,7 @@ pub struct FieldParser<'a> {
 
 impl<'a> FieldParser<'a> {
     pub fn new(
-        scope: &'a lint::Scope<'a>,
+        scope: &'a analyzer::Scope<'a>,
         endianness: ast::EndiannessValue,
         packet_name: &'a str,
         span: &'a proc_macro2::Ident,
@@ -72,7 +72,7 @@ impl<'a> FieldParser<'a> {
                 type_id.as_deref(),
                 *size,
                 field.annot.padded_size,
-                self.scope.get_field_declaration(field),
+                self.scope.get_type_declaration(field),
             ),
             ast::FieldDesc::Typedef { id, type_id } => self.add_typedef_field(id, type_id),
             ast::FieldDesc::Payload { size_modifier, .. } => {
@@ -626,7 +626,7 @@ impl<'a> FieldParser<'a> {
         }
 
         let all_fields = HashMap::<String, _>::from_iter(
-            self.scope.iter_all_fields(decl).filter_map(|f| f.id().map(|id| (id.to_string(), f))),
+            self.scope.iter_fields(decl).filter_map(|f| f.id().map(|id| (id.to_string(), f))),
         );
 
         // Gather fields that are constrained in immediate child declarations.
@@ -755,7 +755,7 @@ mod tests {
               }
             ";
         let file = parse_str(code);
-        let scope = lint::Scope::new(&file);
+        let scope = analyzer::Scope::new(&file).unwrap();
         let span = format_ident!("bytes");
         let parser = FieldParser::new(&scope, file.endianness.value, "P", &span);
         assert_eq!(parser.find_size_field("a"), None);
@@ -772,7 +772,7 @@ mod tests {
               }
             ";
         let file = parse_str(code);
-        let scope = lint::Scope::new(&file);
+        let scope = analyzer::Scope::new(&file).unwrap();
         let span = format_ident!("bytes");
         let parser = FieldParser::new(&scope, file.endianness.value, "P", &span);
         assert_eq!(parser.find_size_field("b"), None);
@@ -789,7 +789,7 @@ mod tests {
               }
             ";
         let file = parse_str(code);
-        let scope = lint::Scope::new(&file);
+        let scope = analyzer::Scope::new(&file).unwrap();
         let span = format_ident!("bytes");
         let parser = FieldParser::new(&scope, file.endianness.value, "P", &span);
         assert_eq!(parser.find_size_field("c"), Some(format_ident!("c_size")));

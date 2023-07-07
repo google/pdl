@@ -17,7 +17,6 @@
 pub mod analyzer;
 pub mod ast;
 pub mod backends;
-pub mod lint;
 pub mod parser;
 #[cfg(test)]
 pub mod test_utils;

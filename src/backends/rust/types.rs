@@ -15,7 +15,7 @@
 //! Utility functions for dealing with Rust integer types.
 
 use crate::analyzer::ast as analyzer_ast;
-use crate::{ast, lint};
+use crate::{analyzer, ast};
 use quote::{format_ident, quote};
 
 /// A Rust integer type such as `u8`.
@@ -83,7 +83,7 @@ pub fn rust_type(field: &analyzer_ast::Field) -> proc_macro2::TokenStream {
 
 pub fn rust_borrow(
     field: &analyzer_ast::Field,
-    scope: &lint::Scope<'_>,
+    scope: &analyzer::Scope<'_>,
 ) -> proc_macro2::TokenStream {
     match &field.desc {
         ast::FieldDesc::Scalar { .. } => quote!(),

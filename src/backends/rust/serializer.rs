@@ -14,7 +14,7 @@
 
 use crate::analyzer::ast as analyzer_ast;
 use crate::backends::rust::{mask_bits, types, ToUpperCamelCase};
-use crate::{ast, lint};
+use crate::{analyzer, ast};
 use quote::{format_ident, quote};
 
 /// A single bit-field value.
@@ -25,7 +25,7 @@ struct BitField {
 }
 
 pub struct FieldSerializer<'a> {
-    scope: &'a lint::Scope<'a>,
+    scope: &'a analyzer::Scope<'a>,
     endianness: ast::EndiannessValue,
     packet_name: &'a str,
     span: &'a proc_macro2::Ident,
@@ -36,7 +36,7 @@ pub struct FieldSerializer<'a> {
 
 impl<'a> FieldSerializer<'a> {
     pub fn new(
-        scope: &'a lint::Scope<'a>,
+        scope: &'a analyzer::Scope<'a>,
         endianness: ast::EndiannessValue,
         packet_name: &'a str,
         span: &'a proc_macro2::Ident,
@@ -59,7 +59,7 @@ impl<'a> FieldSerializer<'a> {
                 id,
                 *width,
                 field.annot.padded_size,
-                self.scope.get_field_declaration(field),
+                self.scope.get_type_declaration(field),
             ),
             ast::FieldDesc::Typedef { id, type_id } => {
                 self.add_typedef_field(id, type_id);
@@ -127,13 +127,21 @@ impl<'a> FieldSerializer<'a> {
                 let max_value = mask_bits(*width, "usize");
 
                 let decl = self.scope.typedef.get(self.packet_name).unwrap();
-                let value_field = self.scope.get_packet_field(self.packet_name, field_id).unwrap();
+                let value_field = self
+                    .scope
+                    .iter_fields(decl)
+                    .find(|field| match &field.desc {
+                        ast::FieldDesc::Payload { .. } => field_id == "_payload_",
+                        ast::FieldDesc::Body { .. } => field_id == "_body_",
+                        _ => field.id() == Some(field_id),
+                    })
+                    .unwrap();
 
                 let field_name = format_ident!("{field_id}");
                 let field_type = types::Integer::new(*width);
                 // TODO: size modifier
 
-                let value_field_decl = self.scope.get_field_declaration(value_field);
+                let value_field_decl = self.scope.get_type_declaration(value_field);
 
                 let field_size_name = format_ident!("{field_id}_size");
                 let array_size = match (&value_field.desc, value_field_decl.map(|decl| &decl.desc))
