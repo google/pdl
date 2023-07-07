@@ -11,7 +11,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 
 [dependencies.pdl-compiler]
-path = ".."
+path = "../pdl-compiler"
 
 # Prevent this from interfering with workspaces
 [workspace]
