@@ -24,7 +24,7 @@ Example invocation:
 .. sourcecode:: bash
 
     cargo run my-protocol.pdl --output-format json | \
-        ./scripts/generate_cxx_backend.py > my-protocol.h
+        ./pdl-compiler/scripts/generate_cxx_backend.py > my-protocol.h
 
 Language bindings
 -----------------

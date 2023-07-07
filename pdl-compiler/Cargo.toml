@@ -5,22 +5,20 @@ edition = "2021"
 description = "Parser and serializer generator for protocol binary packets"
 repository = "https://github.com/google/pdl/"
 license = "Apache-2.0"
-readme = "README.md"
+readme = "../README.md"
 keywords = ["pdl", "parser", "serializer", "grammar"]
 authors = [
     "Henri Chataing <henrichataing@google.com>",
     "David de Jesus Duarte <licorne@google.com>",
     "Martin Geisler <mgeisler@google.com>"
 ]
-exclude = [".github/*", "editors/*"]
+exclude = ["editors/*"]
 categories = ["parsing"]
 default-run = "pdlc"
 
 [[bin]]
 name = "pdlc"
 path = "src/main.rs"
-
-[workspace]
 
 [features]
 default = ["serde"]
