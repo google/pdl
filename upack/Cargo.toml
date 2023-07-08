@@ -7,3 +7,6 @@ edition = "2021"
 bytes = "1.4.0"
 derive_more = "0.99.17"
 thiserror = "1.0.43"
+
+[dev-dependencies]
+rand = "0.8.5"

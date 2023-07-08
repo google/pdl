@@ -349,6 +349,104 @@ mod tests {
   use crate::*;
   use super::*;
 
+  use rand::Rng;
+
+  #[derive(Debug, Clone, Eq, PartialEq)]
+  struct Color {
+    r: u8,
+    g: u8,
+    b: u8,
+  }
+
+  #[derive(Debug, Clone, Eq, PartialEq)]
+  struct Paw<'raw> {
+    colors: Array<'raw, Color>,
+  }
+
+  #[derive(Debug, Clone, Eq, PartialEq)]
+  struct Dog<'raw> {
+    age: u16,
+    weight: u32,
+    paws: Array<'raw, Paw<'raw>>,
+  }
+
+  impl<'a> Packetable<'a> for Color {
+    type Error = Error;
+
+    fn bytes(&self) -> usize {
+      3
+    }
+
+    unsafe fn write_into_unchecked(&self, buf: &mut impl BufMut) {
+      buf.put_u8(self.r);
+      buf.put_u8(self.g);
+      buf.put_u8(self.b);
+    }
+
+    fn read_from(buf: &mut &'a [u8]) -> Result<Self, Self::Error> {
+      if buf.remaining() < 3 {
+        return Err(Error::InsufficientBytesReadError);
+      }
+      Ok(Self { r: buf.get_u8(), g: buf.get_u8(), b: buf.get_u8() })
+    }
+  }
+
+  impl<'a> Packetable<'a> for Paw<'a> {
+    type Error = Error;
+
+    fn bytes(&self) -> usize {
+      2 + self.colors.bytes()
+    }
+
+    unsafe fn write_into_unchecked(&self, buf: &mut impl BufMut) {
+      buf.put_u16(self.colors.bytes() as u16);
+      self.colors.write_into_unchecked(buf);
+    }
+
+    fn read_from(buf: &mut &'a [u8]) -> Result<Self, Self::Error> {
+      if buf.remaining() < 2 {
+        return Err(Error::InsufficientBytesReadError);
+      }
+      let colors_size = buf.get_u16() as usize;
+      if (colors_size % 3) != 0 {
+        // FIXME: custom error type.
+        return Err(Error::InsufficientBytesReadError);
+      }
+      let mut colors_chunk = &buf[..colors_size];
+      buf.advance(colors_size);
+      let colors = Array::read_from(&mut colors_chunk)?;
+      Ok(Self { colors })
+    }
+  }
+
+  impl<'a> Packetable<'a> for Dog<'a> {
+    type Error = Error;
+
+    fn bytes(&self) -> usize {
+      8 + self.paws.bytes()
+    }
+
+    unsafe fn write_into_unchecked(&self, buf: &mut impl BufMut) {
+      buf.put_u16_le(self.age);
+      buf.put_u32_le(self.weight);
+      buf.put_u16(self.paws.bytes() as u16);
+      self.paws.write_into_unchecked(buf);
+    }
+
+    fn read_from(buf: &mut &'a [u8]) -> Result<Self, Self::Error> {
+      if buf.remaining() < 7 {
+        return Err(Error::InsufficientBytesReadError);
+      }
+      let age = buf.get_u16_le();
+      let weight = buf.get_u32_le();
+      let paws_size = buf.get_u16() as usize;
+      let mut paws_chunk = &buf[..paws_size];
+      buf.advance(paws_size);
+      let paws = Array::read_from(&mut paws_chunk)?;
+      Ok(Self { age, weight, paws })
+    }
+  }
+
   #[test]
   fn array_of_u16_le() {
     let a: Array<'_, u16le> = Array::read_from(&mut [1, 0, 2, 0, 3, 0].as_slice()).unwrap();
@@ -361,146 +459,152 @@ mod tests {
     println!("{:?}", a);
   }
 
+  // Create random data for testing.
+  fn generate_random_colors() -> Vec<Color> {
+    let mut rng = rand::thread_rng();
+    let mut colors = vec![];
+    for _ in 0..rng.gen_range(0..64) {
+      colors.push(Color { r: rng.gen(), g: rng.gen(), b: rng.gen() });
+    }
+    colors
+  }
+
+  // Create random data for testing.
+  fn generate_random_paws() -> Vec<Paw<'static>> {
+    let mut rng = rand::thread_rng();
+    let mut paws = vec![];
+    for _ in 0..rng.gen_range(0..64) {
+      paws.push(Paw { colors: Array::from(generate_random_colors()) });
+    }
+    paws
+  }
+
+  // Create random data for testing.
+  fn generate_random_dog() -> Dog<'static> {
+    let mut rng = rand::thread_rng();
+    Dog {
+      age: rng.gen::<u16>(),
+      weight: rng.gen::<u32>(),
+      paws: Array::from(generate_random_paws()),
+    }
+  }
+
+  // Test the serialization and deserialization of a Color.
+  #[test]
+  fn color_packetable() {
+    let color = Color {
+      r: rand::random(),
+      g: rand::random(),
+      b: rand::random(),
+    };
+    let mut buf = vec![0u8; color.bytes()].into_boxed_slice();
+    color.write_into(&mut buf.as_mut()).unwrap();
+    let expected_color = Color::read_from(&mut buf.as_ref()).unwrap();
+    assert_eq!(color, expected_color);
+    assert_eq!(color.to_bytes().as_slice(), buf.as_ref());
+  }
+
+  // Test the serialization and deserialization of a Paw.
+  #[test]
+  fn paw_packetable() {
+    let paw = Paw { colors: Array::from(generate_random_colors()) };
+    let mut buf = vec![0u8; paw.bytes()].into_boxed_slice();
+    paw.write_into(&mut buf.as_mut()).unwrap();
+    let expected_paw = Paw::read_from(&mut buf.as_ref()).unwrap();
+    assert_eq!(paw, expected_paw);
+    assert_eq!(paw.to_bytes().as_slice(), buf.as_ref());
+  }
+
+  // Test the serialization and deserialization of a Dog.
+  #[test]
+  fn dog_packetable() {
+    let dog = generate_random_dog();
+    let mut buf = vec![0u8; dog.bytes()].into_boxed_slice();
+    dog.write_into(&mut buf.as_mut()).unwrap();
+    let expected_dog = Dog::read_from(&mut buf.as_ref()).unwrap();
+    assert_eq!(dog, expected_dog);
+    assert_eq!(dog.to_bytes().as_slice(), buf.as_ref());
+  }
+
+  // Test the serialization and deserialization of an array of Dogs.
   #[test]
   fn array_of_dog() {
-    #[derive(Debug, Clone, Eq, PartialEq)]
-    struct Color {
-      r: u8,
-      g: u8,
-      b: u8,
+    let mut dogs = vec![];
+    for _ in 0..512 {
+      dogs.push(generate_random_dog());
     }
+    let array = Array::from(dogs);
+    let mut buf = vec![0u8; array.bytes()];
+    array.write_into(&mut buf.as_mut_slice()).unwrap();
+    let expected_array = Array::<Dog>::read_from(&mut buf.as_slice()).unwrap();
+    assert_eq!(array, expected_array);
+  }
 
-    #[derive(Debug, Clone, Eq, PartialEq)]
-    struct Paw<'raw> {
-      colors: Array<'raw, Color>,
-    }
+  // Test that an error is returned when the buffer is too small.
+  #[test]
+  fn insufficient_bytes_error_color() {
+    let buf = [0u8; 1].as_ref();
+    assert_eq!(Color::read_from(&mut buf.as_ref()), Err(Error::InsufficientBytesReadError));
+  }
 
-    #[derive(Debug, Clone, Eq, PartialEq)]
-    struct Dog<'raw> {
-      age: u16,
-      weight: u32,
-      paws: Array<'raw, Paw<'raw>>,
-    }
+  // Test that an error is returned when the buffer is too small.
+  #[test]
+  fn insufficient_bytes_error_paw() {
+    let buf = [].as_ref();
+    assert_eq!(Paw::read_from(&mut buf.as_ref()), Err(Error::InsufficientBytesReadError));
+  }
 
-    impl<'a> Packetable<'a> for Color {
-      type Error = Error;
+  // Test that an error is returned when the buffer is too small.
+  #[test]
+  fn insufficient_bytes_error_dog() {
+    let buf = [0u8; 1].as_ref();
+    assert_eq!(Dog::read_from(&mut buf.as_ref()), Err(Error::InsufficientBytesReadError));
+  }
 
-      fn bytes(&self) -> usize {
-        3
-      }
+  // Test that an error is returned when the buffer is too small for an array of Dogs.
+  #[test]
+  fn insufficient_bytes_error_array_of_dog() {
+    let buf = [0u8; 1].as_ref();
+    assert_eq!(Array::<Dog>::read_from(&mut buf.as_ref()), Err(Error::InsufficientBytesReadError));
+  }
 
-      unsafe fn write_into_unchecked(&self, buf: &mut impl BufMut) {
-        buf.put_u8(self.r);
-        buf.put_u8(self.g);
-        buf.put_u8(self.b);
-      }
+  // Test that an error is returned when the buffer is too small for a Dog.
+  #[test]
+  fn insufficient_bytes_error_dog_write() {
+    let dog = generate_random_dog();
+    let mut buf = vec![0u8; 0].into_boxed_slice(); // zero-sized buffer
+    assert_eq!(dog.write_into(&mut buf.as_mut()), Err(Error::InsufficientBytesWriteError));
+  }
 
-      fn read_from(buf: &mut &'a [u8]) -> Result<Self, Self::Error> {
-        if buf.remaining() < 3 {
-          return Err(Error::InsufficientBytesReadError);
-        }
-        Ok(Self { r: buf.get_u8(), g: buf.get_u8(), b: buf.get_u8() })
-      }
-    }
+  // Test that an error is returned when the buffer is too small for a Paw.
+  #[test]
+  fn insufficient_bytes_error_paw_write() {
+    let paw = Paw { colors: Array::from(generate_random_colors()) };
+    let mut buf = vec![0u8; 0].into_boxed_slice(); // zero-sized buffer
+    assert_eq!(paw.write_into(&mut buf.as_mut()), Err(Error::InsufficientBytesWriteError));
+  }
 
-    impl<'a> Packetable<'a> for Paw<'a> {
-      type Error = Error;
-
-      fn bytes(&self) -> usize {
-        1 + self.colors.bytes()
-      }
-
-      unsafe fn write_into_unchecked(&self, buf: &mut impl BufMut) {
-        buf.put_u8(self.colors.bytes() as u8);
-        self.colors.write_into_unchecked(buf);
-      }
-
-      fn read_from(buf: &mut &'a [u8]) -> Result<Self, Self::Error> {
-        if buf.remaining() < 1 {
-          return Err(Error::InsufficientBytesReadError);
-        }
-        let colors_size = buf.get_u8() as usize;
-        if (colors_size % 3) != 0 {
-          // FIXME: custom error type.
-          return Err(Error::InsufficientBytesReadError);
-        }
-        let mut colors_chunk = &buf[..colors_size];
-        buf.advance(colors_size);
-        let colors = Array::read_from(&mut colors_chunk)?;
-        Ok(Self { colors })
-      }
-    }
-
-    impl<'a> Packetable<'a> for Dog<'a> {
-      type Error = Error;
-
-      fn bytes(&self) -> usize {
-        7 + self.paws.bytes()
-      }
-
-      unsafe fn write_into_unchecked(&self, buf: &mut impl BufMut) {
-        buf.put_u16_le(self.age);
-        buf.put_u32_le(self.weight);
-        buf.put_u8(self.paws.bytes() as u8);
-        self.paws.write_into_unchecked(buf);
-      }
-
-      fn read_from(buf: &mut &'a [u8]) -> Result<Self, Self::Error> {
-        if buf.remaining() < 7 {
-          return Err(Error::InsufficientBytesReadError);
-        }
-        let age = buf.get_u16_le();
-        let weight = buf.get_u32_le();
-        let paws_size = buf.get_u8() as usize;
-        let mut paws_chunk = &buf[..paws_size];
-        buf.advance(paws_size);
-        let paws = Array::read_from(&mut paws_chunk)?;
-        Ok(Self { age, weight, paws })
-      }
-    }
-
-    let ref_dog = Dog {
-      age: 1,
-      weight: 3,
-      paws: Array::from([
-        Paw {
-          colors: Array::from([
-            Color { r: 1, g: 2, b: 3, },
-            Color { r: 7, g: 8, b: 9, },
-          ]),
-        },
-        Paw {
-          colors: Array::from([
-            Color { r: 7, g: 8, b: 9, },
-          ]),
-        },
-        Paw {
-          colors: Array::from([
-            Color { r: 4, g: 5, b: 6, },
-            Color { r: 7, g: 8, b: 9, },
-            Color { r: 1, g: 2, b: 3, },
-          ]),
-        },
-        Paw {
-          colors: Array::from([
-            Color { r: 4, g: 5, b: 6, },
-          ]),
-        },
-      ]),
+  // Test that an error is returned when the buffer is too small for a Color.
+  #[test]
+  fn insufficient_bytes_error_color_write() {
+    let color = Color {
+      r: rand::random(),
+      g: rand::random(),
+      b: rand::random(),
     };
-    let ref_dog_bytes = ref_dog.to_bytes();
-    let parsed_dog_input = [
-      1, 0, 3, 0, 0, 0,
-      7 + 4 + 10 + 4,
-      6, 1, 2, 3, 7, 8, 9,
-      3, 7, 8, 9,
-      9, 4, 5, 6, 7, 8, 9, 1, 2, 3,
-      3, 4, 5, 6,
-    ];
-    assert_eq!(ref_dog_bytes.as_slice(), parsed_dog_input.as_slice());
-    let parsed_dog = Dog::read_from(&mut parsed_dog_input.as_slice()).unwrap();
-    assert_eq!(ref_dog, parsed_dog);
-    let parsed_dog_bytes = parsed_dog.to_bytes();
-    assert_eq!(parsed_dog_bytes, ref_dog_bytes);
+    let mut buf = vec![0u8; 0].into_boxed_slice(); // zero-sized buffer
+    assert_eq!(color.write_into(&mut buf.as_mut()), Err(Error::InsufficientBytesWriteError));
+  }
+
+  // Test that an error is returned when the buffer is too small for an array of Dogs.
+  #[test]
+  fn insufficient_bytes_error_array_of_dog_write() {
+    let mut dogs = vec![];
+    for _ in 0..512 {
+      dogs.push(generate_random_dog());
+    }
+    let array = Array::from(dogs);
+    let mut buf = vec![0u8; 0].into_boxed_slice(); // zero-sized buffer
+    assert_eq!(array.write_into(&mut buf.as_mut()), Err(Error::InsufficientBytesWriteError));
   }
 }

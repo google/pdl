@@ -118,3 +118,86 @@ impl_scalar!(u128le, 16, get_u128_le, put_u128_le + Debug);
 pub struct u128be(u128);
 
 impl_scalar!(u128be, 16, get_u128, put_u128 + Debug);
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn packetable_u16le() {
+    let val: u16le = 0x0102.into();
+    let mut buf = [0u8; 2];
+    unsafe { val.write_into_unchecked(&mut buf.as_mut()) };
+    assert_eq!(buf, [2, 1]);
+    assert_eq!(u16le::read_from(&mut buf.as_ref()).unwrap(), val);
+  }
+
+  #[test]
+  fn packetable_u16be() {
+    let val: u16be = 0x0102.into();
+    let mut buf = [0u8; 2];
+    unsafe { val.write_into_unchecked(&mut buf.as_mut()) };
+    assert_eq!(buf, [1, 2]);
+    assert_eq!(u16be::read_from(&mut buf.as_ref()).unwrap(), val);
+  }
+
+  #[test]
+  fn packetable_u32le() {
+    let val: u32le = 0x01020304.into();
+    let mut buf = [0u8; 4];
+    unsafe { val.write_into_unchecked(&mut buf.as_mut()) };
+    assert_eq!(buf, [4, 3, 2, 1]);
+    assert_eq!(u32le::read_from(&mut buf.as_ref()).unwrap(), val);
+  }
+
+  #[test]
+  fn packetable_u32be() {
+    let val: u32be = 0x01020304.into();
+    let mut buf = [0u8; 4];
+    unsafe { val.write_into_unchecked(&mut buf.as_mut()) };
+    assert_eq!(buf, [1, 2, 3, 4]);
+    assert_eq!(u32be::read_from(&mut buf.as_ref()).unwrap(), val);
+  }
+
+  #[test]
+  fn packetable_u64le() {
+    let val: u64le = 0x0102030405060708.into();
+    let mut buf = [0u8; 8];
+    unsafe { val.write_into_unchecked(&mut buf.as_mut()) };
+    assert_eq!(buf, [8, 7, 6, 5, 4, 3, 2, 1]);
+    assert_eq!(u64le::read_from(&mut buf.as_ref()).unwrap(), val);
+  }
+
+  #[test]
+  fn packetable_u64be() {
+    let val: u64be = 0x0102030405060708.into();
+    let mut buf = [0u8; 8];
+    unsafe { val.write_into_unchecked(&mut buf.as_mut()) };
+    assert_eq!(buf, [1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_eq!(u64be::read_from(&mut buf.as_ref()).unwrap(), val);
+  }
+
+  #[test]
+  fn packetable_u128le() {
+    let val: u128le = 0x0102030405060708090A0B0C0D0E0F10.into();
+    let mut buf = [0u8; 16];
+    unsafe { val.write_into_unchecked(&mut buf.as_mut()) };
+    assert_eq!(buf, [16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
+    assert_eq!(u128le::read_from(&mut buf.as_ref()).unwrap(), val);
+  }
+
+  #[test]
+  fn packetable_u128be() {
+    let val: u128be = 0x0102030405060708090A0B0C0D0E0F10.into();
+    let mut buf = [0u8; 16];
+    unsafe { val.write_into_unchecked(&mut buf.as_mut()) };
+    assert_eq!(buf, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+    assert_eq!(u128be::read_from(&mut buf.as_ref()).unwrap(), val);
+  }
+
+  #[test]
+  fn insufficient_bytes_error() {
+    let mut buf = [0u8; 2].as_ref();
+    assert_eq!(u32le::read_from(&mut buf), Err(Error::InsufficientBytesReadError));
+  }
+}
