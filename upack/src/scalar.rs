@@ -1,3 +1,7 @@
+/// This provides implementation for a variety of scalar types.
+/// Each of these types can be packed into bytes and unpacked from bytes.
+/// They are essentially wrapper types that implement the `Packetable` trait.
+
 use crate::{Packetable, Error, Buf, BufMut};
 
 use derive_more::{Display, From, Into, Not, Add, Mul};

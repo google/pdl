@@ -1,18 +1,118 @@
+//! This module provides `Array`, a container for `Packetable` types.
+//! It's useful when dealing with sequences of packetable items.
+
 use std::{borrow, fmt, ops, slice};
 use crate::{Packetable, Buf, BufMut};
 
+/// `Array` is a flexible and efficient container for storing sequences of items.
+///
+/// The `Array` struct can be used to store items in one of three modes: Lazy, Borrowed, or Owned.
+/// The item type must implement the `Packetable` trait, allowing for conversion between bytes and
+/// the item type.
+///
+/// In 'Lazy' mode, the `Array` is constructed from a byte slice, and items are converted from bytes
+/// on demand. This is efficient when you have large sequences and don't want to convert all items at once.
+///
+/// In 'Borrowed' mode, the `Array` holds a reference to an existing array of items. This is useful
+/// when you want to avoid data copying.
+///
+/// In 'Owned' mode, the `Array` owns its items. This is useful when you need to modify the items, or
+/// when the original data is not available for the lifetime of the `Array`.
+///
+/// # Example
+/// ```
+/// use upack::{Array, Buf, BufMut, Error, Packetable};
+///
+/// #[derive(Debug, Clone, Eq, PartialEq)]
+/// struct Color { r: u8, g: u8, b: u8, }
+///
+/// impl<'a> Packetable<'a> for Color {
+///   type Error = Error;
+///
+///   fn bytes(&self) -> usize { 3 }///
+///   unsafe fn write_into_unchecked(&self, buf: &mut impl BufMut) {
+///     buf.put_u8(self.r);
+///     buf.put_u8(self.g);
+///     buf.put_u8(self.b);
+///   }///
+///   fn read_from(buf: &mut &'a [u8]) -> Result<Self, Self::Error> {
+///     if buf.remaining() < 3 {
+///       return Err(Error::InsufficientBytesReadError);
+///     }
+///     Ok(Self { r: buf.get_u8(), g: buf.get_u8(), b: buf.get_u8() })
+///   }
+/// }
+///
+/// // 'Lazy' mode
+/// let (lazy_arr, _) = Array::<'_, Color>::from_bytes(b"\x01\x02\x03\x04\x04\x06").unwrap();
+/// assert_eq!(lazy_arr.len(), 2);
+/// for item in lazy_arr.iter() {
+///   println!("{:?}", item);
+/// }
+/// // Color { r: 0, g: 1, b: 2 }
+/// // Color { r: 4, g: 5, b: 6 }
+///
+/// // 'Borrowed' mode
+/// const COLORS: [Color; 2] = [
+///   Color { r: 0, g: 1, b: 2 },
+///   Color { r: 4, g: 5, b: 6 },
+/// ];
+///
+/// let borrowed_arr = Array::from(&COLORS);
+/// assert_eq!(borrowed_arr.len(), 2);
+/// for item in borrowed_arr.iter() {
+///   println!("{:?}", item);
+/// }
+/// // Color { r: 0, g: 1, b: 2 }
+/// // Color { r: 4, g: 5, b: 6 }
+/// ```
+///
+/// `Array` provides several methods, like `iter()` and `len()`, for manipulating and accessing its items.
+/// Also, as `Array` implements `Packetable`, it can be converted to and from bytes.
+/// ```
 pub struct Array<'a, T> {
   inner: ArrayImpl<'a, T>,
 }
 
-enum ArrayImpl<'a, T> {
-  Lazy { len: usize, bytes: &'a [u8] },
-  Borrowed { bytes: usize, items: &'a [T] },
-  Owned { bytes: usize, items: Box<[T]> },
-}
-
-/// Public API.
 impl<'a, T: Packetable<'a>> Array<'a, T> {
+  /// Returns an iterator over the `Array`.
+  ///
+  /// This method will provide an iterator depending on how the `Array` is constructed, which can
+  /// be in one of three ways: Lazily from bytes, from borrowed items, or from owned items.
+  ///
+  /// When iterating, for 'Lazy' arrays, bytes are converted to `Packetable` items on the fly. For
+  /// 'Borrowed' and 'Owned' arrays, items are returned directly.
+  ///
+  /// # Example
+  /// ```
+  /// use upack::{Array, Buf, BufMut, Error, Packetable, u16le};
+  ///
+  /// // 'Lazy' mode
+  /// let (lazy_arr, _) = Array::<'_, u16le>::from_bytes(b"\x01\x00\x02\x00\x03\x00").unwrap();
+  /// assert_eq!(lazy_arr.len(), 3);
+  /// for item in lazy_arr.iter() {
+  ///   println!("{:?}", item);
+  /// }
+  ///
+  /// // 'Borrowed' mode
+  /// let items = lazy_arr.iter().map(|x| x.into_owned()).collect::<Vec<_>>();
+  /// let borrowed_arr = Array::from(&items[..]);
+  /// assert_eq!(borrowed_arr.len(), 3);
+  /// for item in borrowed_arr.iter() {
+  ///   println!("{:?}", item);
+  /// }
+  ///
+  /// assert_eq!(lazy_arr, borrowed_arr);
+  ///
+  /// // 'Owned' mode
+  /// let owned_arr = Array::from(items);
+  /// assert_eq!(owned_arr.len(), 3);
+  /// for item in owned_arr.iter() {
+  ///   println!("{:?}", item);
+  /// }
+  ///
+  /// assert_eq!(lazy_arr, owned_arr);
+  /// ```
   pub fn iter(&self) -> ArrayIter<'_, 'a, T> {
     match &self.inner {
       &ArrayImpl::Lazy { bytes, .. } => ArrayIter::Lazy(bytes),
@@ -21,6 +121,28 @@ impl<'a, T: Packetable<'a>> Array<'a, T> {
     }
   }
 
+  /// Returns the length of the `Array`.
+  ///
+  /// For 'Lazy' arrays, this is the number of `Packetable` items that can be constructed from the
+  /// bytes. For 'Borrowed' and 'Owned' arrays, this is the length of the underlying items array.
+  ///
+  /// # Example
+  /// ```
+  /// use upack::{Array, Buf, BufMut, Error, Packetable, u16le};
+  ///
+  /// // 'Lazy' mode
+  /// let (lazy_arr, _) = Array::<'_, u16le>::from_bytes(b"\x01\x00\x02\x00\x03\x00").unwrap();
+  /// assert_eq!(lazy_arr.len(), 3);
+  ///
+  /// // 'Borrowed' mode
+  /// let items = lazy_arr.iter().map(|x| x.into_owned()).collect::<Vec<_>>();
+  /// let borrowed_arr = Array::from(&items[..]);
+  /// assert_eq!(borrowed_arr.len(), 3);
+  ///
+  /// // 'Owned' mode
+  /// let owned_arr = Array::from(items);
+  /// assert_eq!(owned_arr.len(), 3);
+  /// ```
   pub fn len(&self) -> usize {
     match &self.inner {
       &ArrayImpl::Lazy { len, .. } => len,
@@ -30,23 +152,60 @@ impl<'a, T: Packetable<'a>> Array<'a, T> {
   }
 }
 
-/// Private API.
+/// `ArrayImpl` is the internal representation of an `Array`.
+///
+/// This enum is the core of the `Array` struct.
+/// It represents the three ways an `Array` can be constructed: Lazily from bytes, from borrowed
+/// items, or from owned items.
+///
+/// # Variants
+///
+/// - `Lazy`: The `Lazy` variant represents an `Array` that is constructed from a byte slice.
+///   Items are not immediately converted from bytes to `Packetable` items; instead, this conversion
+///   is done lazily, as items are requested. This approach can offer performance benefits when
+///   dealing with large sequences of items. The byte slice and a factory function to convert bytes
+///   to `Packetable` items are stored.
+///
+/// - `Borrowed`: The `Borrowed` variant represents an `Array` that has been constructed from a
+///   borrowed slice of `Packetable` items. This allows us to create an `Array` without copying
+///   data, but the downside is that the original data needs to be kept alive for as long as the
+///   `Array` exists.
+///
+/// - `Owned`: The `Owned` variant represents an `Array` that owns its items. When an `Array` is
+///   created in this mode, the items are copied into the `Array`. This can use more memory than
+///   the `Lazy` or `Borrowed` modes, but it allows for modification of items and doesn't require
+///   keeping original data alive.
+enum ArrayImpl<'a, T> {
+  Lazy { len: usize, bytes: &'a [u8] },
+  Borrowed { bytes: usize, items: &'a [T] },
+  Owned { bytes: usize, items: Box<[T]> },
+}
+
+// Implementing helper functions for the Array struct.
 impl<'a, T: Packetable<'a>> Array<'a, T> {
+  /// Constructs an Array from raw bytes, meant for lazy loading.
   fn lazy(len: usize, bytes: &'a [u8]) -> Self {
     Self { inner: ArrayImpl::Lazy { len, bytes } }
   }
 
+  /// Constructs an Array from a slice of Packetable items. Array doesn't own the items,
+  /// hence it's borrowed.
   fn borrowed(bytes: usize, items: &'a [T]) -> Self {
     Self { inner: ArrayImpl::Borrowed { bytes, items } }
   }
 
+  /// Constructs an Array from owned Packetable items.
+  /// Array owns the items.
   fn owned(bytes: usize, items: Box<[T]>) -> Self {
     Self { inner: ArrayImpl::Owned { bytes, items } }
   }
 }
 
+// Implementing Clone for Array struct.
 impl<'a, T: Packetable<'a>> Clone for Array<'a, T> {
   fn clone(&self) -> Self {
+    // Depending on the Array type (Lazy, Borrowed, Owned), different cloning
+    // mechanisms are applied.
     match &self.inner {
       &ArrayImpl::Lazy { len, bytes } => Array::lazy(len, bytes),
       &ArrayImpl::Borrowed { bytes, items } => Array::borrowed(bytes, items),
@@ -55,10 +214,14 @@ impl<'a, T: Packetable<'a>> Clone for Array<'a, T> {
   }
 }
 
+// Implementing Packetable trait for Array struct. This trait encapsulates operations to
+// serialize/deserialize the struct.
 impl<'a, T: Packetable<'a>> Packetable<'a> for Array<'a, T> {
   type Error = T::Error;
 
+  // Returns the byte size of the Array.
   fn bytes(&self) -> usize {
+    // Depending on the Array type, different strategies are used to count the bytes.
     match &self.inner {
       &ArrayImpl::Lazy { bytes, .. } => bytes.len(),
       &ArrayImpl::Borrowed { bytes, .. } => bytes,
@@ -66,6 +229,7 @@ impl<'a, T: Packetable<'a>> Packetable<'a> for Array<'a, T> {
     }
   }
 
+  // Writes Array into a buffer. Different strategies are applied based on the Array type.
   unsafe fn write_into_unchecked(&self, buf: &mut impl BufMut) {
     match &self.inner {
       &ArrayImpl::Lazy { bytes, .. } => buf.put(bytes),
@@ -74,13 +238,16 @@ impl<'a, T: Packetable<'a>> Packetable<'a> for Array<'a, T> {
     }
   }
 
+  // Reads an Array from a buffer.
   fn read_from(buf: &mut &'a [u8]) -> Result<Self, Self::Error> {
     let bytes = *buf;
     let mut len = 0;
+    // Loop over the buffer to count the number of Packetable items.
     while buf.has_remaining() {
       let _ = T::read_from(buf)?;
       len += 1;
     }
+    // Create a Lazy array based on the obtained byte slice and length.
     Ok(Self::lazy(len, bytes))
   }
 }
@@ -91,10 +258,13 @@ pub enum ArrayIter<'s, 'a, T> {
   Owned(slice::Iter<'s, T>),
 }
 
+// Implementing the Deref trait, which allows instances of this type to be treated as a slice.
 impl<'a> ops::Deref for Array<'a, u8> {
   type Target = [u8];
 
+  // Implementing the deref method to return the byte slice.
   fn deref(&self) -> &Self::Target {
+    // Different strategies based on the Array type.
     match &self.inner {
       &ArrayImpl::Lazy { bytes, .. } => bytes,
       &ArrayImpl::Borrowed { items, .. } => items,
@@ -102,6 +272,9 @@ impl<'a> ops::Deref for Array<'a, u8> {
     }
   }
 }
+
+// Various From implementations allow for creating an Array from different types.
+// These implementations are self-explanatory and follow a similar pattern.
 
 impl<'a, T: Packetable<'a>> From<&'a [T]> for Array<'a, T> {
   fn from(items: &'a [T]) -> Array<'a, T> {
@@ -152,14 +325,19 @@ impl<'s, 'a: 's, T: Packetable<'a>> Iterator for ArrayIter<'s, 'a, T> {
   }
 }
 
+// Implementing Debug trait for Array, which is useful for debugging and printing the Array.
 impl<'a, T: Packetable<'a> + fmt::Debug> fmt::Debug for Array<'a, T> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    // Array is printed as a list of debug representations of its items.
     self.iter().fold(&mut f.debug_list(), |d, item| d.entry(&item)).finish()
   }
 }
 
+// Implementing PartialEq and Eq traits to allow for Array comparison.
+
 impl<'a, T: Packetable<'a> + PartialEq> PartialEq for Array<'a, T> {
   fn eq(&self, other: &Self) -> bool {
+    // Arrays are considered equal if all their items are equal.
     self.iter().zip(other.iter()).all(|(a, b)| a == b)
   }
 }
