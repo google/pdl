@@ -30,6 +30,10 @@ backend may create it.
 
         impl<T> std::ops::Deref for Private<T> { .. }
 
+.. warning::
+    PDL authorizes the use of rust keywords as identifier. Keyword identifiers
+    are generated as raw identifiers, e.g. `type` is generated as `r#type`.
+
 Enum declarations
 ^^^^^^^^^^^^^^^^^
 

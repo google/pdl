@@ -15,6 +15,7 @@
 //! Utility functions for dealing with Rust integer types.
 
 use crate::analyzer::ast as analyzer_ast;
+use crate::backends::rust::ToIdent;
 use crate::{analyzer, ast};
 use quote::{format_ident, quote};
 
@@ -55,7 +56,7 @@ pub fn rust_type(field: &analyzer_ast::Field) -> proc_macro2::TokenStream {
             quote!(#field_type)
         }
         ast::FieldDesc::Typedef { type_id, .. } => {
-            let field_type = format_ident!("{type_id}");
+            let field_type = type_id.to_ident();
             quote!(#field_type)
         }
         ast::FieldDesc::Array { width: Some(width), size: Some(size), .. } => {
@@ -68,12 +69,12 @@ pub fn rust_type(field: &analyzer_ast::Field) -> proc_macro2::TokenStream {
             quote!(Vec<#field_type>)
         }
         ast::FieldDesc::Array { type_id: Some(type_id), size: Some(size), .. } => {
-            let field_type = format_ident!("{type_id}");
+            let field_type = type_id.to_ident();
             let size = proc_macro2::Literal::usize_unsuffixed(*size);
             quote!([#field_type; #size])
         }
         ast::FieldDesc::Array { type_id: Some(type_id), size: None, .. } => {
-            let field_type = format_ident!("{type_id}");
+            let field_type = type_id.to_ident();
             quote!(Vec<#field_type>)
         }
         //ast::Field::Size { .. } | ast::Field::Count { .. } => quote!(),

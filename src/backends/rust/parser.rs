@@ -14,7 +14,8 @@
 
 use crate::analyzer::ast as analyzer_ast;
 use crate::backends::rust::{
-    constraint_to_value, find_constrained_parent_fields, mask_bits, types, ToUpperCamelCase,
+    constraint_to_value, find_constrained_parent_fields, mask_bits, types, ToIdent,
+    ToUpperCamelCase,
 };
 use crate::{analyzer, ast};
 use quote::{format_ident, quote};
@@ -141,14 +142,14 @@ impl<'a> FieldParser<'a> {
 
             self.code.push(match &field.desc {
                 ast::FieldDesc::Scalar { id, .. } => {
-                    let id = format_ident!("{id}");
+                    let id = id.to_ident();
                     quote! {
                         let #id = #v;
                     }
                 }
                 ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
-                    let enum_id = format_ident!("{enum_id}");
-                    let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
+                    let enum_id = enum_id.to_ident();
+                    let tag_id = tag_id.to_upper_camel_case().to_ident();
                     quote! {
                         let fixed_value = #v;
                         if fixed_value != #value_type::from(#enum_id::#tag_id)  {
@@ -175,8 +176,8 @@ impl<'a> FieldParser<'a> {
                     let field_name = id;
                     let type_name = type_id;
                     let packet_name = &self.packet_name;
-                    let id = format_ident!("{id}");
-                    let type_id = format_ident!("{type_id}");
+                    let id = id.to_ident();
+                    let type_id = type_id.to_ident();
                     quote! {
                         let #id = #type_id::try_from(#v).map_err(|unknown_val| Error::InvalidEnumValueError {
                             obj: #packet_name.to_string(),
@@ -327,7 +328,7 @@ impl<'a> FieldParser<'a> {
             None => self.span.clone(),
         };
 
-        let id = format_ident!("{id}");
+        let id = id.to_ident();
 
         let parse_element = self.parse_array_element(&span, width, type_id, decl);
         match (element_width, &array_shape) {
@@ -468,8 +469,8 @@ impl<'a> FieldParser<'a> {
         }
 
         let span = self.span;
-        let id = format_ident!("{id}");
-        let type_id = format_ident!("{type_id}");
+        let id = id.to_ident();
+        let type_id = type_id.to_ident();
 
         self.code.push(match decl.annot.size {
             analyzer_ast::Size::Unknown | analyzer_ast::Size::Dynamic => quote! {
@@ -596,7 +597,7 @@ impl<'a> FieldParser<'a> {
 
         if let Some(ast::DeclDesc::Enum { id, width, .. }) = decl.map(|decl| &decl.desc) {
             let get_uint = types::get_uint(self.endianness, *width, span);
-            let type_id = format_ident!("{id}");
+            let type_id = id.to_ident();
             let packet_name = &self.packet_name;
             return quote! {
                 #type_id::try_from(#get_uint).map_err(|unknown_val| Error::InvalidEnumValueError {
@@ -608,7 +609,7 @@ impl<'a> FieldParser<'a> {
             };
         }
 
-        let type_id = format_ident!("{}", type_id.unwrap());
+        let type_id = type_id.unwrap().to_ident();
         quote! {
             #type_id::parse_inner(#span)
         }
@@ -677,17 +678,16 @@ impl<'a> FieldParser<'a> {
 
             let fields = find_constrained_parent_fields(self.scope, child.id().unwrap())
                 .iter()
-                .map(|field| format_ident!("{}", field.id().unwrap()))
+                .map(|field| field.id().unwrap().to_ident())
                 .collect::<Vec<_>>();
 
             match_values.push(quote!( (#(#tuple_values),*) ));
             child_parse_args.push(quote!( #(, #fields)*));
             child_ids_data.push(format_ident!("{}Data", child.id().unwrap()));
-            child_ids.push(format_ident!("{}", child.id().unwrap()));
+            child_ids.push(child.id().unwrap().to_ident());
         }
 
-        let constrained_field_idents =
-            constrained_fields.iter().map(|field| format_ident!("{field}"));
+        let constrained_field_idents = constrained_fields.iter().map(|field| field.to_ident());
         let packet_data_child = format_ident!("{}DataChild", self.packet_name);
 
         // Parsing of packet children requires having a payload field;
