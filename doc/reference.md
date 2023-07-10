@@ -161,7 +161,7 @@ A declaration is either:
 > &nbsp;&nbsp; enum_tag (`,` enum_tag)* `,`?
 >
 > enum_tag:\
-> &nbsp;&nbsp; enum_range | enum_value
+> &nbsp;&nbsp; enum_range | enum_value | enum_other
 >
 > enum_range:\
 > &nbsp;&nbsp; [IDENTIFIER](#identifier) `=` [INTEGER](#integer) `..` [INTEGER](#integer)) (`{`\
@@ -173,11 +173,19 @@ A declaration is either:
 >
 > enum_value:\
 > &nbsp;&nbsp; [IDENTIFIER](#identifier) `=` [INTEGER](#integer)
+>
+> enum_other:\
+> &nbsp;&nbsp; [IDENTIFIER](#identifier) `=` `..`
 
 An *enumeration* or for short *enum*, is a declaration of a set of named [integer](#integer) constants
 or named [integer](#integer) ranges. [integer](#integer) ranges are inclusive in both ends.
 [integer](#integer) value within a range *must* be unique. [integer](#integer) ranges
 *must not* overlap.
+
+*enumeration* are closed by default, all values that are not explicitely described in the declaration are treated as invalid and _may_ cause a parsing error.
+
+An *enumaration* _may_ be declared open by specifiying the default case; all unrecognized values
+_shall_ falltrough to the default.
 
 The [integer](#integer) following the name specifies the bit size of the values.
 
@@ -199,6 +207,8 @@ enum CoffeeAddition: 5 {
   },
 
   Custom = 20..29,
+
+  Other = ..
 }
 ```
 

@@ -72,3 +72,23 @@ Enum declarations
 |                                       |     impl From<TestEnum> for i32 { .. }                        |
 |                                       |     impl From<TestEnum> for i64 { .. }                        |
 +---------------------------------------+---------------------------------------------------------------+
+| ::                                    | .. sourcecode:: rust                                          |
+|                                       |                                                               |
+|     enum TestEnum : 8 {               |     #[repr(u64)]                                              |
+|         A = 1,                        |     #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]        |
+|         B = 2,                        |     enum TestEnum {                                           |
+|         OTHER = ..,                   |         A,                                                    |
+|     }                                 |         B,                                                    |
+|                                       |         Other(Private<u8>),                                   |
+|                                       |     }                                                         |
+|                                       |                                                               |
+|                                       |     impl From<u8> for TestEnum { .. }                         |
+|                                       |     impl From<TestEnum> for u8 { .. }                         |
+|                                       |     impl From<TestEnum> for u16 { .. }                        |
+|                                       |     impl From<TestEnum> for u32 { .. }                        |
+|                                       |     impl From<TestEnum> for u64 { .. }                        |
+|                                       |     impl From<TestEnum> for i8 { .. }                         |
+|                                       |     impl From<TestEnum> for i16 { .. }                        |
+|                                       |     impl From<TestEnum> for i32 { .. }                        |
+|                                       |     impl From<TestEnum> for i64 { .. }                        |
++---------------------------------------+---------------------------------------------------------------+

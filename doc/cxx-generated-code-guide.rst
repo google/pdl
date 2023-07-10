@@ -25,3 +25,23 @@ Example invocation:
 
     cargo run my-protocol.pdl --output-format json | \
         ./scripts/generate_cxx_backend.py > my-protocol.h
+
+Language bindings
+-----------------
+
+Enum declarations
+^^^^^^^^^^^^^^^^^
+
++---------------------------------------+---------------------------------------------------------------+
+| ::                                    | .. sourcecode:: c++                                           |
+|                                       |                                                               |
+|     enum TestEnum : 8 {               |     enum TestEnum : int8_t {                                  |
+|         A = 1,                        |         A = 1,                                                |
+|         B = 2..3,                     |         B_MIN = 2,                                            |
+|         C = 4,                        |         B_MAX = 3,                                            |
+|         OTHER = ..,                   |         C = 4,                                                |
+|     }                                 |     }                                                         |
++---------------------------------------+---------------------------------------------------------------+
+
+.. note::
+    C++ enums are open by construction, default cases in enum declarations are ignored.
