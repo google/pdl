@@ -31,25 +31,25 @@ mod types;
 use parser::FieldParser;
 use serializer::FieldSerializer;
 
-#[cfg(not(tm_mainline_prod))]
 pub use heck::ToUpperCamelCase;
 
-#[cfg(tm_mainline_prod)]
-pub trait ToUpperCamelCase {
-    fn to_upper_camel_case(&self) -> String;
+pub trait ToIdent {
+    /// Generate a sanitized rust identifier.
+    /// Rust specific keywords are renamed for validity.
+    fn to_ident(self) -> proc_macro2::Ident;
 }
 
-#[cfg(tm_mainline_prod)]
-impl ToUpperCamelCase for str {
-    fn to_upper_camel_case(&self) -> String {
-        use heck::CamelCase;
-        let camel_case = self.to_camel_case();
-        if camel_case.is_empty() {
-            camel_case
-        } else {
-            // PDL identifiers are a-zA-z0-9, so we're dealing with
-            // simple ASCII text.
-            format!("{}{}", &camel_case[..1].to_ascii_uppercase(), &camel_case[1..])
+impl ToIdent for &'_ str {
+    fn to_ident(self) -> proc_macro2::Ident {
+        match self {
+            "as" | "break" | "const" | "continue" | "crate" | "else" | "enum" | "extern"
+            | "false" | "fn" | "for" | "if" | "impl" | "in" | "let" | "loop" | "match" | "mod"
+            | "move" | "mut" | "pub" | "ref" | "return" | "self" | "Self" | "static" | "struct"
+            | "super" | "trait" | "true" | "type" | "unsafe" | "use" | "where" | "while"
+            | "async" | "await" | "dyn" | "abstract" | "become" | "box" | "do" | "final"
+            | "macro" | "override" | "priv" | "typeof" | "unsized" | "virtual" | "yield"
+            | "try" => format_ident!("r#{}", self),
+            _ => format_ident!("{}", self),
         }
     }
 }
@@ -112,11 +112,11 @@ fn generate_packet_size_getter<'a>(
                 }
             }
             ast::FieldDesc::Typedef { id, .. } => {
-                let id = format_ident!("{id}");
+                let id = id.to_ident();
                 quote!(self.#id.get_size())
             }
             ast::FieldDesc::Array { id, width, .. } => {
-                let id = format_ident!("{id}");
+                let id = id.to_ident();
                 match &decl {
                     Some(analyzer_ast::Decl {
                         desc: ast::DeclDesc::Struct { .. } | ast::DeclDesc::CustomField { .. },
@@ -238,7 +238,7 @@ fn generate_data_struct(
 
     let (parse_arg_names, parse_arg_types) = if is_packet {
         let fields = find_constrained_parent_fields(scope, id);
-        let names = fields.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
+        let names = fields.iter().map(|f| f.id().unwrap().to_ident()).collect::<Vec<_>>();
         let types = fields.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
         (names, types)
     } else {
@@ -258,10 +258,10 @@ fn generate_data_struct(
     let has_payload = decl.payload().is_some();
     let has_children = scope.iter_children(decl).next().is_some();
 
-    let struct_name = if is_packet { format_ident!("{id}Data") } else { format_ident!("{id}") };
+    let struct_name = if is_packet { format_ident!("{id}Data") } else { id.to_ident() };
     let fields_with_ids = decl.fields().filter(|f| f.id().is_some()).collect::<Vec<_>>();
     let mut field_names =
-        fields_with_ids.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
+        fields_with_ids.iter().map(|f| f.id().unwrap().to_ident()).collect::<Vec<_>>();
     let mut field_types = fields_with_ids.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
     if has_children || has_payload {
         if is_packet {
@@ -338,7 +338,7 @@ pub fn constraint_to_value(
         // drop the packet_scope argument.
         ast::Constraint { tag_id: Some(tag_id), .. } => {
             let type_id = match &all_fields[&constraint.id].desc {
-                ast::FieldDesc::Typedef { type_id, .. } => format_ident!("{type_id}"),
+                ast::FieldDesc::Typedef { type_id, .. } => type_id.to_ident(),
                 _ => unreachable!("Invalid constraint: {constraint:?}"),
             };
             let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
@@ -357,15 +357,15 @@ fn generate_packet_decl(
     let decl = scope.typedef[id];
     let top_level = top_level_packet(scope, id);
     let top_level_id = top_level.id().unwrap();
-    let top_level_packet = format_ident!("{top_level_id}");
+    let top_level_packet = top_level_id.to_ident();
     let top_level_data = format_ident!("{top_level_id}Data");
-    let top_level_id_lower = format_ident!("{}", top_level_id.to_lowercase());
+    let top_level_id_lower = top_level_id.to_lowercase().to_ident();
 
     // TODO(mgeisler): use the convert_case crate to convert between
     // `FooBar` and `foo_bar` in the code below.
     let span = format_ident!("bytes");
-    let id_lower = format_ident!("{}", id.to_lowercase());
-    let id_packet = format_ident!("{id}");
+    let id_lower = id.to_lowercase().to_ident();
+    let id_packet = id.to_ident();
     let id_child = format_ident!("{id}Child");
     let id_data_child = format_ident!("{id}DataChild");
     let id_builder = format_ident!("{id}Builder");
@@ -374,11 +374,11 @@ fn generate_packet_decl(
     parents.reverse();
 
     let parent_ids = parents.iter().map(|p| p.id().unwrap()).collect::<Vec<_>>();
-    let parent_shifted_ids = parent_ids.iter().skip(1).map(|id| format_ident!("{id}"));
+    let parent_shifted_ids = parent_ids.iter().skip(1).map(|id| id.to_ident());
     let parent_lower_ids =
-        parent_ids.iter().map(|id| format_ident!("{}", id.to_lowercase())).collect::<Vec<_>>();
+        parent_ids.iter().map(|id| id.to_lowercase().to_ident()).collect::<Vec<_>>();
     let parent_shifted_lower_ids = parent_lower_ids.iter().skip(1).collect::<Vec<_>>();
-    let parent_packet = parent_ids.iter().map(|id| format_ident!("{id}"));
+    let parent_packet = parent_ids.iter().map(|id| id.to_ident());
     let parent_data = parent_ids.iter().map(|id| format_ident!("{id}Data"));
     let parent_data_child = parent_ids.iter().map(|id| format_ident!("{id}DataChild"));
 
@@ -390,12 +390,12 @@ fn generate_packet_decl(
     let all_named_fields =
         HashMap::from_iter(all_fields.iter().map(|f| (f.id().unwrap().to_string(), *f)));
 
-    let all_field_names =
-        all_fields.iter().map(|f| format_ident!("{}", f.id().unwrap())).collect::<Vec<_>>();
+    let all_field_names = all_fields.iter().map(|f| f.id().unwrap().to_ident()).collect::<Vec<_>>();
     let all_field_types = all_fields.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
     let all_field_borrows =
         all_fields.iter().map(|f| types::rust_borrow(f, scope)).collect::<Vec<_>>();
-    let all_field_getter_names = all_field_names.iter().map(|id| format_ident!("get_{id}"));
+    let all_field_getter_names =
+        all_fields.iter().map(|f| format_ident!("get_{}", f.id().unwrap()));
     let all_field_self_field = all_fields.iter().map(|f| {
         for (parent, parent_id) in parents.iter().zip(parent_lower_ids.iter()) {
             if parent.fields().any(|ff| ff.id() == f.id()) {
@@ -413,16 +413,14 @@ fn generate_packet_decl(
         .iter()
         .filter(|f| !all_constraints.contains_key(f.id().unwrap()))
         .collect::<Vec<_>>();
-    let unconstrained_field_names = unconstrained_fields
-        .iter()
-        .map(|f| format_ident!("{}", f.id().unwrap()))
-        .collect::<Vec<_>>();
+    let unconstrained_field_names =
+        unconstrained_fields.iter().map(|f| f.id().unwrap().to_ident()).collect::<Vec<_>>();
     let unconstrained_field_types = unconstrained_fields.iter().map(|f| types::rust_type(f));
 
     let rev_parents = parents.iter().rev().collect::<Vec<_>>();
     let builder_assignments = rev_parents.iter().enumerate().map(|(idx, parent)| {
         let parent_id = parent.id().unwrap();
-        let parent_id_lower = format_ident!("{}", parent_id.to_lowercase());
+        let parent_id_lower = parent_id.to_lowercase().to_ident();
         let parent_data = format_ident!("{parent_id}Data");
         let parent_data_child = format_ident!("{parent_id}DataChild");
 
@@ -432,13 +430,13 @@ fn generate_packet_decl(
             names
         };
 
-        let mut field = named_fields.iter().map(|id| format_ident!("{id}")).collect::<Vec<_>>();
+        let mut field = named_fields.iter().map(|id| id.to_ident()).collect::<Vec<_>>();
         let mut value = named_fields
             .iter()
             .map(|&id| match all_constraints.get(id) {
                 Some(constraint) => constraint_to_value(&all_named_fields, constraint),
                 None => {
-                    let id = format_ident!("{id}");
+                    let id = id.to_ident();
                     quote!(self.#id)
                 }
             })
@@ -458,8 +456,8 @@ fn generate_packet_decl(
             } else {
                 // Child is created from the previous parent.
                 let prev_parent_id = rev_parents[idx - 1].id().unwrap();
-                let prev_parent_id_lower = format_ident!("{}", prev_parent_id.to_lowercase());
-                let prev_parent_id = format_ident!("{prev_parent_id}");
+                let prev_parent_id_lower = prev_parent_id.to_lowercase().to_ident();
+                let prev_parent_id = prev_parent_id.to_ident();
                 value.push(quote! {
                     #parent_data_child::#prev_parent_id(#prev_parent_id_lower)
                 });
@@ -479,8 +477,7 @@ fn generate_packet_decl(
     let children = scope.iter_children(decl).collect::<Vec<_>>();
     let has_payload = decl.payload().is_some();
     let has_children_or_payload = !children.is_empty() || has_payload;
-    let child =
-        children.iter().map(|child| format_ident!("{}", child.id().unwrap())).collect::<Vec<_>>();
+    let child = children.iter().map(|child| child.id().unwrap().to_ident()).collect::<Vec<_>>();
     let child_data = child.iter().map(|child| format_ident!("{child}Data")).collect::<Vec<_>>();
     let get_payload = (children.is_empty() && has_payload).then(|| {
         quote! {
@@ -542,8 +539,7 @@ fn generate_packet_decl(
         }
     });
 
-    let ancestor_packets =
-        parent_ids[..parent_ids.len() - 1].iter().map(|id| format_ident!("{id}"));
+    let ancestor_packets = parent_ids[..parent_ids.len() - 1].iter().map(|id| id.to_ident());
     let impl_from_and_try_from = (top_level_id != id).then(|| {
         quote! {
             #(
@@ -764,7 +760,7 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
     let is_open = default_tag.is_some();
     let is_complete = enum_is_complete(tags, scalar_max(width));
     let is_primitive = enum_is_primitive(tags);
-    let name = format_ident!("{id}");
+    let name = id.to_ident();
 
     // Generate the variant cases for the enum declaration.
     // Tags declared in ranges are flattened in the same declaration.
@@ -906,7 +902,7 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
 /// * `id` - Enum identifier.
 /// * `width` - Width of the backing type of the enum, in bits.
 fn generate_custom_field_decl(id: &str, width: usize) -> proc_macro2::TokenStream {
-    let id = format_ident!("{}", id);
+    let id = id.to_ident();
     let backing_type = types::Integer::new(width);
     let backing_type_str = proc_macro2::Literal::string(&format!("u{}", backing_type.width));
     let max_value = mask_bits(width, &format!("u{}", backing_type.width));
@@ -1528,6 +1524,15 @@ mod tests {
 
           packet NormalGrandChild2 : AliasChild (v = C) {
               _payload_
+          }
+        "
+    );
+
+    test_pdl!(
+        reserved_identifier,
+        "
+          packet Test {
+            type: 8,
           }
         "
     );

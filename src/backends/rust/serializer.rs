@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::analyzer::ast as analyzer_ast;
-use crate::backends::rust::{mask_bits, types, ToUpperCamelCase};
+use crate::backends::rust::{mask_bits, types, ToIdent, ToUpperCamelCase};
 use crate::{analyzer, ast};
 use quote::{format_ident, quote};
 
@@ -79,7 +79,7 @@ impl<'a> FieldSerializer<'a> {
 
         match &field.desc {
             ast::FieldDesc::Scalar { id, width } => {
-                let field_name = format_ident!("{id}");
+                let field_name = id.to_ident();
                 let field_type = types::Integer::new(*width);
                 if field_type.width > *width {
                     let packet_name = &self.packet_name;
@@ -97,7 +97,7 @@ impl<'a> FieldSerializer<'a> {
             }
             ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
                 let field_type = types::Integer::new(width);
-                let enum_id = format_ident!("{enum_id}");
+                let enum_id = enum_id.to_ident();
                 let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
                 self.chunk.push(BitField {
                     value: quote!(#field_type::from(#enum_id::#tag_id)),
@@ -111,7 +111,7 @@ impl<'a> FieldSerializer<'a> {
                 self.chunk.push(BitField { value: quote!(#value), field_type, shift });
             }
             ast::FieldDesc::Typedef { id, .. } => {
-                let field_name = format_ident!("{id}");
+                let field_name = id.to_ident();
                 let field_type = types::Integer::new(width);
                 self.chunk.push(BitField {
                     value: quote!(#field_type::from(self.#field_name)),
@@ -137,7 +137,7 @@ impl<'a> FieldSerializer<'a> {
                     })
                     .unwrap();
 
-                let field_name = format_ident!("{field_id}");
+                let field_name = field_id.to_ident();
                 let field_type = types::Integer::new(*width);
                 // TODO: size modifier
 
@@ -190,7 +190,7 @@ impl<'a> FieldSerializer<'a> {
                 });
             }
             ast::FieldDesc::Count { field_id, width, .. } => {
-                let field_name = format_ident!("{field_id}");
+                let field_name = field_id.to_ident();
                 let field_type = types::Integer::new(*width);
                 if field_type.width > *width {
                     let packet_name = &self.packet_name;
@@ -296,7 +296,7 @@ impl<'a> FieldSerializer<'a> {
             }
         };
 
-        let id = format_ident!("{id}");
+        let id = id.to_ident();
 
         self.code.push(match padding_size {
             Some(padding_size) =>
@@ -327,7 +327,7 @@ impl<'a> FieldSerializer<'a> {
             panic!("Derived struct used in typedef field");
         }
 
-        let id = format_ident!("{id}");
+        let id = id.to_ident();
         let span = format_ident!("{}", self.span);
 
         self.code.push(match &decl.desc {
@@ -362,7 +362,7 @@ impl<'a> FieldSerializer<'a> {
         let child_ids = self
             .scope
             .iter_children(decl)
-            .map(|child| format_ident!("{}", child.id().unwrap()))
+            .map(|child| child.id().unwrap().to_ident())
             .collect::<Vec<_>>();
 
         let span = format_ident!("{}", self.span);
