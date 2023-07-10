@@ -1,3 +1,5 @@
 Cargo.lock
-scripts/pdl/__pycache__/
+**/__pycache__/
+out/
 target/
+venv/
