@@ -49,8 +49,12 @@ Enum declarations
 |         A = 1,                        |         A = 1                                                 |
 |         B = 2..3,                     |         B_MIN = 2                                             |
 |         C = 4,                        |         B_MAX = 3                                             |
-|     }                                 |         C = 4                                                 |
+|         OTHER = ..,                   |         C = 4                                                 |
+|     }                                 |                                                               |
 +---------------------------------------+---------------------------------------------------------------+
+
+.. note::
+    Python enums are open by construction, default cases in enum declarations are ignored.
 
 Packet declarations
 ^^^^^^^^^^^^^^^^^^^
