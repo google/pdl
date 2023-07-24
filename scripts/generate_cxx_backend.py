@@ -1558,6 +1558,12 @@ def run(input: argparse.FileType, output: argparse.FileType, namespace: Optional
                     using_namespace=using_namespace,
                     open_namespace=open_namespace))
 
+    # Forward declarations for packet classes.
+    # Required for the friend class specifiers.
+    for d in file.declarations:
+        if isinstance(d, ast.PacketDeclaration):
+            output.write(f"class {d.id}View;\n")
+
     for d in file.declarations:
         if d.id in skipped_decls:
             continue
