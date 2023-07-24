@@ -78,7 +78,7 @@ impl FooData {
         }
         let chunk = bytes.get_mut().get_u64_le();
         let fixed_value = (chunk & 0x7f) as u8;
-        if (chunk & 0x7f) as u8 != 7 {
+        if fixed_value != 7 {
             return Err(Error::InvalidFixedValue {
                 expected: 7,
                 actual: fixed_value as u64,
