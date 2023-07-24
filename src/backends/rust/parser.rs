@@ -164,7 +164,7 @@ impl<'a> FieldParser<'a> {
                     let value = proc_macro2::Literal::usize_unsuffixed(*value);
                     quote! {
                         let fixed_value = #v;
-                        if #v != #value {
+                        if fixed_value != #value {
                             return Err(Error::InvalidFixedValue {
                                 expected: #value,
                                 actual: fixed_value as u64,
