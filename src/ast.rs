@@ -45,7 +45,7 @@ pub struct SourceRange {
 
 pub trait Annotation: fmt::Debug + Serialize {
     type FieldAnnotation: Default + fmt::Debug + Clone;
-    type DeclAnnotation: Default + fmt::Debug;
+    type DeclAnnotation: Default + fmt::Debug + Clone;
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -165,7 +165,7 @@ pub struct TestCase {
     pub input: String,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum DeclDesc<A: Annotation> {
     #[serde(rename = "checksum_declaration")]
@@ -194,7 +194,7 @@ pub enum DeclDesc<A: Annotation> {
     Test { type_id: String, test_cases: Vec<TestCase> },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Decl<A: Annotation> {
     pub loc: SourceRange,
     #[serde(skip_serializing)]
@@ -203,7 +203,7 @@ pub struct Decl<A: Annotation> {
     pub desc: DeclDesc<A>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct File<A: Annotation> {
     pub version: String,
     pub file: FileId,
