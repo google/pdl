@@ -20,7 +20,6 @@ use std::collections::HashMap;
 
 use crate::ast::*;
 use crate::parser::ast as parser_ast;
-use crate::utils;
 
 pub mod ast {
     use serde::Serialize;
@@ -845,6 +844,163 @@ fn check_enum_declarations(file: &parser_ast::File) -> Result<(), Diagnostics> {
     diagnostics.err_or(())
 }
 
+/// Helper function for validating one constraint.
+fn check_constraint(
+    constraint: &Constraint,
+    decl: &parser_ast::Decl,
+    scope: &Scope<parser_ast::Annotation>,
+    diagnostics: &mut Diagnostics,
+) {
+    match scope.iter_fields(decl).find(|field| field.id() == Some(&constraint.id)) {
+        None => diagnostics.push(
+            Diagnostic::error()
+                .with_code(ErrorCode::UndeclaredConstraintIdentifier)
+                .with_message(format!("undeclared constraint identifier `{}`", constraint.id))
+                .with_labels(vec![constraint.loc.primary()])
+                .with_notes(vec!["hint: expected scalar or typedef identifier".to_owned()]),
+        ),
+        Some(field @ Field { desc: FieldDesc::Array { .. }, .. }) => diagnostics.push(
+            Diagnostic::error()
+                .with_code(ErrorCode::InvalidConstraintIdentifier)
+                .with_message(format!("invalid constraint identifier `{}`", constraint.id))
+                .with_labels(vec![
+                    constraint.loc.primary(),
+                    field.loc.secondary().with_message(format!(
+                        "`{}` is declared here as array field",
+                        constraint.id
+                    )),
+                ])
+                .with_notes(vec!["hint: expected scalar or typedef identifier".to_owned()]),
+        ),
+        Some(field @ Field { desc: FieldDesc::Scalar { width, .. }, .. }) => {
+            match constraint.value {
+                None => diagnostics.push(
+                    Diagnostic::error()
+                        .with_code(ErrorCode::E17)
+                        .with_message(format!(
+                            "invalid constraint value `{}`",
+                            constraint.tag_id.as_ref().unwrap()
+                        ))
+                        .with_labels(vec![
+                            constraint.loc.primary(),
+                            field.loc.secondary().with_message(format!(
+                                "`{}` is declared here as scalar field",
+                                constraint.id
+                            )),
+                        ])
+                        .with_notes(vec!["hint: expected scalar value".to_owned()]),
+                ),
+                Some(value) if bit_width(value) > *width => diagnostics.push(
+                    Diagnostic::error()
+                        .with_code(ErrorCode::ConstraintValueOutOfRange)
+                        .with_message(format!(
+                            "constraint value `{}` is larger than maximum value",
+                            value
+                        ))
+                        .with_labels(vec![constraint.loc.primary(), field.loc.secondary()]),
+                ),
+                _ => (),
+            }
+        }
+        Some(field @ Field { desc: FieldDesc::Typedef { type_id, .. }, .. }) => {
+            match scope.typedef.get(type_id) {
+                None => (),
+                Some(Decl { desc: DeclDesc::Enum { tags, .. }, .. }) => match &constraint.tag_id {
+                    None => diagnostics.push(
+                        Diagnostic::error()
+                            .with_code(ErrorCode::E19)
+                            .with_message(format!(
+                                "invalid constraint value `{}`",
+                                constraint.value.unwrap()
+                            ))
+                            .with_labels(vec![
+                                constraint.loc.primary(),
+                                field.loc.secondary().with_message(format!(
+                                    "`{}` is declared here as typedef field",
+                                    constraint.id
+                                )),
+                            ])
+                            .with_notes(vec!["hint: expected enum value".to_owned()]),
+                    ),
+                    Some(tag_id) => match tags.iter().find(|tag| tag.id() == tag_id) {
+                        None => diagnostics.push(
+                            Diagnostic::error()
+                                .with_code(ErrorCode::E20)
+                                .with_message(format!("undeclared enum tag `{}`", tag_id))
+                                .with_labels(vec![
+                                    constraint.loc.primary(),
+                                    field.loc.secondary().with_message(format!(
+                                        "`{}` is declared here",
+                                        constraint.id
+                                    )),
+                                ]),
+                        ),
+                        Some(Tag::Range { .. }) => diagnostics.push(
+                            Diagnostic::error()
+                                .with_code(ErrorCode::E42)
+                                .with_message(format!("enum tag `{}` defines a range", tag_id))
+                                .with_labels(vec![
+                                    constraint.loc.primary(),
+                                    field.loc.secondary().with_message(format!(
+                                        "`{}` is declared here",
+                                        constraint.id
+                                    )),
+                                ])
+                                .with_notes(vec!["hint: expected enum tag with value".to_owned()]),
+                        ),
+                        Some(_) => (),
+                    },
+                },
+                Some(decl) => diagnostics.push(
+                    Diagnostic::error()
+                        .with_code(ErrorCode::E21)
+                        .with_message(format!(
+                            "invalid constraint identifier `{}`",
+                            constraint.value.unwrap()
+                        ))
+                        .with_labels(vec![
+                            constraint.loc.primary(),
+                            field.loc.secondary().with_message(format!(
+                                "`{}` is declared here as {} typedef field",
+                                constraint.id,
+                                decl.kind()
+                            )),
+                        ])
+                        .with_notes(vec!["hint: expected enum value".to_owned()]),
+                ),
+            }
+        }
+        Some(_) => unreachable!(),
+    }
+}
+
+/// Helper function for validating a list of constraints.
+fn check_constraints_list<'d>(
+    constraints: &'d [Constraint],
+    parent_decl: &parser_ast::Decl,
+    scope: &Scope<parser_ast::Annotation>,
+    mut constraints_by_id: HashMap<String, &'d Constraint>,
+    diagnostics: &mut Diagnostics,
+) {
+    for constraint in constraints {
+        check_constraint(constraint, parent_decl, scope, diagnostics);
+        if let Some(prev) = constraints_by_id.insert(constraint.id.to_string(), constraint) {
+            // Constraint appears twice in current set.
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_code(ErrorCode::DuplicateConstraintIdentifier)
+                    .with_message(format!("duplicate constraint identifier `{}`", constraint.id))
+                    .with_labels(vec![
+                        constraint.loc.primary(),
+                        prev.loc
+                            .secondary()
+                            .with_message(format!("`{}` is first constrained here", prev.id)),
+                    ]),
+            )
+        }
+    }
+}
+
 /// Check constraints.
 /// Raises error diagnostics for the following cases:
 ///      - undeclared constraint identifier
@@ -854,175 +1010,10 @@ fn check_enum_declarations(file: &parser_ast::File) -> Result<(), Diagnostics> {
 ///      - invalid constraint enum value (bad type)
 ///      - invalid constraint enum value (undeclared tag)
 ///      - duplicate constraint
-fn check_constraints(
+fn check_decl_constraints(
     file: &parser_ast::File,
     scope: &Scope<parser_ast::Annotation>,
 ) -> Result<(), Diagnostics> {
-    fn check_constraint(
-        constraint: &Constraint,
-        decl: &parser_ast::Decl,
-        scope: &Scope<parser_ast::Annotation>,
-        diagnostics: &mut Diagnostics,
-    ) {
-        match scope.iter_fields(decl).find(|field| field.id() == Some(&constraint.id)) {
-            None => diagnostics.push(
-                Diagnostic::error()
-                    .with_code(ErrorCode::UndeclaredConstraintIdentifier)
-                    .with_message(format!("undeclared constraint identifier `{}`", constraint.id))
-                    .with_labels(vec![constraint.loc.primary()])
-                    .with_notes(vec!["hint: expected scalar or typedef identifier".to_owned()]),
-            ),
-            Some(field @ Field { desc: FieldDesc::Array { .. }, .. }) => diagnostics.push(
-                Diagnostic::error()
-                    .with_code(ErrorCode::InvalidConstraintIdentifier)
-                    .with_message(format!("invalid constraint identifier `{}`", constraint.id))
-                    .with_labels(vec![
-                        constraint.loc.primary(),
-                        field.loc.secondary().with_message(format!(
-                            "`{}` is declared here as array field",
-                            constraint.id
-                        )),
-                    ])
-                    .with_notes(vec!["hint: expected scalar or typedef identifier".to_owned()]),
-            ),
-            Some(field @ Field { desc: FieldDesc::Scalar { width, .. }, .. }) => {
-                match constraint.value {
-                    None => diagnostics.push(
-                        Diagnostic::error()
-                            .with_code(ErrorCode::E17)
-                            .with_message(format!(
-                                "invalid constraint value `{}`",
-                                constraint.tag_id.as_ref().unwrap()
-                            ))
-                            .with_labels(vec![
-                                constraint.loc.primary(),
-                                field.loc.secondary().with_message(format!(
-                                    "`{}` is declared here as scalar field",
-                                    constraint.id
-                                )),
-                            ])
-                            .with_notes(vec!["hint: expected scalar value".to_owned()]),
-                    ),
-                    Some(value) if bit_width(value) > *width => diagnostics.push(
-                        Diagnostic::error()
-                            .with_code(ErrorCode::ConstraintValueOutOfRange)
-                            .with_message(format!(
-                                "constraint value `{}` is larger than maximum value",
-                                value
-                            ))
-                            .with_labels(vec![constraint.loc.primary(), field.loc.secondary()]),
-                    ),
-                    _ => (),
-                }
-            }
-            Some(field @ Field { desc: FieldDesc::Typedef { type_id, .. }, .. }) => {
-                match scope.typedef.get(type_id) {
-                    None => (),
-                    Some(Decl { desc: DeclDesc::Enum { tags, .. }, .. }) => {
-                        match &constraint.tag_id {
-                            None => diagnostics.push(
-                                Diagnostic::error()
-                                    .with_code(ErrorCode::E19)
-                                    .with_message(format!(
-                                        "invalid constraint value `{}`",
-                                        constraint.value.unwrap()
-                                    ))
-                                    .with_labels(vec![
-                                        constraint.loc.primary(),
-                                        field.loc.secondary().with_message(format!(
-                                            "`{}` is declared here as typedef field",
-                                            constraint.id
-                                        )),
-                                    ])
-                                    .with_notes(vec!["hint: expected enum value".to_owned()]),
-                            ),
-                            Some(tag_id) => match tags.iter().find(|tag| tag.id() == tag_id) {
-                                None => diagnostics.push(
-                                    Diagnostic::error()
-                                        .with_code(ErrorCode::E20)
-                                        .with_message(format!("undeclared enum tag `{}`", tag_id))
-                                        .with_labels(vec![
-                                            constraint.loc.primary(),
-                                            field.loc.secondary().with_message(format!(
-                                                "`{}` is declared here",
-                                                constraint.id
-                                            )),
-                                        ]),
-                                ),
-                                Some(Tag::Range { .. }) => diagnostics.push(
-                                    Diagnostic::error()
-                                        .with_code(ErrorCode::E42)
-                                        .with_message(format!(
-                                            "enum tag `{}` defines a range",
-                                            tag_id
-                                        ))
-                                        .with_labels(vec![
-                                            constraint.loc.primary(),
-                                            field.loc.secondary().with_message(format!(
-                                                "`{}` is declared here",
-                                                constraint.id
-                                            )),
-                                        ])
-                                        .with_notes(vec![
-                                            "hint: expected enum tag with value".to_owned()
-                                        ]),
-                                ),
-                                Some(_) => (),
-                            },
-                        }
-                    }
-                    Some(decl) => diagnostics.push(
-                        Diagnostic::error()
-                            .with_code(ErrorCode::E21)
-                            .with_message(format!(
-                                "invalid constraint identifier `{}`",
-                                constraint.value.unwrap()
-                            ))
-                            .with_labels(vec![
-                                constraint.loc.primary(),
-                                field.loc.secondary().with_message(format!(
-                                    "`{}` is declared here as {} typedef field",
-                                    constraint.id,
-                                    decl.kind()
-                                )),
-                            ])
-                            .with_notes(vec!["hint: expected enum value".to_owned()]),
-                    ),
-                }
-            }
-            Some(_) => unreachable!(),
-        }
-    }
-
-    fn check_constraints<'d>(
-        constraints: &'d [Constraint],
-        parent_decl: &parser_ast::Decl,
-        scope: &Scope<parser_ast::Annotation>,
-        mut constraints_by_id: HashMap<String, &'d Constraint>,
-        diagnostics: &mut Diagnostics,
-    ) {
-        for constraint in constraints {
-            check_constraint(constraint, parent_decl, scope, diagnostics);
-            if let Some(prev) = constraints_by_id.insert(constraint.id.to_string(), constraint) {
-                // Constraint appears twice in current set.
-                diagnostics.push(
-                    Diagnostic::error()
-                        .with_code(ErrorCode::DuplicateConstraintIdentifier)
-                        .with_message(format!(
-                            "duplicate constraint identifier `{}`",
-                            constraint.id
-                        ))
-                        .with_labels(vec![
-                            constraint.loc.primary(),
-                            prev.loc
-                                .secondary()
-                                .with_message(format!("`{}` is first constrained here", prev.id)),
-                        ]),
-                )
-            }
-        }
-    }
-
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
         // Check constraints for packet inheritance.
@@ -1030,7 +1021,7 @@ fn check_constraints(
             DeclDesc::Packet { constraints, parent_id: Some(parent_id), .. }
             | DeclDesc::Struct { constraints, parent_id: Some(parent_id), .. } => {
                 let parent_decl = scope.typedef.get(parent_id).unwrap();
-                check_constraints(
+                check_constraints_list(
                     constraints,
                     parent_decl,
                     scope,
@@ -1047,12 +1038,37 @@ fn check_constraints(
             }
             _ => (),
         }
+    }
 
+    diagnostics.err_or(())
+}
+
+/// Check constraints.
+/// Raises error diagnostics for the following cases:
+///      - undeclared constraint identifier
+///      - invalid constraint identifier
+///      - invalid constraint scalar value (bad type)
+///      - invalid constraint scalar value (overflow)
+///      - invalid constraint enum value (bad type)
+///      - invalid constraint enum value (undeclared tag)
+///      - duplicate constraint
+fn check_group_constraints(
+    file: &parser_ast::File,
+    scope: &Scope<parser_ast::Annotation>,
+) -> Result<(), Diagnostics> {
+    let mut diagnostics: Diagnostics = Default::default();
+    for decl in &file.declarations {
         // Check constraints for group inlining.
         for field in decl.fields() {
             if let FieldDesc::Group { group_id, constraints } = &field.desc {
                 let group_decl = scope.typedef.get(group_id).unwrap();
-                check_constraints(constraints, group_decl, scope, HashMap::new(), &mut diagnostics)
+                check_constraints_list(
+                    constraints,
+                    group_decl,
+                    scope,
+                    HashMap::new(),
+                    &mut diagnostics,
+                )
             }
         }
     }
@@ -1542,12 +1558,12 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
 }
 
 /// Inline group fields and remove group declarations.
-fn inline_groups(file: &mut ast::File) -> Result<(), Diagnostics> {
+fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostics> {
     fn inline_fields<'a>(
-        fields: impl Iterator<Item = &'a ast::Field>,
-        groups: &HashMap<String, ast::Decl>,
+        fields: impl Iterator<Item = &'a parser_ast::Field>,
+        groups: &HashMap<String, &parser_ast::Decl>,
         constraints: &HashMap<String, Constraint>,
-    ) -> Vec<ast::Field> {
+    ) -> Vec<parser_ast::Field> {
         fields
             .flat_map(|field| match &field.desc {
                 FieldDesc::Group { group_id, constraints: group_constraints } => {
@@ -1560,17 +1576,17 @@ fn inline_groups(file: &mut ast::File) -> Result<(), Diagnostics> {
                     inline_fields(groups.get(group_id).unwrap().fields(), groups, &constraints)
                 }
                 FieldDesc::Scalar { id, width } if constraints.contains_key(id) => {
-                    vec![ast::Field {
+                    vec![parser_ast::Field {
                         desc: FieldDesc::FixedScalar {
                             width: *width,
                             value: constraints.get(id).unwrap().value.unwrap(),
                         },
                         loc: field.loc,
-                        annot: field.annot.clone(),
+                        annot: field.annot,
                     }]
                 }
                 FieldDesc::Typedef { id, type_id, .. } if constraints.contains_key(id) => {
-                    vec![ast::Field {
+                    vec![parser_ast::Field {
                         desc: FieldDesc::FixedEnum {
                             enum_id: type_id.clone(),
                             tag_id: constraints
@@ -1579,7 +1595,7 @@ fn inline_groups(file: &mut ast::File) -> Result<(), Diagnostics> {
                                 .unwrap(),
                         },
                         loc: field.loc,
-                        annot: field.annot.clone(),
+                        annot: field.annot,
                     }]
                 }
                 _ => vec![field.clone()],
@@ -1587,23 +1603,50 @@ fn inline_groups(file: &mut ast::File) -> Result<(), Diagnostics> {
             .collect()
     }
 
-    let groups = utils::drain_filter(&mut file.declarations, |decl| {
-        matches!(&decl.desc, DeclDesc::Group { .. })
+    let groups = file
+        .declarations
+        .iter()
+        .filter(|decl| matches!(&decl.desc, DeclDesc::Group { .. }))
+        .map(|decl| (decl.id().unwrap().to_owned(), decl))
+        .collect::<HashMap<String, _>>();
+
+    let declarations = file
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.desc {
+            DeclDesc::Packet { fields, id, parent_id, constraints } => Some(parser_ast::Decl {
+                desc: DeclDesc::Packet {
+                    fields: inline_fields(fields.iter(), &groups, &HashMap::new()),
+                    id: id.clone(),
+                    parent_id: parent_id.clone(),
+                    constraints: constraints.clone(),
+                },
+                loc: decl.loc,
+                annot: decl.annot,
+            }),
+            DeclDesc::Struct { fields, id, parent_id, constraints } => Some(parser_ast::Decl {
+                desc: DeclDesc::Struct {
+                    fields: inline_fields(fields.iter(), &groups, &HashMap::new()),
+                    id: id.clone(),
+                    parent_id: parent_id.clone(),
+                    constraints: constraints.clone(),
+                },
+                loc: decl.loc,
+                annot: decl.annot,
+            }),
+            DeclDesc::Group { .. } => None,
+            _ => Some(decl.clone()),
+        })
+        .collect();
+
+    Ok(File {
+        declarations,
+
+        version: file.version.clone(),
+        file: file.file,
+        comments: file.comments.clone(),
+        endianness: file.endianness,
     })
-    .into_iter()
-    .map(|decl| (decl.id().unwrap().to_owned(), decl))
-    .collect::<HashMap<String, _>>();
-
-    for decl in file.declarations.iter_mut() {
-        match &mut decl.desc {
-            DeclDesc::Packet { fields, .. } | DeclDesc::Struct { fields, .. } => {
-                *fields = inline_fields(fields.iter(), &groups, &HashMap::new())
-            }
-            _ => (),
-        }
-    }
-
-    Ok(())
 }
 
 /// Analyzer entry point, produces a new AST with annotations resulting
@@ -1613,16 +1656,17 @@ pub fn analyze(file: &parser_ast::File) -> Result<ast::File, Diagnostics> {
     check_decl_identifiers(file, &scope)?;
     check_field_identifiers(file)?;
     check_enum_declarations(file)?;
-    check_constraints(file, &scope)?;
     check_size_fields(file)?;
     check_fixed_fields(file, &scope)?;
     check_payload_fields(file)?;
     check_array_fields(file)?;
     check_padding_fields(file)?;
     check_checksum_fields(file, &scope)?;
-    let mut file = compute_field_sizes(file);
-    inline_groups(&mut file)?;
-    Ok(file)
+    check_group_constraints(file, &scope)?;
+    let file = inline_groups(file)?;
+    let scope = Scope::new(&file)?;
+    check_decl_constraints(&file, &scope)?;
+    Ok(compute_field_sizes(&file))
 }
 
 #[cfg(test)]
@@ -2018,6 +2062,15 @@ mod test {
         packet B {
             A { y = 1 }
         }
+        "#
+        );
+
+        valid!(
+            r#"
+        little_endian_packets
+        group A { x : 8 }
+        packet B { A }
+        packet C : B (x = 1) { }
         "#
         );
     }
