@@ -40,7 +40,7 @@ pub mod ast {
 // in soong environment.
 #[derive(pest_derive::Parser)]
 #[grammar_inline = r#"
-WHITESPACE = _{ " " | "\n" }
+WHITESPACE = _{ " " | "\n" | "\r" | "\t" }
 COMMENT = { block_comment | line_comment }
 
 block_comment = { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
