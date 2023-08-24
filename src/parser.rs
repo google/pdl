@@ -35,9 +35,15 @@ pub mod ast {
 }
 
 // Generate the PDL parser.
-// TODO: use #[grammar = "pdl.pest"]
-// currently not possible because CARGO_MANIFEST_DIR is not set
-// in soong environment.
+//
+// TODO:
+// - use #[grammar = "pdl.pest"]
+//   currently not possible because CARGO_MANIFEST_DIR is not set
+//   in soong environment.
+// - use silent atomic rules for keywords like
+//   ENUM = @{ "enum" ~ WHITESPACE }
+//   currently not implemented in pest:
+//   https://github.com/pest-parser/pest/issues/520
 #[derive(pest_derive::Parser)]
 #[grammar_inline = r#"
 WHITESPACE = _{ " " | "\n" | "\r" | "\t" }
@@ -60,7 +66,15 @@ integer = @{ hexvalue | intvalue }
 string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
 size_modifier = @{ "+" ~ intvalue }
 
-endianness_declaration = { "little_endian_packets" | "big_endian_packets" }
+ENUM = @{ "enum" ~ WHITESPACE }
+PACKET = @{ "packet" ~ WHITESPACE }
+STRUCT = @{ "struct" ~ WHITESPACE }
+GROUP = @{ "group" ~ WHITESPACE }
+CHECKSUM = @{ "checksum" ~ WHITESPACE }
+CUSTOM_FIELD = @{ "custom_field" ~ WHITESPACE }
+TEST = @{ "test" ~ WHITESPACE }
+
+endianness_declaration = ${ ("little_endian_packets" | "big_endian_packets") ~ WHITESPACE }
 
 enum_value = { identifier ~ "=" ~ integer }
 enum_value_list = { enum_value ~ ("," ~ enum_value)* ~ ","? }
@@ -73,7 +87,7 @@ enum_other = { identifier ~ "=" ~ ".." }
 enum_tag = { enum_range | enum_value | enum_other }
 enum_tag_list = { enum_tag ~ ("," ~ enum_tag)* ~ ","? }
 enum_declaration = {
-    "enum" ~ identifier ~ ":" ~ integer ~ "{" ~
+    ENUM ~ identifier ~ ":" ~ integer ~ "{" ~
         enum_tag_list ~
     "}"
 }
@@ -118,7 +132,7 @@ field = _{
 field_list = { field ~ ("," ~ field)* ~ ","? }
 
 packet_declaration = {
-   "packet" ~ identifier ~
+   PACKET ~ identifier ~
         (":" ~ identifier)? ~
            ("(" ~ constraint_list ~ ")")? ~
     "{" ~
@@ -127,7 +141,7 @@ packet_declaration = {
 }
 
 struct_declaration = {
-    "struct" ~ identifier ~
+    STRUCT ~ identifier ~
         (":" ~ identifier)? ~
            ("(" ~ constraint_list ~ ")")? ~
     "{" ~
@@ -136,21 +150,21 @@ struct_declaration = {
 }
 
 group_declaration = {
-    "group" ~ identifier ~ "{" ~ field_list ~ "}"
+    GROUP ~ identifier ~ "{" ~ field_list ~ "}"
 }
 
 checksum_declaration = {
-    "checksum" ~ identifier ~ ":" ~ integer ~ string
+    CHECKSUM ~ identifier ~ ":" ~ integer ~ string
 }
 
 custom_field_declaration = {
-    "custom_field" ~ identifier ~ (":" ~ integer)? ~ string
+    CUSTOM_FIELD ~ identifier ~ (":" ~ integer)? ~ string
 }
 
 test_case = { string }
 test_case_list = _{ test_case ~ ("," ~ test_case)* ~ ","? }
 test_declaration = {
-    "test" ~ identifier ~ "{" ~
+    TEST ~ identifier ~ "{" ~
         test_case_list ~
     "}"
 }
@@ -288,7 +302,7 @@ fn parse_endianness(node: Node<'_>, context: &Context) -> Result<crate::ast::End
     } else {
         Ok(crate::ast::Endianness {
             loc: node.as_loc(context),
-            value: match node.as_str() {
+            value: match node.as_str().trim() {
                 "little_endian_packets" => crate::ast::EndiannessValue::LittleEndian,
                 "big_endian_packets" => crate::ast::EndiannessValue::BigEndian,
                 _ => unreachable!(),
@@ -539,6 +553,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
             Rule::endianness_declaration => file.endianness = parse_endianness(node, context)?,
             Rule::checksum_declaration => {
                 let mut children = node.children();
+                expect(&mut children, Rule::CHECKSUM)?;
                 let id = parse_identifier(&mut children)?;
                 let width = parse_integer(&mut children)?;
                 let function = parse_string(&mut children)?;
@@ -549,6 +564,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
             }
             Rule::custom_field_declaration => {
                 let mut children = node.children();
+                expect(&mut children, Rule::CUSTOM_FIELD)?;
                 let id = parse_identifier(&mut children)?;
                 let width = parse_integer_opt(&mut children)?;
                 let function = parse_string(&mut children)?;
@@ -559,6 +575,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
             }
             Rule::enum_declaration => {
                 let mut children = node.children();
+                expect(&mut children, Rule::ENUM)?;
                 let id = parse_identifier(&mut children)?;
                 let width = parse_integer(&mut children)?;
                 let tags = parse_enum_tag_list(&mut children, context)?;
@@ -569,6 +586,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
             }
             Rule::packet_declaration => {
                 let mut children = node.children();
+                expect(&mut children, Rule::PACKET)?;
                 let id = parse_identifier(&mut children)?;
                 let parent_id = parse_identifier_opt(&mut children)?;
                 let constraints = parse_constraint_list_opt(&mut children, context)?;
@@ -580,6 +598,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
             }
             Rule::struct_declaration => {
                 let mut children = node.children();
+                expect(&mut children, Rule::STRUCT)?;
                 let id = parse_identifier(&mut children)?;
                 let parent_id = parse_identifier_opt(&mut children)?;
                 let constraints = parse_constraint_list_opt(&mut children, context)?;
@@ -591,6 +610,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
             }
             Rule::group_declaration => {
                 let mut children = node.children();
+                expect(&mut children, Rule::GROUP)?;
                 let id = parse_identifier(&mut children)?;
                 let fields = parse_field_list(&mut children, context)?;
                 file.declarations
@@ -680,5 +700,33 @@ mod test {
 
         assert_eq!(parse_string(&mut pairs).as_deref(), Ok(r#""test""#));
         assert_eq!(pairs.next(), None, "pairs is empty");
+    }
+
+    #[test]
+    fn test_no_whitespace_between_keywords() {
+        // Validate that the parser rejects inputs where whitespaces
+        // are not applied between alphabetical keywords and identifiers.
+        let mut db = crate::ast::SourceDatabase::new();
+        assert!(parse_inline(
+            &mut db,
+            "test".to_owned(),
+            r#"
+            little_endian_packetsstructx{foo:8}
+            "#
+            .to_owned()
+        )
+        .is_err());
+
+        let result = parse_inline(
+            &mut db,
+            "test".to_owned(),
+            r#"
+            little_endian_packets
+            struct x { foo:8 }
+            "#
+            .to_owned(),
+        );
+        println!("{:?}", result);
+        assert!(result.is_ok());
     }
 }
