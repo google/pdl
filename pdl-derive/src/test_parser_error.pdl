@@ -1,0 +1,6 @@
+
+little_endian_packets
+
+enum A {
+    X = 0
+}
