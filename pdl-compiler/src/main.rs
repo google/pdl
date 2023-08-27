@@ -89,7 +89,7 @@ fn main() -> Result<(), String> {
     }
 
     let mut sources = ast::SourceDatabase::new();
-    match parser::parse_file(&mut sources, opt.input_file) {
+    match parser::parse_file(&mut sources, &opt.input_file) {
         Ok(file) => {
             let file = filter_declarations(file, &opt.exclude_declaration);
             let analyzed_file = match analyzer::analyze(&file) {
