@@ -1,0 +1,5 @@
+little_endian_packets
+
+packet Prout {
+    x: 8,
+}
