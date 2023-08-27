@@ -985,18 +985,28 @@ fn generate_decl(
 ///
 /// The code is not formatted, pipe it through `rustfmt` to get
 /// readable source code.
-pub fn generate(sources: &ast::SourceDatabase, file: &analyzer_ast::File) -> String {
+pub fn generate_tokens(
+    sources: &ast::SourceDatabase,
+    file: &analyzer_ast::File,
+) -> proc_macro2::TokenStream {
     let source = sources.get(file.file).expect("could not read source");
     let preamble = preamble::generate(Path::new(source.name()));
 
     let scope = analyzer::Scope::new(file).expect("could not create scope");
     let decls = file.declarations.iter().map(|decl| generate_decl(&scope, file, decl));
-    let code = quote! {
+    quote! {
         #preamble
 
         #(#decls)*
-    };
-    let syntax_tree = syn::parse2(code).expect("Could not parse code");
+    }
+}
+
+/// Generate formatted Rust code from an AST.
+///
+/// The code is not formatted, pipe it through `rustfmt` to get
+/// readable source code.
+pub fn generate(sources: &ast::SourceDatabase, file: &analyzer_ast::File) -> String {
+    let syntax_tree = syn::parse2(generate_tokens(sources, file)).expect("Could not parse code");
     prettyplease::unparse(&syntax_tree)
 }
 
@@ -1017,8 +1027,7 @@ mod tests {
     /// Panics on parse errors.
     pub fn parse_str(text: &str) -> analyzer_ast::File {
         let mut db = ast::SourceDatabase::new();
-        let file =
-            parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parse error");
+        let file = parse_inline(&mut db, "stdin", String::from(text)).expect("parse error");
         analyzer::analyze(&file).expect("analyzer error")
     }
 
@@ -1083,7 +1092,7 @@ mod tests {
                     let endianness = stringify!($endianness);
                     let code = format!("{endianness}_packets\n{}", $code);
                     let mut db = ast::SourceDatabase::new();
-                    let file = parse_inline(&mut db, String::from("test"), code).unwrap();
+                    let file = parse_inline(&mut db, "test", code).unwrap();
                     let file = analyzer::analyze(&file).unwrap();
                     let actual_code = generate(&db, &file);
                     assert_snapshot_eq(

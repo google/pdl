@@ -631,18 +631,18 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
 /// name.
 pub fn parse_inline(
     sources: &mut crate::ast::SourceDatabase,
-    name: String,
+    name: &str,
     source: String,
 ) -> Result<ast::File, Diagnostic<crate::ast::FileId>> {
     let root = PDLParser::parse(Rule::file, &source)
         .map_err(|e| {
             Diagnostic::error()
-                .with_message(format!("failed to parse input file '{}': {}", &name, e))
+                .with_message(format!("failed to parse input file '{}': {}", name, e))
         })?
         .next()
         .unwrap();
     let line_starts: Vec<_> = files::line_starts(&source).collect();
-    let file = sources.add(name, source.clone());
+    let file = sources.add(name.to_owned(), source.clone());
     parse_toplevel(root, &(file, &line_starts)).map_err(|e| Diagnostic::error().with_message(e))
 }
 
@@ -653,10 +653,10 @@ pub fn parse_inline(
 /// message in case of syntax error.
 pub fn parse_file(
     sources: &mut crate::ast::SourceDatabase,
-    name: String,
+    name: &str,
 ) -> Result<ast::File, Diagnostic<crate::ast::FileId>> {
-    let source = std::fs::read_to_string(&name).map_err(|e| {
-        Diagnostic::error().with_message(format!("failed to read input file '{}': {}", &name, e))
+    let source = std::fs::read_to_string(name).map_err(|e| {
+        Diagnostic::error().with_message(format!("failed to read input file '{}': {}", name, e))
     })?;
     parse_inline(sources, name, source)
 }
@@ -670,9 +670,7 @@ mod test {
         // The file starts out with a placeholder little-endian value.
         // This tests that we update it while parsing.
         let mut db = crate::ast::SourceDatabase::new();
-        let file =
-            parse_inline(&mut db, String::from("stdin"), String::from("  big_endian_packets  "))
-                .unwrap();
+        let file = parse_inline(&mut db, "stdin", String::from("  big_endian_packets  ")).unwrap();
         assert_eq!(file.endianness.value, crate::ast::EndiannessValue::BigEndian);
         assert_ne!(file.endianness.loc, crate::ast::SourceRange::default());
     }
@@ -709,7 +707,7 @@ mod test {
         let mut db = crate::ast::SourceDatabase::new();
         assert!(parse_inline(
             &mut db,
-            "test".to_owned(),
+            "test",
             r#"
             little_endian_packetsstructx{foo:8}
             "#
@@ -719,7 +717,7 @@ mod test {
 
         let result = parse_inline(
             &mut db,
-            "test".to_owned(),
+            "test",
             r#"
             little_endian_packets
             struct x { foo:8 }

@@ -215,7 +215,7 @@ pub fn generate_test_file() -> Result<String, String> {
         serde_json::from_str(file).map_err(|_| "could not parse test vectors")?;
 
     let pdl = include_str!("../../../tests/canonical/le_rust_noalloc_test_file.pdl");
-    let ast = parse_inline(&mut ast::SourceDatabase::new(), "test.pdl".to_owned(), pdl.to_owned())
+    let ast = parse_inline(&mut ast::SourceDatabase::new(), "test.pdl", pdl.to_owned())
         .expect("could not parse reference PDL");
     let packet_lookup =
         ast.declarations

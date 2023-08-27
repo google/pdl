@@ -1681,8 +1681,7 @@ mod test {
     macro_rules! raises {
         ($code:ident, $text:literal) => {{
             let mut db = SourceDatabase::new();
-            let file = parse_inline(&mut db, "stdin".to_owned(), $text.to_owned())
-                .expect("parsing failure");
+            let file = parse_inline(&mut db, "stdin", $text.to_owned()).expect("parsing failure");
             let result = analyzer::analyze(&file);
             assert!(matches!(result, Err(_)));
             let diagnostics = result.err().unwrap();
@@ -1697,8 +1696,7 @@ mod test {
     macro_rules! valid {
         ($text:literal) => {{
             let mut db = SourceDatabase::new();
-            let file = parse_inline(&mut db, "stdin".to_owned(), $text.to_owned())
-                .expect("parsing failure");
+            let file = parse_inline(&mut db, "stdin", $text.to_owned()).expect("parsing failure");
             assert!(analyzer::analyze(&file).is_ok());
         }};
     }
@@ -2750,8 +2748,7 @@ mod test {
 
     fn annotations(text: &str) -> Vec<Annotations> {
         let mut db = SourceDatabase::new();
-        let file =
-            parse_inline(&mut db, "stdin".to_owned(), text.to_owned()).expect("parsing failure");
+        let file = parse_inline(&mut db, "stdin", text.to_owned()).expect("parsing failure");
         let file = analyzer::analyze(&file).expect("analyzer failure");
         file.declarations
             .iter()
@@ -3255,8 +3252,7 @@ mod test {
 
     fn desugar(text: &str) -> analyzer::ast::File {
         let mut db = SourceDatabase::new();
-        let file =
-            parse_inline(&mut db, "stdin".to_owned(), text.to_owned()).expect("parsing failure");
+        let file = parse_inline(&mut db, "stdin", text.to_owned()).expect("parsing failure");
         analyzer::analyze(&file).expect("analyzer failure")
     }
 

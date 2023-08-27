@@ -741,8 +741,7 @@ mod tests {
     /// Panics on parse errors.
     pub fn parse_str(text: &str) -> analyzer_ast::File {
         let mut db = ast::SourceDatabase::new();
-        let file =
-            parse_inline(&mut db, String::from("stdin"), String::from(text)).expect("parse error");
+        let file = parse_inline(&mut db, "stdin", String::from(text)).expect("parse error");
         analyzer::analyze(&file).expect("analyzer error")
     }
 
