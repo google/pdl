@@ -4,7 +4,23 @@ Rust Generated Code Guide
 Usage
 -----
 
-Example invocation:
+The crate `pdl_derive` lets developers embed their grammar in a source module
+using the `pdl` proc_macro attribute. Example usage:
+
+.. sourcecode:: rust
+
+        use pdl_derive::pdl
+
+        #[pdl("my-protocol.pdl")]
+        mod my_protocol {
+        }
+
+The `pdl` proc_macro attribute must be attached to a module declaration.
+`pdl` preserves the original name, attributes, and items of the associated
+module.
+
+The backend can also be pre-generated from the `pdlc` tool,
+and compiled as source. Example invocation:
 
 .. sourcecode:: bash
 
