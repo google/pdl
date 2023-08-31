@@ -61,13 +61,13 @@ enum MarkerType : 8 {
 
 struct Marker {
     _fixed_ = 0xff : 8,
-    type: MarkerType,
+    type : MarkerType,
     _payload_,
 }
 
 struct Segment: Marker {
-    _size_(_payload_): 16,
-    _payload_ [+2],
+    _size_(_payload_) : 16,
+    _payload_ : [+2],
 }
 
 struct StartOfImage : Marker(type = SOI) {}
