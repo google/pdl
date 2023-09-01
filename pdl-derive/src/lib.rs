@@ -22,13 +22,10 @@ use syn::parse_macro_input;
 fn pdl_proc_macro(path: syn::LitStr, input: syn::ItemMod) -> TokenStream {
     // Locate the source grammar file.
     let root = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
-    let Some(relative_path) =
-        [Path::new(&root).join(path.value()), Path::new(&root).join("src").join(path.value())]
-            .into_iter()
-            .find(|path| path.exists())
-    else {
+    let relative_path = Path::new(&root).join(path.value());
+    if !relative_path.exists() {
         return syn::Error::new(path.span(), "error: unable to find file").to_compile_error();
-    };
+    }
 
     // Load and parse the grammar.
     let mut sources = pdl_compiler::ast::SourceDatabase::new();
