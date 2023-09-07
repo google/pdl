@@ -1,8 +1,8 @@
 [package]
-name = "pdl-derive"
+name = "pdl-runtime"
 version = "0.1.7"
 edition = "2021"
-description = "PDL's derive macro"
+description = "PDL's runtime library"
 repository = "https://github.com/google/pdl/"
 license = "Apache-2.0"
 readme = "../README.md"
@@ -12,21 +12,8 @@ authors = [
     "David de Jesus Duarte <licorne@google.com>",
     "Martin Geisler <mgeisler@google.com>"
 ]
-exclude = ["editors/*"]
 categories = ["parsing"]
 
-[lib]
-name = "pdl_derive"
-proc-macro = true
-
 [dependencies]
-codespan-reporting = "0.11.1"
-pdl-compiler = {path = "../pdl-compiler", version = "0.1.7"}
-proc-macro2 = "1.0.66"
-quote = "1.0.33"
-syn = {version = "2.0.29", features = ["full"]}
-termcolor = "1.2.0"
-
-[dev-dependencies]
-pdl-runtime = {path = "../pdl-runtime", version = "0.1.7"}
 bytes = "1.4.0"
+thiserror = "1.0.47"
