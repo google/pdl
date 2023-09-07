@@ -22,6 +22,8 @@ fn test_pcap() {
     mod pcap {}
 
     use pcap::*;
+    use pdl_runtime::Packet;
+
     let pcap_file = PcapFileBuilder {
         header: PcapHeader {
             version_major: 1,

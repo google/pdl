@@ -9,7 +9,8 @@ using the `pdl` proc_macro attribute. Example usage:
 
 .. sourcecode:: rust
 
-        use pdl_derive::pdl
+        use pdl_derive::pdl;
+        use pdl_runtime::*;
 
         #[pdl("my-protocol.pdl")]
         mod my_protocol {
@@ -32,8 +33,8 @@ Language bindings
 This section contains the generated rust bindings for language constructs that
 are stabilized.
 
-Preamble
-^^^^^^^^
+Runtime
+^^^^^^^
 
 Private prevents users from creating arbitrary scalar values in situations where
 the value needs to be validated. Users can freely deref the value, but only the
