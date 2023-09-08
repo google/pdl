@@ -154,20 +154,20 @@ pub trait ChunkWriter: Writer {
   }
 }
 
+/// TODO: doc
 pub trait Endianness: Copy {}
 
+/// TODO: doc
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct NativeEndian;
 
+/// TODO: doc
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct LittleEndian;
 
+/// TODO: doc
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct BigEndian;
-
-impl Endianness for NativeEndian {}
-impl Endianness for LittleEndian {}
-impl Endianness for BigEndian {}
 
 /// `Array` is a flexible and efficient container for storing sequences of items.
 ///
@@ -246,7 +246,7 @@ pub enum ArrayItem<'a, T> {
 pub struct InsufficientBytesError;
 
 /// `InfallibleRw` is a wrapper around `read_from` and `write_into` operations that never fails.
-pub struct InfallibleRw<'rw, T> {
+struct InfallibleRw<'rw, T> {
   // Mutable a reference to a `Reader` or a `Writer`.
   inner: &'rw mut T,
 }
@@ -279,9 +279,11 @@ impl<'rw, R: Reader> InfallibleRw<'rw, R> {
     P::read_from(&mut Self { inner: rd }).unwrap()
   }
 
+  /// # Safety
+  /// The caller is responsible for doing data validation prior to this call.
   #[inline(always)]
   #[cfg(feature = "unsafe")]
-  pub unsafe fn unpack<P: Packed>(rd: &'rw mut R) -> P {
+  unsafe fn unpack<P: Packed>(rd: &'rw mut R) -> P {
     match P::read_from(&mut Self { inner: rd }) {
       Ok(p) => p,
       _ => unreachable__(),
@@ -311,9 +313,11 @@ impl<'rw, W: Writer> InfallibleRw<'rw, W> {
     p.write_into(&mut Self { inner: wr }).unwrap()
   }
 
+  /// # Safety
+  /// The caller is responsible for doing data validation prior to this call.
   #[inline(always)]
   #[cfg(feature = "unsafe")]
-  pub unsafe fn pack(wr: &'rw mut W, p: &impl Packed) -> usize {
+  unsafe fn pack(wr: &'rw mut W, p: &impl Packed) -> usize {
     match p.write_into(&mut Self { inner: wr }) {
       Some(n) => n,
       _ => unreachable__(),
@@ -446,13 +450,6 @@ macro_rules! impl_scalar {
       }
     }
 
-    impl<E: Endianness> Into<$typ> for $int<$N, E> {
-      #[inline(always)]
-      fn into(self) -> $typ {
-        self.into_inner()
-      }
-    }
-
     impl<E: Endianness> fmt::Display for $int<$N, E> {
       #[inline(always)]
       fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -528,6 +525,10 @@ macro_rules! impl_scalars {
 }
 
 impl_scalars!(impl Packed for [i16, u16, i32, u32, i64, u64, i128, u128, f32, f64, usize, isize]);
+
+impl Endianness for NativeEndian {}
+impl Endianness for LittleEndian {}
+impl Endianness for BigEndian {}
 
 impl Packed for u8 {
   type Error = InsufficientBytesError;
@@ -802,6 +803,16 @@ impl<'a, T: Packed> Array<'a, T> {
       ArrayImpl::Owned { items, .. } => items.len(),
     }
   }
+
+  /// TODO: doc
+  pub fn is_empty(&self) -> bool {
+    match &self.inner {
+      &ArrayImpl::Lazy { len, .. } => len == 0,
+      &ArrayImpl::Borrowed { items, .. } => items.is_empty(),
+      #[cfg(feature = "alloc")]
+      ArrayImpl::Owned { items, .. } => items.is_empty(),
+    }
+  }
 }
 
 /// `ArrayImpl` is the internal representation of an `Array`.
@@ -904,7 +915,7 @@ impl<T> Deref for ArrayItem<'_, T> {
   fn deref(&self) -> &Self::Target {
     match self {
       ArrayItem::Borrowed(item) => item,
-      ArrayItem::Owned(item) => &item,
+      ArrayItem::Owned(item) => item,
     }
   }
 }
