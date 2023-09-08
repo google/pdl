@@ -29,7 +29,7 @@ use core::{convert::Infallible, fmt, marker::PhantomData, mem, ops::Deref, slice
 /// (ie. unpacked from bytes) could potentially return.
 /// It must implement the `From<InsufficientBytesError>` as deserialization error could be
 /// either insufficient available bytes or invalid data, the later being implementation defined.
-pub trait Packed<'a>: Sized {
+pub trait Packed: Sized {
   /// Defines the associated error type that can be returned when attempting
   /// to unpack this type.
   type Error: fmt::Debug;
@@ -41,7 +41,7 @@ pub trait Packed<'a>: Sized {
   /// that the operation succeeded and includes the created `Packed` instance.
   /// The `Err` variant indicates that the operation failed, and includes an error of
   /// the associated type `Self::Error`.
-  fn read_from<R: Reader<'a>>(rd: &mut R) -> Result<Self, Self::Error>;
+  fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error>;
 
   /// Attempts to write this type into a buffer, returning an error if there's not enough
   /// space in the buffer when the writer if fallible.
@@ -72,9 +72,9 @@ pub trait Packed<'a>: Sized {
 /// The `Unpacker` trait provides a high-level interface to unpack data from a `Reader`.
 /// The `unpack` method should always be preferred over the naive `Packed::read_from` as
 /// it generate far more optimized code specific to each writer.
-pub trait Unpacker<'a>: Reader<'a> {
+pub trait Unpacker: Reader {
   /// Unpack a `Packed` struct.
-  fn unpack<P: Packed<'a>>(&mut self) -> Result<P, P::Error> {
+  fn unpack<P: Packed>(&mut self) -> Result<P, P::Error> {
     // default naive implementation.
     self.read_from()
   }
@@ -83,9 +83,9 @@ pub trait Unpacker<'a>: Reader<'a> {
 /// The `Packer` trait provides a high-level interface to pack data into a `Writer`.
 /// The `pack` method should always be preferred over the naive `Packed::write_into` as
 /// it generate far more optimized code specific to each reader.
-pub trait Packer<'a>: Writer {
+pub trait Packer: Writer {
   /// Pack a `Packed` struct.
-  fn pack(&mut self, p: &impl Packed<'a>) -> Option<usize> {
+  fn pack(&mut self, p: &impl Packed) -> Option<usize> {
     // default naive implementation.
     p.write_into(self)
   }
@@ -93,18 +93,18 @@ pub trait Packer<'a>: Writer {
 
 /// The `Reader` trait provides a low-level interface to read a certain amount of bytes from
 /// different data-structures.
-pub trait Reader<'a>: Sized {
+pub trait Reader: Sized {
   /// Read `n` bytes. Return a `InsufficientBytesError` when there are not enough bytes to
   /// read from.
-  fn read_chunk(&mut self, n: usize) -> Option<&'a [u8]>;
+  fn read_chunk<'a>(&mut self, n: usize) -> Option<&'a [u8]>;
 
   /// Read all remaining bytes from this reader. The result can be empty.
-  fn read_all(&mut self) -> &'a [u8];
+  fn read_all<'a>(&mut self) -> &'a [u8];
 
   /// Read a compile-time known amount of `N` bytes. Return a `InsufficientBytesError` when
   /// there are not enough bytes to read from.
   #[inline(always)]
-  fn read_fixed<const N: usize>(&mut self) -> Option<&'a [u8; N]> {
+  fn read_fixed<'a, const N: usize>(&mut self) -> Option<&'a [u8; N]> {
     // default implementation.
     #[cfg(any(debug_assertions, not(feature = "unsafe")))]
     return self.read_chunk(N)?.try_into().ok();
@@ -118,7 +118,7 @@ pub trait Reader<'a>: Sized {
 
   /// Convenient wrapper to read a `Packed` structure from this reader.
   #[inline(always)]
-  fn read_from<P: Packed<'a>>(&mut self) -> Result<P, P::Error> {
+  fn read_from<P: Packed>(&mut self) -> Result<P, P::Error> {
     P::read_from(self)
   }
 }
@@ -306,11 +306,11 @@ macro_rules! impl_scalar {
     impl_scalar!(impl Packed for $int<$N>);
   };
   (impl Packed for $int:ident <$N:tt, $E:ident>) => {
-    impl<'a> Packed<'a> for $int<$N, $E> {
+    impl Packed for $int<$N, $E> {
       type Error = InsufficientBytesError;
 
       #[inline(always)]
-      fn read_from<R: Reader<'a>>(rd: &mut R) -> Result<Self, Self::Error> {
+      fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error> {
         Ok(Self::from_bytes(*rd.read_fixed().ok_or(InsufficientBytesError)?))
       }
 
@@ -356,10 +356,10 @@ impl_scalar!();
 /// #[derive(Debug, Clone, Eq, PartialEq)]
 /// struct Color { r: u8, g: u8, b: u8, }
 ///
-/// impl<'a> Packed<'a> for Color {
+/// impl Packed for Color {
 ///   type Error = InsufficientBytesError;
 ///
-///   fn read_from<R: Reader<'a>>(rd: &mut R) -> Result<Self, Self::Error> {
+///   fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error> {
 ///     Ok(Self { r: rd.read_from()?, g: rd.read_from()?, b: rd.read_from()? })
 ///   }
 ///
@@ -437,16 +437,16 @@ fn unreachable__() -> ! {
   };
 }
 
-impl<'rw, 'a, R: Reader<'a>> InfallibleRw<'rw, R> {
+impl<'rw, R: Reader> InfallibleRw<'rw, R> {
   #[inline(always)]
   #[cfg(not(feature = "unsafe"))]
-  pub fn unpack<P: Packed<'a>>(rd: &'rw mut R) -> P {
+  pub fn unpack<P: Packed>(rd: &'rw mut R) -> P {
     P::read_from(&mut Self { inner: rd }).unwrap()
   }
 
   #[inline(always)]
   #[cfg(feature = "unsafe")]
-  pub unsafe fn unpack<P: Packed<'a>>(rd: &'rw mut R) -> P {
+  pub unsafe fn unpack<P: Packed>(rd: &'rw mut R) -> P {
     match P::read_from(&mut Self { inner: rd }) {
       Ok(p) => p,
       _ => unreachable__(),
@@ -454,9 +454,9 @@ impl<'rw, 'a, R: Reader<'a>> InfallibleRw<'rw, R> {
   }
 }
 
-impl<'rw, 'a, R: Reader<'a>> Reader<'a> for InfallibleRw<'rw, R> {
+impl<'rw, R: Reader> Reader for InfallibleRw<'rw, R> {
   #[inline(always)]
-  fn read_chunk(&mut self, n: usize) -> Option<&'a [u8]> {
+  fn read_chunk<'a>(&mut self, n: usize) -> Option<&'a [u8]> {
     match self.inner.read_chunk(n) {
       Some(chunk) => Some(chunk),
       _ => unreachable__(),
@@ -464,21 +464,21 @@ impl<'rw, 'a, R: Reader<'a>> Reader<'a> for InfallibleRw<'rw, R> {
   }
 
   #[inline(always)]
-  fn read_all(&mut self) -> &'a [u8] {
+  fn read_all<'a>(&mut self) -> &'a [u8] {
     self.inner.read_all()
   }
 }
 
-impl<'rw, 'a, W: Writer> InfallibleRw<'rw, W> {
+impl<'rw, W: Writer> InfallibleRw<'rw, W> {
   #[inline(always)]
   #[cfg(not(feature = "unsafe"))]
-  pub fn pack(wr: &'rw mut W, p: &impl Packed<'a>) -> usize {
+  pub fn pack(wr: &'rw mut W, p: &impl Packed) -> usize {
     p.write_into(&mut Self { inner: wr }).unwrap()
   }
 
   #[inline(always)]
   #[cfg(feature = "unsafe")]
-  pub unsafe fn pack(wr: &'rw mut W, p: &impl Packed<'a>) -> usize {
+  pub unsafe fn pack(wr: &'rw mut W, p: &impl Packed) -> usize {
     match p.write_into(&mut Self { inner: wr }) {
       Some(n) => n,
       _ => unreachable__(),
@@ -506,11 +506,11 @@ macro_rules! impl_scalars {
     impl_scalars!(impl Packed for $typ [$typ::from_ne_bytes, to_ne_bytes]);
   };
   (impl Packed for $typ:ident $(<$generic:tt>)? [$from:path, $into:ident]) => {
-    impl<'a> Packed<'a> for $typ $(<$generic>)? {
+    impl Packed for $typ $(<$generic>)? {
       type Error = InsufficientBytesError;
 
       #[inline(always)]
-      fn read_from<R: Reader<'a>>(rd: &mut R) -> Result<Self, Self::Error> {
+      fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error> {
         Ok($from(*rd.read_fixed().ok_or(InsufficientBytesError)?).into())
       }
 
@@ -529,11 +529,11 @@ macro_rules! impl_scalars {
 
 impl_scalars!(impl Packed for [i16, u16, i32, u32, i64, u64, i128, u128, f32, f64, usize, isize]);
 
-impl<'a> Packed<'a> for u8 {
+impl Packed for u8 {
   type Error = InsufficientBytesError;
 
   #[inline(always)]
-  fn read_from<R: Reader<'a>>(rd: &mut R) -> Result<Self, Self::Error> {
+  fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error> {
     Ok(rd.read_fixed::<1>().ok_or(InsufficientBytesError)?[0])
   }
 
@@ -548,11 +548,11 @@ impl<'a> Packed<'a> for u8 {
   }
 }
 
-impl<'a> Packed<'a> for &'a [u8] {
+impl Packed for &[u8] {
   type Error = Infallible;
 
   #[inline(always)]
-  fn read_from<R: Reader<'a>>(rd: &mut R) -> Result<Self, Self::Error> {
+  fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error> {
     Ok(rd.read_all())
   }
 
@@ -567,9 +567,9 @@ impl<'a> Packed<'a> for &'a [u8] {
   }
 }
 
-impl<'a, R: Reader<'a> + Copy> Unpacker<'a> for R {
+impl<R: Reader + Copy> Unpacker for R {
   #[inline(always)]
-  fn unpack<P: Packed<'a>>(&mut self) -> Result<P, P::Error> {
+  fn unpack<P: Packed>(&mut self) -> Result<P, P::Error> {
     let _ = P::read_from(&mut self.clone())?;
     #[cfg(not(feature = "unsafe"))]
     return Ok(InfallibleRw::unpack(self));
@@ -579,9 +579,9 @@ impl<'a, R: Reader<'a> + Copy> Unpacker<'a> for R {
   }
 }
 
-impl<'a> Reader<'a> for &'a [u8] {
+impl Reader for &[u8] {
   #[inline(always)]
-  fn read_chunk(&mut self, n: usize) -> Option<&'a [u8]> {
+  fn read_chunk<'a>(&mut self, n: usize) -> Option<&'a [u8]> {
     let len = self.len();
     if n > len {
       return None;
@@ -599,7 +599,7 @@ impl<'a> Reader<'a> for &'a [u8] {
   }
 
   #[inline(always)]
-  fn read_all(&mut self) -> &'a [u8] {
+  fn read_all<'a>(&mut self) -> &'a [u8] {
     let len = self.len();
     #[cfg(not(feature = "unsafe"))]
     let (chunk, rest) = self.split_at(len);
@@ -697,9 +697,9 @@ impl ChunkWriter for Vec<u8> {
   }
 }
 
-impl<'a, W: ChunkWriter> Packer<'a> for W {
+impl<W: ChunkWriter> Packer for W {
   #[inline(always)]
-  fn pack(&mut self, p: &impl Packed<'a>) -> Option<usize> {
+  fn pack(&mut self, p: &impl Packed) -> Option<usize> {
     let mut chunk = self.write_chunk(p.bytes())?;
     #[cfg(not(feature = "unsafe"))]
     return Some(InfallibleRw::pack(&mut chunk, p));
@@ -711,7 +711,7 @@ impl<'a, W: ChunkWriter> Packer<'a> for W {
 
 // `Array` impls -----------------------------------------------------------------------------------
 
-impl<'a, T: Packed<'a>> Array<'a, T> {
+impl<'a, T: Packed> Array<'a, T> {
   /// Returns an iterator over the `Array`.
   ///
   /// This method will provide an iterator depending on how the `Array` is constructed, which can
@@ -844,7 +844,7 @@ enum ArrayImpl<'a, T> {
 }
 
 // Implementing helper functions for the Array struct.
-impl<'a, T: Packed<'a>> Array<'a, T> {
+impl<'a, T: Packed> Array<'a, T> {
   /// Constructs an Array from raw bytes, meant for lazy loading.
   #[inline(always)]
   fn lazy(len: usize, bytes: &'a [u8]) -> Self {
@@ -867,7 +867,7 @@ impl<'a, T: Packed<'a>> Array<'a, T> {
   }
 }
 
-impl<'a, T: Packed<'a>> ArrayImpl<'a, T> {
+impl<'a, T: Packed> ArrayImpl<'a, T> {
   /// Constructs an Array from raw bytes, meant for lazy loading.
   #[inline(always)]
   fn lazy(len: usize, bytes: &'a [u8]) -> Self {
@@ -897,7 +897,7 @@ impl<'a, T> From<ArrayImpl<'a, T>> for Array<'a, T> {
   }
 }
 
-impl<'a, T> Deref for ArrayItem<'a, T> {
+impl<T> Deref for ArrayItem<'_, T> {
   type Target = T;
 
   #[inline(always)]
@@ -910,7 +910,7 @@ impl<'a, T> Deref for ArrayItem<'a, T> {
 }
 
 // Implementing Clone for Array struct.
-impl<'a, T: Packed<'a> + Clone> Clone for Array<'a, T> {
+impl<T: Packed + Clone> Clone for Array<'_, T> {
   fn clone(&self) -> Self {
     // Depending on the Array type (Lazy, Borrowed, Owned), different cloning
     // mechanisms are applied.
@@ -925,11 +925,11 @@ impl<'a, T: Packed<'a> + Clone> Clone for Array<'a, T> {
 
 // Implementing `Packed` trait for Array struct. This trait encapsulates operations to
 // serialize/deserialize the struct.
-impl<'a, T: Packed<'a>> Packed<'a> for Array<'a, T> {
+impl<T: Packed> Packed for Array<'_, T> {
   type Error = T::Error;
 
   #[inline(always)]
-  fn read_from<R: Reader<'a>>(rd: &mut R) -> Result<Self, Self::Error> {
+  fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error> {
     let bytes = rd.read_all();
     let (mut it, mut len) = (bytes, 0);
     while !it.is_empty() {
@@ -965,7 +965,7 @@ pub enum ArrayIter<'s, 'a, T> {
 }
 
 // Implementing the Deref trait, which allows instances of this type to be treated as a slice.
-impl<'a> Deref for Array<'a, u8> {
+impl Deref for Array<'_, u8> {
   type Target = [u8];
 
   // Implementing the deref method to return the byte slice.
@@ -983,40 +983,40 @@ impl<'a> Deref for Array<'a, u8> {
 // Various From implementations allow for creating an Array from different types.
 // These implementations are self-explanatory and follow a similar pattern.
 
-impl<'a, T: Packed<'a>> From<&'a [T]> for Array<'a, T> {
+impl<'a, T: Packed> From<&'a [T]> for Array<'a, T> {
   fn from(items: &'a [T]) -> Array<'a, T> {
     Self::borrowed(items)
   }
 }
 
-impl<T: Packed<'static>, const N: usize> From<&'static [T; N]> for Array<'static, T> {
+impl<T: Packed, const N: usize> From<&'static [T; N]> for Array<'static, T> {
   fn from(items: &'static [T; N]) -> Array<'static, T> {
     Self::from(items.as_slice())
   }
 }
 
 #[cfg(feature = "alloc")]
-impl<T: Packed<'static>> From<Box<[T]>> for Array<'static, T> {
+impl<T: Packed> From<Box<[T]>> for Array<'static, T> {
   fn from(items: Box<[T]>) -> Array<'static, T> {
     Self::owned(items)
   }
 }
 
 #[cfg(feature = "alloc")]
-impl<T: Packed<'static>> From<Vec<T>> for Array<'static, T> {
+impl<T: Packed> From<Vec<T>> for Array<'static, T> {
   fn from(items: Vec<T>) -> Array<'static, T> {
     Self::from(items.into_boxed_slice())
   }
 }
 
 #[cfg(feature = "alloc")]
-impl<T: Packed<'static>, const N: usize> From<[T; N]> for Array<'static, T> {
+impl<T: Packed, const N: usize> From<[T; N]> for Array<'static, T> {
   fn from(items: [T; N]) -> Array<'static, T> {
     Self::owned(Box::new(items))
   }
 }
 
-impl<'s, 'a: 's, T: Packed<'a>> Iterator for ArrayIter<'s, 'a, T> {
+impl<'s, T: Packed> Iterator for ArrayIter<'s, '_, T> {
   type Item = ArrayItem<'s, T>;
   fn next(&mut self) -> Option<Self::Item> {
     match self {
@@ -1036,13 +1036,13 @@ impl<'s, 'a: 's, T: Packed<'a>> Iterator for ArrayIter<'s, 'a, T> {
 
 // Implementing Debug trait for Array, which is useful for debugging and printing the Array.
 
-impl<'a, T: Packed<'a> + fmt::Debug> fmt::Debug for ArrayItem<'a, T> {
+impl<T: Packed + fmt::Debug> fmt::Debug for ArrayItem<'_, T> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     self.deref().fmt(f)
   }
 }
 
-impl<'a, T: Packed<'a> + fmt::Debug> fmt::Debug for Array<'a, T> {
+impl<T: Packed + fmt::Debug> fmt::Debug for Array<'_, T> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     // Array is printed as a list of debug representations of its items.
     self.iter().fold(&mut f.debug_list(), |d, item| d.entry(item.deref())).finish()
@@ -1051,11 +1051,11 @@ impl<'a, T: Packed<'a> + fmt::Debug> fmt::Debug for Array<'a, T> {
 
 // Implementing PartialEq and Eq traits to allow for Array comparison.
 
-impl<'a, T: Packed<'a> + PartialEq> PartialEq for Array<'a, T> {
+impl<T: Packed + PartialEq> PartialEq for Array<'_, T> {
   fn eq(&self, other: &Self) -> bool {
     // Arrays are considered equal if all their items are equal.
     self.iter().zip(other.iter()).all(|(a, b)| a.deref() == b.deref())
   }
 }
 
-impl<'a, T: Packed<'a> + Eq> Eq for Array<'a, T> {}
+impl<T: Packed + Eq> Eq for Array<'_, T> {}

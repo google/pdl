@@ -22,10 +22,10 @@ struct Dog<'raw> {
   paws: Array<'raw, Paw<'raw>>,
 }
 
-impl<'a> Packed<'a> for Color {
+impl Packed for Color {
   type Error = InsufficientBytesError;
 
-  fn read_from<R: Reader<'a>>(rd: &mut R) -> Result<Self, Self::Error> {
+  fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error> {
     Ok(Self { r: rd.read_from()?, g: rd.read_from()?, b: rd.read_from()? })
   }
   fn write_into<W: Writer>(&self, wr: &mut W) -> Option<usize> {
@@ -33,10 +33,10 @@ impl<'a> Packed<'a> for Color {
   }
 }
 
-impl<'a> Packed<'a> for Paw<'a> {
+impl<'raw> Packed for Paw<'raw> {
   type Error = InsufficientBytesError;
 
-  fn read_from<R: Reader<'a>>(rd: &mut R) -> Result<Self, Self::Error> {
+  fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error> {
     Ok(Self {
       colors: {
         let bytes: u16 = rd.read_from()?;
@@ -51,10 +51,10 @@ impl<'a> Packed<'a> for Paw<'a> {
   }
 }
 
-impl<'a> Packed<'a> for Dog<'a> {
+impl<'raw> Packed for Dog<'raw> {
   type Error = InsufficientBytesError;
 
-  fn read_from<R: Reader<'a>>(rd: &mut R) -> Result<Self, Self::Error> {
+  fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error> {
     Ok(Self {
       age: rd.read_from()?,
       weight: rd.read_from()?,
