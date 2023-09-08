@@ -11,12 +11,7 @@ mod test;
 
 /// The `upack` crate provides a way to pack and unpack protocol packets.
 /// This functionality is essential for network programming and other related tasks.
-use core::{
-  convert::Infallible,
-  fmt, mem,
-  ops::{Deref, DerefMut},
-  slice,
-};
+use core::{convert::Infallible, fmt, marker::PhantomData, mem, ops::Deref, slice};
 
 /// The `Packed` trait provides a way to define how types can be serialized
 /// (packed into bytes) and deserialized (unpacked from bytes). This trait lies at
@@ -159,17 +154,185 @@ pub trait ChunkWriter: Writer {
   }
 }
 
-/// Wrapper around little-endian numbers.
-#[repr(transparent)]
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct le<T: Sized>(pub(crate) T);
+pub trait Endianness: Copy {}
 
-/// Wrapper around big-endian numbers.
-#[repr(transparent)]
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct be<T: Sized>(pub(crate) T);
+pub struct NativeEndian;
+
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct LittleEndian;
+
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct BigEndian;
+
+impl Endianness for NativeEndian {}
+impl Endianness for LittleEndian {}
+impl Endianness for BigEndian {}
+
+macro_rules! impl_scalar {
+  () => {
+    impl_scalar!(impl Float);
+    impl_scalar!(impl Unsigned for u16, u32, u64, u128);
+    impl_scalar!(impl Signed   for u16, u32, u64, u128);
+  };
+  (impl Float) => {
+    impl_scalar!(struct Float);
+    impl_scalar!(impl Float<4, f32>, |x| x.to_ne_bytes(), |x| f32::from_ne_bytes(x));
+    impl_scalar!(impl Float<8, f64>, |x| x.to_ne_bytes(), |x| f64::from_ne_bytes(x));
+  };
+  (impl $int:ident for $i2:ident, $i4:ident, $i8:ident, $i16:ident) => {
+    impl_scalar!(struct $int);
+    impl_scalar!(impl $int<2,  $i2>,  const |x| x.to_ne_bytes(), const |x| $i2::from_ne_bytes(x));
+    impl_scalar!(impl $int<4,  $i4>,  const |x| x.to_ne_bytes(), const |x| $i4::from_ne_bytes(x));
+    impl_scalar!(impl $int<8,  $i8>,  const |x| x.to_ne_bytes(), const |x| $i8::from_ne_bytes(x));
+    impl_scalar!(impl $int<16, $i16>, const |x| x.to_ne_bytes(), const |x| $i16::from_ne_bytes(x));
+    impl_scalar!(
+      impl $int<3, $i4>,
+      const |x| {
+        #[cfg(target_endian = "little")]
+        let [a, b, c, _] = x.to_ne_bytes();
+        #[cfg(target_endian = "big")]
+        let [_, a, b, c] = x.to_ne_bytes();
+        [a, b, c]
+      },
+      const |x| {
+        let [a, b, c] = x;
+        #[cfg(target_endian = "little")]
+        let x = [a, b, c, 0];
+        #[cfg(target_endian = "big")]
+        let x = [0, a, b, c];
+        $i4::from_ne_bytes(x)
+      }
+    );
+  };
+  (struct $name:ident) => {
+    #[repr(transparent)]
+    #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+    pub struct $name<const BYTES: usize, E = NativeEndian> {
+      native: [u8; BYTES],
+      endianness: PhantomData<*const E>,
+    }
+
+    impl<const N: usize> $name<N, NativeEndian> {
+      #[inline(always)]
+      pub fn from_bytes(value: [u8; N]) -> Self {
+        Self { native: value, endianness: PhantomData }
+      }
+
+      #[inline(always)]
+      pub fn into_bytes(self) -> [u8; N] {
+        self.native
+      }
+    }
+
+    impl<const N: usize> $name<N, LittleEndian> {
+      #[inline(always)]
+      #[allow(unused_mut)]
+      pub fn from_bytes(mut value: [u8; N]) -> Self {
+        #[cfg(not(target_endian = "little"))]
+        value.reverse();
+        Self { native: value, endianness: PhantomData }
+      }
+
+      #[inline(always)]
+      #[allow(unused_mut)]
+      pub fn into_bytes(mut self) -> [u8; N] {
+        #[cfg(not(target_endian = "little"))]
+        self.native.reverse();
+        self.native
+      }
+    }
+
+    impl<const N: usize> $name<N, BigEndian> {
+      #[inline(always)]
+      #[allow(unused_mut)]
+      pub fn from_bytes(mut value: [u8; N]) -> Self {
+        #[cfg(not(target_endian = "big"))]
+        value.reverse();
+        Self { native: value, endianness: PhantomData }
+      }
+
+      #[inline(always)]
+      #[allow(unused_mut)]
+      pub fn into_bytes(mut self) -> [u8; N] {
+        #[cfg(not(target_endian = "big"))]
+        self.native.reverse();
+        self.native
+      }
+    }
+  };
+  (impl $int:ident <$N:tt, $typ:ident>, $($fc:ident)? |$f:ident| $from:expr, $($ic:ident)? |$i:ident| $into:expr) => {
+    impl<E: Endianness> $int<$N, E> {
+      #[inline(always)]
+      pub $($fc)? fn new($f: $typ) -> Self {
+        Self { native: $from, endianness: PhantomData }
+      }
+
+      #[inline(always)]
+      pub $($ic)? fn into_inner(self) -> $typ {
+        let $i = self.native;
+        $into
+      }
+    }
+
+    impl<E: Endianness> From<$typ> for $int<$N, E> {
+      #[inline(always)]
+      fn from(value: $typ) -> Self {
+        Self::new(value)
+      }
+    }
+
+    impl<E: Endianness> Into<$typ> for $int<$N, E> {
+      #[inline(always)]
+      fn into(self) -> $typ {
+        self.into_inner()
+      }
+    }
+
+    impl<E: Endianness> fmt::Display for $int<$N, E> {
+      #[inline(always)]
+      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.into_inner().fmt(f)
+      }
+    }
+
+    impl<E: Endianness> fmt::Debug for $int<$N, E> {
+      #[inline(always)]
+      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.into_inner().fmt(f)
+      }
+    }
+
+    impl_scalar!(impl Packed for $int<$N>);
+  };
+  (impl Packed for $int:ident <$N:tt, $E:ident>) => {
+    impl<'a> Packed<'a> for $int<$N, $E> {
+      type Error = InsufficientBytesError;
+
+      #[inline(always)]
+      fn read_from<R: Reader<'a>>(rd: &mut R) -> Result<Self, Self::Error> {
+        Ok(Self::from_bytes(*rd.read_fixed().ok_or(InsufficientBytesError)?))
+      }
+
+      #[inline(always)]
+      fn write_into<W: Writer>(&self, wr: &mut W) -> Option<usize> {
+        wr.write(&self.into_bytes())
+      }
+
+      #[inline(always)]
+      fn bytes(&self) -> usize {
+        $N
+      }
+    }
+  };
+  (impl Packed for $typ:ident <$N:tt>) => {
+    impl_scalar!(impl Packed for $typ<$N, NativeEndian>);
+    impl_scalar!(impl Packed for $typ<$N, LittleEndian>);
+    impl_scalar!(impl Packed for $typ<$N, BigEndian>);
+  };
+}
+
+impl_scalar!();
 
 /// `Array` is a flexible and efficient container for storing sequences of items.
 ///
@@ -333,98 +496,6 @@ impl<'rw, W: Writer> Writer for InfallibleRw<'rw, W> {
   }
 }
 
-// little-endian's impls ---------------------------------------------------------------------------
-
-impl<T> le<T> {
-  #[inline(always)]
-  pub fn into_inner(self) -> T {
-    self.0
-  }
-}
-
-impl<T> From<T> for le<T> {
-  #[inline(always)]
-  fn from(value: T) -> Self {
-    Self(value)
-  }
-}
-
-impl<T> Deref for le<T> {
-  type Target = T;
-
-  #[inline(always)]
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl<T> DerefMut for le<T> {
-  #[inline(always)]
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
-  }
-}
-
-impl<T: fmt::Display> fmt::Display for le<T> {
-  #[inline(always)]
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    self.0.fmt(f)
-  }
-}
-
-impl<T: fmt::Debug> fmt::Debug for le<T> {
-  #[inline(always)]
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    self.0.fmt(f)
-  }
-}
-
-// big-endian's impls ------------------------------------------------------------------------------
-
-impl<T> be<T> {
-  #[inline(always)]
-  pub fn into_inner(self) -> T {
-    self.0
-  }
-}
-
-impl<T> From<T> for be<T> {
-  #[inline(always)]
-  fn from(value: T) -> Self {
-    Self(value)
-  }
-}
-
-impl<T> Deref for be<T> {
-  type Target = T;
-
-  #[inline(always)]
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl<T> DerefMut for be<T> {
-  #[inline(always)]
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
-  }
-}
-
-impl<T: fmt::Display> fmt::Display for be<T> {
-  #[inline(always)]
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    self.0.fmt(f)
-  }
-}
-
-impl<T: fmt::Debug> fmt::Debug for be<T> {
-  #[inline(always)]
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    self.0.fmt(f)
-  }
-}
-
 // scalar's impls ----------------------------------------------------------------------------------
 
 macro_rules! impl_scalars {
@@ -432,9 +503,7 @@ macro_rules! impl_scalars {
     $(impl_scalars!(impl Packed for $typ);)+
   };
   (impl Packed for $typ:ident) => {
-    impl_scalars!(impl Packed for    $typ  [$typ::from_ne_bytes, to_ne_bytes]);
-    impl_scalars!(impl Packed for le<$typ> [$typ::from_le_bytes, to_le_bytes]);
-    impl_scalars!(impl Packed for be<$typ> [$typ::from_be_bytes, to_be_bytes]);
+    impl_scalars!(impl Packed for $typ [$typ::from_ne_bytes, to_ne_bytes]);
   };
   (impl Packed for $typ:ident $(<$generic:tt>)? [$from:path, $into:ident]) => {
     impl<'a> Packed<'a> for $typ $(<$generic>)? {
@@ -653,11 +722,11 @@ impl<'a, T: Packed<'a>> Array<'a, T> {
   ///
   /// # Example
   /// ```
-  /// use upack::{le, Array, Packed, Unpacker};
+  /// use upack::{Unsigned, LittleEndian, Array, Packed, Unpacker};
   ///
   /// // 'Lazy' mode
   /// let lazy_arr = (&b"\x01\x00\x02\x00\x03\x00"[..])
-  ///   .unpack::<Array<'_, le<u16>>>()
+  ///   .unpack::<Array<'_, Unsigned<2, LittleEndian>>>()
   ///   .unwrap();
   /// assert_eq!(lazy_arr.len(), 3);
   /// for item in lazy_arr.iter() {
@@ -704,11 +773,11 @@ impl<'a, T: Packed<'a>> Array<'a, T> {
   ///
   /// # Example
   /// ```
-  /// use upack::{le, Array, Packed, Unpacker};
+  /// use upack::{Unsigned, LittleEndian, Array, Packed, Unpacker};
   ///
   /// // 'Lazy' mode
   /// let lazy_arr = (&b"\x01\x00\x02\x00\x03\x00"[..])
-  ///   .unpack::<Array<'_, le<u16>>>()
+  ///   .unpack::<Array<'_, Unsigned<2, LittleEndian>>>()
   ///   .unwrap();
   /// assert_eq!(lazy_arr.len(), 3);
   ///

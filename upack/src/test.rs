@@ -78,13 +78,13 @@ impl<'a> Packed<'a> for Dog<'a> {
 
 #[test]
 fn array_of_u16_le() {
-  let a: Array<'_, le<u16>> = Array::read_from(&mut [1, 0, 2, 0, 3, 0].as_slice()).unwrap();
+  let a: Array<'_, Unsigned<2, LittleEndian>> = Array::read_from(&mut [1, 0, 2, 0, 3, 0].as_slice()).unwrap();
   assert_eq!(a.iter().map(|x| x.into_inner()).sum::<u16>(), 6);
 }
 
 #[test]
 fn array_of_u16_be() {
-  let a: Array<'_, be<u16>> = Array::read_from(&mut [0, 1, 0, 2, 0, 3].as_slice()).unwrap();
+  let a: Array<'_, Unsigned<2, BigEndian>> = Array::read_from(&mut [0, 1, 0, 2, 0, 3].as_slice()).unwrap();
   assert_eq!(a.iter().map(|x| x.into_inner()).sum::<u16>(), 6);
 }
 
