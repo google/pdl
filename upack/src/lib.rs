@@ -169,6 +169,170 @@ impl Endianness for NativeEndian {}
 impl Endianness for LittleEndian {}
 impl Endianness for BigEndian {}
 
+/// `Array` is a flexible and efficient container for storing sequences of items.
+///
+/// The `Array` struct can be used to store items in one of three modes: Lazy, Borrowed, or Owned.
+/// The item type must implement the `Packetable` trait, allowing for conversion between bytes and
+/// the item type.
+///
+/// In 'Lazy' mode, the `Array` is constructed from a byte slice, and items are converted from bytes
+/// on demand. This is efficient when you have large sequences and don't want to convert all items at once.
+///
+/// In 'Borrowed' mode, the `Array` holds a reference to an existing array of items. This is useful
+/// when you want to avoid data copying.
+///
+/// In 'Owned' mode, the `Array` owns its items. This is useful when you need to modify the items, or
+/// when the original data is not available for the lifetime of the `Array`.
+///
+/// # Example
+/// ```
+/// use upack::{Array, InsufficientBytesError, Packed, Reader, Writer, Unpacker};
+///
+/// #[derive(Debug, Clone, Eq, PartialEq)]
+/// struct Color { r: u8, g: u8, b: u8, }
+///
+/// impl Packed for Color {
+///   type Error = InsufficientBytesError;
+///
+///   fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error> {
+///     Ok(Self { r: rd.read_from()?, g: rd.read_from()?, b: rd.read_from()? })
+///   }
+///
+///   fn write_into<W: Writer>(&self, wr: &mut W) -> Option<usize> {
+///     Some(self.r.write_into(wr)? + self.g.write_into(wr)? + self.b.write_into(wr)?)
+///   }
+/// }
+///
+/// // 'Lazy' mode
+/// let lazy_arr = (&b"\x01\x02\x03\x04\x04\x06"[..]).unpack::<Array<'_, Color>>().unwrap();
+/// assert_eq!(lazy_arr.len(), 2);
+/// for item in lazy_arr.iter() {
+///   println!("{:?}", item);
+/// }
+/// // Color { r: 0, g: 1, b: 2 }
+/// // Color { r: 4, g: 5, b: 6 }
+///
+/// // 'Borrowed' mode
+/// const COLORS: [Color; 2] = [
+///   Color { r: 0, g: 1, b: 2 },
+///   Color { r: 4, g: 5, b: 6 },
+/// ];
+///
+/// let borrowed_arr = Array::from(&COLORS);
+/// assert_eq!(borrowed_arr.len(), 2);
+/// for item in borrowed_arr.iter() {
+///   println!("{:?}", item);
+/// }
+/// // Color { r: 0, g: 1, b: 2 }
+/// // Color { r: 4, g: 5, b: 6 }
+/// ```
+///
+/// `Array` provides several methods, like `iter()` and `len()`, for manipulating and accessing its items.
+/// Also, as `Array` implements `Packetable`, it can be converted to and from bytes.
+/// ```
+pub struct Array<'a, T> {
+  inner: ArrayImpl<'a, T>,
+}
+
+pub enum ArrayItem<'a, T> {
+  Borrowed(&'a T),
+  Owned(T),
+}
+
+/// General crate error type which represents the following cases:
+/// - When there are not enough bytes to read from a buffer.
+/// - When there are not enough space in a buffer to write into.
+#[derive(Eq, PartialEq)]
+pub struct InsufficientBytesError;
+
+/// `InfallibleRw` is a wrapper around `read_from` and `write_into` operations that never fails.
+pub struct InfallibleRw<'rw, T> {
+  // Mutable a reference to a `Reader` or a `Writer`.
+  inner: &'rw mut T,
+}
+
+// `InsufficientBytesError`'s impls ----------------------------------------------------------------
+
+impl fmt::Debug for InsufficientBytesError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str("insufficient bytes")
+  }
+}
+
+// `InfallibleRw`'s impls --------------------------------------------------------------------------
+
+#[inline(always)]
+fn unreachable__() -> ! {
+  #[cfg(any(debug_assertions, not(feature = "unsafe")))]
+  unreachable!();
+  #[cfg(all(not(debug_assertions), feature = "unsafe"))]
+  // SAFETY: None, the caller is responsible for safety.
+  unsafe {
+    core::hint::unreachable_unchecked()
+  };
+}
+
+impl<'rw, R: Reader> InfallibleRw<'rw, R> {
+  #[inline(always)]
+  #[cfg(not(feature = "unsafe"))]
+  pub fn unpack<P: Packed>(rd: &'rw mut R) -> P {
+    P::read_from(&mut Self { inner: rd }).unwrap()
+  }
+
+  #[inline(always)]
+  #[cfg(feature = "unsafe")]
+  pub unsafe fn unpack<P: Packed>(rd: &'rw mut R) -> P {
+    match P::read_from(&mut Self { inner: rd }) {
+      Ok(p) => p,
+      _ => unreachable__(),
+    }
+  }
+}
+
+impl<'rw, R: Reader> Reader for InfallibleRw<'rw, R> {
+  #[inline(always)]
+  fn read_chunk<'a>(&mut self, n: usize) -> Option<&'a [u8]> {
+    match self.inner.read_chunk(n) {
+      Some(chunk) => Some(chunk),
+      _ => unreachable__(),
+    }
+  }
+
+  #[inline(always)]
+  fn read_all<'a>(&mut self) -> &'a [u8] {
+    self.inner.read_all()
+  }
+}
+
+impl<'rw, W: Writer> InfallibleRw<'rw, W> {
+  #[inline(always)]
+  #[cfg(not(feature = "unsafe"))]
+  pub fn pack(wr: &'rw mut W, p: &impl Packed) -> usize {
+    p.write_into(&mut Self { inner: wr }).unwrap()
+  }
+
+  #[inline(always)]
+  #[cfg(feature = "unsafe")]
+  pub unsafe fn pack(wr: &'rw mut W, p: &impl Packed) -> usize {
+    match p.write_into(&mut Self { inner: wr }) {
+      Some(n) => n,
+      _ => unreachable__(),
+    }
+  }
+}
+
+impl<'rw, W: Writer> Writer for InfallibleRw<'rw, W> {
+  #[inline(always)]
+  fn write(&mut self, src: &[u8]) -> Option<usize> {
+    match self.inner.write(src) {
+      Some(n) => Some(n),
+      _ => unreachable__(),
+    }
+  }
+}
+
+// scalar's impls ----------------------------------------------------------------------------------
+
 macro_rules! impl_scalar {
   () => {
     impl_scalar!(impl Float);
@@ -333,170 +497,6 @@ macro_rules! impl_scalar {
 }
 
 impl_scalar!();
-
-/// `Array` is a flexible and efficient container for storing sequences of items.
-///
-/// The `Array` struct can be used to store items in one of three modes: Lazy, Borrowed, or Owned.
-/// The item type must implement the `Packetable` trait, allowing for conversion between bytes and
-/// the item type.
-///
-/// In 'Lazy' mode, the `Array` is constructed from a byte slice, and items are converted from bytes
-/// on demand. This is efficient when you have large sequences and don't want to convert all items at once.
-///
-/// In 'Borrowed' mode, the `Array` holds a reference to an existing array of items. This is useful
-/// when you want to avoid data copying.
-///
-/// In 'Owned' mode, the `Array` owns its items. This is useful when you need to modify the items, or
-/// when the original data is not available for the lifetime of the `Array`.
-///
-/// # Example
-/// ```
-/// use upack::{Array, InsufficientBytesError, Packed, Reader, Writer, Unpacker};
-///
-/// #[derive(Debug, Clone, Eq, PartialEq)]
-/// struct Color { r: u8, g: u8, b: u8, }
-///
-/// impl Packed for Color {
-///   type Error = InsufficientBytesError;
-///
-///   fn read_from<R: Reader>(rd: &mut R) -> Result<Self, Self::Error> {
-///     Ok(Self { r: rd.read_from()?, g: rd.read_from()?, b: rd.read_from()? })
-///   }
-///
-///   fn write_into<W: Writer>(&self, wr: &mut W) -> Option<usize> {
-///     Some(self.r.write_into(wr)? + self.g.write_into(wr)? + self.b.write_into(wr)?)
-///   }
-/// }
-///
-/// // 'Lazy' mode
-/// let lazy_arr = (&b"\x01\x02\x03\x04\x04\x06"[..]).unpack::<Array<'_, Color>>().unwrap();
-/// assert_eq!(lazy_arr.len(), 2);
-/// for item in lazy_arr.iter() {
-///   println!("{:?}", item);
-/// }
-/// // Color { r: 0, g: 1, b: 2 }
-/// // Color { r: 4, g: 5, b: 6 }
-///
-/// // 'Borrowed' mode
-/// const COLORS: [Color; 2] = [
-///   Color { r: 0, g: 1, b: 2 },
-///   Color { r: 4, g: 5, b: 6 },
-/// ];
-///
-/// let borrowed_arr = Array::from(&COLORS);
-/// assert_eq!(borrowed_arr.len(), 2);
-/// for item in borrowed_arr.iter() {
-///   println!("{:?}", item);
-/// }
-/// // Color { r: 0, g: 1, b: 2 }
-/// // Color { r: 4, g: 5, b: 6 }
-/// ```
-///
-/// `Array` provides several methods, like `iter()` and `len()`, for manipulating and accessing its items.
-/// Also, as `Array` implements `Packetable`, it can be converted to and from bytes.
-/// ```
-pub struct Array<'a, T> {
-  inner: ArrayImpl<'a, T>,
-}
-
-pub enum ArrayItem<'a, T> {
-  Borrowed(&'a T),
-  Owned(T),
-}
-
-/// General crate error type which represents the following cases:
-/// - When there are not enough bytes to read from a buffer.
-/// - When there are not enough space in a buffer to write into.
-#[derive(Eq, PartialEq)]
-pub struct InsufficientBytesError;
-
-/// `InfallibleRw` is a wrapper around `read_from` and `write_into` operations that never fails.
-pub struct InfallibleRw<'rw, T> {
-  // Mutable a reference to a `Reader` or a `Writer`.
-  inner: &'rw mut T,
-}
-
-// `InsufficientBytesError`'s impls ----------------------------------------------------------------
-
-impl fmt::Debug for InsufficientBytesError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.write_str("insufficient bytes")
-  }
-}
-
-// `InfallibleRw`'s impls --------------------------------------------------------------------------
-
-#[inline(always)]
-fn unreachable__() -> ! {
-  #[cfg(any(debug_assertions, not(feature = "unsafe")))]
-  unreachable!();
-  #[cfg(all(not(debug_assertions), feature = "unsafe"))]
-  // SAFETY: None, the caller is responsible for safety.
-  unsafe {
-    core::hint::unreachable_unchecked()
-  };
-}
-
-impl<'rw, R: Reader> InfallibleRw<'rw, R> {
-  #[inline(always)]
-  #[cfg(not(feature = "unsafe"))]
-  pub fn unpack<P: Packed>(rd: &'rw mut R) -> P {
-    P::read_from(&mut Self { inner: rd }).unwrap()
-  }
-
-  #[inline(always)]
-  #[cfg(feature = "unsafe")]
-  pub unsafe fn unpack<P: Packed>(rd: &'rw mut R) -> P {
-    match P::read_from(&mut Self { inner: rd }) {
-      Ok(p) => p,
-      _ => unreachable__(),
-    }
-  }
-}
-
-impl<'rw, R: Reader> Reader for InfallibleRw<'rw, R> {
-  #[inline(always)]
-  fn read_chunk<'a>(&mut self, n: usize) -> Option<&'a [u8]> {
-    match self.inner.read_chunk(n) {
-      Some(chunk) => Some(chunk),
-      _ => unreachable__(),
-    }
-  }
-
-  #[inline(always)]
-  fn read_all<'a>(&mut self) -> &'a [u8] {
-    self.inner.read_all()
-  }
-}
-
-impl<'rw, W: Writer> InfallibleRw<'rw, W> {
-  #[inline(always)]
-  #[cfg(not(feature = "unsafe"))]
-  pub fn pack(wr: &'rw mut W, p: &impl Packed) -> usize {
-    p.write_into(&mut Self { inner: wr }).unwrap()
-  }
-
-  #[inline(always)]
-  #[cfg(feature = "unsafe")]
-  pub unsafe fn pack(wr: &'rw mut W, p: &impl Packed) -> usize {
-    match p.write_into(&mut Self { inner: wr }) {
-      Some(n) => n,
-      _ => unreachable__(),
-    }
-  }
-}
-
-impl<'rw, W: Writer> Writer for InfallibleRw<'rw, W> {
-  #[inline(always)]
-  fn write(&mut self, src: &[u8]) -> Option<usize> {
-    match self.inner.write(src) {
-      Some(n) => Some(n),
-      _ => unreachable__(),
-    }
-  }
-}
-
-// scalar's impls ----------------------------------------------------------------------------------
 
 macro_rules! impl_scalars {
   (impl Packed for [$($typ:ident),+]) => {
