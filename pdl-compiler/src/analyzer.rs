@@ -1583,6 +1583,7 @@ fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostic
                         },
                         loc: field.loc,
                         annot: field.annot,
+                        cond: field.cond.clone(),
                     }]
                 }
                 FieldDesc::Typedef { id, type_id, .. } if constraints.contains_key(id) => {
@@ -1596,6 +1597,7 @@ fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostic
                         },
                         loc: field.loc,
                         annot: field.annot,
+                        cond: field.cond.clone(),
                     }]
                 }
                 _ => vec![field.clone()],

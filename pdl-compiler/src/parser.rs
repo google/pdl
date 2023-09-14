@@ -114,7 +114,7 @@ scalar_field = { identifier ~ ":" ~ integer }
 typedef_field = { identifier ~ ":" ~ identifier }
 group_field = { identifier ~ ("{" ~ constraint_list? ~ "}")? }
 
-field = _{
+field_desc = _{
     checksum_field |
     padding_field |
     size_field |
@@ -129,6 +129,7 @@ field = _{
     typedef_field |
     group_field
 }
+field = { field_desc ~ ("if" ~ constraint)? }
 field_list = { field ~ ("," ~ field)* ~ ","? }
 
 packet_declaration = {
@@ -415,11 +416,15 @@ fn parse_enum_tag_list(
 
 fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> {
     let loc = node.as_loc(context);
-    let rule = node.as_rule();
     let mut children = node.children();
+    let desc = children.next().unwrap();
+    let cond = children.next();
+    let rule = desc.as_rule();
+    let mut children = desc.children();
     Ok(crate::ast::Field {
         loc,
         annot: Default::default(),
+        cond: cond.map(|constraint| parse_constraint(constraint, context)).transpose()?,
         desc: match rule {
             Rule::checksum_field => {
                 let field_id = parse_identifier(&mut children)?;
