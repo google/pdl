@@ -156,6 +156,7 @@ pub struct Field<A: Annotation> {
     pub annot: A::FieldAnnotation,
     #[serde(flatten)]
     pub desc: FieldDesc,
+    pub cond: Option<Constraint>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -519,7 +520,7 @@ impl<A: Annotation> PartialEq for Field<A> {
 
 impl<A: Annotation> Field<A> {
     pub fn annotate<B: Annotation>(&self, annot: B::FieldAnnotation) -> Field<B> {
-        Field { loc: self.loc, annot, desc: self.desc.clone() }
+        Field { loc: self.loc, annot, cond: self.cond.clone(), desc: self.desc.clone() }
     }
 
     pub fn id(&self) -> Option<&str> {
