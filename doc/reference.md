@@ -212,7 +212,7 @@ enum CoffeeAddition: 5 {
 }
 ```
 
-### Packet
+### Packet {#decl-packet}
 
 > packet_declaration:\
 > &nbsp;&nbsp; `packet` [IDENTIFIER](#identifier)\
@@ -245,7 +245,7 @@ packet ImATeapot: Error(code = 418) {
 }
 ```
 
-### Struct
+### Struct {#decl-struct}
 
 > struct_declaration:\
 > &nbsp;&nbsp; `struct` [IDENTIFIER](#identifier)\
@@ -260,7 +260,7 @@ A *struct* follows the same rules as a [*packet*](#packet) with the following di
 - It inherits from a *struct* declaration instead of *packet* declaration.
 - A [typedef](#fields-typedef) field can reference a *struct*.
 
-### Group
+### Group {#decl-group}
 
 > group_declaration:\
 > &nbsp;&nbsp; `group` [IDENTIFIER](#identifier) `{`\
@@ -404,7 +404,8 @@ packet Pot0IrishCoffeeBrew: IrishCoffeeBrew(pot = 0) {}
 > &nbsp;&nbsp; [array_field](#fields-array) |\
 > &nbsp;&nbsp; [scalar_field](#fields-scalar) |\
 > &nbsp;&nbsp; [typedef_field](#fields-typedef) |\
-> &nbsp;&nbsp; [group_field](#fields-group)
+> &nbsp;&nbsp; [group_field](#fields-group) |\
+> &nbsp;&nbsp; [optional_field](#fields-optional)
 
 A field is either:
 - a [Scalar](#fields-scalar) field
@@ -419,6 +420,7 @@ A field is either:
 - a [Checksum](#fields-checksum) field
 - a [Padding](#fields-padding) field
 - a [Reserved](#fields-reserved) field
+- an [Optional](#fields-optional) field
 
 ### Scalar {#fields-scalar}
 
@@ -620,6 +622,53 @@ A *\_reserved\_* field adds reserved bits.
 ```
 packet DeloreanCoffee {
   _reserved_: 2014
+}
+```
+
+### Optional (#fields-optional)
+
+> optional_field:\
+> &nbsp;&nbsp; ([scalar_field](#fields-scalar) |
+> &nbsp;&nbsp;  [typedef_field](#fields-typedef))
+> &nbsp;&nbsp; `if` [constraint](#constraint)
+
+An *optional* field is present in the raw bytes if and only if the condition
+attached is satisfied.
+
+An *optional* field _must_ start on a byte boundary, and have a size that is
+an integral number of bytes.
+
+The field used as condition of an *optional* field _must_ be declared in the
+same [packet](#decl-packet), [struct](#decl-struct), or [group](#decl-group)
+declaration as the *optional* field.
+
+The field used as condition of an *optional* field _must_ be a
+[scalar](#fields-scalar) field of width `1`.
+
+The field used as condition of an *optional* field _may not_ be a
+*optional* field.
+
+Multiple *optional* fields cannot use the same [scalar](#fields-scalar) field
+as condition variable.
+
+```
+struct Cream {
+  fat_percentage: 8,
+}
+
+enum Alcohol : 8 {
+  WHISKY = 0,
+  COGNAC = 1,
+}
+
+packet CoffeeWithAdditions {
+  want_sugar: 1,
+  want_cream: 1,
+  want_alcohol: 1,
+  _reserved_: 5,
+  sugar: 16 if want_sugar = 1,
+  cream: Cream if want_cream = 1,
+  alcohol: Alcohol if want_alcohol = 1,
 }
 ```
 
