@@ -37,6 +37,7 @@ Language specific instructions are provided for all supported backends:
 - Scalar values
 - Enumerators
 - Arrays
+- Optional fields
 - Nested packets
 - Conditional packet derivation
 - Custom field definitions
