@@ -190,6 +190,12 @@ pub enum ErrorCode {
     E42 = 42,
     E43 = 43,
     DuplicateDefaultTag = 44,
+    InvalidOptionalField = 45,
+    UndeclaredConditionIdentifier = 46,
+    InvalidConditionIdentifier = 47,
+    InvalidConditionValue = 48,
+    E49 = 49,
+    ReusedConditionIdentifier = 50,
 }
 
 impl From<ErrorCode> for String {
@@ -1405,6 +1411,120 @@ fn check_checksum_fields(
     Ok(())
 }
 
+/// Check optional fields.
+/// Raises error diagnostics for the following cases:
+///      - invalid optional field
+///      - invalid constraint identifier
+///      - invalid constraint scalar value (bad type)
+///      - invalid constraint scalar value (overflow)
+fn check_optional_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
+    let mut diagnostics: Diagnostics = Default::default();
+    for decl in &file.declarations {
+        let mut local_scope: HashMap<String, &parser_ast::Field> = HashMap::new();
+        let mut condition_ids: HashMap<String, &parser_ast::Field> = HashMap::new();
+        for field in decl.fields() {
+            if let Some(ref cond) = field.cond {
+                match &field.desc {
+                    FieldDesc::Scalar { .. } | FieldDesc::Typedef { .. } => (),
+                    _ => diagnostics.push(
+                        Diagnostic::error()
+                            .with_code(ErrorCode::InvalidOptionalField)
+                            .with_message("invalid optional field".to_owned())
+                            .with_labels(vec![field.loc.primary()])
+                            .with_notes(vec!["note: expected scalar, or typedef field".to_owned()]),
+                    ),
+                }
+                match local_scope.get(&cond.id) {
+                    None => diagnostics.push(
+                        Diagnostic::error()
+                            .with_code(ErrorCode::UndeclaredConditionIdentifier)
+                            .with_message("undeclared condition identifier".to_owned())
+                            .with_labels(vec![field.loc.primary()])
+                            .with_notes(vec!["note: expected scalar field identifier".to_owned()]),
+                    ),
+                    Some(Field { cond: Some(_), loc, .. }) => diagnostics.push(
+                        Diagnostic::error()
+                            .with_code(ErrorCode::E49)
+                            .with_message("invalid condition identifier".to_owned())
+                            .with_labels(vec![
+                                field.loc.primary(),
+                                loc.secondary().with_message(format!(
+                                    "`{}` is declared optional here",
+                                    cond.id
+                                )),
+                            ])
+                            .with_notes(vec!["note: expected scalar field identifier".to_owned()]),
+                    ),
+                    Some(Field { desc: FieldDesc::Scalar { width: 1, .. }, .. }) => (),
+                    Some(Field { desc: FieldDesc::Scalar { width, .. }, loc, .. }) => diagnostics
+                        .push(
+                            Diagnostic::error()
+                                .with_code(ErrorCode::InvalidConditionIdentifier)
+                                .with_message("invalid condition identifier".to_owned())
+                                .with_labels(vec![
+                                    field.loc.primary(),
+                                    loc.secondary().with_message(format!(
+                                        "`{}` is declared with width `{}` here",
+                                        cond.id, width
+                                    )),
+                                ])
+                                .with_notes(vec![
+                                    "note: expected scalar field identifier".to_owned()
+                                ]),
+                        ),
+                    Some(Field { loc, .. }) => diagnostics.push(
+                        Diagnostic::error()
+                            .with_code(ErrorCode::InvalidConditionIdentifier)
+                            .with_message("invalid condition identifier".to_owned())
+                            .with_labels(vec![
+                                field.loc.primary(),
+                                loc.secondary()
+                                    .with_message(format!("`{}` is declared here", cond.id)),
+                            ])
+                            .with_notes(vec!["note: expected scalar field identifier".to_owned()]),
+                    ),
+                }
+                match (&cond.value, &cond.tag_id) {
+                    (_, Some(_)) => diagnostics.push(
+                        Diagnostic::error()
+                            .with_code(ErrorCode::InvalidConditionValue)
+                            .with_message("invalid condition value".to_owned())
+                            .with_labels(vec![field.loc.primary()])
+                            .with_notes(vec!["note: expected 0 or 1".to_owned()]),
+                    ),
+                    (Some(0), _) | (Some(1), _) => (),
+                    (Some(_), _) => diagnostics.push(
+                        Diagnostic::error()
+                            .with_code(ErrorCode::InvalidConditionValue)
+                            .with_message("invalid condition value".to_owned())
+                            .with_labels(vec![field.loc.primary()])
+                            .with_notes(vec!["note: expected 0 or 1".to_owned()]),
+                    ),
+                    _ => unreachable!(),
+                }
+                if let Some(prev_field) = condition_ids.insert(cond.id.to_owned(), field) {
+                    diagnostics.push(
+                        Diagnostic::error()
+                            .with_code(ErrorCode::ReusedConditionIdentifier)
+                            .with_message("reused condition identifier".to_owned())
+                            .with_labels(vec![
+                                field.loc.primary(),
+                                prev_field
+                                    .loc
+                                    .secondary()
+                                    .with_message(format!("`{}` is first used here", cond.id)),
+                            ]),
+                    )
+                }
+            }
+            if let Some(id) = field.id() {
+                local_scope.insert(id.to_owned(), field);
+            }
+        }
+    }
+    diagnostics.err_or(())
+}
+
 /// Check correct definition of packet sizes.
 /// Annotate fields and declarations with the size in bits.
 fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
@@ -1664,6 +1784,7 @@ pub fn analyze(file: &parser_ast::File) -> Result<ast::File, Diagnostics> {
     check_array_fields(file)?;
     check_padding_fields(file)?;
     check_checksum_fields(file, &scope)?;
+    check_optional_fields(file)?;
     check_group_constraints(file, &scope)?;
     let file = inline_groups(file)?;
     let scope = Scope::new(&file)?;
@@ -2685,6 +2806,218 @@ mod test {
             X = ..,
             B = 1,
             Y = ..,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e45() {
+        valid!(
+            r#"
+        little_endian_packets
+        packet B {
+            c : 1,
+            _reserved_ : 7,
+            x : 8 if c = 1,
+        }
+        "#
+        );
+
+        valid!(
+            r#"
+        little_endian_packets
+        enum A : 8 { X = 0 }
+        packet B {
+            c : 1,
+            _reserved_ : 7,
+            x : A if c = 0,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidOptionalField,
+            r#"
+        little_endian_packets
+        packet B {
+            c : 1,
+            _reserved_ : 7,
+            x : 8[] if c = 1,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidOptionalField,
+            r#"
+        little_endian_packets
+        packet A {
+            c : 1,
+            _reserved_ : 7,
+            _size_(x) : 8 if c = 1,
+            x : 8[],
+        }
+        "#
+        );
+
+        raises!(
+            InvalidOptionalField,
+            r#"
+        little_endian_packets
+        packet B {
+            c : 1,
+            _reserved_ : 7,
+            x : 8[],
+            _padding_ [10] if c = 1,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidOptionalField,
+            r#"
+        little_endian_packets
+        packet B {
+            c : 1,
+            _reserved_ : 7,
+            _reserved_ : 8 if c = 1,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidOptionalField,
+            r#"
+        little_endian_packets
+        packet B {
+            c : 1,
+            _reserved_ : 7,
+            _fixed_ = 0x42 : 8 if c = 1,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidOptionalField,
+            r#"
+        little_endian_packets
+        enum A : 8 { X = 0 }
+        packet B {
+            c : 1,
+            _reserved_ : 7,
+            _fixed_ = X : A if c = 1,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e46() {
+        raises!(
+            UndeclaredConditionIdentifier,
+            r#"
+        little_endian_packets
+        packet B {
+            x : 8 if c = 1,
+            _reserved_ : 7,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e47() {
+        raises!(
+            InvalidConditionIdentifier,
+            r#"
+        little_endian_packets
+        enum A : 8 { X = 0 }
+        packet B {
+            c : A,
+            x : 8 if c = 1,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidConditionIdentifier,
+            r#"
+        little_endian_packets
+        packet B {
+            c : 8[],
+            x : 8 if c = 1,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidConditionIdentifier,
+            r#"
+        little_endian_packets
+        packet B {
+            c : 8,
+            x : 8 if c = 1,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e48() {
+        raises!(
+            InvalidConditionValue,
+            r#"
+        little_endian_packets
+        packet B {
+            c : 1,
+            _reserved_ : 7,
+            x : 8 if c = A,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidConditionValue,
+            r#"
+        little_endian_packets
+        packet B {
+            c : 1,
+            _reserved_ : 7,
+            x : 8 if c = 2,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e49() {
+        raises!(
+            E49,
+            r#"
+        little_endian_packets
+        packet B {
+            c0 : 1,
+            _reserved_ : 7,
+            c1 : 1 if c0 = 1,
+            _reserved_ : 7,
+            x : 8 if c1 = 1,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e50() {
+        raises!(
+            ReusedConditionIdentifier,
+            r#"
+        little_endian_packets
+        packet B {
+            c : 1,
+            _reserved_ : 7,
+            x : 8 if c = 1,
+            y : 8 if c = 0,
         }
         "#
         );
