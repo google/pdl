@@ -362,6 +362,30 @@ packet Packet_Array_Field_UnsizedElement_VariableCount_Padded {
     _padding_ [16],
 }
 
+packet Packet_Optional_Scalar_Field {
+    c0: 1,
+    c1: 1,
+    _reserved_: 6,
+    a: 24 if c0 = 0,
+    b: 32 if c1 = 1,
+}
+
+packet Packet_Optional_Enum_Field {
+    c0: 1,
+    c1: 1,
+    _reserved_: 6,
+    a: Enum16 if c0 = 0,
+    b: Enum16 if c1 = 1,
+}
+
+packet Packet_Optional_Struct_Field {
+    c0: 1,
+    c1: 1,
+    _reserved_: 6,
+    a: SizedStruct if c0 = 0,
+    b: UnsizedStruct if c1 = 1,
+}
+
 // Packet inheritance
 
 // The parser must handle specialization into
@@ -777,4 +801,40 @@ struct Struct_Array_Field_UnsizedElement_VariableCount_Padded_ {
 }
 packet Struct_Array_Field_UnsizedElement_VariableCount_Padded {
     s: Struct_Array_Field_UnsizedElement_VariableCount_Padded_,
+}
+
+struct Struct_Optional_Scalar_Field_ {
+    c0: 1,
+    c1: 1,
+    _reserved_: 6,
+    a: 24 if c0 = 0,
+    b: 32 if c1 = 1,
+}
+
+packet Struct_Optional_Scalar_Field {
+    s: Struct_Optional_Scalar_Field_,
+}
+
+struct Struct_Optional_Enum_Field_ {
+    c0: 1,
+    c1: 1,
+    _reserved_: 6,
+    a: Enum16 if c0 = 0,
+    b: Enum16 if c1 = 1,
+}
+
+packet Struct_Optional_Enum_Field {
+    s: Struct_Optional_Enum_Field_,
+}
+
+struct Struct_Optional_Struct_Field_ {
+    c0: 1,
+    c1: 1,
+    _reserved_: 6,
+    a: SizedStruct if c0 = 0,
+    b: UnsizedStruct if c1 = 1,
+}
+
+packet Struct_Optional_Struct_Field {
+    s: Struct_Optional_Struct_Field_,
 }
