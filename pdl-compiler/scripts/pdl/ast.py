@@ -66,6 +66,7 @@ class Constraint(Node):
 @dataclass
 class Field(Node):
     parent: Node = field(init=False)
+    cond: Optional[Constraint] = field(kw_only=True, default=None)
 
 
 @node('checksum_field')
