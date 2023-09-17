@@ -4,8 +4,8 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use pdl_runtime::{Error, Packet};
-type Result<T> = std::result::Result<T, Error>;
+use std::result::Result;
+use pdl_runtime::{DecodeError, EncodeError, Packet};
 /// Private prevents users from creating arbitrary scalar values
 /// in situations where the value needs to be validated.
 /// Users can freely deref the value, but only the backend
@@ -60,15 +60,15 @@ impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 3
     }
-    fn parse(bytes: &[u8]) -> Result<Self> {
+    fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         if bytes.get().remaining() < 3 {
-            return Err(Error::InvalidLengthError {
-                obj: "Foo".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Foo",
                 wanted: 3,
                 got: bytes.get().remaining(),
             });
@@ -84,15 +84,21 @@ impl FooData {
         };
         Ok(Self { a, child })
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to<T: BufMut>(&self, buffer: &mut T) -> Result<(), EncodeError> {
         if self.a > 0xff_ffff {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "a", self.a, 0xff_ffff);
+            return Err(EncodeError::InvalidScalarValue {
+                packet: "Foo",
+                field: "a",
+                value: self.a as u64,
+                maximum_value: 0xff_ffff,
+            });
         }
         buffer.put_uint(self.a as u64, 3);
         match &self.child {
             FooDataChild::Payload(payload) => buffer.put_slice(payload),
             FooDataChild::None => {}
         }
+        Ok(())
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
@@ -102,32 +108,32 @@ impl FooData {
     }
 }
 impl Packet for Foo {
-    fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.foo.get_size());
-        self.foo.write_to(&mut buffer);
-        buffer.freeze()
+    fn encoded_len(&self) -> usize {
+        self.get_size()
     }
-    fn to_vec(self) -> Vec<u8> {
-        self.to_bytes().to_vec()
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        self.foo.write_to(buf)
     }
 }
-impl From<Foo> for Bytes {
-    fn from(packet: Foo) -> Self {
-        packet.to_bytes()
+impl TryFrom<Foo> for Bytes {
+    type Error = EncodeError;
+    fn try_from(packet: Foo) -> Result<Self, Self::Error> {
+        packet.encode_to_bytes()
     }
 }
-impl From<Foo> for Vec<u8> {
-    fn from(packet: Foo) -> Self {
-        packet.to_vec()
+impl TryFrom<Foo> for Vec<u8> {
+    type Error = EncodeError;
+    fn try_from(packet: Foo) -> Result<Self, Self::Error> {
+        packet.encode_to_vec()
     }
 }
 impl Foo {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         let data = FooData::parse_inner(&mut bytes)?;
         Self::new(data)
     }
@@ -137,7 +143,7 @@ impl Foo {
             FooDataChild::None => FooChild::None,
         }
     }
-    fn new(foo: FooData) -> Result<Self> {
+    fn new(foo: FooData) -> Result<Self, DecodeError> {
         Ok(Self { foo })
     }
     pub fn get_a(&self) -> u32 {
@@ -149,7 +155,7 @@ impl Foo {
             FooDataChild::None => &[],
         }
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to(&self, buffer: &mut impl BufMut) -> Result<(), EncodeError> {
         self.foo.write_to(buffer)
     }
     pub fn get_size(&self) -> usize {

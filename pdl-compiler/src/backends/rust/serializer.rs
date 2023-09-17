@@ -88,10 +88,12 @@ impl<'a> FieldSerializer<'a> {
 
                     quote! {
                         if *#id > #max_value {
-                            panic!(
-                                "Invalid value for {}::{}: {} > {}",
-                                #packet_name, #name, #id, #max_value
-                            );
+                            return Err(EncodeError::InvalidScalarValue {
+                                packet: #packet_name,
+                                field: #name,
+                                value: *#id as u64,
+                                maximum_value: #max_value as u64,
+                            })
                         }
                     }
                 });
@@ -124,7 +126,7 @@ impl<'a> FieldSerializer<'a> {
                     let span = self.span;
                     quote! {
                         if let Some(#id) = &self.#id {
-                            #id.write_to(#span);
+                            #id.write_to(#span)?;
                         }
                     }
                 }
@@ -165,10 +167,12 @@ impl<'a> FieldSerializer<'a> {
                     let max_value = mask_bits(*width, "u64");
                     self.code.push(quote! {
                         if self.#field_name > #max_value {
-                            panic!(
-                                "Invalid value for {}::{}: {} > {}",
-                                #packet_name, #id, self.#field_name, #max_value
-                            );
+                            return Err(EncodeError::InvalidScalarValue {
+                                packet: #packet_name,
+                                field: #id,
+                                value: self.#field_name as u64,
+                                maximum_value: #max_value,
+                            })
                         }
                     });
                 }
@@ -267,10 +271,12 @@ impl<'a> FieldSerializer<'a> {
 
                 self.code.push(quote! {
                     if #array_size > #max_value {
-                        panic!(
-                            "Invalid length for {}::{}: {} > {}",
-                            #packet_name, #field_id, #array_size, #max_value
-                        );
+                        return Err(EncodeError::SizeOverflow {
+                            packet: #packet_name,
+                            field: #field_id,
+                            size: #array_size,
+                            maximum_size: #max_value,
+                        })
                     }
                 });
 
@@ -288,10 +294,12 @@ impl<'a> FieldSerializer<'a> {
                     let max_value = mask_bits(*width, "usize");
                     self.code.push(quote! {
                         if self.#field_name.len() > #max_value {
-                            panic!(
-                                "Invalid length for {}::{}: {} > {}",
-                                #packet_name, #field_id, self.#field_name.len(), #max_value
-                            );
+                            return Err(EncodeError::CountOverflow {
+                                packet: #packet_name,
+                                field: #field_id,
+                                count: self.#field_name.len(),
+                                maximum_count: #max_value,
+                            })
                         }
                     });
                 }
@@ -381,33 +389,58 @@ impl<'a> FieldSerializer<'a> {
                     )
                 } else {
                     quote! {
-                        elem.write_to(#span)
+                        elem.write_to(#span)?
                     }
                 }
             }
         };
 
+        let packet_name = self.packet_name;
+        let name = id;
         let id = id.to_ident();
-
-        self.code.push(match padding_size {
-            Some(padding_size) =>
-                quote! {
-                    let current_size = #span.len();
-                    for elem in &self.#id {
-                        #serialize;
-                    }
-                    let array_size = #span.len() - current_size;
-                    if array_size > #padding_size {
-                        panic!("attempted to serialize an array larger than the enclosing padding size");
-                    }
-                    #span.put_bytes(0, #padding_size - array_size);
-                },
-            None =>
-                quote! {
-                    for elem in &self.#id {
-                        #serialize;
-                    }
+        self.code.push(if let Some(padding_size) = padding_size {
+            let array_size = match (&width, decl) {
+                (Some(width), _)
+                | (
+                    _,
+                    Some(analyzer_ast::Decl {
+                        annot:
+                            analyzer_ast::DeclAnnotation {
+                                size: analyzer_ast::Size::Static(width), ..
+                            },
+                        ..
+                    }),
+                ) => {
+                    let element_size = proc_macro2::Literal::usize_unsuffixed(width / 8);
+                    quote! { self.#id.len() * #element_size }
                 }
+                (_, Some(_)) => {
+                    quote! { self.#id.iter().fold(0, |size, elem| size + elem.get_size()) }
+                }
+                _ => unreachable!(),
+            };
+
+            quote! {
+                let array_size = #array_size;
+                if array_size > #padding_size {
+                    return Err(EncodeError::SizeOverflow {
+                        packet: #packet_name,
+                        field: #name,
+                        size: array_size,
+                        maximum_size: #padding_size,
+                    })
+                }
+                for elem in &self.#id {
+                    #serialize;
+                }
+                #span.put_bytes(0, #padding_size - array_size);
+            }
+        } else {
+            quote! {
+                for elem in &self.#id {
+                    #serialize;
+                }
+            }
         });
     }
 
@@ -436,7 +469,7 @@ impl<'a> FieldSerializer<'a> {
                 }
             }
             ast::DeclDesc::Struct { .. } => quote! {
-                self.#id.write_to(#span);
+                self.#id.write_to(#span)?;
             },
             _ => unreachable!(),
         });
@@ -462,7 +495,7 @@ impl<'a> FieldSerializer<'a> {
                 let packet_data_child = format_ident!("{}DataChild", self.packet_name);
                 self.code.push(quote! {
                     match &self.child {
-                        #(#packet_data_child::#child_ids(child) => child.write_to(#span),)*
+                        #(#packet_data_child::#child_ids(child) => child.write_to(#span)?,)*
                         #packet_data_child::Payload(payload) => #span.put_slice(payload),
                         #packet_data_child::None => {},
                     }

@@ -4,8 +4,8 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use pdl_runtime::{Error, Packet};
-type Result<T> = std::result::Result<T, Error>;
+use std::result::Result;
+use pdl_runtime::{DecodeError, EncodeError, Packet};
 /// Private prevents users from creating arbitrary scalar values
 /// in situations where the value needs to be validated.
 /// Users can freely deref the value, but only the backend
@@ -32,15 +32,15 @@ impl Foo {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 7
     }
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         if bytes.get().remaining() < 2 {
-            return Err(Error::InvalidLengthError {
-                obj: "Foo".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Foo",
                 wanted: 2,
                 got: bytes.get().remaining(),
             });
@@ -50,16 +50,16 @@ impl Foo {
         let b = (chunk >> 3) as u8;
         let c = ((chunk >> 11) & 0x1f) as u8;
         if bytes.get().remaining() < 3 {
-            return Err(Error::InvalidLengthError {
-                obj: "Foo".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Foo",
                 wanted: 3,
                 got: bytes.get().remaining(),
             });
         }
         let d = bytes.get_mut().get_uint_le(3) as u32;
         if bytes.get().remaining() < 2 {
-            return Err(Error::InvalidLengthError {
-                obj: "Foo".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Foo",
                 wanted: 2,
                 got: bytes.get().remaining(),
             });
@@ -69,27 +69,53 @@ impl Foo {
         let f = ((chunk >> 12) & 0xf) as u8;
         Ok(Self { a, b, c, d, e, f })
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to<T: BufMut>(&self, buffer: &mut T) -> Result<(), EncodeError> {
         if self.a > 0x7 {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "a", self.a, 0x7);
+            return Err(EncodeError::InvalidScalarValue {
+                packet: "Foo",
+                field: "a",
+                value: self.a as u64,
+                maximum_value: 0x7,
+            });
         }
         if self.c > 0x1f {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "c", self.c, 0x1f);
+            return Err(EncodeError::InvalidScalarValue {
+                packet: "Foo",
+                field: "c",
+                value: self.c as u64,
+                maximum_value: 0x1f,
+            });
         }
         let value = (self.a as u16) | ((self.b as u16) << 3) | ((self.c as u16) << 11);
         buffer.put_u16_le(value);
         if self.d > 0xff_ffff {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "d", self.d, 0xff_ffff);
+            return Err(EncodeError::InvalidScalarValue {
+                packet: "Foo",
+                field: "d",
+                value: self.d as u64,
+                maximum_value: 0xff_ffff,
+            });
         }
         buffer.put_uint_le(self.d as u64, 3);
         if self.e > 0xfff {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "e", self.e, 0xfff);
+            return Err(EncodeError::InvalidScalarValue {
+                packet: "Foo",
+                field: "e",
+                value: self.e as u64,
+                maximum_value: 0xfff,
+            });
         }
         if self.f > 0xf {
-            panic!("Invalid value for {}::{}: {} > {}", "Foo", "f", self.f, 0xf);
+            return Err(EncodeError::InvalidScalarValue {
+                packet: "Foo",
+                field: "f",
+                value: self.f as u64,
+                maximum_value: 0xf,
+            });
         }
         let value = self.e | ((self.f as u16) << 12);
         buffer.put_u16_le(value);
+        Ok(())
     }
     fn get_total_size(&self) -> usize {
         self.get_size()

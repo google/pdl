@@ -121,7 +121,7 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
                         .expect("Could not create builder from canonical JSON data");
                     let packet = builder.build();
                     let packed: Vec<u8> = #packed;
-                    assert_eq!(packet.to_vec(), packed);
+                    assert_eq!(packet.encode_to_vec(), Ok(packed));
                 }
             });
         }

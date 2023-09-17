@@ -4,8 +4,8 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use pdl_runtime::{Error, Packet};
-type Result<T> = std::result::Result<T, Error>;
+use std::result::Result;
+use pdl_runtime::{DecodeError, EncodeError, Packet};
 /// Private prevents users from creating arbitrary scalar values
 /// in situations where the value needs to be validated.
 /// Users can freely deref the value, but only the backend
@@ -28,7 +28,7 @@ pub enum Enum16 {
 }
 impl TryFrom<u16> for Enum16 {
     type Error = u16;
-    fn try_from(value: u16) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
         match value {
             0x1 => Ok(Enum16::A),
             0x2 => Ok(Enum16::B),
@@ -118,65 +118,65 @@ impl ParentData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 7
     }
-    fn parse(bytes: &[u8]) -> Result<Self> {
+    fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         if bytes.get().remaining() < 2 {
-            return Err(Error::InvalidLengthError {
-                obj: "Parent".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Parent",
                 wanted: 2,
                 got: bytes.get().remaining(),
             });
         }
         let foo = Enum16::try_from(bytes.get_mut().get_u16())
-            .map_err(|unknown_val| Error::InvalidEnumValueError {
-                obj: "Parent".to_string(),
-                field: "foo".to_string(),
+            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+                obj: "Parent",
+                field: "foo",
                 value: unknown_val as u64,
-                type_: "Enum16".to_string(),
+                type_: "Enum16",
             })?;
         if bytes.get().remaining() < 2 {
-            return Err(Error::InvalidLengthError {
-                obj: "Parent".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Parent",
                 wanted: 2,
                 got: bytes.get().remaining(),
             });
         }
         let bar = Enum16::try_from(bytes.get_mut().get_u16())
-            .map_err(|unknown_val| Error::InvalidEnumValueError {
-                obj: "Parent".to_string(),
-                field: "bar".to_string(),
+            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+                obj: "Parent",
+                field: "bar",
                 value: unknown_val as u64,
-                type_: "Enum16".to_string(),
+                type_: "Enum16",
             })?;
         if bytes.get().remaining() < 2 {
-            return Err(Error::InvalidLengthError {
-                obj: "Parent".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Parent",
                 wanted: 2,
                 got: bytes.get().remaining(),
             });
         }
         let baz = Enum16::try_from(bytes.get_mut().get_u16())
-            .map_err(|unknown_val| Error::InvalidEnumValueError {
-                obj: "Parent".to_string(),
-                field: "baz".to_string(),
+            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+                obj: "Parent",
+                field: "baz",
                 value: unknown_val as u64,
-                type_: "Enum16".to_string(),
+                type_: "Enum16",
             })?;
         if bytes.get().remaining() < 1 {
-            return Err(Error::InvalidLengthError {
-                obj: "Parent".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Parent",
                 wanted: 1,
                 got: bytes.get().remaining(),
             });
         }
         let payload_size = bytes.get_mut().get_u8() as usize;
         if bytes.get().remaining() < payload_size {
-            return Err(Error::InvalidLengthError {
-                obj: "Parent".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Parent",
                 wanted: payload_size,
                 got: bytes.get().remaining(),
             });
@@ -196,22 +196,25 @@ impl ParentData {
         };
         Ok(Self { foo, bar, baz, child })
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to<T: BufMut>(&self, buffer: &mut T) -> Result<(), EncodeError> {
         buffer.put_u16(u16::from(self.foo));
         buffer.put_u16(u16::from(self.bar));
         buffer.put_u16(u16::from(self.baz));
         if self.child.get_total_size() > 0xff {
-            panic!(
-                "Invalid length for {}::{}: {} > {}", "Parent", "_payload_", self.child
-                .get_total_size(), 0xff
-            );
+            return Err(EncodeError::SizeOverflow {
+                packet: "Parent",
+                field: "_payload_",
+                size: self.child.get_total_size(),
+                maximum_size: 0xff,
+            });
         }
         buffer.put_u8(self.child.get_total_size() as u8);
         match &self.child {
-            ParentDataChild::Child(child) => child.write_to(buffer),
+            ParentDataChild::Child(child) => child.write_to(buffer)?,
             ParentDataChild::Payload(payload) => buffer.put_slice(payload),
             ParentDataChild::None => {}
         }
+        Ok(())
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
@@ -221,32 +224,32 @@ impl ParentData {
     }
 }
 impl Packet for Parent {
-    fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.parent.get_size());
-        self.parent.write_to(&mut buffer);
-        buffer.freeze()
+    fn encoded_len(&self) -> usize {
+        self.get_size()
     }
-    fn to_vec(self) -> Vec<u8> {
-        self.to_bytes().to_vec()
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        self.parent.write_to(buf)
     }
 }
-impl From<Parent> for Bytes {
-    fn from(packet: Parent) -> Self {
-        packet.to_bytes()
+impl TryFrom<Parent> for Bytes {
+    type Error = EncodeError;
+    fn try_from(packet: Parent) -> Result<Self, Self::Error> {
+        packet.encode_to_bytes()
     }
 }
-impl From<Parent> for Vec<u8> {
-    fn from(packet: Parent) -> Self {
-        packet.to_vec()
+impl TryFrom<Parent> for Vec<u8> {
+    type Error = EncodeError;
+    fn try_from(packet: Parent) -> Result<Self, Self::Error> {
+        packet.encode_to_vec()
     }
 }
 impl Parent {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         let data = ParentData::parse_inner(&mut bytes)?;
         Self::new(data)
     }
@@ -259,7 +262,7 @@ impl Parent {
             ParentDataChild::None => ParentChild::None,
         }
     }
-    fn new(parent: ParentData) -> Result<Self> {
+    fn new(parent: ParentData) -> Result<Self, DecodeError> {
         Ok(Self { parent })
     }
     pub fn get_bar(&self) -> Enum16 {
@@ -271,7 +274,7 @@ impl Parent {
     pub fn get_foo(&self) -> Enum16 {
         self.parent.foo
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to(&self, buffer: &mut impl BufMut) -> Result<(), EncodeError> {
         self.parent.write_to(buffer)
     }
     pub fn get_size(&self) -> usize {
@@ -346,7 +349,7 @@ impl ChildData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 2
     }
-    fn parse(bytes: &[u8], bar: Enum16, baz: Enum16) -> Result<Self> {
+    fn parse(bytes: &[u8], bar: Enum16, baz: Enum16) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell, bar, baz)?;
         Ok(packet)
@@ -355,20 +358,20 @@ impl ChildData {
         mut bytes: &mut Cell<&[u8]>,
         bar: Enum16,
         baz: Enum16,
-    ) -> Result<Self> {
+    ) -> Result<Self, DecodeError> {
         if bytes.get().remaining() < 2 {
-            return Err(Error::InvalidLengthError {
-                obj: "Child".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Child",
                 wanted: 2,
                 got: bytes.get().remaining(),
             });
         }
         let quux = Enum16::try_from(bytes.get_mut().get_u16())
-            .map_err(|unknown_val| Error::InvalidEnumValueError {
-                obj: "Child".to_string(),
-                field: "quux".to_string(),
+            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+                obj: "Child",
+                field: "quux",
                 value: unknown_val as u64,
-                type_: "Enum16".to_string(),
+                type_: "Enum16",
             })?;
         let payload = bytes.get();
         bytes.get_mut().advance(payload.len());
@@ -385,13 +388,14 @@ impl ChildData {
         };
         Ok(Self { quux, child })
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to<T: BufMut>(&self, buffer: &mut T) -> Result<(), EncodeError> {
         buffer.put_u16(u16::from(self.quux));
         match &self.child {
-            ChildDataChild::GrandChild(child) => child.write_to(buffer),
+            ChildDataChild::GrandChild(child) => child.write_to(buffer)?,
             ChildDataChild::Payload(payload) => buffer.put_slice(payload),
             ChildDataChild::None => {}
         }
+        Ok(())
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
@@ -401,23 +405,23 @@ impl ChildData {
     }
 }
 impl Packet for Child {
-    fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.parent.get_size());
-        self.parent.write_to(&mut buffer);
-        buffer.freeze()
+    fn encoded_len(&self) -> usize {
+        self.get_size()
     }
-    fn to_vec(self) -> Vec<u8> {
-        self.to_bytes().to_vec()
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        self.parent.write_to(buf)
     }
 }
-impl From<Child> for Bytes {
-    fn from(packet: Child) -> Self {
-        packet.to_bytes()
+impl TryFrom<Child> for Bytes {
+    type Error = EncodeError;
+    fn try_from(packet: Child) -> Result<Self, Self::Error> {
+        packet.encode_to_bytes()
     }
 }
-impl From<Child> for Vec<u8> {
-    fn from(packet: Child) -> Self {
-        packet.to_vec()
+impl TryFrom<Child> for Vec<u8> {
+    type Error = EncodeError;
+    fn try_from(packet: Child) -> Result<Self, Self::Error> {
+        packet.encode_to_vec()
     }
 }
 impl From<Child> for Parent {
@@ -426,18 +430,18 @@ impl From<Child> for Parent {
     }
 }
 impl TryFrom<Parent> for Child {
-    type Error = Error;
-    fn try_from(packet: Parent) -> Result<Child> {
+    type Error = DecodeError;
+    fn try_from(packet: Parent) -> Result<Child, Self::Error> {
         Child::new(packet.parent)
     }
 }
 impl Child {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         let data = ParentData::parse_inner(&mut bytes)?;
         Self::new(data)
     }
@@ -450,11 +454,11 @@ impl Child {
             ChildDataChild::None => ChildChild::None,
         }
     }
-    fn new(parent: ParentData) -> Result<Self> {
+    fn new(parent: ParentData) -> Result<Self, DecodeError> {
         let child = match &parent.child {
             ParentDataChild::Child(value) => value.clone(),
             _ => {
-                return Err(Error::InvalidChildError {
+                return Err(DecodeError::InvalidChildError {
                     expected: stringify!(ParentDataChild::Child),
                     actual: format!("{:?}", & parent.child),
                 });
@@ -474,7 +478,7 @@ impl Child {
     pub fn get_quux(&self) -> Enum16 {
         self.child.quux
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to(&self, buffer: &mut impl BufMut) -> Result<(), EncodeError> {
         self.child.write_to(buffer)
     }
     pub fn get_size(&self) -> usize {
@@ -557,12 +561,15 @@ impl GrandChildData {
     fn conforms(bytes: &[u8]) -> bool {
         true
     }
-    fn parse(bytes: &[u8], baz: Enum16) -> Result<Self> {
+    fn parse(bytes: &[u8], baz: Enum16) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell, baz)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>, baz: Enum16) -> Result<Self> {
+    fn parse_inner(
+        mut bytes: &mut Cell<&[u8]>,
+        baz: Enum16,
+    ) -> Result<Self, DecodeError> {
         let payload = bytes.get();
         bytes.get_mut().advance(payload.len());
         let child = match (baz) {
@@ -578,12 +585,13 @@ impl GrandChildData {
         };
         Ok(Self { child })
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to<T: BufMut>(&self, buffer: &mut T) -> Result<(), EncodeError> {
         match &self.child {
-            GrandChildDataChild::GrandGrandChild(child) => child.write_to(buffer),
+            GrandChildDataChild::GrandGrandChild(child) => child.write_to(buffer)?,
             GrandChildDataChild::Payload(payload) => buffer.put_slice(payload),
             GrandChildDataChild::None => {}
         }
+        Ok(())
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
@@ -593,23 +601,23 @@ impl GrandChildData {
     }
 }
 impl Packet for GrandChild {
-    fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.parent.get_size());
-        self.parent.write_to(&mut buffer);
-        buffer.freeze()
+    fn encoded_len(&self) -> usize {
+        self.get_size()
     }
-    fn to_vec(self) -> Vec<u8> {
-        self.to_bytes().to_vec()
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        self.parent.write_to(buf)
     }
 }
-impl From<GrandChild> for Bytes {
-    fn from(packet: GrandChild) -> Self {
-        packet.to_bytes()
+impl TryFrom<GrandChild> for Bytes {
+    type Error = EncodeError;
+    fn try_from(packet: GrandChild) -> Result<Self, Self::Error> {
+        packet.encode_to_bytes()
     }
 }
-impl From<GrandChild> for Vec<u8> {
-    fn from(packet: GrandChild) -> Self {
-        packet.to_vec()
+impl TryFrom<GrandChild> for Vec<u8> {
+    type Error = EncodeError;
+    fn try_from(packet: GrandChild) -> Result<Self, Self::Error> {
+        packet.encode_to_vec()
     }
 }
 impl From<GrandChild> for Parent {
@@ -623,18 +631,18 @@ impl From<GrandChild> for Child {
     }
 }
 impl TryFrom<Parent> for GrandChild {
-    type Error = Error;
-    fn try_from(packet: Parent) -> Result<GrandChild> {
+    type Error = DecodeError;
+    fn try_from(packet: Parent) -> Result<GrandChild, Self::Error> {
         GrandChild::new(packet.parent)
     }
 }
 impl GrandChild {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         let data = ParentData::parse_inner(&mut bytes)?;
         Self::new(data)
     }
@@ -651,11 +659,11 @@ impl GrandChild {
             GrandChildDataChild::None => GrandChildChild::None,
         }
     }
-    fn new(parent: ParentData) -> Result<Self> {
+    fn new(parent: ParentData) -> Result<Self, DecodeError> {
         let child = match &parent.child {
             ParentDataChild::Child(value) => value.clone(),
             _ => {
-                return Err(Error::InvalidChildError {
+                return Err(DecodeError::InvalidChildError {
                     expected: stringify!(ParentDataChild::Child),
                     actual: format!("{:?}", & parent.child),
                 });
@@ -664,7 +672,7 @@ impl GrandChild {
         let grandchild = match &child.child {
             ChildDataChild::GrandChild(value) => value.clone(),
             _ => {
-                return Err(Error::InvalidChildError {
+                return Err(DecodeError::InvalidChildError {
                     expected: stringify!(ChildDataChild::GrandChild),
                     actual: format!("{:?}", & child.child),
                 });
@@ -684,7 +692,7 @@ impl GrandChild {
     pub fn get_quux(&self) -> Enum16 {
         self.child.quux
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to(&self, buffer: &mut impl BufMut) -> Result<(), EncodeError> {
         self.grandchild.write_to(buffer)
     }
     pub fn get_size(&self) -> usize {
@@ -773,12 +781,12 @@ impl GrandGrandChildData {
     fn conforms(bytes: &[u8]) -> bool {
         true
     }
-    fn parse(bytes: &[u8]) -> Result<Self> {
+    fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         let payload = bytes.get();
         bytes.get_mut().advance(payload.len());
         let child = match () {
@@ -789,11 +797,12 @@ impl GrandGrandChildData {
         };
         Ok(Self { child })
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to<T: BufMut>(&self, buffer: &mut T) -> Result<(), EncodeError> {
         match &self.child {
             GrandGrandChildDataChild::Payload(payload) => buffer.put_slice(payload),
             GrandGrandChildDataChild::None => {}
         }
+        Ok(())
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
@@ -803,23 +812,23 @@ impl GrandGrandChildData {
     }
 }
 impl Packet for GrandGrandChild {
-    fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.parent.get_size());
-        self.parent.write_to(&mut buffer);
-        buffer.freeze()
+    fn encoded_len(&self) -> usize {
+        self.get_size()
     }
-    fn to_vec(self) -> Vec<u8> {
-        self.to_bytes().to_vec()
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        self.parent.write_to(buf)
     }
 }
-impl From<GrandGrandChild> for Bytes {
-    fn from(packet: GrandGrandChild) -> Self {
-        packet.to_bytes()
+impl TryFrom<GrandGrandChild> for Bytes {
+    type Error = EncodeError;
+    fn try_from(packet: GrandGrandChild) -> Result<Self, Self::Error> {
+        packet.encode_to_bytes()
     }
 }
-impl From<GrandGrandChild> for Vec<u8> {
-    fn from(packet: GrandGrandChild) -> Self {
-        packet.to_vec()
+impl TryFrom<GrandGrandChild> for Vec<u8> {
+    type Error = EncodeError;
+    fn try_from(packet: GrandGrandChild) -> Result<Self, Self::Error> {
+        packet.encode_to_vec()
     }
 }
 impl From<GrandGrandChild> for Parent {
@@ -838,18 +847,18 @@ impl From<GrandGrandChild> for GrandChild {
     }
 }
 impl TryFrom<Parent> for GrandGrandChild {
-    type Error = Error;
-    fn try_from(packet: Parent) -> Result<GrandGrandChild> {
+    type Error = DecodeError;
+    fn try_from(packet: Parent) -> Result<GrandGrandChild, Self::Error> {
         GrandGrandChild::new(packet.parent)
     }
 }
 impl GrandGrandChild {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         let data = ParentData::parse_inner(&mut bytes)?;
         Self::new(data)
     }
@@ -861,11 +870,11 @@ impl GrandGrandChild {
             GrandGrandChildDataChild::None => GrandGrandChildChild::None,
         }
     }
-    fn new(parent: ParentData) -> Result<Self> {
+    fn new(parent: ParentData) -> Result<Self, DecodeError> {
         let child = match &parent.child {
             ParentDataChild::Child(value) => value.clone(),
             _ => {
-                return Err(Error::InvalidChildError {
+                return Err(DecodeError::InvalidChildError {
                     expected: stringify!(ParentDataChild::Child),
                     actual: format!("{:?}", & parent.child),
                 });
@@ -874,7 +883,7 @@ impl GrandGrandChild {
         let grandchild = match &child.child {
             ChildDataChild::GrandChild(value) => value.clone(),
             _ => {
-                return Err(Error::InvalidChildError {
+                return Err(DecodeError::InvalidChildError {
                     expected: stringify!(ChildDataChild::GrandChild),
                     actual: format!("{:?}", & child.child),
                 });
@@ -883,7 +892,7 @@ impl GrandGrandChild {
         let grandgrandchild = match &grandchild.child {
             GrandChildDataChild::GrandGrandChild(value) => value.clone(),
             _ => {
-                return Err(Error::InvalidChildError {
+                return Err(DecodeError::InvalidChildError {
                     expected: stringify!(GrandChildDataChild::GrandGrandChild),
                     actual: format!("{:?}", & grandchild.child),
                 });
@@ -914,7 +923,7 @@ impl GrandGrandChild {
             GrandGrandChildDataChild::None => &[],
         }
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to(&self, buffer: &mut impl BufMut) -> Result<(), EncodeError> {
         self.grandgrandchild.write_to(buffer)
     }
     pub fn get_size(&self) -> usize {

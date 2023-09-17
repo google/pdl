@@ -319,7 +319,7 @@ fn generate_data_struct(
 
             #visibility fn parse(
                 #span: &[u8] #(, #parse_arg_names: #parse_arg_types)*
-            ) -> Result<Self> {
+            ) -> Result<Self, DecodeError> {
                 let mut cell = Cell::new(#span);
                 let packet = Self::parse_inner(&mut cell #(, #parse_arg_names)*)?;
                 // TODO(mgeisler): communicate back to user if !cell.get().is_empty()?
@@ -328,15 +328,16 @@ fn generate_data_struct(
 
             fn parse_inner(
                 mut #span: &mut Cell<&[u8]> #(, #parse_arg_names: #parse_arg_types)*
-            ) -> Result<Self> {
+            ) -> Result<Self, DecodeError> {
                 #field_parser
                 Ok(Self {
                     #(#field_names,)*
                 })
             }
 
-            fn write_to(&self, buffer: &mut BytesMut) {
+            fn write_to<T: BufMut>(&self, buffer: &mut T) -> Result<(), EncodeError> {
                 #field_serializer
+                Ok(())
             }
 
             fn get_total_size(&self) -> usize {
@@ -587,8 +588,8 @@ fn generate_packet_decl(
             )*
 
             impl TryFrom<#top_level_packet> for #id_packet {
-                type Error = Error;
-                fn try_from(packet: #top_level_packet) -> Result<#id_packet> {
+                type Error = DecodeError;
+                fn try_from(packet: #top_level_packet) -> Result<#id_packet, Self::Error> {
                     #id_packet::new(packet.#top_level_id_lower)
                 }
             }
@@ -621,51 +622,50 @@ fn generate_packet_decl(
         #data_struct_impl
 
         impl Packet for #id_packet {
-            fn to_bytes(self) -> Bytes {
-                let mut buffer = BytesMut::with_capacity(self.#top_level_id_lower.get_size());
-                self.#top_level_id_lower.write_to(&mut buffer);
-                buffer.freeze()
+            fn encoded_len(&self) -> usize {
+                self.get_size()
             }
-
-            fn to_vec(self) -> Vec<u8> {
-                self.to_bytes().to_vec()
+            fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+                self.#top_level_id_lower.write_to(buf)
             }
         }
 
-        impl From<#id_packet> for Bytes {
-            fn from(packet: #id_packet) -> Self {
-                packet.to_bytes()
+        impl TryFrom<#id_packet> for Bytes {
+            type Error = EncodeError;
+            fn try_from(packet: #id_packet) -> Result<Self, Self::Error> {
+                packet.encode_to_bytes()
             }
         }
 
-        impl From<#id_packet> for Vec<u8> {
-            fn from(packet: #id_packet) -> Self {
-                packet.to_vec()
+        impl TryFrom<#id_packet> for Vec<u8> {
+            type Error = EncodeError;
+            fn try_from(packet: #id_packet) -> Result<Self, Self::Error> {
+                packet.encode_to_vec()
             }
         }
 
         #impl_from_and_try_from
 
         impl #id_packet {
-            pub fn parse(#span: &[u8]) -> Result<Self> {
+            pub fn parse(#span: &[u8]) -> Result<Self, DecodeError> {
                 let mut cell = Cell::new(#span);
                 let packet = Self::parse_inner(&mut cell)?;
                 // TODO(mgeisler): communicate back to user if !cell.get().is_empty()?
                 Ok(packet)
             }
 
-            fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+            fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
                 let data = #top_level_data::parse_inner(&mut bytes)?;
                 Self::new(data)
             }
 
             #specialize
 
-            fn new(#top_level_id_lower: #top_level_data) -> Result<Self> {
+            fn new(#top_level_id_lower: #top_level_data) -> Result<Self, DecodeError> {
                 #(
                     let #parent_shifted_lower_ids = match &#parent_lower_ids.child {
                         #parent_data_child::#parent_shifted_ids(value) => value.clone(),
-                        _ => return Err(Error::InvalidChildError {
+                        _ => return Err(DecodeError::InvalidChildError {
                             expected: stringify!(#parent_data_child::#parent_shifted_ids),
                             actual: format!("{:?}", &#parent_lower_ids.child),
                         }),
@@ -680,7 +680,7 @@ fn generate_packet_decl(
 
             #get_payload
 
-            fn write_to(&self, buffer: &mut BytesMut) {
+            fn write_to(&self, buffer: &mut impl BufMut) -> Result<(), EncodeError> {
                 self.#id_lower.write_to(buffer)
             }
 
@@ -904,7 +904,7 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
 
         impl TryFrom<#backing_type> for #name {
             type Error = #backing_type;
-            fn try_from(value: #backing_type) -> std::result::Result<Self, Self::Error> {
+            fn try_from(value: #backing_type) -> Result<Self, Self::Error> {
                 match value {
                     #(#from_cases,)*
                 }
@@ -982,7 +982,7 @@ fn generate_custom_field_decl(id: &str, width: usize) -> proc_macro2::TokenStrea
 
             impl TryFrom<#backing_type> for #id {
                 type Error = #backing_type;
-                fn try_from(value: #backing_type) -> std::result::Result<Self, Self::Error> {
+                fn try_from(value: #backing_type) -> Result<Self, Self::Error> {
                     if value > #max_value {
                         Err(value)
                     } else {

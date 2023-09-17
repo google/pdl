@@ -93,50 +93,50 @@ impl<'a> FieldParser<'a> {
         ))
         .unwrap();
 
-        self.code.push(
-            match &field.desc {
-                ast::FieldDesc::Scalar { id, width } => {
+        self.code.push(match &field.desc {
+            ast::FieldDesc::Scalar { id, width } => {
+                let id = id.to_ident();
+                let value = types::get_uint(self.endianness, *width, self.span);
+                quote! {
+                    let #id = (#cond_id == #cond_value).then(|| #value);
+                }
+            }
+            ast::FieldDesc::Typedef { id, type_id } => match &self.scope.typedef[type_id].desc {
+                ast::DeclDesc::Enum { width, .. } => {
+                    let name = id;
+                    let type_name = type_id;
                     let id = id.to_ident();
+                    let type_id = type_id.to_ident();
+                    let decl_id = &self.packet_name;
                     let value = types::get_uint(self.endianness, *width, self.span);
                     quote! {
-                        let #id = (#cond_id == #cond_value).then(|| #value);
+                        let #id = (#cond_id == #cond_value)
+                            .then(||
+                                #type_id::try_from(#value).map_err(|unknown_val| {
+                                    DecodeError::InvalidEnumValueError {
+                                        obj: #decl_id,
+                                        field: #name,
+                                        value: unknown_val as u64,
+                                        type_: #type_name,
+                                    }
+                                }))
+                            .transpose()?;
                     }
-                },
-                ast::FieldDesc::Typedef { id, type_id } =>
-                    match &self.scope.typedef[type_id].desc {
-                        ast::DeclDesc::Enum { width, .. } => {
-                            let name = id;
-                            let type_name = type_id;
-                            let id = id.to_ident();
-                            let type_id = type_id.to_ident();
-                            let decl_id = &self.packet_name;
-                            let value = types::get_uint(self.endianness, *width, self.span);
-                            quote! {
-                                let #id = (#cond_id == #cond_value)
-                                    .then(||
-                                        #type_id::try_from(#value).map_err(|unknown_val| Error::InvalidEnumValueError {
-                                            obj: #decl_id.to_string(),
-                                            field: #name.to_string(),
-                                            value: unknown_val as u64,
-                                            type_: #type_name.to_string(),
-                                        }))
-                                    .transpose()?;
-                            }
-                        }
-                        ast::DeclDesc::Struct { .. } => {
-                            let id = id.to_ident();
-                            let type_id = type_id.to_ident();
-                            let span = self.span;
-                            quote! {
-                                let #id = (#cond_id == #cond_value)
-                                    .then(|| #type_id::parse_inner(&mut #span))
-                                    .transpose()?;
-                            }
-                        }
-                        _ => unreachable!(),
+                }
+                ast::DeclDesc::Struct { .. } => {
+                    let id = id.to_ident();
+                    let type_id = type_id.to_ident();
+                    let span = self.span;
+                    quote! {
+                        let #id = (#cond_id == #cond_value)
+                            .then(|| #type_id::parse_inner(&mut #span))
+                            .transpose()?;
                     }
+                }
                 _ => unreachable!(),
-            })
+            },
+            _ => unreachable!(),
+        })
     }
 
     fn add_bit_field(&mut self, field: &'a analyzer_ast::Field) {
@@ -209,7 +209,7 @@ impl<'a> FieldParser<'a> {
                     quote! {
                         let fixed_value = #v;
                         if fixed_value != #value_type::from(#enum_id::#tag_id)  {
-                            return Err(Error::InvalidFixedValue {
+                            return Err(DecodeError::InvalidFixedValue {
                                 expected: #value_type::from(#enum_id::#tag_id) as u64,
                                 actual: fixed_value as u64,
                             });
@@ -221,7 +221,7 @@ impl<'a> FieldParser<'a> {
                     quote! {
                         let fixed_value = #v;
                         if fixed_value != #value {
-                            return Err(Error::InvalidFixedValue {
+                            return Err(DecodeError::InvalidFixedValue {
                                 expected: #value,
                                 actual: fixed_value as u64,
                             });
@@ -235,11 +235,11 @@ impl<'a> FieldParser<'a> {
                     let id = id.to_ident();
                     let type_id = type_id.to_ident();
                     quote! {
-                        let #id = #type_id::try_from(#v).map_err(|unknown_val| Error::InvalidEnumValueError {
-                            obj: #packet_name.to_string(),
-                            field: #field_name.to_string(),
+                        let #id = #type_id::try_from(#v).map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+                            obj: #packet_name,
+                            field: #field_name,
                             value: unknown_val as u64,
-                            type_: #type_name.to_string(),
+                            type_: #type_name,
                         })?;
                     }
                 }
@@ -314,8 +314,8 @@ impl<'a> FieldParser<'a> {
         let packet_name = &self.packet_name;
         self.code.push(quote! {
             if #span.get().remaining() < #wanted {
-                return Err(Error::InvalidLengthError {
-                    obj: #packet_name.to_string(),
+                return Err(DecodeError::InvalidLengthError {
+                    obj: #packet_name,
                     wanted: #wanted,
                     got: #span.get().remaining(),
                 });
@@ -416,9 +416,9 @@ impl<'a> FieldParser<'a> {
                     // when stabilized.
                     let #id = (0..#count)
                         .map(|_| #parse_element)
-                        .collect::<Result<Vec<_>>>()?
+                        .collect::<Result<Vec<_>, DecodeError>>()?
                         .try_into()
-                        .map_err(|_| Error::InvalidPacketError)?;
+                        .map_err(|_| DecodeError::InvalidPacketError)?;
                 });
             }
             (ElementWidth::Unknown, ArrayShape::CountField(count_field)) => {
@@ -428,7 +428,7 @@ impl<'a> FieldParser<'a> {
                 self.code.push(quote! {
                     let #id = (0..#count_field)
                         .map(|_| #parse_element)
-                        .collect::<Result<Vec<_>>>()?;
+                        .collect::<Result<Vec<_>, DecodeError>>()?;
                 });
             }
             (ElementWidth::Unknown, ArrayShape::Unknown) => {
@@ -459,9 +459,9 @@ impl<'a> FieldParser<'a> {
                     // when stabilized.
                     let #id = (0..#count)
                         .map(|_| #parse_element)
-                        .collect::<Result<Vec<_>>>()?
+                        .collect::<Result<Vec<_>, DecodeError>>()?
                         .try_into()
-                        .map_err(|_| Error::InvalidPacketError)?;
+                        .map_err(|_| DecodeError::InvalidPacketError)?;
                 });
             }
             (ElementWidth::Static(element_width), ArrayShape::CountField(count_field)) => {
@@ -471,7 +471,7 @@ impl<'a> FieldParser<'a> {
                 self.code.push(quote! {
                     let #id = (0..#count_field)
                         .map(|_| #parse_element)
-                        .collect::<Result<Vec<_>>>()?;
+                        .collect::<Result<Vec<_>, DecodeError>>()?;
                 });
             }
             (ElementWidth::Static(element_width), ArrayShape::SizeField(_))
@@ -490,7 +490,7 @@ impl<'a> FieldParser<'a> {
                     let element_width = syn::Index::from(element_width);
                     self.code.push(quote! {
                         if #array_size % #element_width != 0 {
-                            return Err(Error::InvalidArraySize {
+                            return Err(DecodeError::InvalidArraySize {
                                 array: #array_size,
                                 element: #element_width,
                             });
@@ -589,8 +589,8 @@ impl<'a> FieldParser<'a> {
                 // size.
                 self.code.push(quote! {
                     if #size_field < #size_modifier {
-                        return Err(Error::InvalidLengthError {
-                            obj: #packet_name.to_string(),
+                        return Err(DecodeError::InvalidLengthError {
+                            obj: #packet_name,
                             wanted: #size_modifier,
                             got: #size_field,
                         });
@@ -646,7 +646,7 @@ impl<'a> FieldParser<'a> {
         if let Some(width) = width {
             let get_uint = types::get_uint(self.endianness, width, span);
             return quote! {
-                Ok::<_, Error>(#get_uint)
+                Ok::<_, DecodeError>(#get_uint)
             };
         }
 
@@ -655,11 +655,11 @@ impl<'a> FieldParser<'a> {
             let type_id = id.to_ident();
             let packet_name = &self.packet_name;
             return quote! {
-                #type_id::try_from(#get_uint).map_err(|unknown_val| Error::InvalidEnumValueError {
-                    obj: #packet_name.to_string(),
-                    field: String::new(), // TODO(mgeisler): fill out or remove
+                #type_id::try_from(#get_uint).map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+                    obj: #packet_name,
+                    field: "", // TODO(mgeisler): fill out or remove
                     value: unknown_val as u64,
-                    type_: #id.to_string(),
+                    type_: #id,
                 })
             };
         }
