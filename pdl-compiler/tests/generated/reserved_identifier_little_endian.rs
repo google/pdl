@@ -4,8 +4,8 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use pdl_runtime::{Error, Packet};
-type Result<T> = std::result::Result<T, Error>;
+use std::result::Result;
+use pdl_runtime::{DecodeError, EncodeError, Packet};
 /// Private prevents users from creating arbitrary scalar values
 /// in situations where the value needs to be validated.
 /// Users can freely deref the value, but only the backend
@@ -38,15 +38,15 @@ impl TestData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 1
     }
-    fn parse(bytes: &[u8]) -> Result<Self> {
+    fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         if bytes.get().remaining() < 1 {
-            return Err(Error::InvalidLengthError {
-                obj: "Test".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Test",
                 wanted: 1,
                 got: bytes.get().remaining(),
             });
@@ -54,8 +54,9 @@ impl TestData {
         let r#type = bytes.get_mut().get_u8();
         Ok(Self { r#type })
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to<T: BufMut>(&self, buffer: &mut T) -> Result<(), EncodeError> {
         buffer.put_u8(self.r#type);
+        Ok(())
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
@@ -65,42 +66,42 @@ impl TestData {
     }
 }
 impl Packet for Test {
-    fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.test.get_size());
-        self.test.write_to(&mut buffer);
-        buffer.freeze()
+    fn encoded_len(&self) -> usize {
+        self.get_size()
     }
-    fn to_vec(self) -> Vec<u8> {
-        self.to_bytes().to_vec()
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        self.test.write_to(buf)
     }
 }
-impl From<Test> for Bytes {
-    fn from(packet: Test) -> Self {
-        packet.to_bytes()
+impl TryFrom<Test> for Bytes {
+    type Error = EncodeError;
+    fn try_from(packet: Test) -> Result<Self, Self::Error> {
+        packet.encode_to_bytes()
     }
 }
-impl From<Test> for Vec<u8> {
-    fn from(packet: Test) -> Self {
-        packet.to_vec()
+impl TryFrom<Test> for Vec<u8> {
+    type Error = EncodeError;
+    fn try_from(packet: Test) -> Result<Self, Self::Error> {
+        packet.encode_to_vec()
     }
 }
 impl Test {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         let data = TestData::parse_inner(&mut bytes)?;
         Self::new(data)
     }
-    fn new(test: TestData) -> Result<Self> {
+    fn new(test: TestData) -> Result<Self, DecodeError> {
         Ok(Self { test })
     }
     pub fn get_type(&self) -> u8 {
         self.test.r#type
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to(&self, buffer: &mut impl BufMut) -> Result<(), EncodeError> {
         self.test.write_to(buffer)
     }
     pub fn get_size(&self) -> usize {

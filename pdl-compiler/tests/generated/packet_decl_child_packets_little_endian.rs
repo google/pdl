@@ -4,8 +4,8 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use pdl_runtime::{Error, Packet};
-type Result<T> = std::result::Result<T, Error>;
+use std::result::Result;
+use pdl_runtime::{DecodeError, EncodeError, Packet};
 /// Private prevents users from creating arbitrary scalar values
 /// in situations where the value needs to be validated.
 /// Users can freely deref the value, but only the backend
@@ -28,7 +28,7 @@ pub enum Enum16 {
 }
 impl TryFrom<u16> for Enum16 {
     type Error = u16;
-    fn try_from(value: u16) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
         match value {
             0x1 => Ok(Enum16::A),
             0x2 => Ok(Enum16::B),
@@ -119,45 +119,45 @@ impl FooData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 4
     }
-    fn parse(bytes: &[u8]) -> Result<Self> {
+    fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         if bytes.get().remaining() < 1 {
-            return Err(Error::InvalidLengthError {
-                obj: "Foo".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Foo",
                 wanted: 1,
                 got: bytes.get().remaining(),
             });
         }
         let a = bytes.get_mut().get_u8();
         if bytes.get().remaining() < 2 {
-            return Err(Error::InvalidLengthError {
-                obj: "Foo".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Foo",
                 wanted: 2,
                 got: bytes.get().remaining(),
             });
         }
         let b = Enum16::try_from(bytes.get_mut().get_u16_le())
-            .map_err(|unknown_val| Error::InvalidEnumValueError {
-                obj: "Foo".to_string(),
-                field: "b".to_string(),
+            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+                obj: "Foo",
+                field: "b",
                 value: unknown_val as u64,
-                type_: "Enum16".to_string(),
+                type_: "Enum16",
             })?;
         if bytes.get().remaining() < 1 {
-            return Err(Error::InvalidLengthError {
-                obj: "Foo".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Foo",
                 wanted: 1,
                 got: bytes.get().remaining(),
             });
         }
         let payload_size = bytes.get_mut().get_u8() as usize;
         if bytes.get().remaining() < payload_size {
-            return Err(Error::InvalidLengthError {
-                obj: "Foo".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Foo",
                 wanted: payload_size,
                 got: bytes.get().remaining(),
             });
@@ -182,22 +182,25 @@ impl FooData {
         };
         Ok(Self { a, b, child })
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to<T: BufMut>(&self, buffer: &mut T) -> Result<(), EncodeError> {
         buffer.put_u8(self.a);
         buffer.put_u16_le(u16::from(self.b));
         if self.child.get_total_size() > 0xff {
-            panic!(
-                "Invalid length for {}::{}: {} > {}", "Foo", "_payload_", self.child
-                .get_total_size(), 0xff
-            );
+            return Err(EncodeError::SizeOverflow {
+                packet: "Foo",
+                field: "_payload_",
+                size: self.child.get_total_size(),
+                maximum_size: 0xff,
+            });
         }
         buffer.put_u8(self.child.get_total_size() as u8);
         match &self.child {
-            FooDataChild::Bar(child) => child.write_to(buffer),
-            FooDataChild::Baz(child) => child.write_to(buffer),
+            FooDataChild::Bar(child) => child.write_to(buffer)?,
+            FooDataChild::Baz(child) => child.write_to(buffer)?,
             FooDataChild::Payload(payload) => buffer.put_slice(payload),
             FooDataChild::None => {}
         }
+        Ok(())
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
@@ -207,32 +210,32 @@ impl FooData {
     }
 }
 impl Packet for Foo {
-    fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.foo.get_size());
-        self.foo.write_to(&mut buffer);
-        buffer.freeze()
+    fn encoded_len(&self) -> usize {
+        self.get_size()
     }
-    fn to_vec(self) -> Vec<u8> {
-        self.to_bytes().to_vec()
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        self.foo.write_to(buf)
     }
 }
-impl From<Foo> for Bytes {
-    fn from(packet: Foo) -> Self {
-        packet.to_bytes()
+impl TryFrom<Foo> for Bytes {
+    type Error = EncodeError;
+    fn try_from(packet: Foo) -> Result<Self, Self::Error> {
+        packet.encode_to_bytes()
     }
 }
-impl From<Foo> for Vec<u8> {
-    fn from(packet: Foo) -> Self {
-        packet.to_vec()
+impl TryFrom<Foo> for Vec<u8> {
+    type Error = EncodeError;
+    fn try_from(packet: Foo) -> Result<Self, Self::Error> {
+        packet.encode_to_vec()
     }
 }
 impl Foo {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         let data = FooData::parse_inner(&mut bytes)?;
         Self::new(data)
     }
@@ -244,7 +247,7 @@ impl Foo {
             FooDataChild::None => FooChild::None,
         }
     }
-    fn new(foo: FooData) -> Result<Self> {
+    fn new(foo: FooData) -> Result<Self, DecodeError> {
         Ok(Self { foo })
     }
     pub fn get_a(&self) -> u8 {
@@ -253,7 +256,7 @@ impl Foo {
     pub fn get_b(&self) -> Enum16 {
         self.foo.b
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to(&self, buffer: &mut impl BufMut) -> Result<(), EncodeError> {
         self.foo.write_to(buffer)
     }
     pub fn get_size(&self) -> usize {
@@ -301,15 +304,15 @@ impl BarData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 1
     }
-    fn parse(bytes: &[u8]) -> Result<Self> {
+    fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         if bytes.get().remaining() < 1 {
-            return Err(Error::InvalidLengthError {
-                obj: "Bar".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Bar",
                 wanted: 1,
                 got: bytes.get().remaining(),
             });
@@ -317,8 +320,9 @@ impl BarData {
         let x = bytes.get_mut().get_u8();
         Ok(Self { x })
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to<T: BufMut>(&self, buffer: &mut T) -> Result<(), EncodeError> {
         buffer.put_u8(self.x);
+        Ok(())
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
@@ -328,23 +332,23 @@ impl BarData {
     }
 }
 impl Packet for Bar {
-    fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.foo.get_size());
-        self.foo.write_to(&mut buffer);
-        buffer.freeze()
+    fn encoded_len(&self) -> usize {
+        self.get_size()
     }
-    fn to_vec(self) -> Vec<u8> {
-        self.to_bytes().to_vec()
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        self.foo.write_to(buf)
     }
 }
-impl From<Bar> for Bytes {
-    fn from(packet: Bar) -> Self {
-        packet.to_bytes()
+impl TryFrom<Bar> for Bytes {
+    type Error = EncodeError;
+    fn try_from(packet: Bar) -> Result<Self, Self::Error> {
+        packet.encode_to_bytes()
     }
 }
-impl From<Bar> for Vec<u8> {
-    fn from(packet: Bar) -> Self {
-        packet.to_vec()
+impl TryFrom<Bar> for Vec<u8> {
+    type Error = EncodeError;
+    fn try_from(packet: Bar) -> Result<Self, Self::Error> {
+        packet.encode_to_vec()
     }
 }
 impl From<Bar> for Foo {
@@ -353,26 +357,26 @@ impl From<Bar> for Foo {
     }
 }
 impl TryFrom<Foo> for Bar {
-    type Error = Error;
-    fn try_from(packet: Foo) -> Result<Bar> {
+    type Error = DecodeError;
+    fn try_from(packet: Foo) -> Result<Bar, Self::Error> {
         Bar::new(packet.foo)
     }
 }
 impl Bar {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         let data = FooData::parse_inner(&mut bytes)?;
         Self::new(data)
     }
-    fn new(foo: FooData) -> Result<Self> {
+    fn new(foo: FooData) -> Result<Self, DecodeError> {
         let bar = match &foo.child {
             FooDataChild::Bar(value) => value.clone(),
             _ => {
-                return Err(Error::InvalidChildError {
+                return Err(DecodeError::InvalidChildError {
                     expected: stringify!(FooDataChild::Bar),
                     actual: format!("{:?}", & foo.child),
                 });
@@ -389,7 +393,7 @@ impl Bar {
     pub fn get_x(&self) -> u8 {
         self.bar.x
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to(&self, buffer: &mut impl BufMut) -> Result<(), EncodeError> {
         self.bar.write_to(buffer)
     }
     pub fn get_size(&self) -> usize {
@@ -440,15 +444,15 @@ impl BazData {
     fn conforms(bytes: &[u8]) -> bool {
         bytes.len() >= 2
     }
-    fn parse(bytes: &[u8]) -> Result<Self> {
+    fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         if bytes.get().remaining() < 2 {
-            return Err(Error::InvalidLengthError {
-                obj: "Baz".to_string(),
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Baz",
                 wanted: 2,
                 got: bytes.get().remaining(),
             });
@@ -456,8 +460,9 @@ impl BazData {
         let y = bytes.get_mut().get_u16_le();
         Ok(Self { y })
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to<T: BufMut>(&self, buffer: &mut T) -> Result<(), EncodeError> {
         buffer.put_u16_le(self.y);
+        Ok(())
     }
     fn get_total_size(&self) -> usize {
         self.get_size()
@@ -467,23 +472,23 @@ impl BazData {
     }
 }
 impl Packet for Baz {
-    fn to_bytes(self) -> Bytes {
-        let mut buffer = BytesMut::with_capacity(self.foo.get_size());
-        self.foo.write_to(&mut buffer);
-        buffer.freeze()
+    fn encoded_len(&self) -> usize {
+        self.get_size()
     }
-    fn to_vec(self) -> Vec<u8> {
-        self.to_bytes().to_vec()
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        self.foo.write_to(buf)
     }
 }
-impl From<Baz> for Bytes {
-    fn from(packet: Baz) -> Self {
-        packet.to_bytes()
+impl TryFrom<Baz> for Bytes {
+    type Error = EncodeError;
+    fn try_from(packet: Baz) -> Result<Self, Self::Error> {
+        packet.encode_to_bytes()
     }
 }
-impl From<Baz> for Vec<u8> {
-    fn from(packet: Baz) -> Self {
-        packet.to_vec()
+impl TryFrom<Baz> for Vec<u8> {
+    type Error = EncodeError;
+    fn try_from(packet: Baz) -> Result<Self, Self::Error> {
+        packet.encode_to_vec()
     }
 }
 impl From<Baz> for Foo {
@@ -492,26 +497,26 @@ impl From<Baz> for Foo {
     }
 }
 impl TryFrom<Foo> for Baz {
-    type Error = Error;
-    fn try_from(packet: Foo) -> Result<Baz> {
+    type Error = DecodeError;
+    fn try_from(packet: Foo) -> Result<Baz, Self::Error> {
         Baz::new(packet.foo)
     }
 }
 impl Baz {
-    pub fn parse(bytes: &[u8]) -> Result<Self> {
+    pub fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
         let mut cell = Cell::new(bytes);
         let packet = Self::parse_inner(&mut cell)?;
         Ok(packet)
     }
-    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self> {
+    fn parse_inner(mut bytes: &mut Cell<&[u8]>) -> Result<Self, DecodeError> {
         let data = FooData::parse_inner(&mut bytes)?;
         Self::new(data)
     }
-    fn new(foo: FooData) -> Result<Self> {
+    fn new(foo: FooData) -> Result<Self, DecodeError> {
         let baz = match &foo.child {
             FooDataChild::Baz(value) => value.clone(),
             _ => {
-                return Err(Error::InvalidChildError {
+                return Err(DecodeError::InvalidChildError {
                     expected: stringify!(FooDataChild::Baz),
                     actual: format!("{:?}", & foo.child),
                 });
@@ -528,7 +533,7 @@ impl Baz {
     pub fn get_y(&self) -> u16 {
         self.baz.y
     }
-    fn write_to(&self, buffer: &mut BytesMut) {
+    fn write_to(&self, buffer: &mut impl BufMut) -> Result<(), EncodeError> {
         self.baz.write_to(buffer)
     }
     pub fn get_size(&self) -> usize {

@@ -42,7 +42,8 @@ fn test_pcap() {
     }
     .build();
 
-    assert!(PcapFile::parse(&pcap_file.to_vec()).is_ok());
+    let vec = pcap_file.encode_to_vec().unwrap();
+    assert!(PcapFile::parse(&*vec).is_ok());
 }
 
 #[test]

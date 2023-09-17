@@ -4,8 +4,8 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::convert::{TryFrom, TryInto};
 use std::cell::Cell;
 use std::fmt;
-use pdl_runtime::{Error, Packet};
-type Result<T> = std::result::Result<T, Error>;
+use std::result::Result;
+use pdl_runtime::{DecodeError, EncodeError, Packet};
 /// Private prevents users from creating arbitrary scalar values
 /// in situations where the value needs to be validated.
 /// Users can freely deref the value, but only the backend
@@ -28,7 +28,7 @@ pub enum IncompleteTruncatedClosed {
 }
 impl TryFrom<u8> for IncompleteTruncatedClosed {
     type Error = u8;
-    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x0 => Ok(IncompleteTruncatedClosed::A),
             0x1 => Ok(IncompleteTruncatedClosed::B),
@@ -94,7 +94,7 @@ pub enum IncompleteTruncatedOpen {
 }
 impl TryFrom<u8> for IncompleteTruncatedOpen {
     type Error = u8;
-    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x0 => Ok(IncompleteTruncatedOpen::A),
             0x1 => Ok(IncompleteTruncatedOpen::B),
@@ -163,7 +163,7 @@ pub enum IncompleteTruncatedClosedWithRange {
 }
 impl TryFrom<u8> for IncompleteTruncatedClosedWithRange {
     type Error = u8;
-    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x0 => Ok(IncompleteTruncatedClosedWithRange::A),
             0x1 => Ok(IncompleteTruncatedClosedWithRange::X),
@@ -235,7 +235,7 @@ pub enum IncompleteTruncatedOpenWithRange {
 }
 impl TryFrom<u8> for IncompleteTruncatedOpenWithRange {
     type Error = u8;
-    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x0 => Ok(IncompleteTruncatedOpenWithRange::A),
             0x1 => Ok(IncompleteTruncatedOpenWithRange::X),
@@ -313,7 +313,7 @@ pub enum CompleteTruncated {
 }
 impl TryFrom<u8> for CompleteTruncated {
     type Error = u8;
-    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x0 => Ok(CompleteTruncated::A),
             0x1 => Ok(CompleteTruncated::B),
@@ -392,7 +392,7 @@ pub enum CompleteTruncatedWithRange {
 }
 impl TryFrom<u8> for CompleteTruncatedWithRange {
     type Error = u8;
-    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x0 => Ok(CompleteTruncatedWithRange::A),
             0x1 => Ok(CompleteTruncatedWithRange::X),
@@ -462,7 +462,7 @@ pub enum CompleteWithRange {
 }
 impl TryFrom<u8> for CompleteWithRange {
     type Error = u8;
-    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x0 => Ok(CompleteWithRange::A),
             0x1 => Ok(CompleteWithRange::B),
