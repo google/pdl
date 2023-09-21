@@ -68,6 +68,15 @@ def desugar(file: File):
                 fields.extend(desugar_field_(f, fields[-1] if len(fields) > 0 else None, {}))
             d.fields = fields
 
+            # Add backlinks from optional links to their flag scalar
+            # field declaration.
+            fields_by_id = dict()
+            for f in d.fields:
+                if hasattr(f, 'id'):
+                    fields_by_id[f.id] = f
+                if f.cond:
+                    fields_by_id[f.cond.id].cond_for = f
+
         declarations.append(d)
 
     file.declarations = declarations
@@ -179,7 +188,10 @@ def get_field_size(field: Field, skip_payload: bool = False) -> Optional[int]:
     None is returned instead. If skip_payload is set, payload and body fields
     are counted as having size 0 rather than a variable size."""
 
-    if isinstance(field, (ScalarField, SizeField, CountField, ReservedField)):
+    if field.cond:
+        return None
+
+    elif isinstance(field, (ScalarField, SizeField, CountField, ReservedField)):
         return field.width
 
     elif isinstance(field, FixedField):
@@ -324,7 +336,10 @@ def is_bit_field(field: Field) -> bool:
     These include: ScalarField, FixedField, TypedefField with enum type,
     SizeField, and CountField."""
 
-    if isinstance(field, (ScalarField, SizeField, CountField, FixedField, ReservedField)):
+    if field.cond:
+        return False
+
+    elif isinstance(field, (ScalarField, SizeField, CountField, FixedField, ReservedField)):
         return True
 
     elif isinstance(field, TypedefField) and isinstance(field.type, EnumDeclaration):

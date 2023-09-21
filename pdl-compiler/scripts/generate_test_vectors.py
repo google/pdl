@@ -70,6 +70,8 @@ class Value:
                 v.serialize_(serializer)
         elif isinstance(self.value, Packet):
             self.value.serialize_(serializer)
+        elif self.value == None:
+            pass
         else:
             raise Exception(f"Malformed value {self.value}")
 
@@ -177,6 +179,18 @@ class BitGenerator:
 
 
 generator = BitGenerator()
+
+
+def generate_cond_field_values(field: ast.ScalarField) -> List[Value]:
+    cond_value_present = field.cond_for.cond.value
+    cond_value_absent = 0 if field.cond_for.cond.value != 0 else 1
+
+    def get_cond_value(parent: Packet, field: ast.Field) -> int:
+        for f in parent.fields:
+            if f.ref is field:
+                return cond_value_absent if f.value.value is None else cond_value_present
+
+    return [Value(lambda p: get_cond_value(p, field.cond_for), field.width)]
 
 
 def generate_size_field_values(field: ast.SizeField) -> List[Value]:
@@ -489,7 +503,10 @@ def generate_typedef_field_values(
 def generate_field_values(
     field: ast.Field, constraints: List[ast.Constraint], payload: Optional[List[Packet]]
 ) -> List[Value]:
-    if isinstance(field, ast.ChecksumField):
+    if field.cond_for:
+        return generate_cond_field_values(field)
+
+    elif isinstance(field, ast.ChecksumField):
         # Checksum fields are just markers.
         return [Value(0, 0)]
 
@@ -547,10 +564,12 @@ def generate_fields(
     constraints: List[ast.Constraint],
     payload: Optional[List[Packet]],
 ) -> List[List[Field]]:
-    return [
-        [Field(v, f) for v in generate_field_values(f, constraints, payload)]
-        for f in decl.fields
-    ]
+    fields = []
+    for f in decl.fields:
+        values = generate_field_values(f, constraints, payload)
+        optional_none = [] if not f.cond else [Field(Value(None, 0), f)]
+        fields.append(optional_none + [Field(v, f) for v in values])
+    return fields
 
 
 def generate_fields_recursive(

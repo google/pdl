@@ -67,7 +67,9 @@ class Constraint(Node):
 class Field(Node):
     parent: Node = field(init=False)
     cond: Optional[Constraint] = field(kw_only=True, default=None)
-
+    # Backlink to the (optional) optional field referencing
+    # this field as condition.
+    cond_for: Optional['Field'] = field(init=False, default=None)
 
 @node('checksum_field')
 class ChecksumField(Field):
