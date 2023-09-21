@@ -124,3 +124,10 @@ generated during serialization.
 |                                       |     d: List[TestStruct] = field(kw_only=True,                 |
 |                                       |                                 default_factory=list)         |
 +---------------------------------------+---------------------------------------------------------------+
+| ::                                    | .. sourcecode:: python                                        |
+|                                       |                                                               |
+|     a: 8 if c_a = 1,                  |     a: Optional[int] = field(kw_only=True, default=None)      |
+|     b: TestEnum if c_b = 1,           |     b: Optional[TestEnum] = field(kw_only=True, default=None) |
+|     c: TestStruct if c_c = 1,         |     c: Optional[TestStruct] = field(kw_only=True,             |
+|                                       |                                     default=None)             |
++---------------------------------------+---------------------------------------------------------------+
