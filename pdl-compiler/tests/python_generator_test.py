@@ -63,7 +63,7 @@ def create_object(typ, value):
     elif typing_extensions.get_origin(typ) is typing.Union:
         # typing.Optional[int] expands to typing.Union[int, None]
         typ = typing_extensions.get_args(typ)[0]
-        return create_object(typ, value) if value else None
+        return create_object(typ, value) if value is not None else None
     elif typ is bytes:
         return bytes(value)
     elif typ is bytearray:
