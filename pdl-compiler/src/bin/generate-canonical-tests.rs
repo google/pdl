@@ -65,7 +65,7 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
         .unwrap_or_else(|err| panic!("Could not read {input}: {err}"));
     let packets: Vec<Packet> = serde_json::from_str(&data).expect("Could not parse JSON");
 
-    let module = format_ident!("{}", module_name);
+    let module = syn::parse_str::<syn::Path>(module_name).unwrap();
     let mut tests = Vec::new();
     for packet in &packets {
         for (i, test_vector) in packet.tests.iter().enumerate() {
@@ -131,7 +131,7 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
     let code = quote! {
         #![allow(warnings, missing_docs)]
 
-        use #module::Packet;
+        use pdl_runtime::Packet;
         use serde_json::json;
 
         #(#tests)*
