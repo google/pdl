@@ -121,7 +121,9 @@ class FieldParser:
         for shift, width, field in self.chunk:
             v = (value if len(self.chunk) == 1 and shift == 0 else f"({value} >> {shift}) & {mask(width)}")
 
-            if isinstance(field, ast.ScalarField):
+            if field.cond_for:
+                self.unchecked_append_(f"uint8_t {field.id} = {v};")
+            elif isinstance(field, ast.ScalarField):
                 self.unchecked_append_(f"{field.id}_ = {v};")
             elif isinstance(field, ast.FixedField) and field.enum_id:
                 self.unchecked_append_(f"if ({field.enum_id}({v}) != {field.enum_id}::{field.tag_id}) {{")
@@ -158,6 +160,63 @@ class FieldParser:
             if (!{field_type}::Parse(span, &{field_id}_)) {{
                 return false;
             }}""".format(field_type=field.type.id, field_id=field.id)))
+
+    def parse_optional_field_(self, field: ast.Field):
+        """Parse the selected optional field.
+        Optional fields must start and end on a byte boundary."""
+
+        self.check_code_()
+
+        if isinstance(field, ast.ScalarField):
+            backing_type = get_cxx_scalar_type(field.width)
+            self.append_(dedent("""
+            if ({cond_id} == {cond_value}) {{
+                if (span.size() < {size}) {{
+                    return false;
+                }}
+                {field_id}_ = std::make_optional(
+                    span.read_{byteorder}<{backing_type}, {size}>());
+            }}
+            """.format(size=int(field.width / 8),
+                       backing_type=backing_type,
+                       field_id=field.id,
+                       cond_id=field.cond.id,
+                       cond_value=field.cond.value,
+                       byteorder=self.byteorder)))
+
+        elif isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration):
+            backing_type = get_cxx_scalar_type(field.type.width)
+            self.append_(dedent("""
+            if ({cond_id} == {cond_value}) {{
+                if (span.size() < {size}) {{
+                    return false;
+                }}
+                {field_id}_ = std::make_optional({type_id}(
+                    span.read_{byteorder}<{backing_type}, {size}>()));
+            }}
+            """.format(size=int(field.type.width / 8),
+                       backing_type=backing_type,
+                       type_id=field.type_id,
+                       field_id=field.id,
+                       cond_id=field.cond.id,
+                       cond_value=field.cond.value,
+                       byteorder=self.byteorder)))
+
+        elif isinstance(field, ast.TypedefField):
+            self.append_(dedent("""
+            if ({cond_id} == {cond_value}) {{
+                auto& output = {field_id}_.emplace();
+                if (!{type_id}::Parse(span, &output)) {{
+                    return false;
+                }}
+            }}
+            """.format(type_id=field.type_id,
+                       field_id=field.id,
+                       cond_id=field.cond.id,
+                       cond_value=field.cond.value)))
+
+        else:
+            raise Exception(f"unsupported field type {field.__class__.__name__}")
 
     def parse_array_field_lite_(self, field: ast.ArrayField):
         """Parse the selected array field.
@@ -459,7 +518,10 @@ class FieldParser:
         # Field has bit granularity.
         # Append the field to the current chunk,
         # check if a byte boundary was reached.
-        if core.is_bit_field(field):
+        if field.cond:
+            self.parse_optional_field_(field)
+
+        elif core.is_bit_field(field):
             self.parse_bit_field_(field)
 
         # Padding fields.
@@ -594,7 +656,11 @@ class FieldSerializer:
         width = core.get_field_size(field)
         shift = self.shift
 
-        if isinstance(field, ast.ScalarField):
+        if field.cond_for:
+            value_present = field.cond_for.cond.value
+            value_absent = 0 if field.cond_for.cond.value else 1
+            self.value.append((f"({field.cond_for.id}_.has_value() ? {value_present} : {value_absent})", shift))
+        elif isinstance(field, ast.ScalarField):
             self.value.append((f"{var} & {mask(field.width)}", shift))
         elif isinstance(field, ast.FixedField) and field.enum_id:
             self.value.append((f"{field.enum_id}::{field.tag_id}", shift))
@@ -668,6 +734,42 @@ class FieldSerializer:
 
         self.append_(f"{var}.Serialize(output);")
 
+    def serialize_optional_field_(self, field: ast.Field):
+        """Serialize optional scalar or typedef fields."""
+
+        if isinstance(field, ast.ScalarField):
+            backing_type = get_cxx_scalar_type(field.width)
+            self.append_(dedent(
+                """
+                if ({field_id}_.has_value()) {{
+                    pdl::packet::Builder::write_{byteorder}<{backing_type}, {size}>(output, {field_id}_.value());
+                }}""".format(field_id=field.id,
+                            size=int(field.width / 8),
+                            backing_type=backing_type,
+                            byteorder=self.byteorder)))
+
+        elif isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration):
+            backing_type = get_cxx_scalar_type(field.type.width)
+            self.append_(dedent(
+                """
+                if ({field_id}_.has_value()) {{
+                    pdl::packet::Builder::write_{byteorder}<{backing_type}, {size}>(
+                        output, static_cast<{backing_type}>({field_id}_.value()));
+                }}""".format(field_id=field.id,
+                            size=int(field.type.width / 8),
+                            backing_type=backing_type,
+                            byteorder=self.byteorder)))
+
+        elif isinstance(field, ast.TypedefField):
+            self.append_(dedent(
+                """
+                if ({field_id}_.has_value()) {{
+                    {field_id}_->Serialize(output);
+                }}""".format(field_id=field.id)))
+
+        else:
+            raise Exception(f"unsupported field type {field.__class__.__name__}")
+
     def serialize_payload_field_(self, field: Union[ast.BodyField, ast.PayloadField], var: str):
         """Serialize body and payload fields."""
 
@@ -679,10 +781,13 @@ class FieldSerializer:
     def serialize(self, field: ast.Field, decl: ast.Declaration, var: Optional[str] = None):
         field_var = deref(var, f'{field.id}_') if hasattr(field, 'id') else None
 
+        if field.cond:
+            self.serialize_optional_field_(field)
+
         # Field has bit granularity.
         # Append the field to the current chunk,
         # check if a byte boundary was reached.
-        if core.is_bit_field(field):
+        elif core.is_bit_field(field):
             self.serialize_bit_field_(field, var, field_var, decl)
 
         # Padding fields.
@@ -755,10 +860,19 @@ def generate_packet_view_field_members(decl: ast.Declaration) -> List[str]:
     fields = core.get_unconstrained_parent_fields(decl) + decl.fields
     members = []
     for field in fields:
-        if isinstance(field, (ast.PayloadField, ast.BodyField)):
+        if field.cond_for:
+            # Scalar fields used as condition for optional fields are treated
+            # as fixed fields since their value is tied to the value of the
+            # optional field.
+            pass
+        elif isinstance(field, (ast.PayloadField, ast.BodyField)):
             members.append("pdl::packet::slice payload_;")
         elif isinstance(field, ast.ArrayField):
             members.append(f"pdl::packet::slice {field.id}_;")
+        elif isinstance(field, ast.ScalarField) and field.cond:
+            members.append(f"std::optional<{get_cxx_scalar_type(field.width)}> {field.id}_{{}};")
+        elif isinstance(field, ast.TypedefField) and field.cond:
+            members.append(f"std::optional<{field.type_id}> {field.id}_{{}};")
         elif isinstance(field, ast.ScalarField):
             members.append(f"{get_cxx_scalar_type(field.width)} {field.id}_{{0}};")
         elif isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration):
@@ -780,7 +894,12 @@ def generate_packet_field_members(decl: ast.Declaration) -> List[str]:
 
     members = []
     for field in decl.fields:
-        if isinstance(field, (ast.PayloadField, ast.BodyField)) and not decl.parent:
+        if field.cond_for:
+            # Scalar fields used as condition for optional fields are treated
+            # as fixed fields since their value is tied to the value of the
+            # optional field.
+            pass
+        elif isinstance(field, (ast.PayloadField, ast.BodyField)) and not decl.parent:
             members.append("std::vector<uint8_t> payload_;")
         elif isinstance(field, ast.ArrayField) and field.size:
             element_type = field.type_id or get_cxx_scalar_type(field.width)
@@ -788,6 +907,10 @@ def generate_packet_field_members(decl: ast.Declaration) -> List[str]:
         elif isinstance(field, ast.ArrayField):
             element_type = field.type_id or get_cxx_scalar_type(field.width)
             members.append(f"std::vector<{element_type}> {field.id}_;")
+        elif isinstance(field, ast.ScalarField) and field.cond:
+            members.append(f"std::optional<{get_cxx_scalar_type(field.width)}> {field.id}_{{}};")
+        elif isinstance(field, ast.TypedefField) and field.cond:
+            members.append(f"std::optional<{field.type_id}> {field.id}_{{}};")
         elif isinstance(field, ast.ScalarField):
             members.append(f"{get_cxx_scalar_type(field.width)} {field.id}_{{0}};")
         elif isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration):
@@ -965,7 +1088,16 @@ def generate_packet_size_getter(decl: ast.Declaration) -> List[str]:
     variable_width = []
     for f in core.get_packet_fields(decl):
         field_size = core.get_field_size(f)
-        if field_size is not None:
+        if f.cond:
+            if isinstance(f, ast.ScalarField):
+                variable_width.append(f"({f.id}_.has_value() ? {f.width} : 0)")
+            elif isinstance(f, ast.TypedefField) and isinstance(f.type, ast.EnumDeclaration):
+                variable_width.append(f"({f.id}_.has_value() ? {f.type.width} : 0)")
+            elif isinstance(f, ast.TypedefField):
+                variable_width.append(f"({f.id}_.has_value() ? {f.id}_->GetSize() : 0)")
+            else:
+                raise Exception(f"unsupported field type {f.__class__.__name__}")
+        elif field_size is not None:
             constant_width += field_size
         elif isinstance(f, (ast.PayloadField, ast.BodyField)):
             variable_width.append("payload_.size()")
@@ -999,7 +1131,12 @@ def generate_packet_view_field_accessors(packet: ast.PacketDeclaration) -> List[
     # Add accessors for the backed fields.
     fields = core.get_unconstrained_parent_fields(packet) + packet.fields
     for field in fields:
-        if isinstance(field, (ast.PayloadField, ast.BodyField)):
+        if field.cond_for:
+            # Scalar fields used as condition for optional fields are treated
+            # as fixed fields since their value is tied to the value of the
+            # optional field.
+            pass
+        elif isinstance(field, (ast.PayloadField, ast.BodyField)):
             accessors.append(
                 dedent("""\
                 std::vector<uint8_t> GetPayload() const {
@@ -1024,6 +1161,7 @@ def generate_packet_view_field_accessors(packet: ast.PacketDeclaration) -> List[
                             accessor=indent(generate_array_field_accessor(field), 1)))
         elif isinstance(field, ast.ScalarField):
             field_type = get_cxx_scalar_type(field.width)
+            field_type = f"std::optional<{field_type}>" if field.cond else field_type
             accessor_name = to_pascal_case(field.id)
             accessors.append(
                 dedent("""\
@@ -1035,6 +1173,7 @@ def generate_packet_view_field_accessors(packet: ast.PacketDeclaration) -> List[
                 """).format(field_type=field_type, accessor_name=accessor_name, member_name=field.id))
         elif isinstance(field, ast.TypedefField):
             field_qualifier = "" if isinstance(field.type, ast.EnumDeclaration) else " const&"
+            field_type = f"std::optional<{field.type_id}>" if field.cond else field.type_id
             accessor_name = to_pascal_case(field.id)
             accessors.append(
                 dedent("""\
@@ -1043,7 +1182,7 @@ def generate_packet_view_field_accessors(packet: ast.PacketDeclaration) -> List[
                     return {member_name}_;
                 }}
 
-                """).format(field_type=field.type_id,
+                """).format(field_type=field_type,
                             field_qualifier=field_qualifier,
                             accessor_name=accessor_name,
                             member_name=field.id))
@@ -1238,7 +1377,9 @@ def generate_packet_constructor(struct: ast.StructDeclaration, constructor_name:
             constructor_params.append(f"{field.type_id} {field.id}")
 
     for field in struct.fields:
-        if isinstance(field, (ast.PayloadField, ast.BodyField)):
+        if field.cond_for:
+            pass
+        elif isinstance(field, (ast.PayloadField, ast.BodyField)):
             constructor_params.append("std::vector<uint8_t> payload")
             if struct.parent:
                 payload_initializer = f"payload_ = std::move(payload);"
@@ -1254,13 +1395,16 @@ def generate_packet_constructor(struct: ast.StructDeclaration, constructor_name:
             constructor_initializers.append(f"{field.id}_(std::move({field.id}))")
         elif isinstance(field, ast.ScalarField):
             backing_type = get_cxx_scalar_type(field.width)
-            constructor_params.append(f"{backing_type} {field.id}")
+            field_type = f"std::optional<{backing_type}>" if field.cond else backing_type
+            constructor_params.append(f"{field_type} {field.id}")
             constructor_initializers.append(f"{field.id}_({field.id})")
         elif (isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration)):
-            constructor_params.append(f"{field.type_id} {field.id}")
+            field_type = f"std::optional<{field.type_id}>" if field.cond else field.type_id
+            constructor_params.append(f"{field_type} {field.id}")
             constructor_initializers.append(f"{field.id}_({field.id})")
         elif isinstance(field, ast.TypedefField):
-            constructor_params.append(f"{field.type_id} {field.id}")
+            field_type = f"std::optional<{field.type_id}>" if field.cond else field.type_id
+            constructor_params.append(f"{field_type} {field.id}")
             constructor_initializers.append(f"{field.id}_(std::move({field.id}))")
 
     if not constructor_params:
@@ -1271,7 +1415,9 @@ def generate_packet_constructor(struct: ast.StructDeclaration, constructor_name:
         parent_constructor_params = []
         for field in fields:
             constraints = [c for c in struct.constraints if c.id == getattr(field, 'id', None)]
-            if isinstance(field, (ast.PayloadField, ast.BodyField)):
+            if field.cond_for:
+                pass
+            elif isinstance(field, (ast.PayloadField, ast.BodyField)):
                 parent_constructor_params.append("std::vector<uint8_t>{}")
             elif isinstance(field, ast.ArrayField):
                 parent_constructor_params.append(f"std::move({field.id})")
@@ -1313,7 +1459,12 @@ def generate_packet_creator(packet: ast.PacketDeclaration) -> str:
     fields = core.get_unconstrained_parent_fields(packet) + packet.fields
 
     for field in fields:
-        if isinstance(field, (ast.PayloadField, ast.BodyField)):
+        if field.cond_for:
+            # Scalar fields used as condition for optional fields are treated
+            # as fixed fields since their value is tied to the value of the
+            # optional field.
+            pass
+        elif isinstance(field, (ast.PayloadField, ast.BodyField)):
             creator_params.append("std::vector<uint8_t> payload")
             constructor_params.append("std::move(payload)")
         elif isinstance(field, ast.ArrayField) and field.size:
@@ -1326,13 +1477,16 @@ def generate_packet_creator(packet: ast.PacketDeclaration) -> str:
             constructor_params.append(f"std::move({field.id})")
         elif isinstance(field, ast.ScalarField):
             backing_type = get_cxx_scalar_type(field.width)
-            creator_params.append(f"{backing_type} {field.id}")
+            field_type = f"std::optional<{backing_type}>" if field.cond else backing_type
+            creator_params.append(f"{field_type} {field.id}")
             constructor_params.append(f"{field.id}")
         elif (isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration)):
-            creator_params.append(f"{field.type_id} {field.id}")
+            field_type = f"std::optional<{field.type_id}>" if field.cond else field.type_id
+            creator_params.append(f"{field_type} {field.id}")
             constructor_params.append(f"{field.id}")
         elif isinstance(field, ast.TypedefField):
-            creator_params.append(f"{field.type_id} {field.id}")
+            field_type = f"std::optional<{field.type_id}>" if field.cond else field.type_id
+            creator_params.append(f"{field_type} {field.id}")
             constructor_params.append(f"std::move({field.id})")
 
     creator_params = ', '.join(creator_params)
@@ -1401,7 +1555,12 @@ def generate_struct_field_parsers(struct: ast.StructDeclaration) -> str:
     post_processing = []
 
     for field in struct.fields:
-        if isinstance(field, (ast.PayloadField, ast.BodyField)):
+        if field.cond_for:
+            # Scalar fields used as condition for optional fields are treated
+            # as fixed fields since their value is tied to the value of the
+            # optional field.
+            pass
+        elif isinstance(field, (ast.PayloadField, ast.BodyField)):
             code.append("std::vector<uint8_t> payload_;")
             parsed_fields.append("std::move(payload_)")
         elif isinstance(field, ast.ArrayField) and field.size:
@@ -1414,13 +1573,16 @@ def generate_struct_field_parsers(struct: ast.StructDeclaration) -> str:
             parsed_fields.append(f"std::move({field.id}_)")
         elif isinstance(field, ast.ScalarField):
             backing_type = get_cxx_scalar_type(field.width)
-            code.append(f"{backing_type} {field.id}_;")
+            field_type = f"std::optional<{backing_type}>" if field.cond else backing_type
+            code.append(f"{field_type} {field.id}_;")
             parsed_fields.append(f"{field.id}_")
         elif (isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration)):
-            code.append(f"{field.type_id} {field.id}_;")
+            field_type = f"std::optional<{field.type_id}>" if field.cond else field.type_id
+            code.append(f"{field_type} {field.id}_;")
             parsed_fields.append(f"{field.id}_")
         elif isinstance(field, ast.TypedefField):
-            code.append(f"{field.type_id} {field.id}_;")
+            field_type = f"std::optional<{field.type_id}>" if field.cond else field.type_id
+            code.append(f"{field_type} {field.id}_;")
             parsed_fields.append(f"std::move({field.id}_)")
         elif isinstance(field, ast.SizeField):
             code.append(f"{get_cxx_scalar_type(field.width)} {field.field_id}_size;")
@@ -1534,6 +1696,7 @@ def run(input: argparse.FileType, output: argparse.FileType, namespace: Optional
 
         #include <cstdint>
         #include <string>
+        #include <optional>
         #include <utility>
         #include <vector>
 

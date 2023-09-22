@@ -62,12 +62,29 @@ def generate_packet_parser_test(parser_test_suite: str, packet: ast.PacketDeclar
             sanitized_var = var.replace('[', '_').replace(']', '')
             field_var = f'{sanitized_var}_{id}'
 
-            if isinstance(field, ast.ScalarField):
+            if isinstance(field, ast.ScalarField) and field.cond:
+                value = f"std::make_optional({value})" if value is not None else "std::nullopt"
+                checks.append(f"ASSERT_EQ({get_field(decl, var, id)}, {value});")
+
+            elif isinstance(field, ast.ScalarField):
+                checks.append(f"ASSERT_EQ({get_field(decl, var, id)}, {value});")
+
+            elif (isinstance(field, ast.TypedefField) and
+                  isinstance(field.type, ast.EnumDeclaration) and
+                  field.cond):
+                value = f"std::make_optional({field.type_id}({value}))" if value is not None else "std::nullopt"
                 checks.append(f"ASSERT_EQ({get_field(decl, var, id)}, {value});")
 
             elif (isinstance(field, ast.TypedefField) and
                   isinstance(field.type, (ast.EnumDeclaration, ast.CustomFieldDeclaration, ast.ChecksumDeclaration))):
                 checks.append(f"ASSERT_EQ({get_field(decl, var, id)}, {field.type_id}({value}));")
+
+            elif isinstance(field, ast.TypedefField) and field.cond and value is None:
+                checks.append(f"ASSERT_TRUE(!{get_field(decl, var, id)}.has_value());")
+
+            elif isinstance(field, ast.TypedefField) and field.cond and value is not None:
+                checks.append(f"{field.type_id} const& {field_var} = {get_field(decl, var, id)}.value();")
+                checks.extend(check_members(field.type, field_var, value))
 
             elif isinstance(field, ast.TypedefField):
                 checks.append(f"{field.type_id} const& {field_var} = {get_field(decl, var, id)};")
@@ -169,8 +186,20 @@ def generate_packet_serializer_test(serializer_test_suite: str, packet: ast.Pack
             value = initializer['payload'] if isinstance(field, (ast.PayloadField,
                                                                  ast.BodyField)) else initializer.get(field_id, None)
 
-            if isinstance(field, ast.ScalarField):
+            if field.cond_for:
+                pass
+
+            elif field.cond and value is None:
+                parameters.append("std::nullopt")
+
+            elif isinstance(field, ast.ScalarField) and field.cond:
+                parameters.append(f"std::make_optional({value})")
+
+            elif isinstance(field, ast.ScalarField):
                 parameters.append(f"{value}")
+
+            elif isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration) and field.cond:
+                parameters.append(f"std::make_optional({field.type_id}({value}))")
 
             elif isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration):
                 parameters.append(f"{field.type_id}({value})")
