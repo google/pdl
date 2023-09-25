@@ -357,6 +357,7 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
             | FieldDesc::FixedScalar { .. }
             | FieldDesc::Reserved { .. }
             | FieldDesc::Group { .. }
+            | FieldDesc::Flag { .. }
             | FieldDesc::Scalar { .. }
             | FieldDesc::Array { type_id: None, .. } => None,
             FieldDesc::FixedEnum { enum_id: type_id, .. }
@@ -374,6 +375,7 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
             | FieldDesc::FixedScalar { .. }
             | FieldDesc::FixedEnum { .. }
             | FieldDesc::Reserved { .. }
+            | FieldDesc::Flag { .. }
             | FieldDesc::Scalar { .. } => true,
             FieldDesc::Typedef { type_id, .. } => {
                 let field = self.typedef.get(type_id.as_str());
@@ -1598,6 +1600,7 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
         scope: &HashMap<String, ast::DeclAnnotation>,
     ) -> ast::Field {
         field.annotate(match &field.desc {
+            _ if field.cond.is_some() => ast::FieldAnnotation::new(ast::Size::Dynamic),
             FieldDesc::Checksum { .. } | FieldDesc::Padding { .. } => {
                 ast::FieldAnnotation::new(ast::Size::Static(0))
             }
@@ -1609,6 +1612,7 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
             | FieldDesc::Scalar { width, .. } => {
                 ast::FieldAnnotation::new(ast::Size::Static(*width))
             }
+            FieldDesc::Flag { .. } => ast::FieldAnnotation::new(ast::Size::Static(1)),
             FieldDesc::Body | FieldDesc::Payload { .. } => {
                 let has_payload_size = decl.fields().any(|field| match &field.desc {
                     FieldDesc::Size { field_id, .. } => {
@@ -1771,6 +1775,42 @@ fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostic
     })
 }
 
+/// Replace Scalar fields used as condition for optional fields by the more
+/// specific Flag construct.
+fn desugar_flags(file: &mut parser_ast::File) {
+    for decl in &mut file.declarations {
+        match &mut decl.desc {
+            DeclDesc::Packet { fields, .. }
+            | DeclDesc::Struct { fields, .. }
+            | DeclDesc::Group { fields, .. } => {
+                // Gather information about condition flags.
+                let mut condition_ids: HashMap<String, (String, usize)> = HashMap::new();
+                for field in fields.iter() {
+                    if let Some(ref cond) = field.cond {
+                        condition_ids.insert(
+                            cond.id.to_owned(),
+                            (field.id().unwrap().to_owned(), cond.value.unwrap()),
+                        );
+                    }
+                }
+                // Replace condition flags in the fields.
+                for field in fields.iter_mut() {
+                    if let Some((optional_field_id, set_value)) =
+                        field.id().and_then(|id| condition_ids.get(id))
+                    {
+                        field.desc = FieldDesc::Flag {
+                            id: field.id().unwrap().to_owned(),
+                            optional_field_id: optional_field_id.to_owned(),
+                            set_value: *set_value,
+                        }
+                    }
+                }
+            }
+            _ => (),
+        }
+    }
+}
+
 /// Analyzer entry point, produces a new AST with annotations resulting
 /// from the analysis.
 pub fn analyze(file: &parser_ast::File) -> Result<ast::File, Diagnostics> {
@@ -1786,7 +1826,8 @@ pub fn analyze(file: &parser_ast::File) -> Result<ast::File, Diagnostics> {
     check_checksum_fields(file, &scope)?;
     check_optional_fields(file)?;
     check_group_constraints(file, &scope)?;
-    let file = inline_groups(file)?;
+    let mut file = inline_groups(file)?;
+    desugar_flags(&mut file);
     let scope = Scope::new(&file)?;
     check_decl_constraints(&file, &scope)?;
     Ok(compute_field_sizes(&file))

@@ -202,6 +202,7 @@ fn compute_getters<'a>(
                 );
                 ComputedOffset::ConstantPlusOffsetInBits(curr_pos_id, *width as i64)
             }
+            ast::FieldDesc::Flag { .. } => unimplemented!(),
             ast::FieldDesc::Group { .. } => {
                 unimplemented!("this should be removed by the linter...")
             }

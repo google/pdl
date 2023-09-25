@@ -48,6 +48,7 @@ pub fn generate_packet_serializer(
         .filter_map(|field| {
             match &field.desc {
                 ast::FieldDesc::Padding { .. }
+                | ast::FieldDesc::Flag { .. }
                 | ast::FieldDesc::Reserved { .. }
                 | ast::FieldDesc::FixedScalar { .. }
                 | ast::FieldDesc::FixedEnum { .. }
@@ -102,7 +103,7 @@ pub fn generate_packet_serializer(
 
     let serializer = fields.iter().map(|field| {
         match &field.desc {
-            ast::FieldDesc::Checksum { .. } | ast::FieldDesc::Group { .. } => unimplemented!(),
+            ast::FieldDesc::Checksum { .. } | ast::FieldDesc::Group { .. } | ast::FieldDesc::Flag { .. } => unimplemented!(),
             ast::FieldDesc::Padding { size, .. } => {
                 quote! {
                     if (most_recent_array_size_in_bits > #size * 8) {
