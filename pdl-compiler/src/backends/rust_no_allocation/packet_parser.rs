@@ -55,6 +55,7 @@ pub fn generate_packet(
     let field_getters = fields.iter().map(|field| {
         match &field.desc {
             ast::FieldDesc::Padding { .. }
+            | ast::FieldDesc::Flag { .. }
             | ast::FieldDesc::Reserved { .. }
             | ast::FieldDesc::FixedScalar { .. }
             | ast::FieldDesc::FixedEnum { .. }
@@ -233,6 +234,7 @@ pub fn generate_packet(
         ast::FieldDesc::Checksum { .. } => unimplemented!(),
         ast::FieldDesc::Group { .. } => unreachable!(),
         ast::FieldDesc::Padding { .. }
+        | ast::FieldDesc::Flag { .. }
         | ast::FieldDesc::Size { .. }
         | ast::FieldDesc::Count { .. }
         | ast::FieldDesc::ElementSize { .. }
