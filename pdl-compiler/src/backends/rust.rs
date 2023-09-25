@@ -111,6 +111,30 @@ fn generate_packet_size_getter<'a>(
                     }
                 }
             }
+            ast::FieldDesc::Scalar { id, width } => {
+                assert!(field.cond.is_some());
+                let id = id.to_ident();
+                let width = syn::Index::from(*width / 8);
+                quote!(if self.#id.is_some() { #width } else { 0 })
+            }
+            ast::FieldDesc::Typedef { id, type_id, .. } if field.cond.is_some() => {
+                let id = id.to_ident();
+                match &scope.typedef[type_id].desc {
+                    ast::DeclDesc::Enum { width, .. } => {
+                        let width = syn::Index::from(*width / 8);
+                        quote!(if self.#id.is_some() { #width } else { 0 })
+                    }
+                    _ => {
+                        let type_id = type_id.to_ident();
+                        quote! {
+                            self.#id
+                                .as_ref()
+                                .map(#type_id::get_size)
+                                .unwrap_or(0)
+                        }
+                    }
+                }
+            }
             ast::FieldDesc::Typedef { id, .. } => {
                 let id = id.to_ident();
                 quote!(self.#id.get_size())
@@ -259,10 +283,15 @@ fn generate_data_struct(
     let has_children = scope.iter_children(decl).next().is_some();
 
     let struct_name = if is_packet { format_ident!("{id}Data") } else { id.to_ident() };
-    let fields_with_ids = decl.fields().filter(|f| f.id().is_some()).collect::<Vec<_>>();
+    let backed_fields = decl
+        .fields()
+        .filter(|f| f.id().is_some() && !matches!(&f.desc, ast::FieldDesc::Flag { .. }))
+        .collect::<Vec<_>>();
+
     let mut field_names =
-        fields_with_ids.iter().map(|f| f.id().unwrap().to_ident()).collect::<Vec<_>>();
-    let mut field_types = fields_with_ids.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
+        backed_fields.iter().map(|f| f.id().unwrap().to_ident()).collect::<Vec<_>>();
+    let mut field_types = backed_fields.iter().map(|f| types::rust_type(f)).collect::<Vec<_>>();
+
     if has_children || has_payload {
         if is_packet {
             field_names.push(format_ident!("child"));
@@ -383,7 +412,10 @@ fn generate_packet_decl(
     let parent_data_child = parent_ids.iter().map(|id| format_ident!("{id}DataChild"));
 
     let all_fields = {
-        let mut fields = scope.iter_fields(decl).filter(|d| d.id().is_some()).collect::<Vec<_>>();
+        let mut fields = scope
+            .iter_fields(decl)
+            .filter(|f| f.id().is_some() && !matches!(&f.desc, ast::FieldDesc::Flag { .. }))
+            .collect::<Vec<_>>();
         fields.sort_by_key(|f| f.id());
         fields
     };
@@ -425,7 +457,11 @@ fn generate_packet_decl(
         let parent_data_child = format_ident!("{parent_id}DataChild");
 
         let named_fields = {
-            let mut names = parent.fields().filter_map(ast::Field::id).collect::<Vec<_>>();
+            let mut names = parent
+                .fields()
+                .filter(|f| !matches!(&f.desc, ast::FieldDesc::Flag { .. }))
+                .filter_map(ast::Field::id)
+                .collect::<Vec<_>>();
             names.sort_unstable();
             names
         };

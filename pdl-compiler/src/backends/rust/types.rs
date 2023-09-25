@@ -51,9 +51,17 @@ impl quote::ToTokens for Integer {
 
 pub fn rust_type(field: &analyzer_ast::Field) -> proc_macro2::TokenStream {
     match &field.desc {
+        ast::FieldDesc::Scalar { width, .. } if field.cond.is_some() => {
+            let field_type = Integer::new(*width);
+            quote!(Option<#field_type>)
+        }
         ast::FieldDesc::Scalar { width, .. } => {
             let field_type = Integer::new(*width);
             quote!(#field_type)
+        }
+        ast::FieldDesc::Typedef { type_id, .. } if field.cond.is_some() => {
+            let field_type = type_id.to_ident();
+            quote!(Option<#field_type>)
         }
         ast::FieldDesc::Typedef { type_id, .. } => {
             let field_type = type_id.to_ident();
