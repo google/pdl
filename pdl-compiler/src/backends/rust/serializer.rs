@@ -54,6 +54,7 @@ impl<'a> FieldSerializer<'a> {
 
     pub fn add(&mut self, field: &analyzer_ast::Field) {
         match &field.desc {
+            _ if field.cond.is_some() => self.add_optional_field(field),
             _ if self.scope.is_bitfield(field) => self.add_bit_field(field),
             ast::FieldDesc::Array { id, width, .. } => self.add_array_field(
                 id,
@@ -73,11 +74,89 @@ impl<'a> FieldSerializer<'a> {
         }
     }
 
+    fn add_optional_field(&mut self, field: &analyzer_ast::Field) {
+        self.code.push(match &field.desc {
+            ast::FieldDesc::Scalar { id, width } => {
+                let name = id;
+                let id = id.to_ident();
+                let backing_type = types::Integer::new(*width);
+                let write = types::put_uint(self.endianness, &quote!(*#id), *width, self.span);
+
+                let range_check = (backing_type.width > *width).then(|| {
+                    let packet_name = &self.packet_name;
+                    let max_value = mask_bits(*width, "u64");
+
+                    quote! {
+                        if *#id > #max_value {
+                            panic!(
+                                "Invalid value for {}::{}: {} > {}",
+                                #packet_name, #name, #id, #max_value
+                            );
+                        }
+                    }
+                });
+
+                quote! {
+                    if let Some(#id) = &self.#id {
+                        #range_check
+                        #write
+                    }
+                }
+            }
+            ast::FieldDesc::Typedef { id, type_id } => match &self.scope.typedef[type_id].desc {
+                ast::DeclDesc::Enum { width, .. } => {
+                    let id = id.to_ident();
+                    let backing_type = types::Integer::new(*width);
+                    let write = types::put_uint(
+                        self.endianness,
+                        &quote!(#backing_type::from(#id)),
+                        *width,
+                        self.span,
+                    );
+                    quote! {
+                        if let Some(#id) = &self.#id {
+                            #write
+                        }
+                    }
+                }
+                ast::DeclDesc::Struct { .. } => {
+                    let id = id.to_ident();
+                    let span = self.span;
+                    quote! {
+                        if let Some(#id) = &self.#id {
+                            #id.write_to(#span);
+                        }
+                    }
+                }
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        })
+    }
+
     fn add_bit_field(&mut self, field: &analyzer_ast::Field) {
         let width = field.annot.size.static_().unwrap();
         let shift = self.shift;
 
         match &field.desc {
+            ast::FieldDesc::Flag { optional_field_id, set_value, .. } => {
+                let optional_field_id = optional_field_id.to_ident();
+                let cond_value_present =
+                    syn::parse_str::<syn::LitInt>(&format!("{}", set_value)).unwrap();
+                let cond_value_absent =
+                    syn::parse_str::<syn::LitInt>(&format!("{}", 1 - set_value)).unwrap();
+                self.chunk.push(BitField {
+                    value: quote! {
+                        if self.#optional_field_id.is_some() {
+                            #cond_value_present
+                        } else {
+                            #cond_value_absent
+                        }
+                    },
+                    field_type: types::Integer::new(1),
+                    shift,
+                });
+            }
             ast::FieldDesc::Scalar { id, width } => {
                 let field_name = id.to_ident();
                 let field_type = types::Integer::new(*width);

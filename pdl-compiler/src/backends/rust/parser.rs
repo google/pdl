@@ -65,6 +65,7 @@ impl<'a> FieldParser<'a> {
 
     pub fn add(&mut self, field: &'a analyzer_ast::Field) {
         match &field.desc {
+            _ if field.cond.is_some() => self.add_optional_field(field),
             _ if self.scope.is_bitfield(field) => self.add_bit_field(field),
             ast::FieldDesc::Padding { .. } => (),
             ast::FieldDesc::Array { id, width, type_id, size, .. } => self.add_array_field(
@@ -82,6 +83,60 @@ impl<'a> FieldParser<'a> {
             ast::FieldDesc::Body { .. } => self.add_payload_field(None),
             _ => todo!("{field:?}"),
         }
+    }
+
+    fn add_optional_field(&mut self, field: &'a analyzer_ast::Field) {
+        let cond_id = field.cond.as_ref().unwrap().id.to_ident();
+        let cond_value = syn::parse_str::<syn::LitInt>(&format!(
+            "{}",
+            field.cond.as_ref().unwrap().value.unwrap()
+        ))
+        .unwrap();
+
+        self.code.push(
+            match &field.desc {
+                ast::FieldDesc::Scalar { id, width } => {
+                    let id = id.to_ident();
+                    let value = types::get_uint(self.endianness, *width, self.span);
+                    quote! {
+                        let #id = (#cond_id == #cond_value).then(|| #value);
+                    }
+                },
+                ast::FieldDesc::Typedef { id, type_id } =>
+                    match &self.scope.typedef[type_id].desc {
+                        ast::DeclDesc::Enum { width, .. } => {
+                            let name = id;
+                            let type_name = type_id;
+                            let id = id.to_ident();
+                            let type_id = type_id.to_ident();
+                            let decl_id = &self.packet_name;
+                            let value = types::get_uint(self.endianness, *width, self.span);
+                            quote! {
+                                let #id = (#cond_id == #cond_value)
+                                    .then(||
+                                        #type_id::try_from(#value).map_err(|unknown_val| Error::InvalidEnumValueError {
+                                            obj: #decl_id.to_string(),
+                                            field: #name.to_string(),
+                                            value: unknown_val as u64,
+                                            type_: #type_name.to_string(),
+                                        }))
+                                    .transpose()?;
+                            }
+                        }
+                        ast::DeclDesc::Struct { .. } => {
+                            let id = id.to_ident();
+                            let type_id = type_id.to_ident();
+                            let span = self.span;
+                            quote! {
+                                let #id = (#cond_id == #cond_value)
+                                    .then(|| #type_id::parse_inner(&mut #span))
+                                    .transpose()?;
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                _ => unreachable!(),
+            })
     }
 
     fn add_bit_field(&mut self, field: &'a analyzer_ast::Field) {
@@ -141,7 +196,8 @@ impl<'a> FieldParser<'a> {
             }
 
             self.code.push(match &field.desc {
-                ast::FieldDesc::Scalar { id, .. } => {
+                ast::FieldDesc::Scalar { id, .. }
+                | ast::FieldDesc::Flag { id, .. } => {
                     let id = id.to_ident();
                     quote! {
                         let #id = #v;
