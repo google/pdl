@@ -1,6 +1,6 @@
 [package]
 name = "pdl-derive"
-version = "0.1.7"
+version = "0.2.0"
 edition = "2021"
 description = "PDL's derive macro"
 repository = "https://github.com/google/pdl/"
@@ -21,12 +21,12 @@ proc-macro = true
 
 [dependencies]
 codespan-reporting = "0.11.1"
-pdl-compiler = {path = "../pdl-compiler", version = "0.1.7"}
+pdl-compiler = {path = "../pdl-compiler", version = "0.2.0"}
 proc-macro2 = "1.0.66"
 quote = "1.0.33"
 syn = {version = "2.0.29", features = ["full"]}
 termcolor = "1.2.0"
 
 [dev-dependencies]
-pdl-runtime = {path = "../pdl-runtime", version = "0.1.7"}
+pdl-runtime = {path = "../pdl-runtime", version = "0.2.0"}
 bytes = "1.4.0"
