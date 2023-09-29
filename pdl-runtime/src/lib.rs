@@ -18,7 +18,7 @@ use bytes::Bytes;
 use thiserror::Error;
 
 /// Type of parsing errors.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
     #[error("Packet parsing failed")]
     InvalidPacketError,
