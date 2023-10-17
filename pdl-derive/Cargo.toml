@@ -5,7 +5,6 @@ edition = "2021"
 description = "PDL's derive macro"
 repository = "https://github.com/google/pdl/"
 license = "Apache-2.0"
-license-file = "../LICENSE"
 readme = "../README.md"
 keywords = ["pdl", "parser", "serializer", "grammar"]
 authors = [
