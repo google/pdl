@@ -57,7 +57,7 @@ fn pdl_proc_macro(path: syn::LitStr, input: syn::ItemMod) -> TokenStream {
     let mod_ident = input.ident;
     let mod_attrs = input.attrs;
     let mod_vis = input.vis;
-    let mod_items = input.content.map(|(_, items)| items).unwrap_or(vec![]);
+    let mod_items = input.content.map(|(_, items)| items).unwrap_or_default();
 
     quote! {
         #(#mod_attrs)*
