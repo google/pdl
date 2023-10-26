@@ -43,17 +43,3 @@ pub trait Packet {
     fn to_bytes(self) -> Bytes;
     fn to_vec(self) -> Vec<u8>;
 }
-
-/// Private prevents users from creating arbitrary scalar values
-/// in situations where the value needs to be validated.
-/// Users can freely deref the value, but only the backend
-/// may create it.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Private<T>(T);
-
-impl<T> std::ops::Deref for Private<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
