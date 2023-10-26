@@ -182,6 +182,19 @@ def get_derived_packets(
     return children
 
 
+def get_all_packet_constraints(
+    decl: Union[PacketDeclaration, StructDeclaration]
+) -> List[Constraint]:
+    """Return the list of constraints defined in the selected packet and
+    its parent declarations."""
+
+    constraints = []
+    while decl.parent_id:
+        constraints.extend(decl.constraints)
+        decl = decl.parent
+    return constraints
+
+
 def get_field_size(field: Field, skip_payload: bool = False) -> Optional[int]:
     """Determine the size of a field in bits, if possible.
     If the field is dynamically sized (e.g. unsized array or payload field),
