@@ -904,9 +904,10 @@ def generate_packet_parser(packet: ast.Declaration) -> List[str]:
 
     # Convert the packet constraints to a boolean expression.
     validation = []
-    if packet.constraints:
+    constraints = core.get_all_packet_constraints(packet)
+    if constraints:
         cond = []
-        for c in packet.constraints:
+        for c in constraints:
             if c.value is not None:
                 cond.append(f"fields['{c.id}'] != {hex(c.value)}")
             else:
@@ -989,11 +990,7 @@ def generate_packet_post_init(decl: ast.Declaration) -> List[str]:
     """Generate __post_init__ function to set constraint field values."""
 
     # Gather all constraints from parent packets.
-    constraints = []
-    current = decl
-    while current.parent_id:
-        constraints.extend(current.constraints)
-        current = current.parent
+    constraints = core.get_all_packet_constraints(decl)
 
     if constraints:
         code = []
