@@ -66,7 +66,7 @@ impl<'a> FieldSerializer<'a> {
                 self.add_typedef_field(id, type_id);
             }
             ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. } => {
-                self.add_payload_field()
+                self.add_payload_field();
             }
             // Padding field handled in serialization of associated array field.
             ast::FieldDesc::Padding { .. } => (),
@@ -225,6 +225,18 @@ impl<'a> FieldSerializer<'a> {
                 let field_size_name = format_ident!("{field_id}_size");
                 let array_size = match (&value_field.desc, value_field_decl.map(|decl| &decl.desc))
                 {
+                    (ast::FieldDesc::Payload { size_modifier: Some(size_modifier) }, _) => {
+                        let size_modifier = proc_macro2::Literal::usize_unsuffixed(
+                            size_modifier
+                                .parse::<usize>()
+                                .expect("failed to parse the size modifier"),
+                        );
+                        if let ast::DeclDesc::Packet { .. } = &decl.desc {
+                            quote! { (self.child.get_total_size() + #size_modifier) }
+                        } else {
+                            quote! { (self.payload.len() + #size_modifier) }
+                        }
+                    }
                     (ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. }, _) => {
                         if let ast::DeclDesc::Packet { .. } = &decl.desc {
                             quote! { self.child.get_total_size() }

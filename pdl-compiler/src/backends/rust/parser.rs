@@ -570,28 +570,8 @@ impl<'a> FieldParser<'a> {
         let payload_size_field = self.decl.payload_size();
         let offset_from_end = self.payload_field_offset_from_end();
 
-        if size_modifier.is_some() {
-            todo!(
-                "Unsupported size modifier for {packet}: {size_modifier:?}",
-                packet = self.packet_name
-            );
-        }
-
         if self.shift != 0 {
-            if payload_size_field.is_some() {
-                panic!("Unexpected payload size for non byte aligned payload");
-            }
-
-            //let rounded_size = self.shift / 8 + if self.shift % 8 == 0 { 0 } else { 1 };
-            //let padding_bits = 8 * rounded_size - self.shift;
-            //let reserved_field =
-            //    ast::Field::Reserved { loc: ast::SourceRange::default(), width: padding_bits };
-            //TODO: self.add_bit_field(&reserved_field); --
-            // reserved_field does not live long enough.
-
-            // TODO: consume span of rounded size
-        } else {
-            // TODO: consume span
+            todo!("Unexpected non byte aligned payload");
         }
 
         if let Some(ast::FieldDesc::Size { field_id, .. }) = &payload_size_field.map(|f| &f.desc) {
@@ -599,6 +579,25 @@ impl<'a> FieldParser<'a> {
             // payload and update the span in case fields are placed
             // after the payload.
             let size_field = size_field_ident(field_id);
+            if let Some(size_modifier) = size_modifier {
+                let size_modifier = proc_macro2::Literal::usize_unsuffixed(
+                    size_modifier.parse::<usize>().expect("failed to parse the size modifier"),
+                );
+                let packet_name = &self.packet_name;
+                // Push code to check that the size is greater than the size
+                // modifier. Required to safely substract the modifier from the
+                // size.
+                self.code.push(quote! {
+                    if #size_field < #size_modifier {
+                        return Err(Error::InvalidLengthError {
+                            obj: #packet_name.to_string(),
+                            wanted: #size_modifier,
+                            got: #size_field,
+                        });
+                    }
+                    let #size_field = #size_field - #size_modifier;
+                });
+            }
             self.check_size(self.span, &quote!(#size_field ));
             self.code.push(quote! {
                 let payload = &#span.get()[..#size_field];

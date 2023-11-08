@@ -1582,6 +1582,16 @@ mod tests {
         "
     );
 
+    test_pdl!(
+        payload_with_size_modifier,
+        "
+        packet Test {
+            _size_(_payload_): 8,
+            _payload_ : [+1],
+        }
+        "
+    );
+
     // TODO(mgeisler): enable this test when we have an approach to
     // struct fields with parents.
     //
