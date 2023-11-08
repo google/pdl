@@ -34,7 +34,6 @@ cargo run --bin pdlc -- \
     --exclude-declaration PartialChild5_B \
     --exclude-declaration PartialChild12_A \
     --exclude-declaration PartialChild12_B \
-    --exclude-declaration Packet_Payload_Field_SizeModifier \
     --exclude-declaration Packet_Array_Field_UnsizedElement_SizeModifier \
     --exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier_ \
     --exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier \
@@ -53,7 +52,6 @@ cargo run --bin pdlc -- \
     --exclude-declaration Struct_Checksum_Field_FromStart \
     --exclude-declaration Struct_Checksum_Field_FromEnd_ \
     --exclude-declaration Struct_Checksum_Field_FromEnd \
-    --exclude-declaration Packet_Payload_Field_SizeModifier \
     --exclude-declaration Packet_Array_Field_UnsizedElement_SizeModifier \
     --exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier_ \
     --exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier \

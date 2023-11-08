@@ -188,6 +188,7 @@ fn main() {
             "Packet_Payload_Field_UnknownSize",
             "Packet_Payload_Field_UnknownSize_Terminal",
             "Packet_Payload_Field_VariableSize",
+            "Packet_Payload_Field_SizeModifier",
             "Packet_Reserved_Field",
             "Packet_Scalar_Field",
             "Packet_Size_Field",
