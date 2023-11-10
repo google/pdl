@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{btree_map::Entry, BTreeMap, HashMap};
 
 use crate::ast;
 use crate::parser;
@@ -23,8 +23,8 @@ pub struct Schema<'a> {
 }
 
 pub struct PacketOrStruct<'a> {
-    pub computed_offsets: HashMap<ComputedOffsetId<'a>, ComputedOffset<'a>>,
-    pub computed_values: HashMap<ComputedValueId<'a>, ComputedValue<'a>>,
+    pub computed_offsets: BTreeMap<ComputedOffsetId<'a>, ComputedOffset<'a>>,
+    pub computed_values: BTreeMap<ComputedValueId<'a>, ComputedValue<'a>>,
     /// whether the parse of this packet needs to know its length,
     /// or if the packet can determine its own length
     pub length: PacketOrStructLength,
@@ -41,7 +41,7 @@ pub struct Enum<'a> {
     pub width: usize,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 pub enum ComputedValueId<'a> {
     // needed for array fields + varlength structs - note that this is in OCTETS, not BITS
     // this always works since array entries are either structs (which are byte-aligned) or integer-octet-width scalars
@@ -54,7 +54,7 @@ pub enum ComputedValueId<'a> {
     Custom(u16),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 pub enum ComputedOffsetId<'a> {
     // these quantities are known by the runtime
     HeaderStart,
@@ -69,6 +69,7 @@ pub enum ComputedOffsetId<'a> {
     TrailerStart,
 }
 
+#[derive(PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub enum ComputedValue<'a> {
     Constant(usize),
     CountStructsUpToSize {
@@ -90,7 +91,7 @@ pub enum ComputedValue<'a> {
     },
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ComputedOffset<'a> {
     ConstantPlusOffsetInBits(ComputedOffsetId<'a>, i64),
     SumWithOctets(ComputedOffsetId<'a>, ComputedValueId<'a>),
@@ -127,8 +128,8 @@ fn process_enum<'a>(schema: &mut Schema<'a>, id: &'a str, tags: &'a [ast::Tag], 
     schema.packets_and_structs.insert(
         id,
         PacketOrStruct {
-            computed_offsets: HashMap::new(),
-            computed_values: HashMap::new(),
+            computed_offsets: BTreeMap::new(),
+            computed_values: BTreeMap::new(),
             length: PacketOrStructLength::Static(width),
         },
     );
@@ -148,8 +149,8 @@ fn compute_getters<'a>(
 ) -> PacketOrStruct<'a> {
     let mut prev_pos_id = None;
     let mut curr_pos_id = ComputedOffsetId::HeaderStart;
-    let mut computed_values = HashMap::new();
-    let mut computed_offsets = HashMap::new();
+    let mut computed_values = BTreeMap::new();
+    let mut computed_offsets = BTreeMap::new();
 
     let mut cnt = 0;
 
@@ -518,7 +519,7 @@ fn compute_getters<'a>(
 }
 
 fn compute_length_to_goal(
-    computed_offsets: &HashMap<ComputedOffsetId, ComputedOffset>,
+    computed_offsets: &BTreeMap<ComputedOffsetId, ComputedOffset>,
     start: ComputedOffsetId,
     goal: ComputedOffsetId,
 ) -> Option<i64> {

@@ -73,12 +73,8 @@ pub fn generate(file: &parser::ast::File, schema: &Schema) -> Result<String, Str
         .map(|decl| generate_decl(decl, schema, &children))
         .collect::<Result<TokenStream, _>>()?;
 
-    out.push_str(
-        &quote! {
-            #declarations
-        }
-        .to_string(),
-    );
+    let syntax_tree = syn::parse2(declarations).expect("Could not parse code");
+    out.push_str(&prettyplease::unparse(&syntax_tree));
 
     Ok(out)
 }
