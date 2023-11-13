@@ -96,3 +96,6 @@ jobs:
 
       - name: Run Python generator tests
         run: pdl-compiler/tests/run_python_generator_tests.sh
+
+      - name: Compile Rust generated files
+        run: pdl-compiler/tests/compile_rust_generated_files.sh
