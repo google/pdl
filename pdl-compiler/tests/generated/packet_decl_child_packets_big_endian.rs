@@ -10,12 +10,17 @@ use pdl_runtime::{DecodeError, EncodeError, Packet};
 /// in situations where the value needs to be validated.
 /// Users can freely deref the value, but only the backend
 /// may create it.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Private<T>(T);
 impl<T> std::ops::Deref for Private<T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        T::fmt(&self.0, f)
     }
 }
 #[repr(u64)]
