@@ -47,14 +47,16 @@ Enum declarations
 |                                       |                                                               |
 |     enum TestEnum : 8 {               |     class TestEnum(enum.IntEnum):                             |
 |         A = 1,                        |         A = 1                                                 |
-|         B = 2..3,                     |         B_MIN = 2                                             |
-|         C = 4,                        |         B_MAX = 3                                             |
-|         OTHER = ..,                   |         C = 4                                                 |
-|     }                                 |                                                               |
+|         B = 2..3,                     |         C = 4                                                 |
+|         C = 4,                        |                                                               |
+|         OTHER = ..,                   |         @staticmethod                                         |
+|     }                                 |         def from_int(v: int) -> typing.Union[TestEnum, int]:  |
+|                                       |             pass                                              |
 +---------------------------------------+---------------------------------------------------------------+
 
 .. note::
-    Python enums are open by construction, default cases in enum declarations are ignored.
+    Python enums are closed by construction, default cases in enum declarations are ignored.
+    The static method `from_int` provides validation for enum tag ranges.
 
 Packet declarations
 ^^^^^^^^^^^^^^^^^^^

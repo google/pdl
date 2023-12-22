@@ -69,7 +69,8 @@ def create_object(typ, value):
     elif typ is bytearray:
         return bytearray(value)
     elif issubclass(typ, enum.Enum):
-        return typ(value)
+        from_int = getattr(typ, 'from_int')
+        return from_int(value)
     elif typ is int:
         return value
     else:
