@@ -33,7 +33,7 @@ def mask(width: int) -> str:
 def generate_prelude() -> str:
     return dedent("""\
         from dataclasses import dataclass, field, fields
-        from typing import Optional, List, Tuple
+        from typing import Optional, List, Tuple, Union
         import enum
         import inspect
         import math
@@ -412,7 +412,7 @@ class FieldParser:
                 self.unchecked_append_(f"if {v} != {hex(field.value)}:")
                 self.unchecked_append_(f"    raise Exception('Unexpected fixed field value')")
             elif isinstance(field, ast.TypedefField):
-                self.unchecked_append_(f"fields['{field.id}'] = {field.type_id}({v})")
+                self.unchecked_append_(f"fields['{field.id}'] = {field.type_id}.from_int({v})")
             elif isinstance(field, ast.SizeField):
                 self.unchecked_append_(f"{field.field_id}_size = {v}")
             elif isinstance(field, ast.CountField):
@@ -1012,17 +1012,37 @@ def generate_enum_declaration(decl: ast.EnumDeclaration) -> str:
     enum_name = decl.id
     tag_decls = []
     for t in decl.tags:
+        # Enums in python are closed and ranges cannot be represented;
+        # instead the generated code uses Union[int, Enum]
+        # when ranges are used.
         if t.value is not None:
             tag_decls.append(f"{t.id} = {hex(t.value)}")
-        if t.range is not None:
-            tag_decls.append(f"{t.id}_START = {hex(t.range[0])}")
-            tag_decls.append(f"{t.id}_END = {hex(t.range[1])}")
+
+    if core.is_open_enum(decl):
+        unknown_handler = ["return v"]
+    else:
+        unknown_handler = []
+        for t in decl.tags:
+            if t.range is not None:
+                unknown_handler.append(f"if v >= 0x{t.range[0]:x} and v <= 0x{t.range[1]:x}:")
+                unknown_handler.append(f"    return v")
+        unknown_handler.append("raise exn")
 
     return dedent("""\
 
         class {enum_name}(enum.IntEnum):
             {tag_decls}
-        """).format(enum_name=enum_name, tag_decls=indent(tag_decls, 1))
+
+            @staticmethod
+            def from_int(v: int) -> Union[int, '{enum_name}']:
+                try:
+                    return {enum_name}(v)
+                except ValueError as exn:
+                    {unknown_handler}
+
+        """).format(enum_name=enum_name,
+                    tag_decls=indent(tag_decls, 1),
+                    unknown_handler=indent(unknown_handler, 3))
 
 
 def generate_packet_declaration(packet: ast.Declaration) -> str:
@@ -1047,7 +1067,10 @@ def generate_packet_declaration(packet: ast.Declaration) -> str:
         elif isinstance(f, ast.ScalarField):
             field_decls.append(f"{f.id}: int = field(kw_only=True, default=0)")
         elif isinstance(f, ast.TypedefField):
-            if isinstance(f.type, ast.EnumDeclaration):
+            if isinstance(f.type, ast.EnumDeclaration) and f.type.tags[0].range:
+                field_decls.append(
+                    f"{f.id}: {f.type_id} = field(kw_only=True, default={f.type.tags[0].range[0]})")
+            elif isinstance(f.type, ast.EnumDeclaration):
                 field_decls.append(
                     f"{f.id}: {f.type_id} = field(kw_only=True, default={f.type_id}.{f.type.tags[0].id})")
             elif isinstance(f.type, ast.ChecksumDeclaration):

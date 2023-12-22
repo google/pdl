@@ -360,3 +360,9 @@ def is_bit_field(field: Field) -> bool:
 
     else:
         return False
+
+def is_open_enum(decl: EnumDeclaration) -> bool:
+    """Return true if the enum declaration is open, i.e. contains a tag
+    declaration of the form DEFAULT = .."""
+
+    return any(t.value is None for t in decl.tags)
