@@ -838,3 +838,101 @@ struct Struct_Optional_Struct_Field_ {
 packet Struct_Optional_Struct_Field {
     s: Struct_Optional_Struct_Field_,
 }
+
+// Enum declarations
+//
+// Test enum declarations with exhaustive configurations for the
+// following criterias:
+//
+//  1. truncated: is the enum width a multiple of 8 or not ?
+//     this characteristic has an impact for some language generators
+//  2. complete: does the enum define all possible values ?
+//  3. open: does the enum allow for unknown or undefined values ?
+//  4. with range: does the enum use a tag range declarations ?
+
+enum Enum_Incomplete_Truncated_Closed_ : 3 {
+    A = 0,
+    B = 1,
+}
+
+packet Enum_Incomplete_Truncated_Closed {
+    e: Enum_Incomplete_Truncated_Closed_,
+    _reserved_ : 5,
+}
+
+enum Enum_Incomplete_Truncated_Open_ : 3 {
+    A = 0,
+    B = 1,
+    UNKNOWN = ..
+}
+
+packet Enum_Incomplete_Truncated_Open {
+    e: Enum_Incomplete_Truncated_Open_,
+    _reserved_ : 5,
+}
+
+enum Enum_Incomplete_Truncated_Closed_WithRange_ : 3 {
+    A = 0,
+    B = 1..6 {
+        X = 1,
+        Y = 2,
+    }
+}
+
+packet Enum_Incomplete_Truncated_Closed_WithRange {
+    e: Enum_Incomplete_Truncated_Closed_WithRange_,
+    _reserved_ : 5,
+}
+
+enum Enum_Incomplete_Truncated_Open_WithRange_ : 3 {
+    A = 0,
+    B = 1..6 {
+        X = 1,
+        Y = 2,
+    },
+    UNKNOWN = ..
+}
+
+packet Enum_Incomplete_Truncated_Open_WithRange {
+    e: Enum_Incomplete_Truncated_Open_WithRange_,
+    _reserved_ : 5,
+}
+
+enum Enum_Complete_Truncated_ : 3 {
+    A = 0,
+    B = 1,
+    C = 2,
+    D = 3,
+    E = 4,
+    F = 5,
+    G = 6,
+    H = 7,
+}
+
+packet Enum_Complete_Truncated {
+    e: Enum_Complete_Truncated_,
+    _reserved_ : 5,
+}
+
+enum Enum_Complete_Truncated_WithRange_ : 3 {
+    A = 0,
+    B = 1..7 {
+        X = 1,
+        Y = 2,
+    }
+}
+
+packet Enum_Complete_Truncated_WithRange {
+    e: Enum_Complete_Truncated_WithRange_,
+    _reserved_ : 5,
+}
+
+enum Enum_Complete_WithRange_ : 8 {
+    A = 0,
+    B = 1,
+    C = 2..255,
+}
+
+packet Enum_Complete_WithRange {
+    e: Enum_Complete_WithRange_,
+}

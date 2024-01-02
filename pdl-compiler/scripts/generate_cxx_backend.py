@@ -817,7 +817,9 @@ def generate_enum_declaration(decl: ast.EnumDeclaration) -> str:
     enum_type = get_cxx_scalar_type(decl.width)
     tag_decls = []
     for t in decl.tags:
-        tag_decls.append(f"{t.id} = {hex(t.value)},")
+        # Exclude default tags: DEFAULT = ..
+        if t.value is not None:
+            tag_decls.append(f"{t.id} = {hex(t.value)},")
 
     return dedent("""\
 
@@ -833,7 +835,9 @@ def generate_enum_to_text(decl: ast.EnumDeclaration) -> str:
     enum_name = decl.id
     tag_cases = []
     for t in decl.tags:
-        tag_cases.append(f"case {enum_name}::{t.id}: return \"{t.id}\";")
+        # Exclude default tags: DEFAULT = ..
+        if t.value is not None:
+            tag_cases.append(f"case {enum_name}::{t.id}: return \"{t.id}\";")
 
     return dedent("""\
 
