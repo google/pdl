@@ -241,6 +241,13 @@ fn main() {
             "Struct_FixedScalar_Field",
             "Struct_Size_Field",
             "Struct_Struct_Field",
+            "Enum_Incomplete_Truncated_Closed",
+            "Enum_Incomplete_Truncated_Open",
+            "Enum_Incomplete_Truncated_Closed_WithRange",
+            "Enum_Incomplete_Truncated_Open_WithRange",
+            "Enum_Complete_Truncated",
+            "Enum_Complete_Truncated_WithRange",
+            "Enum_Complete_WithRange",
         ],
         &module_name,
     );
