@@ -303,6 +303,7 @@ impl<'d> Scope<'d> {
             | FieldDesc::Scalar { .. }
             | FieldDesc::Array { type_id: None, .. } => None,
             FieldDesc::FixedEnum { enum_id: type_id, .. }
+            | FieldDesc::Enum { enum_id: type_id, .. }
             | FieldDesc::Array { type_id: Some(type_id), .. }
             | FieldDesc::Typedef { type_id, .. } => self.typedef.get(type_id).cloned(),
         }
@@ -318,12 +319,18 @@ impl<'d> Scope<'d> {
             | FieldDesc::FixedEnum { .. }
             | FieldDesc::Reserved { .. }
             | FieldDesc::Flag { .. }
-            | FieldDesc::Scalar { .. } => true,
+            | FieldDesc::Scalar { .. }
+            | FieldDesc::Enum { .. } => true,
             FieldDesc::Typedef { type_id, .. } => {
                 let field = self.typedef.get(type_id.as_str());
                 matches!(field, Some(Decl { desc: DeclDesc::Enum { .. }, .. }))
             }
-            _ => false,
+            FieldDesc::Checksum { .. }
+            | FieldDesc::Padding { .. }
+            | FieldDesc::Array { .. }
+            | FieldDesc::Group { .. }
+            | FieldDesc::Body { .. }
+            | FieldDesc::Payload { .. } => false,
         }
     }
 }
@@ -402,7 +409,8 @@ impl Schema {
                 | FieldDesc::ElementSize { width, .. }
                 | FieldDesc::FixedScalar { width, .. }
                 | FieldDesc::Reserved { width }
-                | FieldDesc::Scalar { width, .. } => Size::Static(*width),
+                | FieldDesc::Scalar { width, .. }
+                | FieldDesc::Enum { width, .. } => Size::Static(*width),
                 FieldDesc::Flag { .. } => Size::Static(1),
                 FieldDesc::Body | FieldDesc::Payload { .. } => {
                     let has_payload_size = decl.fields().any(|field| match &field.desc {
@@ -1020,6 +1028,57 @@ fn check_constraint(
                         .with_labels(vec![constraint.loc.primary(), field.loc.secondary()]),
                 ),
                 _ => (),
+            }
+        }
+        Some(field @ Field { desc: FieldDesc::Enum { enum_id, .. }, .. }) => {
+            match scope.typedef.get(enum_id) {
+                Some(Decl { desc: DeclDesc::Enum { tags, .. }, .. }) => match &constraint.tag_id {
+                    None => diagnostics.push(
+                        Diagnostic::error()
+                            .with_code(ErrorCode::E19)
+                            .with_message(format!(
+                                "invalid constraint value `{}`",
+                                constraint.value.unwrap()
+                            ))
+                            .with_labels(vec![
+                                constraint.loc.primary(),
+                                field.loc.secondary().with_message(format!(
+                                    "`{}` is declared here as typedef field",
+                                    constraint.id
+                                )),
+                            ])
+                            .with_notes(vec!["hint: expected enum value".to_owned()]),
+                    ),
+                    Some(tag_id) => match tags.iter().find(|tag| tag.id() == tag_id) {
+                        None => diagnostics.push(
+                            Diagnostic::error()
+                                .with_code(ErrorCode::E20)
+                                .with_message(format!("undeclared enum tag `{}`", tag_id))
+                                .with_labels(vec![
+                                    constraint.loc.primary(),
+                                    field.loc.secondary().with_message(format!(
+                                        "`{}` is declared here",
+                                        constraint.id
+                                    )),
+                                ]),
+                        ),
+                        Some(Tag::Range { .. }) => diagnostics.push(
+                            Diagnostic::error()
+                                .with_code(ErrorCode::E42)
+                                .with_message(format!("enum tag `{}` defines a range", tag_id))
+                                .with_labels(vec![
+                                    constraint.loc.primary(),
+                                    field.loc.secondary().with_message(format!(
+                                        "`{}` is declared here",
+                                        constraint.id
+                                    )),
+                                ])
+                                .with_notes(vec!["hint: expected enum tag with value".to_owned()]),
+                        ),
+                        Some(_) => (),
+                    },
+                },
+                _ => unreachable!(),
             }
         }
         Some(field @ Field { desc: FieldDesc::Typedef { type_id, .. }, .. }) => {
@@ -1650,6 +1709,7 @@ fn check_field_offsets(file: &File, scope: &Scope, schema: &Schema) -> Result<()
                 | FieldDesc::FixedEnum { .. }
                 | FieldDesc::FixedScalar { .. }
                 | FieldDesc::Group { .. }
+                | FieldDesc::Enum { .. }
                 | FieldDesc::Flag { .. }
                 | FieldDesc::Reserved { .. }
                 | FieldDesc::Scalar { .. } => (),
@@ -1833,6 +1893,45 @@ fn desugar_flags(file: &mut File) {
     }
 }
 
+/// Replace Typedef fields with enum types by the more specific Enum construct.
+fn desugar_enums(file: &mut File) {
+    // Gather information about enum declarations.
+    let mut enum_declarations = HashMap::new();
+    for decl in &file.declarations {
+        if let DeclDesc::Enum { id, width, .. } = &decl.desc {
+            enum_declarations.insert(id.to_string(), *width);
+        }
+    }
+
+    fn to_enum_field(
+        desc: &FieldDesc,
+        enum_declarations: &HashMap<String, usize>,
+    ) -> Option<FieldDesc> {
+        match desc {
+            FieldDesc::Typedef { id, type_id, .. } => enum_declarations.get(type_id).map(|width| {
+                FieldDesc::Enum { id: id.to_owned(), enum_id: type_id.to_owned(), width: *width }
+            }),
+            _ => None,
+        }
+    }
+
+    for decl in &mut file.declarations {
+        match &mut decl.desc {
+            DeclDesc::Packet { fields, .. }
+            | DeclDesc::Struct { fields, .. }
+            | DeclDesc::Group { fields, .. } => {
+                // Replace enum Typedef fields in other declarations.
+                for field in fields.iter_mut() {
+                    if let Some(desc) = to_enum_field(&field.desc, &enum_declarations) {
+                        field.desc = desc
+                    }
+                }
+            }
+            _ => (),
+        }
+    }
+}
+
 /// Analyzer entry point, produces a new AST with annotations resulting
 /// from the analysis.
 pub fn analyze(file: &File) -> Result<File, Diagnostics> {
@@ -1850,6 +1949,7 @@ pub fn analyze(file: &File) -> Result<File, Diagnostics> {
     check_group_constraints(file, &scope)?;
     let mut file = inline_groups(file)?;
     desugar_flags(&mut file);
+    desugar_enums(&mut file);
     let scope = Scope::new(&file)?;
     check_decl_constraints(&file, &scope)?;
     let schema = Schema::new(&file);

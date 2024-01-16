@@ -167,35 +167,32 @@ impl Encoder {
                     }
                 }
             }
-            ast::FieldDesc::Typedef { id, type_id } => match &scope.typedef[type_id].desc {
-                ast::DeclDesc::Enum { width, .. } => {
-                    let id = id.to_ident();
-                    let backing_type = types::Integer::new(*width);
-                    let put_uint = types::put_uint(
-                        self.endianness,
-                        &quote!(#backing_type::from(#id)),
-                        *width,
-                        &self.buf,
-                    );
+            ast::FieldDesc::Enum { id, width, .. } => {
+                let id = id.to_ident();
+                let backing_type = types::Integer::new(*width);
+                let put_uint = types::put_uint(
+                    self.endianness,
+                    &quote!(#backing_type::from(#id)),
+                    *width,
+                    &self.buf,
+                );
 
-                    quote! {
-                        if let Some(#id) = &self.#id {
-                            #put_uint;
-                        }
+                quote! {
+                    if let Some(#id) = &self.#id {
+                        #put_uint;
                     }
                 }
-                ast::DeclDesc::Struct { .. } => {
-                    let id = id.to_ident();
-                    let buf = &self.buf;
+            }
+            ast::FieldDesc::Typedef { id, .. } => {
+                let id = id.to_ident();
+                let buf = &self.buf;
 
-                    quote! {
-                        if let Some(#id) = &self.#id {
-                            #id.encode(#buf)?;
-                        }
+                quote! {
+                    if let Some(#id) = &self.#id {
+                        #id.encode(#buf)?;
                     }
                 }
-                _ => unreachable!(),
-            },
+            }
             _ => unreachable!(),
         });
 
@@ -320,7 +317,7 @@ impl Encoder {
                 let value = proc_macro2::Literal::usize_unsuffixed(*value);
                 self.bit_fields.push(BitField { value: quote!(#value), field_type, shift });
             }
-            ast::FieldDesc::Typedef { id, .. } => {
+            ast::FieldDesc::Enum { id, .. } => {
                 let id = id.to_ident();
                 let field_type = types::Integer::new(width);
                 self.bit_fields.push(BitField {
