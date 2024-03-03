@@ -196,6 +196,9 @@ pub enum ErrorCode {
     InvalidConditionValue = 48,
     E49 = 49,
     ReusedConditionIdentifier = 50,
+    InvalidFieldOffset = 51,
+    InvalidFieldSize = 52,
+    InvalidPacketSize = 53,
 }
 
 impl From<ErrorCode> for String {
@@ -1681,6 +1684,125 @@ fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
     }
 }
 
+// Captures if the all the preceding fields are comprised only of a
+// single scalar field. This information is used to validate
+// big-endian packets that contain a payload starting on a bit offset.
+#[derive(PartialEq, Eq, Debug)]
+enum PartialPayload {
+    First,
+    Valid,
+    Invalid,
+}
+
+/// Check field offsets.
+/// Raises error diagnostics for the following cases:
+///      - non bit-field field not aligned to a octet boundary
+fn check_field_offsets(
+    file: &ast::File,
+    scope: &Scope<ast::Annotation>,
+) -> Result<(), Diagnostics> {
+    let mut diagnostics: Diagnostics = Default::default();
+    for decl in &file.declarations {
+        let mut offset = 0;
+        let mut partial_payload = match file.endianness.value {
+            EndiannessValue::LittleEndian => PartialPayload::First,
+            EndiannessValue::BigEndian => PartialPayload::Invalid,
+        };
+
+        for field in decl.fields() {
+            match &field.desc {
+                FieldDesc::Typedef { type_id, .. }
+                    if matches!(
+                        scope.typedef.get(type_id),
+                        Some(ast::Decl { desc: DeclDesc::Enum { .. }, .. })
+                    ) => {}
+                FieldDesc::Payload { .. }
+                    if matches!(partial_payload, PartialPayload::First | PartialPayload::Valid) => {
+                }
+                FieldDesc::Payload { .. }
+                | FieldDesc::Body { .. }
+                | FieldDesc::Typedef { .. }
+                | FieldDesc::Array { .. }
+                | FieldDesc::Checksum { .. } => {
+                    if offset % 8 != 0 {
+                        diagnostics.push(
+                            Diagnostic::error()
+                                .with_code(ErrorCode::InvalidFieldOffset)
+                                .with_message(format!(
+                                    "{} field is not aligned to a octet boundary",
+                                    field.kind()
+                                ))
+                                .with_labels(vec![field.loc.primary()]),
+                        )
+                    }
+                }
+                _ => (),
+            }
+            partial_payload = match (partial_payload, &field.desc) {
+                (PartialPayload::First, FieldDesc::Scalar { .. }) => PartialPayload::Valid,
+                _ => PartialPayload::Invalid,
+            };
+            offset = match field.annot.size {
+                ast::Size::Static(size) => offset + size,
+                ast::Size::Dynamic | ast::Size::Unknown => 0,
+            };
+        }
+    }
+    diagnostics.err_or(())
+}
+
+/// Check field sizes.
+/// Raises error diagnostics for the following cases:
+///      - struct size is not an integral number of octets
+///      - packet size is not an integral number of octets
+///      - scalar array element size is not an integral number of octets
+fn check_field_sizes(file: &ast::File) -> Result<(), Diagnostics> {
+    let mut diagnostics: Diagnostics = Default::default();
+    for decl in &file.declarations {
+        let mut static_size = 0;
+        let mut partial_payload = match file.endianness.value {
+            EndiannessValue::LittleEndian => PartialPayload::First,
+            EndiannessValue::BigEndian => PartialPayload::Invalid,
+        };
+
+        for field in decl.fields() {
+            match &field.desc {
+                FieldDesc::Array { width: Some(width), .. } if width % 8 != 0 => diagnostics.push(
+                    Diagnostic::error()
+                        .with_code(ErrorCode::InvalidFieldSize)
+                        .with_message(
+                            "array element size is not an integral number of octets".to_owned(),
+                        )
+                        .with_labels(vec![field.loc.primary()]),
+                ),
+                _ => (),
+            }
+            static_size = match &field.desc {
+                // Reset the static size if the payloads start on a bit offset
+                // for little endian packets.
+                FieldDesc::Payload { .. } if partial_payload == PartialPayload::Valid => 0,
+                _ => static_size + field.annot.size.static_().unwrap_or(0),
+            };
+            partial_payload = match (partial_payload, &field.desc) {
+                (PartialPayload::First, FieldDesc::Scalar { .. }) => PartialPayload::Valid,
+                _ => PartialPayload::Invalid,
+            };
+        }
+        if static_size % 8 != 0 {
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_code(ErrorCode::InvalidPacketSize)
+                    .with_message(format!(
+                        "{} size is not an integral number of octets",
+                        decl.kind()
+                    ))
+                    .with_labels(vec![decl.loc.primary()]),
+            )
+        }
+    }
+    diagnostics.err_or(())
+}
+
 /// Inline group fields and remove group declarations.
 fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostics> {
     fn inline_fields<'a>(
@@ -1830,7 +1952,11 @@ pub fn analyze(file: &parser_ast::File) -> Result<ast::File, Diagnostics> {
     desugar_flags(&mut file);
     let scope = Scope::new(&file)?;
     check_decl_constraints(&file, &scope)?;
-    Ok(compute_field_sizes(&file))
+    let file = compute_field_sizes(&file);
+    let scope = Scope::new(&file)?;
+    check_field_offsets(&file, &scope)?;
+    check_field_sizes(&file)?;
+    Ok(file)
 }
 
 #[cfg(test)]
@@ -3059,6 +3185,153 @@ mod test {
             _reserved_ : 7,
             x : 8 if c = 1,
             y : 8 if c = 0,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e51() {
+        raises!(
+            InvalidFieldOffset,
+            r#"
+        little_endian_packets
+        struct S { a: 8 }
+        packet A {
+            a : 1,
+            s : S,
+            c : 7,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidFieldOffset,
+            r#"
+        little_endian_packets
+        packet A {
+            a : 1,
+            b : 8[],
+            c : 7,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidFieldOffset,
+            r#"
+        big_endian_packets
+        packet A {
+            a : 1,
+            _payload_,
+            b : 7,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidFieldOffset,
+            r#"
+        big_endian_packets
+        packet A {
+            a : 1,
+            _body_,
+            b : 7,
+        }
+        "#
+        );
+
+        valid!(
+            r#"
+        little_endian_packets
+        packet A {
+            a : 1,
+            _payload_,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidFieldOffset,
+            r#"
+        little_endian_packets
+        custom_field F : 8 "f"
+        packet A {
+            a : 1,
+            f : F,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e52() {
+        raises!(
+            InvalidPacketSize,
+            r#"
+        little_endian_packets
+        packet A {
+            a : 1,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidPacketSize,
+            r#"
+        little_endian_packets
+        packet A {
+            a : 8[],
+            b : 1,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidPacketSize,
+            r#"
+        little_endian_packets
+        packet A {
+            a : 8[],
+            b : 1,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidPacketSize,
+            r#"
+        little_endian_packets
+        struct S {
+            _size_(_payload_) : 8,
+            _payload_,
+        }
+        packet A {
+            a : S,
+            b : 1,
+        }
+        "#
+        );
+
+        raises!(
+            InvalidPacketSize,
+            r#"
+        little_endian_packets
+        struct A {
+            a : 1,
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_e53() {
+        raises!(
+            InvalidFieldSize,
+            r#"
+        little_endian_packets
+        packet A {
+            a : 12[],
         }
         "#
         );
