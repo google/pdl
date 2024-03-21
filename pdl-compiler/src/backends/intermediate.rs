@@ -15,7 +15,6 @@
 use std::collections::{btree_map::Entry, BTreeMap, HashMap};
 
 use crate::ast;
-use crate::parser;
 
 pub struct Schema<'a> {
     pub packets_and_structs: HashMap<&'a str, PacketOrStruct<'a>>,
@@ -98,7 +97,7 @@ pub enum ComputedOffset<'a> {
     Alias(ComputedOffsetId<'a>),
 }
 
-pub fn generate(file: &parser::ast::File) -> Result<Schema, String> {
+pub fn generate(file: &ast::File) -> Result<Schema, String> {
     let mut schema = Schema { packets_and_structs: HashMap::new(), enums: HashMap::new() };
     match file.endianness.value {
         ast::EndiannessValue::LittleEndian => {}
@@ -112,7 +111,7 @@ pub fn generate(file: &parser::ast::File) -> Result<Schema, String> {
     Ok(schema)
 }
 
-fn process_decl<'a>(schema: &mut Schema<'a>, decl: &'a parser::ast::Decl) {
+fn process_decl<'a>(schema: &mut Schema<'a>, decl: &'a ast::Decl) {
     match &decl.desc {
         ast::DeclDesc::Enum { id, tags, width, .. } => process_enum(schema, id, tags, *width),
         ast::DeclDesc::Packet { id, fields, .. } | ast::DeclDesc::Struct { id, fields, .. } => {
@@ -135,18 +134,11 @@ fn process_enum<'a>(schema: &mut Schema<'a>, id: &'a str, tags: &'a [ast::Tag], 
     );
 }
 
-fn process_packet_or_struct<'a>(
-    schema: &mut Schema<'a>,
-    id: &'a str,
-    fields: &'a [parser::ast::Field],
-) {
+fn process_packet_or_struct<'a>(schema: &mut Schema<'a>, id: &'a str, fields: &'a [ast::Field]) {
     schema.packets_and_structs.insert(id, compute_getters(schema, fields));
 }
 
-fn compute_getters<'a>(
-    schema: &Schema<'a>,
-    fields: &'a [parser::ast::Field],
-) -> PacketOrStruct<'a> {
+fn compute_getters<'a>(schema: &Schema<'a>, fields: &'a [ast::Field]) -> PacketOrStruct<'a> {
     let mut prev_pos_id = None;
     let mut curr_pos_id = ComputedOffsetId::HeaderStart;
     let mut computed_values = BTreeMap::new();
