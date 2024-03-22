@@ -45,5 +45,5 @@ Language specific instructions are provided for all supported backends:
 ## Similar projects
 
 - [Kaitai](https://kaitai.io)
-- [EMBOSS](https://github.com/kimrutherford/EMBOSS)
+- [Emboss](https://github.com/google/emboss)
 - [P4](https://p4.org/p4-spec/docs/P4-16-v1.0.0-spec.html)
