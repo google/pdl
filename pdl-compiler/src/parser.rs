@@ -176,7 +176,11 @@ pub struct PDLParser;
 
 type Node<'i> = Pair<'i, Rule>;
 type NodeIterator<'i> = Peekable<Filter<Pairs<'i, Rule>, fn(&Node<'i>) -> bool>>;
-struct Context<'a>(ast::FileId, &'a Vec<usize>, std::cell::Cell<usize>);
+struct Context<'a> {
+    file: ast::FileId,
+    line_starts: &'a Vec<usize>,
+    key: std::cell::Cell<usize>,
+}
 
 trait Helpers<'i> {
     fn children(self) -> NodeIterator<'i>;
@@ -187,7 +191,7 @@ trait Helpers<'i> {
 
 impl<'a> Context<'a> {
     fn key(&self) -> usize {
-        self.2.replace(self.2.get() + 1)
+        self.key.replace(self.key.get() + 1)
     }
 }
 
@@ -199,9 +203,9 @@ impl<'i> Helpers<'i> for Node<'i> {
     fn as_loc(&self, context: &Context) -> ast::SourceRange {
         let span = self.as_span();
         ast::SourceRange {
-            file: context.0,
-            start: ast::SourceLocation::new(span.start_pos().pos(), context.1),
-            end: ast::SourceLocation::new(span.end_pos().pos(), context.1),
+            file: context.file,
+            start: ast::SourceLocation::new(span.start_pos().pos(), context.line_starts),
+            end: ast::SourceLocation::new(span.end_pos().pos(), context.line_starts),
         }
     }
 
@@ -521,7 +525,7 @@ fn parse_field_list_opt(
 
 fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String> {
     let mut toplevel_comments = vec![];
-    let mut file = ast::File::new(context.0);
+    let mut file = ast::File::new(context.file);
 
     let mut comment_start = vec![];
     for token in root.clone().tokens() {
@@ -531,9 +535,9 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let start_pos = comment_start.pop().unwrap();
                 file.comments.push(ast::Comment {
                     loc: ast::SourceRange {
-                        file: context.0,
-                        start: ast::SourceLocation::new(start_pos.pos(), context.1),
-                        end: ast::SourceLocation::new(pos.pos(), context.1),
+                        file: context.file,
+                        start: ast::SourceLocation::new(start_pos.pos(), context.line_starts),
+                        end: ast::SourceLocation::new(pos.pos(), context.line_starts),
                     },
                     text: start_pos.span(&pos).as_str().to_owned(),
                 })
@@ -648,7 +652,7 @@ pub fn parse_inline(
         .unwrap();
     let line_starts: Vec<_> = files::line_starts(&source).collect();
     let file = sources.add(name.to_owned(), source.clone());
-    parse_toplevel(root, &Context(file, &line_starts, std::cell::Cell::new(0)))
+    parse_toplevel(root, &Context { file, line_starts: &line_starts, key: std::cell::Cell::new(0) })
         .map_err(|e| Diagnostic::error().with_message(e))
 }
 
