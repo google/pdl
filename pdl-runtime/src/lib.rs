@@ -32,7 +32,12 @@ pub enum DecodeError {
     #[error("Due to size restrictions a struct could not be parsed.")]
     ImpossibleStructError,
     #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
-    InvalidEnumValueError { obj: &'static str, field: &'static str, value: u64, type_: &'static str },
+    InvalidEnumValueError {
+        obj: &'static str,
+        field: &'static str,
+        value: u64,
+        type_: &'static str,
+    },
     #[error("expected child {expected}, got {actual}")]
     InvalidChildError { expected: &'static str, actual: String },
     #[error("packet has trailing bytes")]

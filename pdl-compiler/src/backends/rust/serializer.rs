@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::analyzer::ast as analyzer_ast;
 use crate::backends::rust::{mask_bits, types, ToIdent, ToUpperCamelCase};
 use crate::{analyzer, ast};
 use quote::{format_ident, quote};
@@ -26,6 +25,7 @@ struct BitField {
 
 pub struct FieldSerializer<'a> {
     scope: &'a analyzer::Scope<'a>,
+    schema: &'a analyzer::Schema,
     endianness: ast::EndiannessValue,
     packet_name: &'a str,
     span: &'a proc_macro2::Ident,
@@ -37,12 +37,14 @@ pub struct FieldSerializer<'a> {
 impl<'a> FieldSerializer<'a> {
     pub fn new(
         scope: &'a analyzer::Scope<'a>,
+        schema: &'a analyzer::Schema,
         endianness: ast::EndiannessValue,
         packet_name: &'a str,
         span: &'a proc_macro2::Ident,
     ) -> FieldSerializer<'a> {
         FieldSerializer {
             scope,
+            schema,
             endianness,
             packet_name,
             span,
@@ -52,14 +54,14 @@ impl<'a> FieldSerializer<'a> {
         }
     }
 
-    pub fn add(&mut self, field: &analyzer_ast::Field) {
+    pub fn add(&mut self, field: &ast::Field) {
         match &field.desc {
             _ if field.cond.is_some() => self.add_optional_field(field),
             _ if self.scope.is_bitfield(field) => self.add_bit_field(field),
             ast::FieldDesc::Array { id, width, .. } => self.add_array_field(
                 id,
                 *width,
-                field.annot.padded_size,
+                self.schema.padded_size(field.key),
                 self.scope.get_type_declaration(field),
             ),
             ast::FieldDesc::Typedef { id, type_id } => {
@@ -74,7 +76,7 @@ impl<'a> FieldSerializer<'a> {
         }
     }
 
-    fn add_optional_field(&mut self, field: &analyzer_ast::Field) {
+    fn add_optional_field(&mut self, field: &ast::Field) {
         self.code.push(match &field.desc {
             ast::FieldDesc::Scalar { id, width } => {
                 let name = id;
@@ -136,8 +138,8 @@ impl<'a> FieldSerializer<'a> {
         })
     }
 
-    fn add_bit_field(&mut self, field: &analyzer_ast::Field) {
-        let width = field.annot.size.static_().unwrap();
+    fn add_bit_field(&mut self, field: &ast::Field) {
+        let width = self.schema.size(field.key).static_().unwrap();
         let shift = self.shift;
 
         match &field.desc {
@@ -370,7 +372,7 @@ impl<'a> FieldSerializer<'a> {
         id: &str,
         width: Option<usize>,
         padding_size: Option<usize>,
-        decl: Option<&analyzer_ast::Decl>,
+        decl: Option<&ast::Decl>,
     ) {
         let span = format_ident!("{}", self.span);
         let serialize = match width {
@@ -398,50 +400,46 @@ impl<'a> FieldSerializer<'a> {
         let packet_name = self.packet_name;
         let name = id;
         let id = id.to_ident();
-        self.code.push(if let Some(padding_size) = padding_size {
-            let array_size = match (&width, decl) {
-                (Some(width), _)
-                | (
-                    _,
-                    Some(analyzer_ast::Decl {
-                        annot:
-                            analyzer_ast::DeclAnnotation {
-                                size: analyzer_ast::Size::Static(width), ..
-                            },
-                        ..
-                    }),
-                ) => {
-                    let element_size = proc_macro2::Literal::usize_unsuffixed(width / 8);
-                    quote! { self.#id.len() * #element_size }
-                }
-                (_, Some(_)) => {
-                    quote! { self.#id.iter().fold(0, |size, elem| size + elem.get_size()) }
-                }
-                _ => unreachable!(),
+
+        if let Some(padding_size) = padding_size {
+            let padding_octets = padding_size / 8;
+            let element_width = match &width {
+                Some(width) => Some(*width),
+                None => self.schema.size(decl.unwrap().key).static_(),
             };
 
-            quote! {
+            let array_size = match element_width {
+                Some(element_width) => {
+                    let element_size = proc_macro2::Literal::usize_unsuffixed(element_width / 8);
+                    quote! { self.#id.len() * #element_size }
+                }
+                _ => {
+                    quote! { self.#id.iter().fold(0, |size, elem| size + elem.get_size()) }
+                }
+            };
+
+            self.code.push(quote! {
                 let array_size = #array_size;
-                if array_size > #padding_size {
+                if array_size > #padding_octets {
                     return Err(EncodeError::SizeOverflow {
                         packet: #packet_name,
                         field: #name,
                         size: array_size,
-                        maximum_size: #padding_size,
+                        maximum_size: #padding_octets,
                     })
                 }
                 for elem in &self.#id {
                     #serialize;
                 }
-                #span.put_bytes(0, #padding_size - array_size);
-            }
+                #span.put_bytes(0, #padding_octets - array_size);
+            });
         } else {
-            quote! {
+            self.code.push(quote! {
                 for elem in &self.#id {
                     #serialize;
                 }
-            }
-        });
+            });
+        }
     }
 
     fn add_typedef_field(&mut self, id: &str, type_id: &str) {

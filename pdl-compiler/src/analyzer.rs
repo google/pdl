@@ -19,128 +19,70 @@ use codespan_reporting::term::termcolor;
 use std::collections::HashMap;
 
 use crate::ast::*;
-use crate::parser::ast as parser_ast;
 
-pub mod ast {
-    use serde::Serialize;
+/// Field and declaration size information.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(unused)]
+pub enum Size {
+    /// Constant size in bits.
+    Static(usize),
+    /// Size indicated at packet parsing by a size or count field.
+    /// The parameter is the static part of the size.
+    Dynamic,
+    /// The size cannot be determined statically or at runtime.
+    /// The packet assumes the largest possible size.
+    Unknown,
+}
 
-    /// Field and declaration size information.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    #[allow(unused)]
-    pub enum Size {
-        /// Constant size in bits.
-        Static(usize),
-        /// Size indicated at packet parsing by a size or count field.
-        /// The parameter is the static part of the size.
-        Dynamic,
-        /// The size cannot be determined statically or at runtime.
-        /// The packet assumes the largest possible size.
-        Unknown,
+// TODO: use derive(Default) when UWB is using Rust 1.62.0.
+#[allow(clippy::derivable_impls)]
+impl Default for Size {
+    fn default() -> Size {
+        Size::Unknown
     }
+}
 
-    // TODO: use derive(Default) when UWB is using Rust 1.62.0.
-    #[allow(clippy::derivable_impls)]
-    impl Default for Size {
-        fn default() -> Size {
-            Size::Unknown
+impl std::ops::Add for Size {
+    type Output = Size;
+    fn add(self, rhs: Size) -> Self::Output {
+        match (self, rhs) {
+            (Size::Unknown, _) | (_, Size::Unknown) => Size::Unknown,
+            (Size::Dynamic, _) | (_, Size::Dynamic) => Size::Dynamic,
+            (Size::Static(lhs), Size::Static(rhs)) => Size::Static(lhs + rhs),
         }
     }
+}
 
-    #[derive(Debug, Serialize, Default, Clone, PartialEq)]
-    pub struct Annotation;
-
-    #[derive(Default, Debug, Clone, PartialEq, Eq)]
-    pub struct FieldAnnotation {
-        // Size of field.
-        pub size: Size,
-        // Size of field with padding bytes.
-        // This information exists only for array fields.
-        pub padded_size: Option<usize>,
-    }
-
-    #[derive(Default, Debug, Clone, PartialEq, Eq)]
-    pub struct DeclAnnotation {
-        // Size computed excluding the payload.
-        pub size: Size,
-        // Payload size, or Static(0) if the declaration does not
-        // have a payload.
-        pub payload_size: Size,
-    }
-
-    impl std::ops::Add for Size {
-        type Output = Size;
-        fn add(self, rhs: Size) -> Self::Output {
-            match (self, rhs) {
-                (Size::Unknown, _) | (_, Size::Unknown) => Size::Unknown,
-                (Size::Dynamic, _) | (_, Size::Dynamic) => Size::Dynamic,
-                (Size::Static(lhs), Size::Static(rhs)) => Size::Static(lhs + rhs),
-            }
+impl std::ops::Mul for Size {
+    type Output = Size;
+    fn mul(self, rhs: Size) -> Self::Output {
+        match (self, rhs) {
+            (Size::Unknown, _) | (_, Size::Unknown) => Size::Unknown,
+            (Size::Dynamic, _) | (_, Size::Dynamic) => Size::Dynamic,
+            (Size::Static(lhs), Size::Static(rhs)) => Size::Static(lhs * rhs),
         }
     }
+}
 
-    impl std::ops::Mul for Size {
-        type Output = Size;
-        fn mul(self, rhs: Size) -> Self::Output {
-            match (self, rhs) {
-                (Size::Unknown, _) | (_, Size::Unknown) => Size::Unknown,
-                (Size::Dynamic, _) | (_, Size::Dynamic) => Size::Dynamic,
-                (Size::Static(lhs), Size::Static(rhs)) => Size::Static(lhs * rhs),
-            }
+impl std::ops::Mul<usize> for Size {
+    type Output = Size;
+    fn mul(self, rhs: usize) -> Self::Output {
+        match self {
+            Size::Unknown => Size::Unknown,
+            Size::Dynamic => Size::Dynamic,
+            Size::Static(lhs) => Size::Static(lhs * rhs),
         }
     }
+}
 
-    impl std::ops::Mul<usize> for Size {
-        type Output = Size;
-        fn mul(self, rhs: usize) -> Self::Output {
-            match self {
-                Size::Unknown => Size::Unknown,
-                Size::Dynamic => Size::Dynamic,
-                Size::Static(lhs) => Size::Static(lhs * rhs),
-            }
+impl Size {
+    // Returns the width if the size is static.
+    pub fn static_(&self) -> Option<usize> {
+        match self {
+            Size::Static(size) => Some(*size),
+            Size::Dynamic | Size::Unknown => None,
         }
     }
-
-    impl Size {
-        // Returns the width if the size is static.
-        pub fn static_(&self) -> Option<usize> {
-            match self {
-                Size::Static(size) => Some(*size),
-                Size::Dynamic | Size::Unknown => None,
-            }
-        }
-    }
-
-    impl DeclAnnotation {
-        pub fn total_size(&self) -> Size {
-            self.size + self.payload_size
-        }
-    }
-
-    impl FieldAnnotation {
-        pub fn new(size: Size) -> Self {
-            FieldAnnotation { size, padded_size: None }
-        }
-
-        // Returns the field width or padded width if static.
-        pub fn static_(&self) -> Option<usize> {
-            match self.padded_size {
-                Some(padding) => Some(8 * padding),
-                None => self.size.static_(),
-            }
-        }
-    }
-
-    impl crate::ast::Annotation for Annotation {
-        type FieldAnnotation = FieldAnnotation;
-        type DeclAnnotation = DeclAnnotation;
-    }
-
-    #[allow(unused)]
-    pub type Field = crate::ast::Field<Annotation>;
-    #[allow(unused)]
-    pub type Decl = crate::ast::Decl<Annotation>;
-    #[allow(unused)]
-    pub type File = crate::ast::File<Annotation>;
 }
 
 /// List of unique errors reported as analyzer diagnostics.
@@ -212,12 +154,20 @@ pub struct Diagnostics {
 
 /// Gather information about the full AST.
 #[derive(Debug)]
-pub struct Scope<'d, A: Annotation = ast::Annotation> {
+pub struct Scope<'d> {
     /// Reference to the source file.
-    pub file: &'d crate::ast::File<A>,
+    pub file: &'d File,
     /// Collection of Group, Packet, Enum, Struct, Checksum, and CustomField
     /// declarations.
-    pub typedef: HashMap<String, &'d crate::ast::Decl<A>>,
+    pub typedef: HashMap<String, &'d Decl>,
+}
+
+/// Gather size information about the full AST.
+#[derive(Debug)]
+pub struct Schema {
+    size: HashMap<usize, Size>,
+    padded_size: HashMap<usize, Option<usize>>,
+    payload_size: HashMap<usize, Size>,
 }
 
 impl Diagnostics {
@@ -250,10 +200,10 @@ impl Diagnostics {
     }
 }
 
-impl<'d, A: Annotation + Default> Scope<'d, A> {
-    pub fn new(file: &'d crate::ast::File<A>) -> Result<Scope<'d, A>, Diagnostics> {
+impl<'d> Scope<'d> {
+    pub fn new(file: &'d File) -> Result<Scope<'d>, Diagnostics> {
         // Gather top-level declarations.
-        let mut scope: Scope<A> = Scope { file, typedef: Default::default() };
+        let mut scope: Scope = Scope { file, typedef: Default::default() };
         let mut diagnostics: Diagnostics = Default::default();
         for decl in &file.declarations {
             if let Some(id) = decl.id() {
@@ -286,24 +236,18 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
     }
 
     /// Iterate over the child declarations of the selected declaration.
-    pub fn iter_children<'s>(
-        &'s self,
-        decl: &'d crate::ast::Decl<A>,
-    ) -> impl Iterator<Item = &'d crate::ast::Decl<A>> + 's {
+    pub fn iter_children<'s>(&'s self, decl: &'d Decl) -> impl Iterator<Item = &'d Decl> + 's {
         self.file.iter_children(decl)
     }
 
     /// Return the parent declaration of the selected declaration,
     /// if it has one.
-    pub fn get_parent(&self, decl: &crate::ast::Decl<A>) -> Option<&'d crate::ast::Decl<A>> {
+    pub fn get_parent(&self, decl: &Decl) -> Option<&'d Decl> {
         decl.parent_id().and_then(|parent_id| self.typedef.get(parent_id).cloned())
     }
 
     /// Iterate over the parent declarations of the selected declaration.
-    pub fn iter_parents<'s>(
-        &'s self,
-        decl: &'d crate::ast::Decl<A>,
-    ) -> impl Iterator<Item = &'d Decl<A>> + 's {
+    pub fn iter_parents<'s>(&'s self, decl: &'d Decl) -> impl Iterator<Item = &'d Decl> + 's {
         std::iter::successors(self.get_parent(decl), |decl| self.get_parent(decl))
     }
 
@@ -311,24 +255,21 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
     /// including the current declaration.
     pub fn iter_parents_and_self<'s>(
         &'s self,
-        decl: &'d crate::ast::Decl<A>,
-    ) -> impl Iterator<Item = &'d Decl<A>> + 's {
+        decl: &'d Decl,
+    ) -> impl Iterator<Item = &'d Decl> + 's {
         std::iter::successors(Some(decl), |decl| self.get_parent(decl))
     }
 
     /// Iterate over the declaration and its parent's fields.
-    pub fn iter_fields<'s>(
-        &'s self,
-        decl: &'d crate::ast::Decl<A>,
-    ) -> impl Iterator<Item = &'d Field<A>> + 's {
+    pub fn iter_fields<'s>(&'s self, decl: &'d Decl) -> impl Iterator<Item = &'d Field> + 's {
         std::iter::successors(Some(decl), |decl| self.get_parent(decl)).flat_map(Decl::fields)
     }
 
     /// Iterate over the declaration parent's fields.
     pub fn iter_parent_fields<'s>(
         &'s self,
-        decl: &'d crate::ast::Decl<A>,
-    ) -> impl Iterator<Item = &'d crate::ast::Field<A>> + 's {
+        decl: &'d Decl,
+    ) -> impl Iterator<Item = &'d Field> + 's {
         std::iter::successors(self.get_parent(decl), |decl| self.get_parent(decl))
             .flat_map(Decl::fields)
     }
@@ -336,16 +277,13 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
     /// Iterate over the declaration and its parent's constraints.
     pub fn iter_constraints<'s>(
         &'s self,
-        decl: &'d crate::ast::Decl<A>,
+        decl: &'d Decl,
     ) -> impl Iterator<Item = &'d Constraint> + 's {
         std::iter::successors(Some(decl), |decl| self.get_parent(decl)).flat_map(Decl::constraints)
     }
 
     /// Return the type declaration for the selected field, if applicable.
-    pub fn get_type_declaration(
-        &self,
-        field: &crate::ast::Field<A>,
-    ) -> Option<&'d crate::ast::Decl<A>> {
+    pub fn get_type_declaration(&self, field: &Field) -> Option<&'d Decl> {
         match &field.desc {
             FieldDesc::Checksum { .. }
             | FieldDesc::Padding { .. }
@@ -367,7 +305,7 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
     }
 
     /// Test if the selected field is a bit-field.
-    pub fn is_bitfield(&self, field: &crate::ast::Field<A>) -> bool {
+    pub fn is_bitfield(&self, field: &Field) -> bool {
         match &field.desc {
             FieldDesc::Size { .. }
             | FieldDesc::Count { .. }
@@ -383,6 +321,168 @@ impl<'d, A: Annotation + Default> Scope<'d, A> {
             }
             _ => false,
         }
+    }
+}
+
+impl Schema {
+    /// Check correct definition of packet sizes.
+    /// Annotate fields and declarations with the size in bits.
+    pub fn new(file: &File) -> Schema {
+        fn annotate_decl(schema: &mut Schema, scope: &HashMap<String, usize>, decl: &Decl) {
+            // Compute the padding size for each field.
+            let mut padding = None;
+            for field in decl.fields().rev() {
+                schema.padded_size.insert(field.key, padding);
+                padding = match &field.desc {
+                    FieldDesc::Padding { size } => Some(8 * *size),
+                    _ => None,
+                };
+            }
+
+            let mut size = decl
+                .parent_id()
+                .and_then(|parent_id| scope.get(parent_id))
+                .map(|key| schema.size(*key))
+                .unwrap_or(Size::Static(0));
+            let mut payload_size = Size::Static(0);
+
+            for field in decl.fields() {
+                // Compute the size of each declared fields.
+                let field_size = annotate_field(schema, scope, decl, field);
+
+                // Sum the size of the non payload fields to get the
+                // declaration size. Lookup the payload field size.
+                match &field.desc {
+                    FieldDesc::Payload { .. } | FieldDesc::Body { .. } => payload_size = field_size,
+                    _ => {
+                        size = size
+                            + match schema.padded_size.get(&field.key).unwrap() {
+                                Some(padding) => Size::Static(*padding),
+                                None => field_size,
+                            }
+                    }
+                }
+            }
+
+            // Save the declaration size.
+            let (size, payload_size) = match &decl.desc {
+                DeclDesc::Packet { .. } | DeclDesc::Struct { .. } | DeclDesc::Group { .. } => {
+                    (size, payload_size)
+                }
+                DeclDesc::Enum { width, .. }
+                | DeclDesc::Checksum { width, .. }
+                | DeclDesc::CustomField { width: Some(width), .. } => {
+                    (Size::Static(*width), Size::Static(0))
+                }
+                DeclDesc::CustomField { width: None, .. } => (Size::Dynamic, Size::Static(0)),
+                DeclDesc::Test { .. } => (Size::Static(0), Size::Static(0)),
+            };
+
+            schema.size.insert(decl.key, size);
+            schema.payload_size.insert(decl.key, payload_size);
+        }
+
+        fn annotate_field(
+            schema: &mut Schema,
+            scope: &HashMap<String, usize>,
+            decl: &Decl,
+            field: &Field,
+        ) -> Size {
+            let size = match &field.desc {
+                _ if field.cond.is_some() => Size::Dynamic,
+                FieldDesc::Checksum { .. } | FieldDesc::Padding { .. } => Size::Static(0),
+                FieldDesc::Size { width, .. }
+                | FieldDesc::Count { width, .. }
+                | FieldDesc::ElementSize { width, .. }
+                | FieldDesc::FixedScalar { width, .. }
+                | FieldDesc::Reserved { width }
+                | FieldDesc::Scalar { width, .. } => Size::Static(*width),
+                FieldDesc::Flag { .. } => Size::Static(1),
+                FieldDesc::Body | FieldDesc::Payload { .. } => {
+                    let has_payload_size = decl.fields().any(|field| match &field.desc {
+                        FieldDesc::Size { field_id, .. } => {
+                            field_id == "_body_" || field_id == "_payload_"
+                        }
+                        _ => false,
+                    });
+                    if has_payload_size {
+                        Size::Dynamic
+                    } else {
+                        Size::Unknown
+                    }
+                }
+                FieldDesc::Typedef { type_id, .. }
+                | FieldDesc::FixedEnum { enum_id: type_id, .. }
+                | FieldDesc::Group { group_id: type_id, .. } => {
+                    let type_key = scope.get(type_id).unwrap();
+                    schema.total_size(*type_key)
+                }
+                FieldDesc::Array { width: Some(width), size: Some(size), .. } => {
+                    Size::Static(*size * *width)
+                }
+                FieldDesc::Array {
+                    width: None, size: Some(size), type_id: Some(type_id), ..
+                } => {
+                    let type_key = scope.get(type_id).unwrap();
+                    schema.total_size(*type_key) * *size
+                }
+                FieldDesc::Array { id, size: None, .. } => {
+                    // The element does not matter when the size of the array is
+                    // not static. The array size depends on there being a count
+                    // or size field or not.
+                    let has_array_size = decl.fields().any(|field| match &field.desc {
+                        FieldDesc::Size { field_id, .. } | FieldDesc::Count { field_id, .. } => {
+                            field_id == id
+                        }
+                        _ => false,
+                    });
+                    if has_array_size {
+                        Size::Dynamic
+                    } else {
+                        Size::Unknown
+                    }
+                }
+                FieldDesc::Array { .. } => unreachable!(),
+            };
+
+            schema.size.insert(field.key, size);
+            size
+        }
+
+        let mut scope = HashMap::new();
+        for decl in &file.declarations {
+            if let Some(id) = decl.id() {
+                scope.insert(id.to_owned(), decl.key);
+            }
+        }
+
+        let mut schema = Schema {
+            size: Default::default(),
+            padded_size: Default::default(),
+            payload_size: Default::default(),
+        };
+
+        for decl in &file.declarations {
+            annotate_decl(&mut schema, &scope, decl);
+        }
+
+        schema
+    }
+
+    pub fn size(&self, key: usize) -> Size {
+        *self.size.get(&key).unwrap()
+    }
+
+    pub fn padded_size(&self, key: usize) -> Option<usize> {
+        *self.padded_size.get(&key).unwrap()
+    }
+
+    pub fn payload_size(&self, key: usize) -> Size {
+        *self.payload_size.get(&key).unwrap()
+    }
+
+    pub fn total_size(&self, key: usize) -> Size {
+        self.size(key) + self.payload_size(key)
     }
 }
 
@@ -411,10 +511,7 @@ fn scalar_max(width: usize) -> usize {
 ///      - undeclared test identifier
 ///      - invalid test identifier
 ///      - recursive declaration
-fn check_decl_identifiers(
-    file: &parser_ast::File,
-    scope: &Scope<parser_ast::Annotation>,
-) -> Result<(), Diagnostics> {
+fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<(), Diagnostics> {
     enum Mark {
         Temporary,
         Permanent,
@@ -425,9 +522,9 @@ fn check_decl_identifiers(
     }
 
     fn bfs<'d>(
-        decl: &'d parser_ast::Decl,
+        decl: &'d Decl,
         context: &mut Context<'d>,
-        scope: &Scope<'d, parser_ast::Annotation>,
+        scope: &Scope<'d>,
         diagnostics: &mut Diagnostics,
     ) {
         let decl_id = decl.id().unwrap();
@@ -586,7 +683,7 @@ fn check_decl_identifiers(
 /// Check field identifiers.
 /// Raises error diagnostics for the following cases:
 ///      - duplicate field identifier
-fn check_field_identifiers(file: &parser_ast::File) -> Result<(), Diagnostics> {
+fn check_field_identifiers(file: &File) -> Result<(), Diagnostics> {
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
         let mut local_scope = HashMap::new();
@@ -620,7 +717,7 @@ fn check_field_identifiers(file: &parser_ast::File) -> Result<(), Diagnostics> {
 /// Raises error diagnostics for the following cases:
 ///      - duplicate tag identifier
 ///      - duplicate tag value
-fn check_enum_declarations(file: &parser_ast::File) -> Result<(), Diagnostics> {
+fn check_enum_declarations(file: &File) -> Result<(), Diagnostics> {
     // Return the inclusive range with bounds correctly ordered.
     // The analyzer will raise an error if the bounds are incorrectly ordered, but this
     // will enable additional checks.
@@ -855,8 +952,8 @@ fn check_enum_declarations(file: &parser_ast::File) -> Result<(), Diagnostics> {
 /// Helper function for validating one constraint.
 fn check_constraint(
     constraint: &Constraint,
-    decl: &parser_ast::Decl,
-    scope: &Scope<parser_ast::Annotation>,
+    decl: &Decl,
+    scope: &Scope,
     diagnostics: &mut Diagnostics,
 ) {
     match scope.iter_fields(decl).find(|field| field.id() == Some(&constraint.id)) {
@@ -985,8 +1082,8 @@ fn check_constraint(
 /// Helper function for validating a list of constraints.
 fn check_constraints_list<'d>(
     constraints: &'d [Constraint],
-    parent_decl: &parser_ast::Decl,
-    scope: &Scope<parser_ast::Annotation>,
+    parent_decl: &Decl,
+    scope: &Scope,
     mut constraints_by_id: HashMap<String, &'d Constraint>,
     diagnostics: &mut Diagnostics,
 ) {
@@ -1018,10 +1115,7 @@ fn check_constraints_list<'d>(
 ///      - invalid constraint enum value (bad type)
 ///      - invalid constraint enum value (undeclared tag)
 ///      - duplicate constraint
-fn check_decl_constraints(
-    file: &parser_ast::File,
-    scope: &Scope<parser_ast::Annotation>,
-) -> Result<(), Diagnostics> {
+fn check_decl_constraints(file: &File, scope: &Scope) -> Result<(), Diagnostics> {
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
         // Check constraints for packet inheritance.
@@ -1060,10 +1154,7 @@ fn check_decl_constraints(
 ///      - invalid constraint enum value (bad type)
 ///      - invalid constraint enum value (undeclared tag)
 ///      - duplicate constraint
-fn check_group_constraints(
-    file: &parser_ast::File,
-    scope: &Scope<parser_ast::Annotation>,
-) -> Result<(), Diagnostics> {
+fn check_group_constraints(file: &File, scope: &Scope) -> Result<(), Diagnostics> {
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
         // Check constraints for group inlining.
@@ -1095,7 +1186,7 @@ fn check_group_constraints(
 ///      - undeclared elementsize identifier
 ///      - invalid elementsize identifier
 ///      - duplicate elementsize field
-fn check_size_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
+fn check_size_fields(file: &File) -> Result<(), Diagnostics> {
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
         let mut size_for_id = HashMap::new();
@@ -1223,10 +1314,7 @@ fn check_size_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
 ///      - undeclared enum identifier
 ///      - invalid enum identifier
 ///      - undeclared tag identifier
-fn check_fixed_fields(
-    file: &parser_ast::File,
-    scope: &Scope<parser_ast::Annotation>,
-) -> Result<(), Diagnostics> {
+fn check_fixed_fields(file: &File, scope: &Scope) -> Result<(), Diagnostics> {
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
         for field in decl.fields() {
@@ -1291,16 +1379,16 @@ fn check_fixed_fields(
 ///      - duplicate body field
 ///      - duplicate body field size
 ///      - missing payload field
-fn check_payload_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
+fn check_payload_fields(file: &File) -> Result<(), Diagnostics> {
     // Check whether the declaration requires a payload field.
     // The payload is required if any child packets declares fields.
-    fn requires_payload(file: &parser_ast::File, decl: &parser_ast::Decl) -> bool {
+    fn requires_payload(file: &File, decl: &Decl) -> bool {
         file.iter_children(decl).any(|child| child.fields().next().is_some())
     }
 
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
-        let mut payload: Option<&parser_ast::Field> = None;
+        let mut payload: Option<&Field> = None;
         for field in decl.fields() {
             match &field.desc {
                 FieldDesc::Payload { .. } | FieldDesc::Body { .. } => {
@@ -1345,7 +1433,7 @@ fn check_payload_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
 /// Check array fields.
 /// Raises error diagnostics for the following cases:
 ///      - redundant array field size
-fn check_array_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
+fn check_array_fields(file: &File) -> Result<(), Diagnostics> {
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
         for field in decl.fields() {
@@ -1379,7 +1467,7 @@ fn check_array_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
 /// Check padding fields.
 /// Raises error diagnostics for the following cases:
 ///      - padding field not following an array field
-fn check_padding_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
+fn check_padding_fields(file: &File) -> Result<(), Diagnostics> {
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
         let mut previous_is_array = false;
@@ -1405,10 +1493,7 @@ fn check_padding_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
 ///      - checksum field precedes checksum start
 ///      - undeclared checksum field
 ///      - invalid checksum field
-fn check_checksum_fields(
-    _file: &parser_ast::File,
-    _scope: &Scope<parser_ast::Annotation>,
-) -> Result<(), Diagnostics> {
+fn check_checksum_fields(_file: &File, _scope: &Scope) -> Result<(), Diagnostics> {
     // TODO
     Ok(())
 }
@@ -1419,11 +1504,11 @@ fn check_checksum_fields(
 ///      - invalid constraint identifier
 ///      - invalid constraint scalar value (bad type)
 ///      - invalid constraint scalar value (overflow)
-fn check_optional_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
+fn check_optional_fields(file: &File) -> Result<(), Diagnostics> {
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
-        let mut local_scope: HashMap<String, &parser_ast::Field> = HashMap::new();
-        let mut condition_ids: HashMap<String, &parser_ast::Field> = HashMap::new();
+        let mut local_scope: HashMap<String, &Field> = HashMap::new();
+        let mut condition_ids: HashMap<String, &Field> = HashMap::new();
         for field in decl.fields() {
             if let Some(ref cond) = field.cond {
                 match &field.desc {
@@ -1527,167 +1612,13 @@ fn check_optional_fields(file: &parser_ast::File) -> Result<(), Diagnostics> {
     diagnostics.err_or(())
 }
 
-/// Check correct definition of packet sizes.
-/// Annotate fields and declarations with the size in bits.
-fn compute_field_sizes(file: &parser_ast::File) -> ast::File {
-    fn annotate_decl(
-        decl: &parser_ast::Decl,
-        scope: &HashMap<String, ast::DeclAnnotation>,
-    ) -> ast::Decl {
-        // Annotate the declaration fields.
-        // Add the padding information to the fields in the same pass.
-        let mut decl = decl.annotate(Default::default(), |fields| {
-            let mut fields: Vec<_> =
-                fields.iter().map(|field| annotate_field(decl, field, scope)).collect();
-            let mut padding = None;
-            for field in fields.iter_mut().rev() {
-                field.annot.padded_size = padding;
-                padding = match &field.desc {
-                    FieldDesc::Padding { size } => Some(*size),
-                    _ => None,
-                };
-            }
-            fields
-        });
-
-        // Compute the declaration annotation.
-        decl.annot = match &decl.desc {
-            DeclDesc::Packet { fields, .. }
-            | DeclDesc::Struct { fields, .. }
-            | DeclDesc::Group { fields, .. } => {
-                let mut size = decl
-                    .parent_id()
-                    .and_then(|parent_id| scope.get(parent_id))
-                    .map(|annot| annot.size)
-                    .unwrap_or(ast::Size::Static(0));
-                let mut payload_size = ast::Size::Static(0);
-                for field in fields {
-                    match &field.desc {
-                        FieldDesc::Payload { .. } | FieldDesc::Body { .. } => {
-                            payload_size = field.annot.size
-                        }
-                        _ => {
-                            size = size
-                                + match field.annot.padded_size {
-                                    Some(padding) => ast::Size::Static(8 * padding),
-                                    None => field.annot.size,
-                                }
-                        }
-                    }
-                }
-                ast::DeclAnnotation { size, payload_size }
-            }
-            DeclDesc::Enum { width, .. }
-            | DeclDesc::Checksum { width, .. }
-            | DeclDesc::CustomField { width: Some(width), .. } => ast::DeclAnnotation {
-                size: ast::Size::Static(*width),
-                payload_size: ast::Size::Static(0),
-            },
-            DeclDesc::CustomField { width: None, .. } => {
-                ast::DeclAnnotation { size: ast::Size::Dynamic, payload_size: ast::Size::Static(0) }
-            }
-            DeclDesc::Test { .. } => ast::DeclAnnotation {
-                size: ast::Size::Static(0),
-                payload_size: ast::Size::Static(0),
-            },
-        };
-        decl
-    }
-
-    fn annotate_field(
-        decl: &parser_ast::Decl,
-        field: &parser_ast::Field,
-        scope: &HashMap<String, ast::DeclAnnotation>,
-    ) -> ast::Field {
-        field.annotate(match &field.desc {
-            _ if field.cond.is_some() => ast::FieldAnnotation::new(ast::Size::Dynamic),
-            FieldDesc::Checksum { .. } | FieldDesc::Padding { .. } => {
-                ast::FieldAnnotation::new(ast::Size::Static(0))
-            }
-            FieldDesc::Size { width, .. }
-            | FieldDesc::Count { width, .. }
-            | FieldDesc::ElementSize { width, .. }
-            | FieldDesc::FixedScalar { width, .. }
-            | FieldDesc::Reserved { width }
-            | FieldDesc::Scalar { width, .. } => {
-                ast::FieldAnnotation::new(ast::Size::Static(*width))
-            }
-            FieldDesc::Flag { .. } => ast::FieldAnnotation::new(ast::Size::Static(1)),
-            FieldDesc::Body | FieldDesc::Payload { .. } => {
-                let has_payload_size = decl.fields().any(|field| match &field.desc {
-                    FieldDesc::Size { field_id, .. } => {
-                        field_id == "_body_" || field_id == "_payload_"
-                    }
-                    _ => false,
-                });
-                ast::FieldAnnotation::new(if has_payload_size {
-                    ast::Size::Dynamic
-                } else {
-                    ast::Size::Unknown
-                })
-            }
-            FieldDesc::Typedef { type_id, .. }
-            | FieldDesc::FixedEnum { enum_id: type_id, .. }
-            | FieldDesc::Group { group_id: type_id, .. } => {
-                let type_annot = scope.get(type_id).unwrap();
-                ast::FieldAnnotation::new(type_annot.size + type_annot.payload_size)
-            }
-            FieldDesc::Array { width: Some(width), size: Some(size), .. } => {
-                ast::FieldAnnotation::new(ast::Size::Static(*size * *width))
-            }
-            FieldDesc::Array { width: None, size: Some(size), type_id: Some(type_id), .. } => {
-                let type_annot = scope.get(type_id).unwrap();
-                ast::FieldAnnotation::new((type_annot.size + type_annot.payload_size) * *size)
-            }
-            FieldDesc::Array { id, size: None, .. } => {
-                // The element does not matter when the size of the array is
-                // not static. The array size depends on there being a count
-                // or size field or not.
-                let has_array_size = decl.fields().any(|field| match &field.desc {
-                    FieldDesc::Size { field_id, .. } | FieldDesc::Count { field_id, .. } => {
-                        field_id == id
-                    }
-                    _ => false,
-                });
-                ast::FieldAnnotation::new(if has_array_size {
-                    ast::Size::Dynamic
-                } else {
-                    ast::Size::Unknown
-                })
-            }
-            FieldDesc::Array { .. } => unreachable!(),
-        })
-    }
-
-    // Construct a scope mapping typedef identifiers to decl annotations.
-    let mut scope = HashMap::new();
-
-    // Annotate declarations.
-    let mut declarations = Vec::new();
-    for decl in file.declarations.iter() {
-        let decl = annotate_decl(decl, &scope);
-        if let Some(id) = decl.id() {
-            scope.insert(id.to_string(), decl.annot.clone());
-        }
-        declarations.push(decl);
-    }
-
-    File {
-        version: file.version.clone(),
-        file: file.file,
-        comments: file.comments.clone(),
-        endianness: file.endianness,
-        declarations,
-    }
-}
-
 /// Inline group fields and remove group declarations.
-fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostics> {
+fn inline_groups(file: &File) -> Result<File, Diagnostics> {
     fn inline_fields<'a>(
-        fields: impl Iterator<Item = &'a parser_ast::Field>,
-        groups: &HashMap<String, &parser_ast::Decl>,
+        fields: impl Iterator<Item = &'a Field>,
+        groups: &HashMap<String, &Decl>,
         constraints: &HashMap<String, Constraint>,
-    ) -> Vec<parser_ast::Field> {
+    ) -> Vec<Field> {
         fields
             .flat_map(|field| match &field.desc {
                 FieldDesc::Group { group_id, constraints: group_constraints } => {
@@ -1700,18 +1631,18 @@ fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostic
                     inline_fields(groups.get(group_id).unwrap().fields(), groups, &constraints)
                 }
                 FieldDesc::Scalar { id, width } if constraints.contains_key(id) => {
-                    vec![parser_ast::Field {
+                    vec![Field {
                         desc: FieldDesc::FixedScalar {
                             width: *width,
                             value: constraints.get(id).unwrap().value.unwrap(),
                         },
                         loc: field.loc,
-                        annot: field.annot,
+                        key: field.key,
                         cond: field.cond.clone(),
                     }]
                 }
                 FieldDesc::Typedef { id, type_id, .. } if constraints.contains_key(id) => {
-                    vec![parser_ast::Field {
+                    vec![Field {
                         desc: FieldDesc::FixedEnum {
                             enum_id: type_id.clone(),
                             tag_id: constraints
@@ -1720,7 +1651,7 @@ fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostic
                                 .unwrap(),
                         },
                         loc: field.loc,
-                        annot: field.annot,
+                        key: field.key,
                         cond: field.cond.clone(),
                     }]
                 }
@@ -1740,7 +1671,7 @@ fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostic
         .declarations
         .iter()
         .filter_map(|decl| match &decl.desc {
-            DeclDesc::Packet { fields, id, parent_id, constraints } => Some(parser_ast::Decl {
+            DeclDesc::Packet { fields, id, parent_id, constraints } => Some(Decl {
                 desc: DeclDesc::Packet {
                     fields: inline_fields(fields.iter(), &groups, &HashMap::new()),
                     id: id.clone(),
@@ -1748,9 +1679,9 @@ fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostic
                     constraints: constraints.clone(),
                 },
                 loc: decl.loc,
-                annot: decl.annot,
+                key: decl.key,
             }),
-            DeclDesc::Struct { fields, id, parent_id, constraints } => Some(parser_ast::Decl {
+            DeclDesc::Struct { fields, id, parent_id, constraints } => Some(Decl {
                 desc: DeclDesc::Struct {
                     fields: inline_fields(fields.iter(), &groups, &HashMap::new()),
                     id: id.clone(),
@@ -1758,7 +1689,7 @@ fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostic
                     constraints: constraints.clone(),
                 },
                 loc: decl.loc,
-                annot: decl.annot,
+                key: decl.key,
             }),
             DeclDesc::Group { .. } => None,
             _ => Some(decl.clone()),
@@ -1767,17 +1698,18 @@ fn inline_groups(file: &parser_ast::File) -> Result<parser_ast::File, Diagnostic
 
     Ok(File {
         declarations,
-
         version: file.version.clone(),
         file: file.file,
         comments: file.comments.clone(),
         endianness: file.endianness,
+        // Keys are reused for inlined fields.
+        max_key: file.max_key,
     })
 }
 
 /// Replace Scalar fields used as condition for optional fields by the more
 /// specific Flag construct.
-fn desugar_flags(file: &mut parser_ast::File) {
+fn desugar_flags(file: &mut File) {
     for decl in &mut file.declarations {
         match &mut decl.desc {
             DeclDesc::Packet { fields, .. }
@@ -1813,7 +1745,7 @@ fn desugar_flags(file: &mut parser_ast::File) {
 
 /// Analyzer entry point, produces a new AST with annotations resulting
 /// from the analysis.
-pub fn analyze(file: &parser_ast::File) -> Result<ast::File, Diagnostics> {
+pub fn analyze(file: &File) -> Result<File, Diagnostics> {
     let scope = Scope::new(file)?;
     check_decl_identifiers(file, &scope)?;
     check_field_identifiers(file)?;
@@ -1830,13 +1762,13 @@ pub fn analyze(file: &parser_ast::File) -> Result<ast::File, Diagnostics> {
     desugar_flags(&mut file);
     let scope = Scope::new(&file)?;
     check_decl_constraints(&file, &scope)?;
-    Ok(compute_field_sizes(&file))
+    Ok(file)
 }
 
 #[cfg(test)]
 mod test {
     use crate::analyzer;
-    use crate::ast::*;
+    use crate::ast;
     use crate::parser::parse_inline;
     use codespan_reporting::term::termcolor;
 
@@ -1844,7 +1776,7 @@ mod test {
 
     macro_rules! raises {
         ($code:ident, $text:literal) => {{
-            let mut db = SourceDatabase::new();
+            let mut db = ast::SourceDatabase::new();
             let file = parse_inline(&mut db, "stdin", $text.to_owned()).expect("parsing failure");
             let result = analyzer::analyze(&file);
             assert!(matches!(result, Err(_)));
@@ -1859,7 +1791,7 @@ mod test {
 
     macro_rules! valid {
         ($text:literal) => {{
-            let mut db = SourceDatabase::new();
+            let mut db = ast::SourceDatabase::new();
             let file = parse_inline(&mut db, "stdin", $text.to_owned()).expect("parsing failure");
             assert!(analyzer::analyze(&file).is_ok());
         }};
@@ -3112,7 +3044,7 @@ mod test {
         );
     }
 
-    use analyzer::ast::Size;
+    use analyzer::Size;
     use Size::*;
 
     #[derive(Debug, PartialEq, Eq)]
@@ -3123,15 +3055,16 @@ mod test {
     }
 
     fn annotations(text: &str) -> Vec<Annotations> {
-        let mut db = SourceDatabase::new();
+        let mut db = ast::SourceDatabase::new();
         let file = parse_inline(&mut db, "stdin", text.to_owned()).expect("parsing failure");
         let file = analyzer::analyze(&file).expect("analyzer failure");
+        let schema = analyzer::Schema::new(&file);
         file.declarations
             .iter()
             .map(|decl| Annotations {
-                size: decl.annot.size,
-                payload_size: decl.annot.payload_size,
-                fields: decl.fields().map(|field| field.annot.size).collect(),
+                size: schema.size(decl.key),
+                payload_size: schema.payload_size(decl.key),
+                fields: decl.fields().map(|field| schema.size(field.key)).collect(),
             })
             .collect()
     }
@@ -3626,8 +3559,8 @@ mod test {
         );
     }
 
-    fn desugar(text: &str) -> analyzer::ast::File {
-        let mut db = SourceDatabase::new();
+    fn desugar(text: &str) -> analyzer::File {
+        let mut db = ast::SourceDatabase::new();
         let file = parse_inline(&mut db, "stdin", text.to_owned()).expect("parsing failure");
         analyzer::analyze(&file).expect("analyzer failure")
     }

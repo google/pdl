@@ -18,7 +18,6 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
 use crate::ast;
-use crate::parser;
 
 use crate::backends::intermediate::{
     ComputedOffsetId, ComputedValueId, PacketOrStruct, PacketOrStructLength, Schema,
@@ -29,7 +28,7 @@ use super::utils::get_integer_type;
 
 pub fn generate_packet(
     id: &str,
-    fields: &[parser::ast::Field],
+    fields: &[ast::Field],
     parent_id: Option<&str>,
     schema: &Schema,
     curr_schema: &PacketOrStruct,

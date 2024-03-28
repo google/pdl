@@ -43,11 +43,6 @@ pub struct SourceRange {
     pub end: SourceLocation,
 }
 
-pub trait Annotation: fmt::Debug + Serialize {
-    type FieldAnnotation: Default + fmt::Debug + Clone;
-    type DeclAnnotation: Default + fmt::Debug + Clone;
-}
-
 #[derive(Debug, Serialize, Clone)]
 #[serde(tag = "kind", rename = "comment")]
 pub struct Comment {
@@ -154,10 +149,12 @@ pub enum FieldDesc {
 }
 
 #[derive(Debug, Serialize, Clone)]
-pub struct Field<A: Annotation> {
+pub struct Field {
     pub loc: SourceRange,
+    /// Unique identifier used to refer to the AST node in
+    /// compilation environments.
     #[serde(skip_serializing)]
-    pub annot: A::FieldAnnotation,
+    pub key: usize,
     #[serde(flatten)]
     pub desc: FieldDesc,
     pub cond: Option<Constraint>,
@@ -172,7 +169,7 @@ pub struct TestCase {
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "kind")]
-pub enum DeclDesc<A: Annotation> {
+pub enum DeclDesc {
     #[serde(rename = "checksum_declaration")]
     Checksum { id: String, function: String, width: usize },
     #[serde(rename = "custom_field_declaration")]
@@ -183,38 +180,42 @@ pub enum DeclDesc<A: Annotation> {
     Packet {
         id: String,
         constraints: Vec<Constraint>,
-        fields: Vec<Field<A>>,
+        fields: Vec<Field>,
         parent_id: Option<String>,
     },
     #[serde(rename = "struct_declaration")]
     Struct {
         id: String,
         constraints: Vec<Constraint>,
-        fields: Vec<Field<A>>,
+        fields: Vec<Field>,
         parent_id: Option<String>,
     },
     #[serde(rename = "group_declaration")]
-    Group { id: String, fields: Vec<Field<A>> },
+    Group { id: String, fields: Vec<Field> },
     #[serde(rename = "test_declaration")]
     Test { type_id: String, test_cases: Vec<TestCase> },
 }
 
 #[derive(Debug, Serialize, Clone)]
-pub struct Decl<A: Annotation> {
+pub struct Decl {
     pub loc: SourceRange,
+    /// Unique identifier used to refer to the AST node in
+    /// compilation environments.
     #[serde(skip_serializing)]
-    pub annot: A::DeclAnnotation,
+    pub key: usize,
     #[serde(flatten)]
-    pub desc: DeclDesc<A>,
+    pub desc: DeclDesc,
 }
 
 #[derive(Debug, Serialize, Clone)]
-pub struct File<A: Annotation> {
+pub struct File {
     pub version: String,
     pub file: FileId,
     pub comments: Vec<Comment>,
     pub endianness: Endianness,
-    pub declarations: Vec<Decl<A>>,
+    pub declarations: Vec<Decl>,
+    #[serde(skip_serializing)]
+    pub max_key: usize,
 }
 
 impl SourceLocation {
@@ -350,8 +351,8 @@ impl PartialEq for TestCase {
     }
 }
 
-impl<A: Annotation + PartialEq> Eq for File<A> {}
-impl<A: Annotation + PartialEq> PartialEq for File<A> {
+impl Eq for File {}
+impl PartialEq for File {
     fn eq(&self, other: &Self) -> bool {
         // Implement structural equality, leave out comments and PDL
         // version information.
@@ -359,8 +360,8 @@ impl<A: Annotation + PartialEq> PartialEq for File<A> {
     }
 }
 
-impl<A: Annotation> File<A> {
-    pub fn new(file: FileId) -> File<A> {
+impl File {
+    pub fn new(file: FileId) -> File {
         File {
             version: "1,0".to_owned(),
             comments: vec![],
@@ -372,71 +373,27 @@ impl<A: Annotation> File<A> {
             },
             declarations: vec![],
             file,
+            max_key: 0,
         }
     }
 
     /// Iterate over the children of the selected declaration.
     /// /!\ This method is unsafe to use if the file contains cyclic
     /// declarations, use with caution.
-    pub fn iter_children<'d>(&'d self, decl: &'d Decl<A>) -> impl Iterator<Item = &'d Decl<A>> {
+    pub fn iter_children<'d>(&'d self, decl: &'d Decl) -> impl Iterator<Item = &'d Decl> {
         self.declarations.iter().filter(|other_decl| other_decl.parent_id() == decl.id())
     }
 }
 
-impl<A: Annotation + PartialEq> Eq for Decl<A> {}
-impl<A: Annotation + PartialEq> PartialEq for Decl<A> {
+impl Eq for Decl {}
+impl PartialEq for Decl {
     fn eq(&self, other: &Self) -> bool {
-        // Implement structural equality, leave out loc and annot.
+        // Implement structural equality, leave out loc and key.
         self.desc == other.desc
     }
 }
 
-impl<A: Annotation> Decl<A> {
-    pub fn new(loc: SourceRange, desc: DeclDesc<A>) -> Decl<A> {
-        Decl { loc, annot: Default::default(), desc }
-    }
-
-    pub fn annotate<F, B: Annotation>(
-        &self,
-        annot: B::DeclAnnotation,
-        annotate_fields: F,
-    ) -> Decl<B>
-    where
-        F: FnOnce(&[Field<A>]) -> Vec<Field<B>>,
-    {
-        let desc = match &self.desc {
-            DeclDesc::Checksum { id, function, width } => {
-                DeclDesc::Checksum { id: id.clone(), function: function.clone(), width: *width }
-            }
-            DeclDesc::CustomField { id, width, function } => {
-                DeclDesc::CustomField { id: id.clone(), width: *width, function: function.clone() }
-            }
-            DeclDesc::Enum { id, tags, width } => {
-                DeclDesc::Enum { id: id.clone(), tags: tags.clone(), width: *width }
-            }
-
-            DeclDesc::Test { type_id, test_cases } => {
-                DeclDesc::Test { type_id: type_id.clone(), test_cases: test_cases.clone() }
-            }
-            DeclDesc::Packet { id, constraints, parent_id, fields } => DeclDesc::Packet {
-                id: id.clone(),
-                constraints: constraints.clone(),
-                parent_id: parent_id.clone(),
-                fields: annotate_fields(fields),
-            },
-            DeclDesc::Struct { id, constraints, parent_id, fields } => DeclDesc::Struct {
-                id: id.clone(),
-                constraints: constraints.clone(),
-                parent_id: parent_id.clone(),
-                fields: annotate_fields(fields),
-            },
-            DeclDesc::Group { id, fields } => {
-                DeclDesc::Group { id: id.clone(), fields: annotate_fields(fields) }
-            }
-        };
-        Decl { loc: self.loc, desc, annot }
-    }
-
+impl Decl {
     pub fn id(&self) -> Option<&str> {
         match &self.desc {
             DeclDesc::Test { .. } => None,
@@ -467,7 +424,7 @@ impl<A: Annotation> Decl<A> {
         }
     }
 
-    pub fn fields(&self) -> std::slice::Iter<'_, Field<A>> {
+    pub fn fields(&self) -> std::slice::Iter<'_, Field> {
         match &self.desc {
             DeclDesc::Packet { fields, .. }
             | DeclDesc::Struct { fields, .. }
@@ -478,14 +435,14 @@ impl<A: Annotation> Decl<A> {
 
     /// Return the reference to the payload or body field in a declaration,
     /// if present.
-    pub fn payload(&self) -> Option<&Field<A>> {
+    pub fn payload(&self) -> Option<&Field> {
         self.fields()
             .find(|field| matches!(&field.desc, FieldDesc::Payload { .. } | FieldDesc::Body { .. }))
     }
 
     /// Return the reference to the payload or body size field in a declaration,
     /// if present.
-    pub fn payload_size(&self) -> Option<&Field<A>> {
+    pub fn payload_size(&self) -> Option<&Field> {
         self.fields().find(|field| match &field.desc {
             FieldDesc::Size { field_id, .. } => field_id == "_payload_" || field_id == "_body_",
             _ => false,
@@ -494,7 +451,7 @@ impl<A: Annotation> Decl<A> {
 
     /// Return the reference to the array size or count field in a declaration,
     /// if present.
-    pub fn array_size(&self, id: &str) -> Option<&Field<A>> {
+    pub fn array_size(&self, id: &str) -> Option<&Field> {
         self.fields().find(|field| match &field.desc {
             FieldDesc::Size { field_id, .. } | FieldDesc::Count { field_id, .. } => field_id == id,
             _ => false,
@@ -514,19 +471,15 @@ impl<A: Annotation> Decl<A> {
     }
 }
 
-impl<A: Annotation> Eq for Field<A> {}
-impl<A: Annotation> PartialEq for Field<A> {
+impl Eq for Field {}
+impl PartialEq for Field {
     fn eq(&self, other: &Self) -> bool {
         // Implement structural equality, leave out loc and annot.
         self.desc == other.desc
     }
 }
 
-impl<A: Annotation> Field<A> {
-    pub fn annotate<B: Annotation>(&self, annot: B::FieldAnnotation) -> Field<B> {
-        Field { loc: self.loc, annot, cond: self.cond.clone(), desc: self.desc.clone() }
-    }
-
+impl Field {
     pub fn id(&self) -> Option<&str> {
         match &self.desc {
             FieldDesc::Checksum { .. }

@@ -21,8 +21,6 @@ use std::collections::HashMap;
 use std::path::Path;
 use syn::LitInt;
 
-use crate::analyzer::ast as analyzer_ast;
-
 mod parser;
 mod preamble;
 mod serializer;
@@ -86,14 +84,15 @@ pub fn mask_bits(n: usize, suffix: &str) -> syn::LitInt {
 
 fn generate_packet_size_getter<'a>(
     scope: &analyzer::Scope<'a>,
-    fields: impl Iterator<Item = &'a analyzer_ast::Field>,
+    schema: &analyzer::Schema,
+    fields: impl Iterator<Item = &'a ast::Field>,
     is_packet: bool,
 ) -> (usize, proc_macro2::TokenStream) {
     let mut constant_width = 0;
     let mut dynamic_widths = Vec::new();
 
     for field in fields {
-        if let Some(width) = field.annot.static_() {
+        if let Some(width) = schema.padded_size(field.key).or(schema.size(field.key).static_()) {
             constant_width += width;
             continue;
         }
@@ -142,7 +141,7 @@ fn generate_packet_size_getter<'a>(
             ast::FieldDesc::Array { id, width, .. } => {
                 let id = id.to_ident();
                 match &decl {
-                    Some(analyzer_ast::Decl {
+                    Some(ast::Decl {
                         desc: ast::DeclDesc::Struct { .. } | ast::DeclDesc::CustomField { .. },
                         ..
                     }) => {
@@ -150,9 +149,7 @@ fn generate_packet_size_getter<'a>(
                             self.#id.iter().map(|elem| elem.get_size()).sum::<usize>()
                         }
                     }
-                    Some(analyzer_ast::Decl {
-                        desc: ast::DeclDesc::Enum { width, .. }, ..
-                    }) => {
+                    Some(ast::Decl { desc: ast::DeclDesc::Enum { width, .. }, .. }) => {
                         let width = syn::Index::from(width / 8);
                         let mul_width = (width.index > 1).then(|| quote!(* #width));
                         quote! {
@@ -188,10 +185,7 @@ fn generate_packet_size_getter<'a>(
     )
 }
 
-fn top_level_packet<'a>(
-    scope: &analyzer::Scope<'a>,
-    packet_name: &'a str,
-) -> &'a analyzer_ast::Decl {
+fn top_level_packet<'a>(scope: &analyzer::Scope<'a>, packet_name: &'a str) -> &'a ast::Decl {
     let mut decl = scope.typedef[packet_name];
     while let ast::DeclDesc::Packet { parent_id: Some(parent_id), .. }
     | ast::DeclDesc::Struct { parent_id: Some(parent_id), .. } = &decl.desc
@@ -209,8 +203,8 @@ fn top_level_packet<'a>(
 fn find_constrained_parent_fields<'a>(
     scope: &analyzer::Scope<'a>,
     id: &str,
-) -> Vec<&'a analyzer_ast::Field> {
-    let all_parent_fields: HashMap<String, &'a analyzer_ast::Field> = HashMap::from_iter(
+) -> Vec<&'a ast::Field> {
+    let all_parent_fields: HashMap<String, &'a ast::Field> = HashMap::from_iter(
         scope
             .iter_parent_fields(scope.typedef[id])
             .filter_map(|f| f.id().map(|id| (id.to_string(), f))),
@@ -244,6 +238,7 @@ fn find_constrained_parent_fields<'a>(
 /// how to parse and serialize its own fields.
 fn generate_data_struct(
     scope: &analyzer::Scope<'_>,
+    schema: &analyzer::Schema,
     endianness: ast::EndiannessValue,
     id: &str,
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
@@ -252,8 +247,9 @@ fn generate_data_struct(
 
     let span = format_ident!("bytes");
     let serializer_span = format_ident!("buffer");
-    let mut field_parser = FieldParser::new(scope, endianness, id, &span);
-    let mut field_serializer = FieldSerializer::new(scope, endianness, id, &serializer_span);
+    let mut field_parser = FieldParser::new(scope, schema, endianness, id, &span);
+    let mut field_serializer =
+        FieldSerializer::new(scope, schema, endianness, id, &serializer_span);
     for field in decl.fields() {
         field_parser.add(field);
         field_serializer.add(field);
@@ -270,7 +266,7 @@ fn generate_data_struct(
     };
 
     let (constant_width, packet_size) =
-        generate_packet_size_getter(scope, decl.fields(), is_packet);
+        generate_packet_size_getter(scope, schema, decl.fields(), is_packet);
     let conforms = if constant_width == 0 {
         quote! { true }
     } else {
@@ -356,7 +352,7 @@ fn generate_data_struct(
 /// Turn the constraint into a value (such as `10` or
 /// `SomeEnum::Foo`).
 pub fn constraint_to_value(
-    all_fields: &HashMap<String, &'_ analyzer_ast::Field>,
+    all_fields: &HashMap<String, &'_ ast::Field>,
     constraint: &ast::Constraint,
 ) -> proc_macro2::TokenStream {
     match constraint {
@@ -381,6 +377,7 @@ pub fn constraint_to_value(
 /// Generate code for a `ast::Decl::Packet`.
 fn generate_packet_decl(
     scope: &analyzer::Scope<'_>,
+    schema: &analyzer::Schema,
     endianness: ast::EndiannessValue,
     id: &str,
 ) -> proc_macro2::TokenStream {
@@ -596,7 +593,7 @@ fn generate_packet_decl(
         }
     });
 
-    let (data_struct_decl, data_struct_impl) = generate_data_struct(scope, endianness, id);
+    let (data_struct_decl, data_struct_impl) = generate_data_struct(scope, schema, endianness, id);
 
     quote! {
         #child_declaration
@@ -709,10 +706,11 @@ fn generate_packet_decl(
 /// Generate code for a `ast::Decl::Struct`.
 fn generate_struct_decl(
     scope: &analyzer::Scope<'_>,
+    schema: &analyzer::Schema,
     endianness: ast::EndiannessValue,
     id: &str,
 ) -> proc_macro2::TokenStream {
-    let (struct_decl, struct_impl) = generate_data_struct(scope, endianness, id);
+    let (struct_decl, struct_impl) = generate_data_struct(scope, schema, endianness, id);
     quote! {
         #struct_decl
         #struct_impl
@@ -996,18 +994,21 @@ fn generate_custom_field_decl(id: &str, width: usize) -> proc_macro2::TokenStrea
 
 fn generate_decl(
     scope: &analyzer::Scope<'_>,
-    file: &analyzer_ast::File,
-    decl: &analyzer_ast::Decl,
+    schema: &analyzer::Schema,
+    file: &ast::File,
+    decl: &ast::Decl,
 ) -> proc_macro2::TokenStream {
     match &decl.desc {
-        ast::DeclDesc::Packet { id, .. } => generate_packet_decl(scope, file.endianness.value, id),
+        ast::DeclDesc::Packet { id, .. } => {
+            generate_packet_decl(scope, schema, file.endianness.value, id)
+        }
         ast::DeclDesc::Struct { id, parent_id: None, .. } => {
             // TODO(mgeisler): handle structs with parents. We could
             // generate code for them, but the code is not useful
             // since it would require the caller to unpack everything
             // manually. We either need to change the API, or
             // implement the recursive (de)serialization.
-            generate_struct_decl(scope, file.endianness.value, id)
+            generate_struct_decl(scope, schema, file.endianness.value, id)
         }
         ast::DeclDesc::Enum { id, tags, width } => generate_enum_decl(id, tags, *width),
         ast::DeclDesc::CustomField { id, width: Some(width), .. } => {
@@ -1023,13 +1024,14 @@ fn generate_decl(
 /// readable source code.
 pub fn generate_tokens(
     sources: &ast::SourceDatabase,
-    file: &analyzer_ast::File,
+    file: &ast::File,
 ) -> proc_macro2::TokenStream {
     let source = sources.get(file.file).expect("could not read source");
     let preamble = preamble::generate(Path::new(source.name()));
 
     let scope = analyzer::Scope::new(file).expect("could not create scope");
-    let decls = file.declarations.iter().map(|decl| generate_decl(&scope, file, decl));
+    let schema = analyzer::Schema::new(file);
+    let decls = file.declarations.iter().map(|decl| generate_decl(&scope, &schema, file, decl));
     quote! {
         #preamble
 
@@ -1041,7 +1043,7 @@ pub fn generate_tokens(
 ///
 /// The code is not formatted, pipe it through `rustfmt` to get
 /// readable source code.
-pub fn generate(sources: &ast::SourceDatabase, file: &analyzer_ast::File) -> String {
+pub fn generate(sources: &ast::SourceDatabase, file: &ast::File) -> String {
     let syntax_tree = syn::parse2(generate_tokens(sources, file)).expect("Could not parse code");
     prettyplease::unparse(&syntax_tree)
 }
@@ -1061,7 +1063,7 @@ mod tests {
     /// # Panics
     ///
     /// Panics on parse errors.
-    pub fn parse_str(text: &str) -> analyzer_ast::File {
+    pub fn parse_str(text: &str) -> ast::File {
         let mut db = ast::SourceDatabase::new();
         let file = parse_inline(&mut db, "stdin", String::from(text)).expect("parse error");
         analyzer::analyze(&file).expect("analyzer error")

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::analyzer::ast as analyzer_ast;
 use crate::backends::rust::{
     constraint_to_value, find_constrained_parent_fields, mask_bits, types, ToIdent,
     ToUpperCamelCase,
@@ -28,13 +27,14 @@ fn size_field_ident(id: &str) -> proc_macro2::Ident {
 /// A single bit-field.
 struct BitField<'a> {
     shift: usize, // The shift to apply to this field.
-    field: &'a analyzer_ast::Field,
+    field: &'a ast::Field,
 }
 
 pub struct FieldParser<'a> {
     scope: &'a analyzer::Scope<'a>,
+    schema: &'a analyzer::Schema,
     endianness: ast::EndiannessValue,
-    decl: &'a analyzer_ast::Decl,
+    decl: &'a ast::Decl,
     packet_name: &'a str,
     span: &'a proc_macro2::Ident,
     chunk: Vec<BitField<'a>>,
@@ -46,12 +46,14 @@ pub struct FieldParser<'a> {
 impl<'a> FieldParser<'a> {
     pub fn new(
         scope: &'a analyzer::Scope<'a>,
+        schema: &'a analyzer::Schema,
         endianness: ast::EndiannessValue,
         packet_name: &'a str,
         span: &'a proc_macro2::Ident,
     ) -> FieldParser<'a> {
         FieldParser {
             scope,
+            schema,
             endianness,
             decl: scope.typedef[packet_name],
             packet_name,
@@ -63,7 +65,7 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    pub fn add(&mut self, field: &'a analyzer_ast::Field) {
+    pub fn add(&mut self, field: &'a ast::Field) {
         match &field.desc {
             _ if field.cond.is_some() => self.add_optional_field(field),
             _ if self.scope.is_bitfield(field) => self.add_bit_field(field),
@@ -73,7 +75,7 @@ impl<'a> FieldParser<'a> {
                 *width,
                 type_id.as_deref(),
                 *size,
-                field.annot.padded_size,
+                self.schema.padded_size(field.key),
                 self.scope.get_type_declaration(field),
             ),
             ast::FieldDesc::Typedef { id, type_id } => self.add_typedef_field(id, type_id),
@@ -85,7 +87,7 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    fn add_optional_field(&mut self, field: &'a analyzer_ast::Field) {
+    fn add_optional_field(&mut self, field: &'a ast::Field) {
         let cond_id = field.cond.as_ref().unwrap().id.to_ident();
         let cond_value = syn::parse_str::<syn::LitInt>(&format!(
             "{}",
@@ -139,9 +141,9 @@ impl<'a> FieldParser<'a> {
         })
     }
 
-    fn add_bit_field(&mut self, field: &'a analyzer_ast::Field) {
+    fn add_bit_field(&mut self, field: &'a ast::Field) {
         self.chunk.push(BitField { shift: self.shift, field });
-        self.shift += field.annot.size.static_().unwrap();
+        self.shift += self.schema.size(field.key).static_().unwrap();
         if self.shift % 8 != 0 {
             return;
         }
@@ -182,7 +184,7 @@ impl<'a> FieldParser<'a> {
                 v = quote! { (#v >> #shift) }
             }
 
-            let width = field.annot.size.static_().unwrap();
+            let width = self.schema.size(field.key).static_().unwrap();
             let value_type = types::Integer::new(width);
             if !single_value && width < value_type.width {
                 // Mask value if we grabbed more than `width` and if
@@ -300,7 +302,9 @@ impl<'a> FieldParser<'a> {
 
         let mut offset = 0;
         for field in fields {
-            if let Some(width) = field.annot.static_() {
+            if let Some(width) =
+                self.schema.padded_size(field.key).or(self.schema.size(field.key).static_())
+            {
                 offset += width;
             } else {
                 return None;
@@ -335,19 +339,20 @@ impl<'a> FieldParser<'a> {
         // known). If None, the array is a Vec with a dynamic size.
         size: Option<usize>,
         padding_size: Option<usize>,
-        decl: Option<&analyzer_ast::Decl>,
+        decl: Option<&ast::Decl>,
     ) {
         enum ElementWidth {
             Static(usize), // Static size in bytes.
             Unknown,
         }
-        let element_width = match width.or_else(|| decl.unwrap().annot.total_size().static_()) {
-            Some(w) => {
-                assert_eq!(w % 8, 0, "Array element size ({w}) is not a multiple of 8");
-                ElementWidth::Static(w / 8)
-            }
-            None => ElementWidth::Unknown,
-        };
+        let element_width =
+            match width.or_else(|| self.schema.total_size(decl.unwrap().key).static_()) {
+                Some(w) => {
+                    assert_eq!(w % 8, 0, "Array element size ({w}) is not a multiple of 8");
+                    ElementWidth::Static(w / 8)
+                }
+                None => ElementWidth::Unknown,
+            };
 
         // The "shape" of the array, i.e., the number of elements
         // given via a static count, a count field, a size field, or
@@ -373,9 +378,10 @@ impl<'a> FieldParser<'a> {
         let span = match padding_size {
             Some(padding_size) => {
                 let span = self.span;
-                self.check_size(span, &quote!(#padding_size));
+                let padding_octets = padding_size / 8;
+                self.check_size(span, &quote!(#padding_octets));
                 self.code.push(quote! {
-                    let (head, tail) = #span.get().split_at(#padding_size);
+                    let (head, tail) = #span.get().split_at(#padding_octets);
                     let mut head = &mut Cell::new(head);
                     #span.replace(tail);
                 });
@@ -528,11 +534,11 @@ impl<'a> FieldParser<'a> {
         let id = id.to_ident();
         let type_id = type_id.to_ident();
 
-        self.code.push(match decl.annot.size {
-            analyzer_ast::Size::Unknown | analyzer_ast::Size::Dynamic => quote! {
+        self.code.push(match self.schema.size(decl.key) {
+            analyzer::Size::Unknown | analyzer::Size::Dynamic => quote! {
                 let #id = #type_id::parse_inner(&mut #span)?;
             },
-            analyzer_ast::Size::Static(width) => {
+            analyzer::Size::Static(width) => {
                 assert_eq!(width % 8, 0, "Typedef field type size is not a multiple of 8");
                 match &decl.desc {
                     ast::DeclDesc::Checksum { .. } => todo!(),
@@ -641,7 +647,7 @@ impl<'a> FieldParser<'a> {
         span: &proc_macro2::Ident,
         width: Option<usize>,
         type_id: Option<&str>,
-        decl: Option<&analyzer_ast::Decl>,
+        decl: Option<&ast::Decl>,
     ) -> proc_macro2::TokenStream {
         if let Some(width) = width {
             let get_uint = types::get_uint(self.endianness, width, span);
@@ -794,7 +800,7 @@ mod tests {
     /// # Panics
     ///
     /// Panics on parse errors.
-    pub fn parse_str(text: &str) -> analyzer_ast::File {
+    pub fn parse_str(text: &str) -> ast::File {
         let mut db = ast::SourceDatabase::new();
         let file = parse_inline(&mut db, "stdin", String::from(text)).expect("parse error");
         analyzer::analyze(&file).expect("analyzer error")
@@ -810,8 +816,9 @@ mod tests {
             ";
         let file = parse_str(code);
         let scope = analyzer::Scope::new(&file).unwrap();
+        let schema = analyzer::Schema::new(&file);
         let span = format_ident!("bytes");
-        let parser = FieldParser::new(&scope, file.endianness.value, "P", &span);
+        let parser = FieldParser::new(&scope, &schema, file.endianness.value, "P", &span);
         assert_eq!(parser.find_size_field("a"), None);
         assert_eq!(parser.find_count_field("a"), None);
     }
@@ -827,8 +834,9 @@ mod tests {
             ";
         let file = parse_str(code);
         let scope = analyzer::Scope::new(&file).unwrap();
+        let schema = analyzer::Schema::new(&file);
         let span = format_ident!("bytes");
-        let parser = FieldParser::new(&scope, file.endianness.value, "P", &span);
+        let parser = FieldParser::new(&scope, &schema, file.endianness.value, "P", &span);
         assert_eq!(parser.find_size_field("b"), None);
         assert_eq!(parser.find_count_field("b"), Some(format_ident!("b_count")));
     }
@@ -844,8 +852,9 @@ mod tests {
             ";
         let file = parse_str(code);
         let scope = analyzer::Scope::new(&file).unwrap();
+        let schema = analyzer::Schema::new(&file);
         let span = format_ident!("bytes");
-        let parser = FieldParser::new(&scope, file.endianness.value, "P", &span);
+        let parser = FieldParser::new(&scope, &schema, file.endianness.value, "P", &span);
         assert_eq!(parser.find_size_field("c"), Some(format_ident!("c_size")));
         assert_eq!(parser.find_count_field("c"), None);
     }

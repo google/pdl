@@ -37,7 +37,6 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::ast;
-use crate::parser;
 
 use self::{
     enums::generate_enum, packet_parser::generate_packet,
@@ -46,7 +45,7 @@ use self::{
 
 use super::intermediate::Schema;
 
-pub fn generate(file: &parser::ast::File, schema: &Schema) -> Result<String, String> {
+pub fn generate(file: &ast::File, schema: &Schema) -> Result<String, String> {
     match file.endianness.value {
         ast::EndiannessValue::LittleEndian => {}
         _ => unimplemented!("Only little_endian endianness supported"),
@@ -80,7 +79,7 @@ pub fn generate(file: &parser::ast::File, schema: &Schema) -> Result<String, Str
 }
 
 fn generate_decl(
-    decl: &parser::ast::Decl,
+    decl: &ast::Decl,
     schema: &Schema,
     children: &HashMap<&str, Vec<&str>>,
 ) -> Result<TokenStream, String> {

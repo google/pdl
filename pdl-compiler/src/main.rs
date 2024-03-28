@@ -64,10 +64,7 @@ struct Opt {
 }
 
 /// Remove declarations listed in the input filter.
-fn filter_declarations(
-    file: parser::ast::File,
-    exclude_declarations: &[String],
-) -> parser::ast::File {
+fn filter_declarations(file: ast::File, exclude_declarations: &[String]) -> ast::File {
     ast::File {
         declarations: file
             .declarations

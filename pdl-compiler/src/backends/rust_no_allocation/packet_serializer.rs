@@ -23,7 +23,6 @@ use crate::{
         intermediate::{ComputedValue, ComputedValueId, PacketOrStruct, Schema},
         rust_no_allocation::utils::get_integer_type,
     },
-    parser,
 };
 
 fn standardize_child(id: &str) -> &str {
@@ -36,7 +35,7 @@ fn standardize_child(id: &str) -> &str {
 pub fn generate_packet_serializer(
     id: &str,
     parent_id: Option<&str>,
-    fields: &[parser::ast::Field],
+    fields: &[ast::Field],
     schema: &Schema,
     curr_schema: &PacketOrStruct,
     children: &HashMap<&str, Vec<&str>>,
