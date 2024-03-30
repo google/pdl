@@ -235,6 +235,9 @@ impl Packet for Parent {
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         self.parent.write_to(buf)
     }
+    fn decode(_: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+        unimplemented!("Rust legacy does not implement full packet trait")
+    }
 }
 impl TryFrom<Parent> for Bytes {
     type Error = EncodeError;
@@ -415,6 +418,9 @@ impl Packet for Child {
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         self.parent.write_to(buf)
+    }
+    fn decode(_: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+        unimplemented!("Rust legacy does not implement full packet trait")
     }
 }
 impl TryFrom<Child> for Bytes {
@@ -611,6 +617,9 @@ impl Packet for GrandChild {
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         self.parent.write_to(buf)
+    }
+    fn decode(_: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+        unimplemented!("Rust legacy does not implement full packet trait")
     }
 }
 impl TryFrom<GrandChild> for Bytes {
@@ -822,6 +831,9 @@ impl Packet for GrandGrandChild {
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         self.parent.write_to(buf)
+    }
+    fn decode(_: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+        unimplemented!("Rust legacy does not implement full packet trait")
     }
 }
 impl TryFrom<GrandGrandChild> for Bytes {

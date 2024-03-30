@@ -9,7 +9,7 @@ OUT_DIR="$(pwd)/out"
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." &> /dev/null
 
 mkdir -p "$OUT_DIR/generated_test/src"
-./tests/generated_files_compile.sh tests/generated/rust_legacy/*.rs > "$OUT_DIR/generated_test/src/lib.rs"
+./tests/generated_files_compile.sh tests/generated/rust/*.rs > "$OUT_DIR/generated_test/src/lib.rs"
 
 cat <<EOT > "$OUT_DIR/generated_test/Cargo.toml"
 [package]

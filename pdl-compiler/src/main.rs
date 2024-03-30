@@ -23,6 +23,7 @@ use pdl_compiler::{analyzer, ast, backends, parser};
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum OutputFormat {
     JSON,
+    Rust,
     RustLegacy,
     RustNoAlloc,
 }
@@ -33,7 +34,7 @@ impl std::str::FromStr for OutputFormat {
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input.to_lowercase().as_str() {
             "json" => Ok(Self::JSON),
-            "rust" => Ok(Self::RustLegacy),
+            "rust" => Ok(Self::Rust),
             "rust_legacy" => Ok(Self::RustLegacy),
             "rust_no_alloc" => Ok(Self::RustNoAlloc),
             _ => Err(format!("could not parse {:?}, valid option are 'json', 'rust', 'rust_no_alloc', and 'rust_no_alloc_test'.", input)),
@@ -107,6 +108,9 @@ fn generate_backend(opt: &Opt) -> Result<(), String> {
                 OutputFormat::JSON => {
                     println!("{}", backends::json::generate(&file).unwrap())
                 }
+                OutputFormat::Rust => {
+                    println!("{}", backends::rust::generate(&sources, &analyzed_file))
+                }
                 OutputFormat::RustLegacy => {
                     println!("{}", backends::rust_legacy::generate(&sources, &analyzed_file))
                 }
@@ -129,6 +133,9 @@ fn generate_backend(opt: &Opt) -> Result<(), String> {
 
 fn generate_tests(opt: &Opt) -> Result<(), String> {
     match opt.output_format {
+        OutputFormat::Rust => {
+            println!("{}", backends::rust::test::generate_tests(&opt.input_file)?)
+        }
         OutputFormat::RustLegacy => {
             println!("{}", backends::rust_legacy::test::generate_tests(&opt.input_file)?)
         }

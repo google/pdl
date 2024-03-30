@@ -24,7 +24,7 @@ fn test_pcap() {
     use pcap::*;
     use pdl_runtime::Packet;
 
-    let pcap_file = PcapFileBuilder {
+    let pcap_file = PcapFile {
         header: PcapHeader {
             version_major: 1,
             version_minor: 0,
@@ -39,11 +39,10 @@ fn test_pcap() {
             orig_len: 1024,
             payload: vec![1, 2, 3],
         }],
-    }
-    .build();
+    };
 
     let vec = pcap_file.encode_to_vec().unwrap();
-    assert!(PcapFile::parse(&*vec).is_ok());
+    assert!(PcapFile::decode_full(&vec).is_ok());
 }
 
 #[test]
