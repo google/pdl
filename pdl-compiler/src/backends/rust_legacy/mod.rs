@@ -53,17 +53,6 @@ impl ToIdent for &'_ str {
     }
 }
 
-/// Generate a block of code.
-///
-/// Like `quote!`, but the code block will be followed by an empty
-/// line of code. This makes the generated code more readable.
-#[macro_export]
-macro_rules! quote_block {
-    ($($tt:tt)*) => {
-        format!("{}\n\n", ::quote::quote!($($tt)*))
-    }
-}
-
 /// Generate a bit-mask which masks out `n` least significant bits.
 ///
 /// Literal integers in Rust default to the `i32` type. For this
@@ -627,6 +616,9 @@ fn generate_packet_decl(
             }
             fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
                 self.#top_level_id_lower.write_to(buf)
+            }
+            fn decode(_: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+                unimplemented!("Rust legacy does not implement full packet trait")
             }
         }
 

@@ -152,6 +152,9 @@ impl Packet for Foo {
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         self.foo.write_to(buf)
     }
+    fn decode(_: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+        unimplemented!("Rust legacy does not implement full packet trait")
+    }
 }
 impl TryFrom<Foo> for Bytes {
     type Error = EncodeError;

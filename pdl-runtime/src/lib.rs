@@ -61,6 +61,31 @@ pub enum EncodeError {
 
 /// Trait implemented for all toplevel packet declarations.
 pub trait Packet: Sized {
+    /// Try parsing an instance of Self from the input slice.
+    /// On success, returns the parsed object and the remaining unparsed slice.
+    /// On failure, returns an error with the reason for the parsing failure.
+    fn decode(buf: &[u8]) -> Result<(Self, &[u8]), DecodeError>;
+
+    /// Try parsing an instance of Packet updating the slice in place
+    /// to the remainder of the data. The input buffer is not updated if
+    /// parsing fails.
+    fn decode_mut(buf: &mut &[u8]) -> Result<Self, DecodeError> {
+        let (packet, remaining) = Self::decode(buf)?;
+        *buf = remaining;
+        Ok(packet)
+    }
+
+    /// Try parsing an instance of Packet from the input slice.
+    /// Returns an error if unparsed bytes remain at the end of the input slice.
+    fn decode_full(buf: &[u8]) -> Result<Self, DecodeError> {
+        let (packet, remaining) = Self::decode(buf)?;
+        if remaining.is_empty() {
+            Ok(packet)
+        } else {
+            Err(DecodeError::TrailingBytes)
+        }
+    }
+
     /// Return the length of the encoded packet.
     fn encoded_len(&self) -> usize;
 

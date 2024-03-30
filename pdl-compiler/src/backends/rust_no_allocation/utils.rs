@@ -23,3 +23,14 @@ pub fn get_integer_type(width: usize) -> Ident {
         .unwrap_or_else(|| panic!("width {width} is too large"));
     format_ident!("u{best_width}")
 }
+
+/// Generate a block of code.
+///
+/// Like `quote!`, but the code block will be followed by an empty
+/// line of code. This makes the generated code more readable.
+#[macro_export]
+macro_rules! quote_block {
+    ($($tt:tt)*) => {
+        format!("{}\n\n", ::quote::quote!($($tt)*))
+    }
+}
