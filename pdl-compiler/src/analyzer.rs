@@ -165,9 +165,10 @@ pub struct Scope<'d> {
 /// Gather size information about the full AST.
 #[derive(Debug)]
 pub struct Schema {
-    size: HashMap<usize, Size>,
-    padded_size: HashMap<usize, Option<usize>>,
-    payload_size: HashMap<usize, Size>,
+    decl_size: HashMap<DeclKey, Size>,
+    field_size: HashMap<FieldKey, Size>,
+    padded_size: HashMap<FieldKey, Option<usize>>,
+    payload_size: HashMap<DeclKey, Size>,
 }
 
 impl Diagnostics {
@@ -328,7 +329,7 @@ impl Schema {
     /// Check correct definition of packet sizes.
     /// Annotate fields and declarations with the size in bits.
     pub fn new(file: &File) -> Schema {
-        fn annotate_decl(schema: &mut Schema, scope: &HashMap<String, usize>, decl: &Decl) {
+        fn annotate_decl(schema: &mut Schema, scope: &HashMap<String, DeclKey>, decl: &Decl) {
             // Compute the padding size for each field.
             let mut padding = None;
             for field in decl.fields().rev() {
@@ -342,7 +343,7 @@ impl Schema {
             let mut size = decl
                 .parent_id()
                 .and_then(|parent_id| scope.get(parent_id))
-                .map(|key| schema.size(*key))
+                .map(|key| schema.decl_size(*key))
                 .unwrap_or(Size::Static(0));
             let mut payload_size = Size::Static(0);
 
@@ -378,13 +379,13 @@ impl Schema {
                 DeclDesc::Test { .. } => (Size::Static(0), Size::Static(0)),
             };
 
-            schema.size.insert(decl.key, size);
+            schema.decl_size.insert(decl.key, size);
             schema.payload_size.insert(decl.key, payload_size);
         }
 
         fn annotate_field(
             schema: &mut Schema,
-            scope: &HashMap<String, usize>,
+            scope: &HashMap<String, DeclKey>,
             decl: &Decl,
             field: &Field,
         ) -> Size {
@@ -445,7 +446,7 @@ impl Schema {
                 FieldDesc::Array { .. } => unreachable!(),
             };
 
-            schema.size.insert(field.key, size);
+            schema.field_size.insert(field.key, size);
             size
         }
 
@@ -457,7 +458,8 @@ impl Schema {
         }
 
         let mut schema = Schema {
-            size: Default::default(),
+            field_size: Default::default(),
+            decl_size: Default::default(),
             padded_size: Default::default(),
             payload_size: Default::default(),
         };
@@ -469,20 +471,24 @@ impl Schema {
         schema
     }
 
-    pub fn size(&self, key: usize) -> Size {
-        *self.size.get(&key).unwrap()
+    pub fn field_size(&self, key: FieldKey) -> Size {
+        *self.field_size.get(&key).unwrap()
     }
 
-    pub fn padded_size(&self, key: usize) -> Option<usize> {
+    pub fn decl_size(&self, key: DeclKey) -> Size {
+        *self.decl_size.get(&key).unwrap()
+    }
+
+    pub fn padded_size(&self, key: FieldKey) -> Option<usize> {
         *self.padded_size.get(&key).unwrap()
     }
 
-    pub fn payload_size(&self, key: usize) -> Size {
+    pub fn payload_size(&self, key: DeclKey) -> Size {
         *self.payload_size.get(&key).unwrap()
     }
 
-    pub fn total_size(&self, key: usize) -> Size {
-        self.size(key) + self.payload_size(key)
+    pub fn total_size(&self, key: DeclKey) -> Size {
+        self.decl_size(key) + self.payload_size(key)
     }
 }
 
@@ -3062,9 +3068,9 @@ mod test {
         file.declarations
             .iter()
             .map(|decl| Annotations {
-                size: schema.size(decl.key),
+                size: schema.decl_size(decl.key),
                 payload_size: schema.payload_size(decl.key),
-                fields: decl.fields().map(|field| schema.size(field.key)).collect(),
+                fields: decl.fields().map(|field| schema.field_size(field.key)).collect(),
             })
             .collect()
     }

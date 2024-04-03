@@ -143,7 +143,7 @@ impl<'a> FieldParser<'a> {
 
     fn add_bit_field(&mut self, field: &'a ast::Field) {
         self.chunk.push(BitField { shift: self.shift, field });
-        self.shift += self.schema.size(field.key).static_().unwrap();
+        self.shift += self.schema.field_size(field.key).static_().unwrap();
         if self.shift % 8 != 0 {
             return;
         }
@@ -184,7 +184,7 @@ impl<'a> FieldParser<'a> {
                 v = quote! { (#v >> #shift) }
             }
 
-            let width = self.schema.size(field.key).static_().unwrap();
+            let width = self.schema.field_size(field.key).static_().unwrap();
             let value_type = types::Integer::new(width);
             if !single_value && width < value_type.width {
                 // Mask value if we grabbed more than `width` and if
@@ -303,7 +303,7 @@ impl<'a> FieldParser<'a> {
         let mut offset = 0;
         for field in fields {
             if let Some(width) =
-                self.schema.padded_size(field.key).or(self.schema.size(field.key).static_())
+                self.schema.padded_size(field.key).or(self.schema.field_size(field.key).static_())
             {
                 offset += width;
             } else {
@@ -534,7 +534,7 @@ impl<'a> FieldParser<'a> {
         let id = id.to_ident();
         let type_id = type_id.to_ident();
 
-        self.code.push(match self.schema.size(decl.key) {
+        self.code.push(match self.schema.decl_size(decl.key) {
             analyzer::Size::Unknown | analyzer::Size::Dynamic => quote! {
                 let #id = #type_id::parse_inner(&mut #span)?;
             },

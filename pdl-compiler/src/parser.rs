@@ -190,8 +190,12 @@ trait Helpers<'i> {
 }
 
 impl<'a> Context<'a> {
-    fn key(&self) -> usize {
-        self.key.replace(self.key.get() + 1)
+    fn field_key(&self) -> ast::FieldKey {
+        ast::FieldKey(self.key.replace(self.key.get() + 1))
+    }
+
+    fn decl_key(&self) -> ast::DeclKey {
+        ast::DeclKey(self.key.replace(self.key.get() + 1))
     }
 }
 
@@ -418,7 +422,7 @@ fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> 
     let mut children = desc.children();
     Ok(ast::Field {
         loc,
-        key: context.key(),
+        key: context.field_key(),
         cond: cond.map(|constraint| parse_constraint(constraint, context)).transpose()?,
         desc: match rule {
             Rule::checksum_field => {
@@ -559,7 +563,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let function = parse_string(&mut children)?;
                 file.declarations.push(ast::Decl {
                     loc,
-                    key: context.key(),
+                    key: context.decl_key(),
                     desc: ast::DeclDesc::Checksum { id, function, width },
                 })
             }
@@ -571,7 +575,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let function = parse_string(&mut children)?;
                 file.declarations.push(ast::Decl {
                     loc,
-                    key: context.key(),
+                    key: context.decl_key(),
                     desc: ast::DeclDesc::CustomField { id, function, width },
                 })
             }
@@ -583,7 +587,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let tags = parse_enum_tag_list(&mut children, context)?;
                 file.declarations.push(ast::Decl {
                     loc,
-                    key: context.key(),
+                    key: context.decl_key(),
                     desc: ast::DeclDesc::Enum { id, width, tags },
                 })
             }
@@ -596,7 +600,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let fields = parse_field_list_opt(&mut children, context)?;
                 file.declarations.push(ast::Decl {
                     loc,
-                    key: context.key(),
+                    key: context.decl_key(),
                     desc: ast::DeclDesc::Packet { id, parent_id, constraints, fields },
                 })
             }
@@ -609,7 +613,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let fields = parse_field_list_opt(&mut children, context)?;
                 file.declarations.push(ast::Decl {
                     loc,
-                    key: context.key(),
+                    key: context.decl_key(),
                     desc: ast::DeclDesc::Struct { id, parent_id, constraints, fields },
                 })
             }
@@ -620,7 +624,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let fields = parse_field_list(&mut children, context)?;
                 file.declarations.push(ast::Decl {
                     loc,
-                    key: context.key(),
+                    key: context.decl_key(),
                     desc: ast::DeclDesc::Group { id, fields },
                 })
             }
@@ -630,7 +634,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
         }
     }
     file.comments.append(&mut toplevel_comments);
-    file.max_key = context.key();
+    file.max_key = context.key.get();
     Ok(file)
 }
 
