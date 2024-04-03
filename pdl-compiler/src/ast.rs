@@ -105,6 +105,9 @@ pub struct Constraint {
     pub tag_id: Option<String>,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FieldKey(pub usize);
+
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum FieldDesc {
@@ -154,7 +157,7 @@ pub struct Field {
     /// Unique identifier used to refer to the AST node in
     /// compilation environments.
     #[serde(skip_serializing)]
-    pub key: usize,
+    pub key: FieldKey,
     #[serde(flatten)]
     pub desc: FieldDesc,
     pub cond: Option<Constraint>,
@@ -166,6 +169,9 @@ pub struct TestCase {
     pub loc: SourceRange,
     pub input: String,
 }
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DeclKey(pub usize);
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "kind")]
@@ -202,7 +208,7 @@ pub struct Decl {
     /// Unique identifier used to refer to the AST node in
     /// compilation environments.
     #[serde(skip_serializing)]
-    pub key: usize,
+    pub key: DeclKey,
     #[serde(flatten)]
     pub desc: DeclDesc,
 }

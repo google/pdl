@@ -92,7 +92,9 @@ fn generate_packet_size_getter<'a>(
     let mut dynamic_widths = Vec::new();
 
     for field in fields {
-        if let Some(width) = schema.padded_size(field.key).or(schema.size(field.key).static_()) {
+        if let Some(width) =
+            schema.padded_size(field.key).or(schema.field_size(field.key).static_())
+        {
             constant_width += width;
             continue;
         }

@@ -139,7 +139,7 @@ impl<'a> FieldSerializer<'a> {
     }
 
     fn add_bit_field(&mut self, field: &ast::Field) {
-        let width = self.schema.size(field.key).static_().unwrap();
+        let width = self.schema.field_size(field.key).static_().unwrap();
         let shift = self.shift;
 
         match &field.desc {
@@ -405,7 +405,7 @@ impl<'a> FieldSerializer<'a> {
             let padding_octets = padding_size / 8;
             let element_width = match &width {
                 Some(width) => Some(*width),
-                None => self.schema.size(decl.unwrap().key).static_(),
+                None => self.schema.decl_size(decl.unwrap().key).static_(),
             };
 
             let array_size = match element_width {
