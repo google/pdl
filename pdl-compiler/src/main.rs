@@ -25,7 +25,6 @@ enum OutputFormat {
     JSON,
     RustLegacy,
     RustNoAlloc,
-    RustNoAllocTest,
 }
 
 impl std::str::FromStr for OutputFormat {
@@ -37,7 +36,6 @@ impl std::str::FromStr for OutputFormat {
             "rust" => Ok(Self::RustLegacy),
             "rust_legacy" => Ok(Self::RustLegacy),
             "rust_no_alloc" => Ok(Self::RustNoAlloc),
-            "rust_no_alloc_test" => Ok(Self::RustNoAllocTest),
             _ => Err(format!("could not parse {:?}, valid option are 'json', 'rust', 'rust_no_alloc', and 'rust_no_alloc_test'.", input)),
         }
     }
@@ -51,9 +49,17 @@ struct Opt {
     version: bool,
 
     #[argh(option, default = "OutputFormat::JSON")]
-    /// generate output in this format ("json", "rust", "rust_legacy", "rust_no_alloc",
-    /// "rust_no_alloc_test"). The output will be printed on stdout in all cases.
+    /// generate output in this format ("json", "rust", "rust_legacy", "rust_no_alloc").
+    /// The output will be printed on stdout in all cases.
+    /// The input file is the source PDL file.
     output_format: OutputFormat,
+
+    #[argh(switch)]
+    /// generate tests for the selected output format.
+    /// Valid for the output formats "rust_legacy", "rust_no_alloc".
+    /// The input file must point to a JSON formatterd file with the list of
+    /// test vectors.
+    tests: bool,
 
     #[argh(positional)]
     /// input file.
@@ -78,14 +84,7 @@ fn filter_declarations(file: ast::File, exclude_declarations: &[String]) -> ast:
     }
 }
 
-fn main() -> Result<(), String> {
-    let opt: Opt = argh::from_env();
-
-    if opt.version {
-        println!("Packet Description Language parser version 1.0");
-        return Ok(());
-    }
-
+fn generate_backend(opt: &Opt) -> Result<(), String> {
     let mut sources = ast::SourceDatabase::new();
     match parser::parse_file(&mut sources, &opt.input_file) {
         Ok(file) => {
@@ -115,12 +114,6 @@ fn main() -> Result<(), String> {
                     let schema = backends::intermediate::generate(&file).unwrap();
                     println!("{}", backends::rust_no_allocation::generate(&file, &schema).unwrap())
                 }
-                OutputFormat::RustNoAllocTest => {
-                    println!(
-                        "{}",
-                        backends::rust_no_allocation::test::generate_test_file().unwrap()
-                    )
-                }
             }
             Ok(())
         }
@@ -131,5 +124,38 @@ fn main() -> Result<(), String> {
             term::emit(&mut writer.lock(), &config, &sources, &err).expect("Could not print error");
             Err(String::from("Error while parsing input"))
         }
+    }
+}
+
+fn generate_tests(opt: &Opt) -> Result<(), String> {
+    match opt.output_format {
+        OutputFormat::RustLegacy => {
+            println!("{}", backends::rust_legacy::test::generate_tests(&opt.input_file)?)
+        }
+        OutputFormat::RustNoAlloc => {
+            println!("{}", backends::rust_no_allocation::test::generate_test_file()?)
+        }
+        _ => {
+            return Err(format!(
+                "Canonical tests cannot be generated for the format {:?}",
+                opt.output_format
+            ))
+        }
+    }
+    Ok(())
+}
+
+fn main() -> Result<(), String> {
+    let opt: Opt = argh::from_env();
+
+    if opt.version {
+        println!("Packet Description Language parser version 1.0");
+        return Ok(());
+    }
+
+    if opt.tests {
+        generate_tests(&opt)
+    } else {
+        generate_backend(&opt)
     }
 }

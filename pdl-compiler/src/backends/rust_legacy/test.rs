@@ -58,14 +58,13 @@ fn to_json<T: Serialize>(value: &T) -> syn::LitStr {
     syn::parse_str::<syn::LitStr>(&format!("r#\" {json} \"#")).unwrap()
 }
 
-fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
+fn generate_unit_tests(input: &str, packet_names: &[&str]) -> Result<String, String> {
     eprintln!("Reading test vectors from {input}, will use {} packets", packet_names.len());
 
     let data = std::fs::read_to_string(input)
         .unwrap_or_else(|err| panic!("Could not read {input}: {err}"));
     let packets: Vec<Packet> = serde_json::from_str(&data).expect("Could not parse JSON");
 
-    let module = syn::parse_str::<syn::Path>(module_name).unwrap();
     let mut tests = Vec::new();
     for packet in &packets {
         for (i, test_vector) in packet.tests.iter().enumerate() {
@@ -111,13 +110,13 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
                 #[test]
                 fn #parse_test_name() {
                     let packed = #packed;
-                    let actual = #module::#packet_name::parse(&packed).unwrap();
+                    let actual = #packet_name::parse(&packed).unwrap();
                     #(#assertions)*
                 }
 
                 #[test]
                 fn #serialize_test_name() {
-                    let builder: #module::#builder_name = serde_json::from_str(#json)
+                    let builder: #builder_name = serde_json::from_str(#json)
                         .expect("Could not create builder from canonical JSON data");
                     let packet = builder.build();
                     let packed: Vec<u8> = #packed;
@@ -129,24 +128,25 @@ fn generate_unit_tests(input: &str, packet_names: &[&str], module_name: &str) {
 
     // TODO(mgeisler): make the generated code clean from warnings.
     let code = quote! {
-        #![allow(warnings, missing_docs)]
+        #[allow(warnings, missing_docs)]
+        #[cfg(test)]
+        mod test {
+            use pdl_runtime::Packet;
+            use serde_json::json;
+            use super::*;
 
-        use pdl_runtime::Packet;
-        use serde_json::json;
-
-        #(#tests)*
+            #(#tests)*
+        }
     };
     let syntax_tree = syn::parse2::<syn::File>(code).expect("Could not parse {code:#?}");
-    println!("{}", prettyplease::unparse(&syntax_tree));
+    Ok(prettyplease::unparse(&syntax_tree))
 }
 
-fn main() {
-    let input_path = std::env::args().nth(1).expect("Need path to JSON file with test vectors");
-    let module_name = std::env::args().nth(2).expect("Need name for the generated module");
+pub fn generate_tests(input_file: &str) -> Result<String, String> {
     // TODO(mgeisler): remove the `packet_names` argument when we
     // support all canonical packets.
     generate_unit_tests(
-        &input_path,
+        input_file,
         &[
             "EnumChild_A",
             "EnumChild_B",
@@ -249,6 +249,5 @@ fn main() {
             "Enum_Complete_Truncated_WithRange",
             "Enum_Complete_WithRange",
         ],
-        &module_name,
-    );
+    )
 }
