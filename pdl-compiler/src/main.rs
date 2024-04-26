@@ -23,7 +23,7 @@ use pdl_compiler::{analyzer, ast, backends, parser};
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum OutputFormat {
     JSON,
-    Rust,
+    RustLegacy,
     RustNoAlloc,
     RustNoAllocTest,
 }
@@ -34,7 +34,8 @@ impl std::str::FromStr for OutputFormat {
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input.to_lowercase().as_str() {
             "json" => Ok(Self::JSON),
-            "rust" => Ok(Self::Rust),
+            "rust" => Ok(Self::RustLegacy),
+            "rust_legacy" => Ok(Self::RustLegacy),
             "rust_no_alloc" => Ok(Self::RustNoAlloc),
             "rust_no_alloc_test" => Ok(Self::RustNoAllocTest),
             _ => Err(format!("could not parse {:?}, valid option are 'json', 'rust', 'rust_no_alloc', and 'rust_no_alloc_test'.", input)),
@@ -50,8 +51,8 @@ struct Opt {
     version: bool,
 
     #[argh(option, default = "OutputFormat::JSON")]
-    /// generate output in this format ("json", "rust", "rust_no_alloc", "rust_no_alloc_test"). The output
-    /// will be printed on stdout in both cases.
+    /// generate output in this format ("json", "rust", "rust_legacy", "rust_no_alloc",
+    /// "rust_no_alloc_test"). The output will be printed on stdout in all cases.
     output_format: OutputFormat,
 
     #[argh(positional)]
@@ -107,8 +108,8 @@ fn main() -> Result<(), String> {
                 OutputFormat::JSON => {
                     println!("{}", backends::json::generate(&file).unwrap())
                 }
-                OutputFormat::Rust => {
-                    println!("{}", backends::rust::generate(&sources, &analyzed_file))
+                OutputFormat::RustLegacy => {
+                    println!("{}", backends::rust_legacy::generate(&sources, &analyzed_file))
                 }
                 OutputFormat::RustNoAlloc => {
                     let schema = backends::intermediate::generate(&file).unwrap();

@@ -53,7 +53,7 @@ fn pdl_proc_macro(path: syn::LitStr, input: syn::ItemMod) -> TokenStream {
     };
 
     // Generate the pdl backend implementation.
-    let parser = pdl_compiler::backends::rust::generate_tokens(&sources, &analyzed_file);
+    let parser = pdl_compiler::backends::rust_legacy::generate_tokens(&sources, &analyzed_file);
     let mod_ident = input.ident;
     let mod_attrs = input.attrs;
     let mod_vis = input.vis;

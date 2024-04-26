@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::backends::rust::{
+use crate::backends::rust_legacy::{
     constraint_to_value, find_constrained_parent_fields, mask_bits, types, ToIdent,
     ToUpperCamelCase,
 };
