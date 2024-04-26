@@ -39,6 +39,11 @@ cargo run --bin pdlc -- \
     --exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier \
     > "$OUT_DIR/canonical_test/src/le_backend.rs"
 cargo run --bin pdlc -- \
+    tests/canonical/le_test_vectors.json \
+    --output-format rust \
+    --tests \
+    >> "$OUT_DIR/canonical_test/src/le_backend.rs"
+cargo run --bin pdlc -- \
     "$OUT_DIR/be_test_file.pdl" \
     --output-format rust \
     --exclude-declaration UnsizedCustomField \
@@ -56,19 +61,15 @@ cargo run --bin pdlc -- \
     --exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier_ \
     --exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier \
     > "$OUT_DIR/canonical_test/src/be_backend.rs"
-cargo run --bin generate-canonical-tests -- \
-    tests/canonical/le_test_vectors.json "crate::le_backend" \
-    > "$OUT_DIR/canonical_test/src/le_backend_tests.rs"
-cargo run --bin generate-canonical-tests -- \
-    tests/canonical/be_test_vectors.json "crate::be_backend" \
-    > "$OUT_DIR/canonical_test/src/be_backend_tests.rs"
-
+cargo run --bin pdlc -- \
+    tests/canonical/be_test_vectors.json \
+    --output-format rust \
+    --tests \
+    >> "$OUT_DIR/canonical_test/src/be_backend.rs"
 
 cat <<EOT > "$OUT_DIR/canonical_test/src/lib.rs"
 mod le_backend;
-mod le_backend_tests;
 mod be_backend;
-mod be_backend_tests;
 EOT
 
 cat <<EOT > "$OUT_DIR/canonical_test/Cargo.toml"

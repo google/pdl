@@ -24,6 +24,7 @@ use syn::LitInt;
 mod parser;
 mod preamble;
 mod serializer;
+pub mod test;
 mod types;
 
 use parser::FieldParser;
