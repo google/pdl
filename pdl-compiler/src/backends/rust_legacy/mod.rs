@@ -1137,7 +1137,7 @@ mod tests {
                     let file = analyzer::analyze(&file).unwrap();
                     let actual_code = generate(&db, &file);
                     assert_snapshot_eq(
-                        &format!("tests/generated/{name}_{endianness}.rs"),
+                        &format!("tests/generated/rust_legacy/{name}_{endianness}.rs"),
                         &format_rust(&actual_code),
                     );
                 }
