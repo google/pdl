@@ -88,6 +88,6 @@ mod tests {
     #[test]
     fn test_generate_preamble() {
         let actual_code = generate(Path::new("some/path/foo.pdl")).to_string();
-        assert_snapshot_eq("tests/generated/preamble.rs", &format_rust(&actual_code));
+        assert_snapshot_eq("tests/generated/rust_legacy/preamble.rs", &format_rust(&actual_code));
     }
 }
