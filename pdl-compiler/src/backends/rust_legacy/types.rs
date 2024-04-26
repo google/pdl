@@ -14,7 +14,7 @@
 
 //! Utility functions for dealing with Rust integer types.
 
-use crate::backends::rust::ToIdent;
+use crate::backends::rust_legacy::ToIdent;
 use crate::{analyzer, ast};
 use quote::{format_ident, quote};
 
