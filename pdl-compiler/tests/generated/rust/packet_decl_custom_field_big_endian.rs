@@ -37,6 +37,25 @@ impl From<Bar1> for u32 {
         value.0
     }
 }
+impl Packet for Bar1 {
+    fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+        if buf.len() < 3 {
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Bar1",
+                wanted: 3,
+                got: buf.len(),
+            });
+        }
+        Ok(((buf.get_uint(3) as u32).try_into().unwrap(), buf))
+    }
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        buf.put_uint(u32::from(self) as u64, 3);
+        Ok(())
+    }
+    fn encoded_len(&self) -> usize {
+        3
+    }
+}
 impl TryFrom<u32> for Bar1 {
     type Error = u32;
     fn try_from(value: u32) -> Result<Self, Self::Error> {
@@ -55,6 +74,25 @@ impl From<&Bar2> for u32 {
 impl From<Bar2> for u32 {
     fn from(value: Bar2) -> u32 {
         value.0
+    }
+}
+impl Packet for Bar2 {
+    fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+        if buf.len() < 4 {
+            return Err(DecodeError::InvalidLengthError {
+                obj: "Bar2",
+                wanted: 4,
+                got: buf.len(),
+            });
+        }
+        Ok((buf.get_u32().into(), buf))
+    }
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        buf.put_u32(u32::from(self));
+        Ok(())
+    }
+    fn encoded_len(&self) -> usize {
+        4
     }
 }
 impl From<u32> for Bar2 {

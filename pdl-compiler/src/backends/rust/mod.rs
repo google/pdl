@@ -885,11 +885,33 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
 ///
 /// * `id` - Enum identifier.
 /// * `width` - Width of the backing type of the enum, in bits.
-fn generate_custom_field_decl(id: &str, width: usize) -> proc_macro2::TokenStream {
+fn generate_custom_field_decl(
+    endianness: ast::EndiannessValue,
+    id: &str,
+    width: usize,
+) -> proc_macro2::TokenStream {
+    let name = id;
     let id = id.to_ident();
     let backing_type = types::Integer::new(width);
     let backing_type_str = proc_macro2::Literal::string(&format!("u{}", backing_type.width));
     let max_value = mask_bits(width, &format!("u{}", backing_type.width));
+    let size = proc_macro2::Literal::usize_unsuffixed(width / 8);
+
+    let read_value = types::get_uint(endianness, width, &format_ident!("buf"));
+    let read_value = if [8, 16, 32, 64].contains(&width) {
+        quote! { #read_value.into() }
+    } else {
+        // The value is masked when read, and the conversion must succeed.
+        quote! { (#read_value).try_into().unwrap() }
+    };
+
+    let write_value = types::put_uint(
+        endianness,
+        &quote! { #backing_type::from(self) },
+        width,
+        &format_ident!("buf"),
+    );
+
     let common = quote! {
         impl From<&#id> for #backing_type {
             fn from(value: &#id) -> #backing_type {
@@ -900,6 +922,29 @@ fn generate_custom_field_decl(id: &str, width: usize) -> proc_macro2::TokenStrea
         impl From<#id> for #backing_type {
             fn from(value: #id) -> #backing_type {
                 value.0
+            }
+        }
+
+        impl Packet for #id {
+            fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+                if buf.len() < #size {
+                    return Err(DecodeError::InvalidLengthError {
+                        obj: #name,
+                        wanted: #size,
+                        got: buf.len(),
+                    })
+                }
+
+                Ok((#read_value, buf))
+            }
+
+            fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+                #write_value;
+                Ok(())
+            }
+
+            fn encoded_len(&self) -> usize {
+                #size
             }
         }
     };
@@ -957,7 +1002,7 @@ fn generate_decl(
         }
         ast::DeclDesc::Enum { id, tags, width } => generate_enum_decl(id, tags, *width),
         ast::DeclDesc::CustomField { id, width: Some(width), .. } => {
-            generate_custom_field_decl(id, *width)
+            generate_custom_field_decl(file.endianness.value, id, *width)
         }
         _ => todo!("unsupported Decl::{:?}", decl),
     }

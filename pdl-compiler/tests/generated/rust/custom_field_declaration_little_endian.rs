@@ -37,6 +37,25 @@ impl From<ExactSize> for u32 {
         value.0
     }
 }
+impl Packet for ExactSize {
+    fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+        if buf.len() < 4 {
+            return Err(DecodeError::InvalidLengthError {
+                obj: "ExactSize",
+                wanted: 4,
+                got: buf.len(),
+            });
+        }
+        Ok((buf.get_u32_le().into(), buf))
+    }
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        buf.put_u32_le(u32::from(self));
+        Ok(())
+    }
+    fn encoded_len(&self) -> usize {
+        4
+    }
+}
 impl From<u32> for ExactSize {
     fn from(value: u32) -> Self {
         ExactSize(value)
@@ -54,6 +73,25 @@ impl From<&TruncatedSize> for u32 {
 impl From<TruncatedSize> for u32 {
     fn from(value: TruncatedSize) -> u32 {
         value.0
+    }
+}
+impl Packet for TruncatedSize {
+    fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
+        if buf.len() < 3 {
+            return Err(DecodeError::InvalidLengthError {
+                obj: "TruncatedSize",
+                wanted: 3,
+                got: buf.len(),
+            });
+        }
+        Ok(((buf.get_uint_le(3) as u32).try_into().unwrap(), buf))
+    }
+    fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        buf.put_uint_le(u32::from(self) as u64, 3);
+        Ok(())
+    }
+    fn encoded_len(&self) -> usize {
+        3
     }
 }
 impl TryFrom<u32> for TruncatedSize {
