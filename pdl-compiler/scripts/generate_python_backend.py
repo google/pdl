@@ -1157,13 +1157,16 @@ def generate_checksum_declaration_check(decl: ast.ChecksumDeclaration) -> str:
     """).format(checksum_name=decl.id)
 
 
-def run(input: argparse.FileType, output: argparse.FileType, custom_type_location: Optional[str]):
+def run(input: argparse.FileType, output: argparse.FileType, custom_type_location: Optional[str], exclude_declaration: List[str]):
     file = ast.File.from_json(json.load(input))
     core.desugar(file)
 
     custom_types = []
     custom_type_checks = ""
     for d in file.declarations:
+        if d.id in exclude_declaration:
+            continue
+
         if isinstance(d, ast.CustomFieldDeclaration):
             custom_types.append(d.id)
             custom_type_checks += generate_custom_field_declaration_check(d)
@@ -1180,6 +1183,9 @@ def run(input: argparse.FileType, output: argparse.FileType, custom_type_locatio
     output.write(custom_type_checks)
 
     for d in file.declarations:
+        if d.id in exclude_declaration:
+            continue
+
         if isinstance(d, ast.EnumDeclaration):
             output.write(generate_enum_declaration(d))
         elif isinstance(d, (ast.PacketDeclaration, ast.StructDeclaration)):
@@ -1195,6 +1201,11 @@ def main() -> int:
                         type=str,
                         required=False,
                         help='Module of declaration of custom types')
+    parser.add_argument('--exclude-declaration',
+                        type=str,
+                        default=[],
+                        action='append',
+                        help='Exclude declaration from the generated output')
     return run(**vars(parser.parse_args()))
 
 
