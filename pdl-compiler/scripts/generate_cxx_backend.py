@@ -1658,7 +1658,7 @@ def generate_struct_declaration(struct: ast.StructDeclaration) -> str:
 
 
 def run(input: argparse.FileType, output: argparse.FileType, namespace: Optional[str], include_header: List[str],
-        using_namespace: List[str]):
+        using_namespace: List[str], exclude_declaration: List[str]):
 
     file = ast.File.from_json(json.load(input))
     core.desugar(file)
@@ -1667,28 +1667,6 @@ def run(input: argparse.FileType, output: argparse.FileType, namespace: Optional
     using_namespace = '\n'.join([f'using namespace {namespace};' for namespace in using_namespace])
     open_namespace = f"namespace {namespace} {{" if namespace else ""
     close_namespace = f"}}  // {namespace}" if namespace else ""
-
-    # Disable unsupported features in the canonical test suite.
-    skipped_decls = [
-        'Packet_Custom_Field_ConstantSize',
-        'Packet_Custom_Field_VariableSize',
-        'Packet_Checksum_Field_FromStart',
-        'Packet_Checksum_Field_FromEnd',
-        'Struct_Custom_Field_ConstantSize',
-        'Struct_Custom_Field_VariableSize',
-        'Struct_Checksum_Field_FromStart',
-        'Struct_Checksum_Field_FromEnd',
-        'Struct_Custom_Field_ConstantSize_',
-        'Struct_Custom_Field_VariableSize_',
-        'Struct_Checksum_Field_FromStart_',
-        'Struct_Checksum_Field_FromEnd_',
-        'PartialParent5',
-        'PartialChild5_A',
-        'PartialChild5_B',
-        'PartialParent12',
-        'PartialChild12_A',
-        'PartialChild12_B',
-    ]
 
     output.write(
         dedent("""\
@@ -1732,7 +1710,7 @@ def run(input: argparse.FileType, output: argparse.FileType, namespace: Optional
             output.write(f"class {d.id}View;\n")
 
     for d in file.declarations:
-        if d.id in skipped_decls:
+        if d.id in exclude_declaration:
             continue
 
         if isinstance(d, ast.EnumDeclaration):
@@ -1759,6 +1737,11 @@ def main() -> int:
                         default=[],
                         action='append',
                         help='Added using namespace statements')
+    parser.add_argument('--exclude-declaration',
+                        type=str,
+                        default=[],
+                        action='append',
+                        help='Exclude declaration from the generated output')
     return run(**vars(parser.parse_args()))
 
 

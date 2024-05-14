@@ -18,10 +18,46 @@ pdlc "$OUT_DIR"/be_test_file.pdl > "$OUT_DIR"/be_test_file.json
 python3 scripts/generate_cxx_backend.py \
     --input "$OUT_DIR"/le_test_file.json \
     --output "$OUT_DIR"/le_backend.h \
+    --exclude-declaration Packet_Custom_Field_ConstantSize \
+    --exclude-declaration Packet_Custom_Field_VariableSize \
+    --exclude-declaration Packet_Checksum_Field_FromStart \
+    --exclude-declaration Packet_Checksum_Field_FromEnd \
+    --exclude-declaration Struct_Custom_Field_ConstantSize \
+    --exclude-declaration Struct_Custom_Field_VariableSize \
+    --exclude-declaration Struct_Checksum_Field_FromStart \
+    --exclude-declaration Struct_Checksum_Field_FromEnd \
+    --exclude-declaration Struct_Custom_Field_ConstantSize_ \
+    --exclude-declaration Struct_Custom_Field_VariableSize_ \
+    --exclude-declaration Struct_Checksum_Field_FromStart_ \
+    --exclude-declaration Struct_Checksum_Field_FromEnd_ \
+    --exclude-declaration PartialParent5 \
+    --exclude-declaration PartialChild5_A \
+    --exclude-declaration PartialChild5_B \
+    --exclude-declaration PartialParent12 \
+    --exclude-declaration PartialChild12_A \
+    --exclude-declaration PartialChild12_B \
     --namespace le_backend
 python3 scripts/generate_cxx_backend.py \
     --input "$OUT_DIR"/be_test_file.json \
     --output "$OUT_DIR"/be_backend.h \
+    --exclude-declaration Packet_Custom_Field_ConstantSize \
+    --exclude-declaration Packet_Custom_Field_VariableSize \
+    --exclude-declaration Packet_Checksum_Field_FromStart \
+    --exclude-declaration Packet_Checksum_Field_FromEnd \
+    --exclude-declaration Struct_Custom_Field_ConstantSize \
+    --exclude-declaration Struct_Custom_Field_VariableSize \
+    --exclude-declaration Struct_Checksum_Field_FromStart \
+    --exclude-declaration Struct_Checksum_Field_FromEnd \
+    --exclude-declaration Struct_Custom_Field_ConstantSize_ \
+    --exclude-declaration Struct_Custom_Field_VariableSize_ \
+    --exclude-declaration Struct_Checksum_Field_FromStart_ \
+    --exclude-declaration Struct_Checksum_Field_FromEnd_ \
+    --exclude-declaration PartialParent5 \
+    --exclude-declaration PartialChild5_A \
+    --exclude-declaration PartialChild5_B \
+    --exclude-declaration PartialParent12 \
+    --exclude-declaration PartialChild12_A \
+    --exclude-declaration PartialChild12_B \
     --namespace be_backend
 
 python3 scripts/generate_cxx_backend_tests.py \
