@@ -87,6 +87,12 @@ class SizeField(Field):
     width: int
 
 
+@node('elementsize_field')
+class ElementSize(Field):
+    field_id: str
+    width: int
+
+
 @node('count_field')
 class CountField(Field):
     field_id: str
@@ -276,6 +282,8 @@ def convert_(obj: object) -> object:
         loc = obj['loc']
         loc = SourceRange(loc['file'], SourceLocation(**loc['start']), SourceLocation(**loc['end']))
         constructor = constructors_.get(kind)
+        if not constructor:
+            raise Exception(f'Unknown kind {kind}')
         members = {'loc': loc, 'kind': kind}
         for name, value in obj.items():
             if name != 'kind' and name != 'loc':

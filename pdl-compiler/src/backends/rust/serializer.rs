@@ -373,6 +373,44 @@ impl Encoder {
                     shift,
                 });
             }
+            ast::FieldDesc::ElementSize { field_id, width, .. } => {
+                let field_name = field_id.to_ident();
+                let field_type = types::Integer::new(*width);
+                let field_element_size_name = format_ident!("{field_id}_element_size");
+                let packet_name = &self.packet_name;
+                let max_value = mask_bits(*width, "usize");
+                self.tokens.extend(quote! {
+                    let #field_element_size_name = self.#field_name
+                        .get(0)
+                        .map_or(0, Packet::encoded_len);
+
+                    for (element_index, element) in self.#field_name.iter().enumerate() {
+                        if element.encoded_len() != #field_element_size_name {
+                            return Err(EncodeError::InvalidArrayElementSize {
+                                packet: #packet_name,
+                                field: #field_id,
+                                size: element.encoded_len(),
+                                expected_size: #field_element_size_name,
+                                element_index,
+                            })
+                        }
+                    }
+                    if #field_element_size_name > #max_value {
+                        return Err(EncodeError::SizeOverflow {
+                            packet: #packet_name,
+                            field: #field_id,
+                            size: #field_element_size_name,
+                            maximum_size: #max_value,
+                        })
+                    }
+                    let #field_element_size_name = #field_element_size_name as #field_type;
+                });
+                self.bit_fields.push(BitField {
+                    value: quote!(#field_element_size_name),
+                    field_type,
+                    shift,
+                });
+            }
             ast::FieldDesc::Count { field_id, width, .. } => {
                 let field_name = field_id.to_ident();
                 let field_type = types::Integer::new(*width);

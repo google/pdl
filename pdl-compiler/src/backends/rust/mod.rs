@@ -1335,6 +1335,76 @@ mod tests {
     );
 
     test_pdl!(
+        packet_decl_array_dynamic_element_size,
+        "
+          struct Foo {
+            inner: 8[]
+          }
+          packet Bar {
+            _elementsize_(x): 5,
+            padding: 3,
+            x: Foo[]
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_array_dynamic_element_size_dynamic_size,
+        "
+          struct Foo {
+            inner: 8[]
+          }
+          packet Bar {
+            _size_(x): 4,
+            _elementsize_(x): 4,
+            x: Foo[]
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_array_dynamic_element_size_dynamic_count,
+        "
+          struct Foo {
+            inner: 8[]
+          }
+          packet Bar {
+            _count_(x): 4,
+            _elementsize_(x): 4,
+            x: Foo[]
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_array_dynamic_element_size_static_count,
+        "
+          struct Foo {
+            inner: 8[]
+          }
+          packet Bar {
+            _elementsize_(x): 5,
+            padding: 3,
+            x: Foo[4]
+          }
+        "
+    );
+
+    test_pdl!(
+        packet_decl_array_dynamic_element_size_static_count_1,
+        "
+          struct Foo {
+            inner: 8[]
+          }
+          packet Bar {
+            _elementsize_(x): 5,
+            padding: 3,
+            x: Foo[1]
+          }
+        "
+    );
+
+    test_pdl!(
         packet_decl_reserved_field,
         "
           packet Foo {

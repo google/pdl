@@ -18,10 +18,18 @@ pdlc "$OUT_DIR"/be_test_file.pdl > "$OUT_DIR"/be_test_file.json
 python3 scripts/generate_python_backend.py \
     --input "$OUT_DIR"/le_test_file.json \
     --output "$OUT_DIR"/le_backend.py \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_ConstantSize \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_VariableSize \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_VariableCount \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_UnknownSize \
     --custom-type-location tests.custom_types
 python3 scripts/generate_python_backend.py \
     --input "$OUT_DIR"/be_test_file.json \
     --output "$OUT_DIR"/be_backend.py \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_ConstantSize \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_VariableSize \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_VariableCount \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_UnknownSize \
     --custom-type-location tests.custom_types
 
 export PYTHONPATH="$OUT_DIR:.:${PYTHONPATH:-}"
