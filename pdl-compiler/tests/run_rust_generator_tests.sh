@@ -37,6 +37,8 @@ cargo run --bin pdlc -- \
     --exclude-declaration Packet_Array_Field_UnsizedElement_SizeModifier \
     --exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier_ \
     --exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier \
+    --exclude-declaration Packet_Array_ElementSize_UnsizedCustomField \
+    --exclude-declaration Packet_Array_ElementSize_SizedCustomField \
     > "$OUT_DIR/canonical_test/src/le_backend.rs"
 cargo run --bin pdlc -- \
     tests/canonical/le_test_vectors.json \
@@ -60,6 +62,8 @@ cargo run --bin pdlc -- \
     --exclude-declaration Packet_Array_Field_UnsizedElement_SizeModifier \
     --exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier_ \
     --exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier \
+    --exclude-declaration Packet_Array_ElementSize_UnsizedCustomField \
+    --exclude-declaration Packet_Array_ElementSize_SizedCustomField \
     > "$OUT_DIR/canonical_test/src/be_backend.rs"
 cargo run --bin pdlc -- \
     tests/canonical/be_test_vectors.json \

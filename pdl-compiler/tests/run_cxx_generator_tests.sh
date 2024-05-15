@@ -22,6 +22,10 @@ python3 scripts/generate_cxx_backend.py \
     --exclude-declaration Packet_Custom_Field_VariableSize \
     --exclude-declaration Packet_Checksum_Field_FromStart \
     --exclude-declaration Packet_Checksum_Field_FromEnd \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_ConstantSize \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_VariableSize \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_VariableCount \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_UnknownSize \
     --exclude-declaration Struct_Custom_Field_ConstantSize \
     --exclude-declaration Struct_Custom_Field_VariableSize \
     --exclude-declaration Struct_Checksum_Field_FromStart \
@@ -44,6 +48,10 @@ python3 scripts/generate_cxx_backend.py \
     --exclude-declaration Packet_Custom_Field_VariableSize \
     --exclude-declaration Packet_Checksum_Field_FromStart \
     --exclude-declaration Packet_Checksum_Field_FromEnd \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_ConstantSize \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_VariableSize \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_VariableCount \
+    --exclude-declaration Packet_Array_Field_VariableElementSize_UnknownSize \
     --exclude-declaration Struct_Custom_Field_ConstantSize \
     --exclude-declaration Struct_Custom_Field_VariableSize \
     --exclude-declaration Struct_Checksum_Field_FromStart \

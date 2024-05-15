@@ -42,6 +42,8 @@ pub enum DecodeError {
     InvalidChildError { expected: &'static str, actual: String },
     #[error("packet has trailing bytes")]
     TrailingBytes,
+    #[error("packet has trailing bytes inside {obj}.{field} array")]
+    TrailingBytesInArray { obj: &'static str, field: &'static str },
 }
 
 /// Type of serialization errors.
@@ -57,6 +59,16 @@ pub enum EncodeError {
         "the value of {packet}::{field} ({value}) is outside the range of valid values 0..{maximum_value}"
     )]
     InvalidScalarValue { packet: &'static str, field: &'static str, value: u64, maximum_value: u64 },
+    #[error(
+        "{packet}.{field}[{element_index}] size is {size}, but {expected_size} was expected (size of {packet}.{field}[0])"
+    )]
+    InvalidArrayElementSize {
+        packet: &'static str,
+        field: &'static str,
+        size: usize,
+        expected_size: usize,
+        element_index: usize,
+    },
 }
 
 /// Trait implemented for all toplevel packet declarations.

@@ -261,6 +261,12 @@ impl<'a> FieldParser<'a> {
                         let #id = #v as usize;
                     }
                 }
+                ast::FieldDesc::ElementSize { field_id, .. } => {
+                    let id = format_ident!("{field_id}_element_size");
+                    quote! {
+                        let #id = #v as usize;
+                    }
+                }
                 ast::FieldDesc::Count { field_id, .. } => {
                     let id = format_ident!("{field_id}_count");
                     quote! {
@@ -287,6 +293,15 @@ impl<'a> FieldParser<'a> {
             ast::FieldDesc::Size { .. } => Some(size_field_ident(id)),
             _ => None,
         }
+    }
+
+    fn find_element_size_field(&self, id: &str) -> Option<proc_macro2::Ident> {
+        self.decl.fields().find_map(|field| match &field.desc {
+            ast::FieldDesc::ElementSize { field_id, .. } if field_id == id => {
+                Some(format_ident!("{id}_element_size"))
+            }
+            _ => None,
+        })
     }
 
     fn payload_field_offset_from_end(&self) -> Option<usize> {
@@ -338,17 +353,20 @@ impl<'a> FieldParser<'a> {
         decl: Option<&ast::Decl>,
     ) {
         enum ElementWidth {
-            Static(usize), // Static size in bytes.
+            Static(usize),               // Static size in bytes.
+            Dynamic(proc_macro2::Ident), // Dynamic size in bytes.
             Unknown,
         }
-        let element_width =
-            match width.or_else(|| self.schema.total_size(decl.unwrap().key).static_()) {
-                Some(w) => {
-                    assert_eq!(w % 8, 0, "Array element size ({w}) is not a multiple of 8");
-                    ElementWidth::Static(w / 8)
-                }
-                None => ElementWidth::Unknown,
-            };
+        let element_width = if let Some(w) =
+            width.or_else(|| self.schema.total_size(decl.unwrap().key).static_())
+        {
+            assert_eq!(w % 8, 0, "Array element size ({w}) is not a multiple of 8");
+            ElementWidth::Static(w / 8)
+        } else if let Some(element_size_field) = self.find_element_size_field(id) {
+            ElementWidth::Dynamic(element_size_field)
+        } else {
+            ElementWidth::Unknown
+        };
 
         // The "shape" of the array, i.e., the number of elements
         // given via a static count, a count field, a size field, or
@@ -385,6 +403,8 @@ impl<'a> FieldParser<'a> {
             None => self.span.clone(),
         };
 
+        let field_name = id;
+        let packet_name = self.packet_name;
         let id = id.to_ident();
 
         let parse_element = self.parse_array_element(&span, width, type_id, decl);
@@ -511,6 +531,108 @@ impl<'a> FieldParser<'a> {
                     for _ in 0..#array_count {
                         #id.push(#parse_element?);
                     }
+                });
+            }
+            (ElementWidth::Dynamic(element_size_field), ArrayShape::Static(count)) => {
+                // The element width is known, and the array element
+                // count is known statically.
+                let array_size = if *count == 1 {
+                    quote!(#element_size_field)
+                } else {
+                    quote!(#count * #element_size_field)
+                };
+
+                self.check_size(&span, &array_size);
+
+                let parse_element =
+                    self.parse_array_element(&format_ident!("chunk"), width, type_id, decl);
+
+                self.code.push(quote! {
+                    // TODO: use
+                    // https://doc.rust-lang.org/std/array/fn.try_from_fn.html
+                    // when stabilized.
+                    let #id = #span.chunks(#element_size_field)
+                        .take(#count)
+                        .map(|mut chunk| #parse_element.and_then(|value| {
+                            if chunk.is_empty() {
+                                Ok(value)
+                            } else {
+                                Err(DecodeError::TrailingBytesInArray {
+                                    obj: #packet_name,
+                                    field: #field_name,
+                                })
+                            }
+                         }))
+                        .collect::<Result<Vec<_>, DecodeError>>()?;
+                    #span = &#span[#array_size..];
+                    let #id = #id
+                        .try_into()
+                        .map_err(|_| DecodeError::InvalidPacketError)?;
+                });
+            }
+            (ElementWidth::Dynamic(element_size_field), ArrayShape::CountField(count_field)) => {
+                // The element width is known, and the array element
+                // count is known dynamically by the count field.
+                self.check_size(&span, &quote!(#count_field * #element_size_field));
+
+                let parse_element =
+                    self.parse_array_element(&format_ident!("chunk"), width, type_id, decl);
+
+                self.code.push(quote! {
+                    let #id = #span.chunks(#element_size_field)
+                        .take(#count_field)
+                        .map(|mut chunk| #parse_element.and_then(|value| {
+                            if chunk.is_empty() {
+                                Ok(value)
+                            } else {
+                                Err(DecodeError::TrailingBytesInArray {
+                                    obj: #packet_name,
+                                    field: #field_name,
+                                })
+                            }
+                         }))
+                        .collect::<Result<Vec<_>, DecodeError>>()?;
+                    #span = &#span[(#element_size_field * #count_field)..];
+                });
+            }
+            (ElementWidth::Dynamic(element_size_field), ArrayShape::SizeField(_))
+            | (ElementWidth::Dynamic(element_size_field), ArrayShape::Unknown) => {
+                // The element width is known, and the array full size
+                // is known by size field, or unknown (in which case
+                // it is the remaining span length).
+                let array_size = if let ArrayShape::SizeField(size_field) = &array_shape {
+                    self.check_size(&span, &quote!(#size_field));
+                    quote!(#size_field)
+                } else {
+                    quote!(#span.remaining())
+                };
+                self.code.push(quote! {
+                    if #array_size % #element_size_field != 0 {
+                        return Err(DecodeError::InvalidArraySize {
+                            array: #array_size,
+                            element: #element_size_field,
+                        });
+                    }
+                });
+
+                let parse_element =
+                    self.parse_array_element(&format_ident!("chunk"), width, type_id, decl);
+
+                self.code.push(quote! {
+                    let #id = #span.chunks(#element_size_field)
+                        .take(#array_size / #element_size_field)
+                        .map(|mut chunk| #parse_element.and_then(|value| {
+                            if chunk.is_empty() {
+                                Ok(value)
+                            } else {
+                                Err(DecodeError::TrailingBytesInArray {
+                                    obj: #packet_name,
+                                    field: #field_name,
+                                })
+                            }
+                         }))
+                        .collect::<Result<Vec<_>, DecodeError>>()?;
+                    #span = &#span[#array_size..];
                 });
             }
         }

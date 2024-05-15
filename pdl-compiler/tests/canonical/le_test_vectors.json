@@ -2155,6 +2155,164 @@
     ]
   },
   {
+    "packet": "Packet_Array_Field_VariableElementSize_ConstantSize",
+    "tests": [
+      {
+        "packed": "012a2b2c2d",
+        "unpacked": {
+          "array": [
+            {
+              "array": [42]
+            },
+            {
+              "array": [43]
+            },
+            {
+              "array": [44]
+            },
+            {
+              "array": [45]
+            }
+          ]
+        }
+      },
+      {
+        "packed": "022a2b2c2d2e2f3031",
+        "unpacked": {
+          "array": [
+            {
+              "array": [42, 43]
+            },
+            {
+              "array": [44, 45]
+            },
+            {
+              "array": [46, 47]
+            },
+            {
+              "array": [48, 49]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_VariableElementSize_VariableSize",
+    "tests": [
+      {
+        "packed": "01012a2b2c",
+        "unpacked": {
+          "array": [
+            {
+              "array": [42]
+            }
+          ],
+          "tail": [43, 44]
+        }
+      },
+      {
+        "packed": "02012a2b",
+        "unpacked": {
+          "array": [
+            {
+              "array": [42]
+            },
+            {
+              "array": [43]
+            }
+          ],
+          "tail": []
+        }
+      },
+      {
+        "packed": "02022a2b2c",
+        "unpacked": {
+          "array": [
+            {
+              "array": [42, 43]
+            }
+          ],
+          "tail": [44]
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_VariableElementSize_VariableCount",
+    "tests": [
+      {
+        "packed": "03012a2b2c2d",
+        "unpacked": {
+          "array": [
+            {
+              "array": [42]
+            },
+            {
+              "array": [43]
+            },
+            {
+              "array": [44]
+            }
+          ],
+          "tail": [45]
+        }
+      },
+      {
+        "packed": "02022a2b2c2d",
+        "unpacked": {
+          "array": [
+            {
+              "array": [42, 43]
+            },
+            {
+              "array": [44, 45]
+            }
+          ],
+          "tail": []
+        }
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_VariableElementSize_UnknownSize",
+    "tests": [
+      {
+        "packed": "012a",
+        "unpacked": {
+          "array": [
+            {
+              "array": [42]
+            }
+          ]
+        }
+      },
+      {
+        "packed": "012a2b",
+        "unpacked": {
+          "array": [
+            {
+              "array": [42]
+            },
+            {
+              "array": [43]
+            }
+          ]
+        }
+      },
+      {
+        "packed": "022a2b",
+        "unpacked": {
+          "array": [
+            {
+              "array": [42, 43]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
     "packet": "Packet_Optional_Scalar_Field",
     "tests": [
       {

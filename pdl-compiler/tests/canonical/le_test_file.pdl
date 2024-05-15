@@ -26,6 +26,10 @@ struct UnsizedStruct {
     array: 8[],
 }
 
+struct UnknownSizeStruct {
+    array: 8[],
+}
+
 group ScalarGroup {
     a: 16
 }
@@ -360,6 +364,36 @@ packet Packet_Array_Field_UnsizedElement_VariableCount_Padded {
     _count_(array) : 8,
     array: UnsizedStruct[],
     _padding_ [16],
+}
+
+packet Packet_Array_Field_VariableElementSize_ConstantSize {
+    _elementsize_(array): 4,
+    _reserved_: 4,
+    array: UnknownSizeStruct[4],
+}
+
+packet Packet_Array_Field_VariableElementSize_VariableSize {
+    _size_(array) : 4,
+    _reserved_: 4,
+    _elementsize_(array): 4,
+    _reserved_: 4,
+    array: UnknownSizeStruct[],
+    tail: 8[],
+}
+
+packet Packet_Array_Field_VariableElementSize_VariableCount {
+    _count_(array) : 4,
+    _reserved_: 4,
+    _elementsize_(array): 4,
+    _reserved_: 4,
+    array: UnknownSizeStruct[],
+    tail: 8[],
+}
+
+packet Packet_Array_Field_VariableElementSize_UnknownSize {
+    _elementsize_(array): 4,
+    _reserved_: 4,
+    array: UnknownSizeStruct[],
 }
 
 packet Packet_Optional_Scalar_Field {
