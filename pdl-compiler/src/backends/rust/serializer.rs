@@ -115,10 +115,6 @@ impl Encoder {
         assert_eq!(self.bit_shift, 0, "Typedef field does not start on an octet boundary");
 
         let decl = scope.typedef[type_id];
-        if let ast::DeclDesc::Struct { parent_id: Some(_), .. } = &decl.desc {
-            panic!("Derived struct used in typedef field");
-        }
-
         let id = id.to_ident();
         let buf = &self.buf;
 
