@@ -90,7 +90,7 @@ fn packet_data_fields<'a>(
         .iter_fields(decl)
         .filter(|f| f.id().is_some())
         .filter(|f| !matches!(&f.desc, ast::FieldDesc::Flag { .. }))
-        .filter(|f| all_constraints.get(f.id().unwrap()).is_none())
+        .filter(|f| !all_constraints.contains_key(f.id().unwrap()))
         .collect::<Vec<_>>()
 }
 
@@ -108,7 +108,7 @@ fn packet_constant_fields<'a>(
     scope
         .iter_fields(decl)
         .filter(|f| f.id().is_some())
-        .filter(|f| all_constraints.get(f.id().unwrap()).is_some())
+        .filter(|f| all_constraints.contains_key(f.id().unwrap()))
         .collect::<Vec<_>>()
 }
 
