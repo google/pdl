@@ -524,10 +524,6 @@ impl<'a> FieldParser<'a> {
         assert_eq!(self.shift, 0, "Typedef field does not start on an octet boundary");
 
         let decl = self.scope.typedef[type_id];
-        if let ast::DeclDesc::Struct { parent_id: Some(_), .. } = &decl.desc {
-            panic!("Derived struct used in typedef field");
-        }
-
         let span = self.span;
         let id = id.to_ident();
         let type_id = type_id.to_ident();
@@ -555,11 +551,8 @@ impl<'a> FieldParser<'a> {
                         }
                     }
                     ast::DeclDesc::Struct { .. } => {
-                        let width = syn::Index::from(width / 8);
                         quote! {
-                            let (head, tail) = #span.split_at(#width);
-                            #span = tail;
-                            let #id = #type_id::decode_full(head)?;
+                            let (#id, mut #span) = #type_id::decode(#span)?;
                         }
                     }
                     _ => unreachable!(),
