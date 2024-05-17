@@ -221,6 +221,14 @@ impl TryFrom<&Bar> for Vec<u8> {
 impl Bar {
     fn decode_partial(parent: &Foo) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
+        if parent.a() != 100 {
+            return Err(DecodeError::InvalidFieldValue {
+                packet: "Bar",
+                field: "a",
+                expected: "100",
+                actual: format!("{:?}", parent.a()),
+            });
+        }
         if buf.remaining() < 1 {
             return Err(DecodeError::InvalidLengthError {
                 obj: "Bar",
@@ -313,6 +321,14 @@ impl TryFrom<&Baz> for Vec<u8> {
 impl Baz {
     fn decode_partial(parent: &Foo) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
+        if parent.b() != Enum16::B {
+            return Err(DecodeError::InvalidFieldValue {
+                packet: "Baz",
+                field: "b",
+                expected: "Enum16::B",
+                actual: format!("{:?}", parent.b()),
+            });
+        }
         if buf.remaining() < 2 {
             return Err(DecodeError::InvalidLengthError {
                 obj: "Baz",

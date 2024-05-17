@@ -171,6 +171,14 @@ impl TryFrom<&Child> for Vec<u8> {
 }
 impl Child {
     fn decode_partial(parent: &Parent) -> Result<Self, DecodeError> {
+        if parent.v() != Enum8::A {
+            return Err(DecodeError::InvalidFieldValue {
+                packet: "Child",
+                field: "v",
+                expected: "Enum8::A",
+                actual: format!("{:?}", parent.v()),
+            });
+        }
         Ok(Self {})
     }
     pub fn encode_partial(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {

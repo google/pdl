@@ -38,6 +38,13 @@ pub enum DecodeError {
         value: u64,
         type_: &'static str,
     },
+    #[error("invalid field {packet}::{field} value, {expected} != {actual}")]
+    InvalidFieldValue {
+        packet: &'static str,
+        field: &'static str,
+        expected: &'static str,
+        actual: String,
+    },
     #[error("expected child {expected}, got {actual}")]
     InvalidChildError { expected: &'static str, actual: String },
     #[error("packet has trailing bytes")]

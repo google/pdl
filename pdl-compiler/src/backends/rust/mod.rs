@@ -141,6 +141,29 @@ fn constraint_value(
     }
 }
 
+fn constraint_value_str(fields: &[&'_ ast::Field], constraint: &ast::Constraint) -> String {
+    match constraint {
+        ast::Constraint { value: Some(value), .. } => {
+            format!("{}", value)
+        }
+        ast::Constraint { tag_id: Some(tag_id), .. } => {
+            let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
+            let type_id = fields
+                .iter()
+                .filter_map(|f| match &f.desc {
+                    ast::FieldDesc::Typedef { id, type_id } if id == &constraint.id => {
+                        Some(type_id.to_ident())
+                    }
+                    _ => None,
+                })
+                .next()
+                .unwrap();
+            format!("{}::{}", type_id, tag_id)
+        }
+        _ => unreachable!("Invalid constraint: {constraint:?}"),
+    }
+}
+
 fn implements_copy(scope: &analyzer::Scope<'_>, field: &ast::Field) -> bool {
     match &field.desc {
         ast::FieldDesc::Scalar { .. } => true,
@@ -445,6 +468,27 @@ fn generate_derived_packet_decl(
         }
     };
 
+    // Constraint checks are only run for constraints added to this declaration
+    // and not parent constraints which are expected to have been validated
+    // earlier.
+    let constraint_checks = decl.constraints().map(|c| {
+        let field_id = c.id.to_ident();
+        let field_name = &c.id;
+        let packet_name = id;
+        let value = constraint_value(&parent_data_fields, c);
+        let value_str = constraint_value_str(&parent_data_fields, c);
+        quote! {
+            if parent.#field_id() != #value {
+                return Err(DecodeError::InvalidFieldValue {
+                    packet: #packet_name,
+                    field: #field_name,
+                    expected: #value_str,
+                    actual: format!("{:?}", parent.#field_id()),
+                })
+            }
+        }
+    });
+
     let decode_partial = if parent_decl.payload().is_some() {
         // Generate an implementation of decode_partial that will decode
         // data fields present in the parent payload.
@@ -453,6 +497,7 @@ fn generate_derived_packet_decl(
         quote! {
             fn decode_partial(parent: &#parent_name) -> Result<Self, DecodeError> {
                 let mut buf: &[u8] = &parent.payload;
+                #( #constraint_checks )*
                 #field_parser
                 if buf.is_empty() {
                     Ok(Self {
@@ -472,6 +517,7 @@ fn generate_derived_packet_decl(
         // return DecodeError::InvalidConstraint.
         quote! {
             fn decode_partial(parent: &#parent_name) -> Result<Self, DecodeError> {
+                #( #constraint_checks )*
                 Ok(Self {
                     #( #copied_field_ids: parent.#copied_field_ids, )*
                 })
