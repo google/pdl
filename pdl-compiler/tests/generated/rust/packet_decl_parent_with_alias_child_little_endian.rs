@@ -275,6 +275,14 @@ impl TryFrom<&NormalChild> for Vec<u8> {
 impl NormalChild {
     fn decode_partial(parent: &Parent) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
+        if parent.v() != Enum8::A {
+            return Err(DecodeError::InvalidFieldValue {
+                packet: "NormalChild",
+                field: "v",
+                expected: "Enum8::A",
+                actual: format!("{:?}", parent.v()),
+            });
+        }
         if buf.is_empty() { Ok(Self {}) } else { Err(DecodeError::TrailingBytes) }
     }
     pub fn encode_partial(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
@@ -337,6 +345,14 @@ impl TryFrom<&NormalGrandChild1> for Vec<u8> {
 impl NormalGrandChild1 {
     fn decode_partial(parent: &AliasChild) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
+        if parent.v() != Enum8::B {
+            return Err(DecodeError::InvalidFieldValue {
+                packet: "NormalGrandChild1",
+                field: "v",
+                expected: "Enum8::B",
+                actual: format!("{:?}", parent.v()),
+            });
+        }
         if buf.is_empty() { Ok(Self {}) } else { Err(DecodeError::TrailingBytes) }
     }
     pub fn encode_partial(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
@@ -401,6 +417,14 @@ impl TryFrom<&NormalGrandChild2> for Vec<u8> {
 impl NormalGrandChild2 {
     fn decode_partial(parent: &AliasChild) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
+        if parent.v() != Enum8::C {
+            return Err(DecodeError::InvalidFieldValue {
+                packet: "NormalGrandChild2",
+                field: "v",
+                expected: "Enum8::C",
+                actual: format!("{:?}", parent.v()),
+            });
+        }
         let payload = buf.to_vec();
         buf.advance(payload.len());
         if buf.is_empty() {

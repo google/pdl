@@ -262,6 +262,14 @@ impl Child {
     }
     fn decode_partial(parent: &Parent) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
+        if parent.foo() != Enum16::A {
+            return Err(DecodeError::InvalidFieldValue {
+                packet: "Child",
+                field: "foo",
+                expected: "Enum16::A",
+                actual: format!("{:?}", parent.foo()),
+            });
+        }
         if buf.remaining() < 2 {
             return Err(DecodeError::InvalidLengthError {
                 obj: "Child",
@@ -397,6 +405,22 @@ impl GrandChild {
     }
     fn decode_partial(parent: &Child) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
+        if parent.bar() != Enum16::A {
+            return Err(DecodeError::InvalidFieldValue {
+                packet: "GrandChild",
+                field: "bar",
+                expected: "Enum16::A",
+                actual: format!("{:?}", parent.bar()),
+            });
+        }
+        if parent.quux() != Enum16::A {
+            return Err(DecodeError::InvalidFieldValue {
+                packet: "GrandChild",
+                field: "quux",
+                expected: "Enum16::A",
+                actual: format!("{:?}", parent.quux()),
+            });
+        }
         let payload = buf.to_vec();
         buf.advance(payload.len());
         let payload = Vec::from(payload);
@@ -502,6 +526,14 @@ impl TryFrom<&GrandGrandChild> for Vec<u8> {
 impl GrandGrandChild {
     fn decode_partial(parent: &GrandChild) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
+        if parent.baz() != Enum16::A {
+            return Err(DecodeError::InvalidFieldValue {
+                packet: "GrandGrandChild",
+                field: "baz",
+                expected: "Enum16::A",
+                actual: format!("{:?}", parent.baz()),
+            });
+        }
         let payload = buf.to_vec();
         buf.advance(payload.len());
         let payload = Vec::from(payload);
