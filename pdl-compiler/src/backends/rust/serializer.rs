@@ -59,7 +59,7 @@ impl std::ops::AddAssign<&RuntimeSize> for RuntimeSize {
 
 impl quote::ToTokens for RuntimeSize {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let constant = syn::Index::from(self.constant);
+        let constant = proc_macro2::Literal::usize_unsuffixed(self.constant);
         tokens.extend(match self {
             RuntimeSize { variable, .. } if variable.is_empty() => quote! { #constant },
             RuntimeSize { variable, constant: 0 } => quote! { #(#variable)+* },
@@ -336,11 +336,12 @@ impl Encoder {
                     }
                     (ast::FieldDesc::Array { width: Some(width), .. }, _)
                     | (ast::FieldDesc::Array { .. }, Some(ast::DeclDesc::Enum { width, .. })) => {
-                        let byte_width = syn::Index::from(width / 8);
-                        if byte_width.index == 1 {
+                        let size = width / 8;
+                        if size == 1 {
                             quote! { self.#field_name.len() }
                         } else {
-                            quote! { (self.#field_name.len() * #byte_width) }
+                            let size = proc_macro2::Literal::usize_unsuffixed(size);
+                            quote! { (self.#field_name.len() * #size) }
                         }
                     }
                     (ast::FieldDesc::Array { .. }, _) => {
@@ -467,7 +468,7 @@ impl Encoder {
         self.tokens.extend(match values.as_slice() {
             [] => {
                 let buf = format_ident!("{}", self.buf);
-                let count = syn::Index::from(self.bit_shift / 8);
+                let count = proc_macro2::Literal::usize_unsuffixed(self.bit_shift / 8);
                 quote! {
                     #buf.put_bytes(0, #count);
                 }
