@@ -429,7 +429,7 @@ impl<'a> FieldParser<'a> {
                 // The element width is not known, but the array
                 // element count is known statically. Parse elements
                 // item by item as an array.
-                let count = syn::Index::from(*count);
+                let count = proc_macro2::Literal::usize_unsuffixed(*count);
                 self.tokens.extend(quote! {
                     // TODO(mgeisler): use
                     // https://doc.rust-lang.org/std/array/fn.try_from_fn.html
@@ -466,12 +466,12 @@ impl<'a> FieldParser<'a> {
             (ElementWidth::Static(element_width), ArrayShape::Static(count)) => {
                 // The element width is known, and the array element
                 // count is known statically.
-                let count = syn::Index::from(*count);
+                let count = proc_macro2::Literal::usize_unsuffixed(*count);
                 // This creates a nicely formatted size.
                 let array_size = if element_width == 1 {
                     quote!(#count)
                 } else {
-                    let element_width = syn::Index::from(element_width);
+                    let element_width = proc_macro2::Literal::usize_unsuffixed(element_width);
                     quote!(#count * #element_width)
                 };
                 self.check_size(&span, &quote! { #array_size });
@@ -511,7 +511,7 @@ impl<'a> FieldParser<'a> {
                 };
                 let count_field = format_ident!("{id}_count");
                 let array_count = if element_width != 1 {
-                    let element_width = syn::Index::from(element_width);
+                    let element_width = proc_macro2::Literal::usize_unsuffixed(element_width);
                     self.tokens.extend(quote! {
                         if #array_size % #element_width != 0 {
                             return Err(DecodeError::InvalidArraySize {
@@ -738,7 +738,7 @@ impl<'a> FieldParser<'a> {
                 0,
                 "Payload field offset from end of packet is not a multiple of 8"
             );
-            let offset_from_end = syn::Index::from(offset_from_end / 8);
+            let offset_from_end = proc_macro2::Literal::usize_unsuffixed(offset_from_end / 8);
             self.check_size(self.span, &quote!(#offset_from_end));
             self.tokens.extend(quote! {
                 let payload = #span[..#span.len() - #offset_from_end].to_vec();
