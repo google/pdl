@@ -26,18 +26,6 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {}
-impl TryFrom<&Foo> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Foo> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
-}
 impl Foo {}
 impl Packet for Foo {
     fn encoded_len(&self) -> usize {

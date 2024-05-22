@@ -28,18 +28,6 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
 pub struct Foo {
     pub a: Vec<u16>,
 }
-impl TryFrom<&Foo> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Foo> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
-}
 impl Foo {
     pub fn a(&self) -> &Vec<u16> {
         &self.a
@@ -90,18 +78,6 @@ impl Packet for Foo {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bar {
     pub x: Vec<Foo>,
-}
-impl TryFrom<&Bar> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Bar) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Bar> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Bar) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
 }
 impl Bar {
     pub fn x(&self) -> &Vec<Foo> {

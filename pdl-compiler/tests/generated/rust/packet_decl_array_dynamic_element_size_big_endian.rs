@@ -28,18 +28,6 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
 pub struct Foo {
     pub inner: Vec<u8>,
 }
-impl TryFrom<&Foo> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Foo> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
-}
 impl Foo {
     pub fn inner(&self) -> &Vec<u8> {
         &self.inner
@@ -68,18 +56,6 @@ impl Packet for Foo {
 pub struct Bar {
     pub padding: u8,
     pub x: Vec<Foo>,
-}
-impl TryFrom<&Bar> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Bar) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Bar> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Bar) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
 }
 impl Bar {
     pub fn padding(&self) -> u8 {

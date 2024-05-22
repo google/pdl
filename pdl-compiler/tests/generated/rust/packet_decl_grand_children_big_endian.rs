@@ -82,18 +82,6 @@ pub struct Parent {
     pub baz: Enum16,
     pub payload: Vec<u8>,
 }
-impl TryFrom<&Parent> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Parent) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Parent> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Parent) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
-}
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParentChild {
@@ -219,6 +207,12 @@ impl TryFrom<&Parent> for Child {
         Child::decode_partial(&parent)
     }
 }
+impl TryFrom<Parent> for Child {
+    type Error = DecodeError;
+    fn try_from(parent: Parent) -> Result<Child, Self::Error> {
+        (&parent).try_into()
+    }
+}
 impl TryFrom<&Child> for Parent {
     type Error = EncodeError;
     fn try_from(packet: &Child) -> Result<Parent, Self::Error> {
@@ -232,16 +226,10 @@ impl TryFrom<&Child> for Parent {
         })
     }
 }
-impl TryFrom<&Child> for Bytes {
+impl TryFrom<Child> for Parent {
     type Error = EncodeError;
-    fn try_from(packet: &Child) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Child> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Child) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
+    fn try_from(packet: Child) -> Result<Parent, Self::Error> {
+        (&packet).try_into()
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -355,6 +343,12 @@ impl TryFrom<&Child> for GrandChild {
         GrandChild::decode_partial(&parent)
     }
 }
+impl TryFrom<Child> for GrandChild {
+    type Error = DecodeError;
+    fn try_from(parent: Child) -> Result<GrandChild, Self::Error> {
+        (&parent).try_into()
+    }
+}
 impl TryFrom<&GrandChild> for Child {
     type Error = EncodeError;
     fn try_from(packet: &GrandChild) -> Result<Child, Self::Error> {
@@ -368,22 +362,22 @@ impl TryFrom<&GrandChild> for Child {
         })
     }
 }
+impl TryFrom<GrandChild> for Child {
+    type Error = EncodeError;
+    fn try_from(packet: GrandChild) -> Result<Child, Self::Error> {
+        (&packet).try_into()
+    }
+}
 impl TryFrom<&GrandChild> for Parent {
     type Error = EncodeError;
     fn try_from(packet: &GrandChild) -> Result<Parent, Self::Error> {
         (&Child::try_from(packet)?).try_into()
     }
 }
-impl TryFrom<&GrandChild> for Bytes {
+impl TryFrom<GrandChild> for Parent {
     type Error = EncodeError;
-    fn try_from(packet: &GrandChild) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&GrandChild> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &GrandChild) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
+    fn try_from(packet: GrandChild) -> Result<Parent, Self::Error> {
+        (&packet).try_into()
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -485,6 +479,12 @@ impl TryFrom<&GrandChild> for GrandGrandChild {
         GrandGrandChild::decode_partial(&parent)
     }
 }
+impl TryFrom<GrandChild> for GrandGrandChild {
+    type Error = DecodeError;
+    fn try_from(parent: GrandChild) -> Result<GrandGrandChild, Self::Error> {
+        (&parent).try_into()
+    }
+}
 impl TryFrom<&GrandGrandChild> for GrandChild {
     type Error = EncodeError;
     fn try_from(packet: &GrandGrandChild) -> Result<GrandChild, Self::Error> {
@@ -496,10 +496,22 @@ impl TryFrom<&GrandGrandChild> for GrandChild {
         })
     }
 }
+impl TryFrom<GrandGrandChild> for GrandChild {
+    type Error = EncodeError;
+    fn try_from(packet: GrandGrandChild) -> Result<GrandChild, Self::Error> {
+        (&packet).try_into()
+    }
+}
 impl TryFrom<&GrandGrandChild> for Child {
     type Error = EncodeError;
     fn try_from(packet: &GrandGrandChild) -> Result<Child, Self::Error> {
         (&GrandChild::try_from(packet)?).try_into()
+    }
+}
+impl TryFrom<GrandGrandChild> for Child {
+    type Error = EncodeError;
+    fn try_from(packet: GrandGrandChild) -> Result<Child, Self::Error> {
+        (&packet).try_into()
     }
 }
 impl TryFrom<&GrandGrandChild> for Parent {
@@ -508,16 +520,10 @@ impl TryFrom<&GrandGrandChild> for Parent {
         (&GrandChild::try_from(packet)?).try_into()
     }
 }
-impl TryFrom<&GrandGrandChild> for Bytes {
+impl TryFrom<GrandGrandChild> for Parent {
     type Error = EncodeError;
-    fn try_from(packet: &GrandGrandChild) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&GrandGrandChild> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &GrandGrandChild) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
+    fn try_from(packet: GrandGrandChild) -> Result<Parent, Self::Error> {
+        (&packet).try_into()
     }
 }
 impl GrandGrandChild {

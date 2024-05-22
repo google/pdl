@@ -106,18 +106,6 @@ pub struct Foo {
     pub a: Bar1,
     pub b: Bar2,
 }
-impl TryFrom<&Foo> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Foo> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
-}
 impl Foo {
     pub fn a(&self) -> Bar1 {
         self.a

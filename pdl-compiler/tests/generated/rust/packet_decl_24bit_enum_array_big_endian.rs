@@ -74,18 +74,6 @@ impl From<Foo> for u64 {
 pub struct Bar {
     pub x: [Foo; 5],
 }
-impl TryFrom<&Bar> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Bar) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Bar> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Bar) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
-}
 impl Bar {
     pub fn x(&self) -> &[Foo; 5] {
         &self.x

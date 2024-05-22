@@ -28,18 +28,6 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
 pub struct Test {
     pub r#type: u8,
 }
-impl TryFrom<&Test> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Test) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Test> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Test) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
-}
 impl Test {
     pub fn r#type(&self) -> u8 {
         self.r#type

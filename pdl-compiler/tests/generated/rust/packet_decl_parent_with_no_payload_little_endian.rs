@@ -86,18 +86,6 @@ impl From<Enum8> for u64 {
 pub struct Parent {
     pub v: Enum8,
 }
-impl TryFrom<&Parent> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Parent) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Parent> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Parent) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
-}
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParentChild {
@@ -152,21 +140,20 @@ impl TryFrom<&Parent> for Child {
         Child::decode_partial(&parent)
     }
 }
+impl TryFrom<Parent> for Child {
+    type Error = DecodeError;
+    fn try_from(parent: Parent) -> Result<Child, Self::Error> {
+        (&parent).try_into()
+    }
+}
 impl From<&Child> for Parent {
     fn from(packet: &Child) -> Parent {
         Parent { v: Enum8::A }
     }
 }
-impl TryFrom<&Child> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Child) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Child> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Child) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
+impl From<Child> for Parent {
+    fn from(packet: Child) -> Parent {
+        (&packet).into()
     }
 }
 impl Child {

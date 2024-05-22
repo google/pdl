@@ -325,20 +325,6 @@ fn generate_root_packet_decl(
             #payload_field
         }
 
-        impl TryFrom<&#name> for Bytes {
-            type Error = EncodeError;
-            fn try_from(packet: &#name) -> Result<Self, Self::Error> {
-                packet.encode_to_bytes()
-            }
-        }
-
-        impl TryFrom<&#name> for Vec<u8> {
-            type Error = EncodeError;
-            fn try_from(packet: &#name) -> Result<Self, Self::Error> {
-                packet.encode_to_vec()
-            }
-        }
-
         #child_struct
 
         impl #name {
@@ -562,6 +548,13 @@ fn generate_derived_packet_decl(
                         })
                     }
                 }
+
+                impl TryFrom<#name> for #parent_name {
+                    type Error = EncodeError;
+                    fn try_from(packet: #name) -> Result<#parent_name, Self::Error> {
+                        (&packet).try_into()
+                    }
+                }
             }
         } else {
             quote! {
@@ -570,6 +563,12 @@ fn generate_derived_packet_decl(
                         #parent_name {
                             #( #parent_data_field_ids: #parent_data_field_values, )*
                         }
+                    }
+                }
+
+                impl From<#name> for #parent_name {
+                    fn from(packet: #name) -> #parent_name {
+                        (&packet).into()
                     }
                 }
             }
@@ -585,6 +584,13 @@ fn generate_derived_packet_decl(
                     (&#parent_name::try_from(packet)?).try_into()
                 }
             }
+
+            impl TryFrom<#name> for #ancestor_name {
+                type Error = EncodeError;
+                fn try_from(packet: #name) -> Result<#ancestor_name, Self::Error> {
+                    (&packet).try_into()
+                }
+            }
         }
     });
 
@@ -597,6 +603,13 @@ fn generate_derived_packet_decl(
             type Error = DecodeError;
             fn try_from(parent: &#parent_name) -> Result<#name, Self::Error> {
                 #name::decode_partial(&parent)
+            }
+        }
+
+        impl TryFrom<#parent_name> for #name {
+            type Error = DecodeError;
+            fn try_from(parent: #parent_name) -> Result<#name, Self::Error> {
+                (&parent).try_into()
             }
         }
     };
@@ -673,20 +686,6 @@ fn generate_derived_packet_decl(
         #try_from_parent
         #into_parent
         #( #into_ancestors )*
-
-        impl TryFrom<&#name> for Bytes {
-            type Error = EncodeError;
-            fn try_from(packet: &#name) -> Result<Self, Self::Error> {
-                packet.encode_to_bytes()
-            }
-        }
-
-        impl TryFrom<&#name> for Vec<u8> {
-            type Error = EncodeError;
-            fn try_from(packet: &#name) -> Result<Self, Self::Error> {
-                packet.encode_to_vec()
-            }
-        }
 
         #child_struct
 
