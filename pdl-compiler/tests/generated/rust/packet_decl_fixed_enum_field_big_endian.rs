@@ -94,18 +94,6 @@ impl From<Enum7> for u64 {
 pub struct Foo {
     pub b: u64,
 }
-impl TryFrom<&Foo> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Foo> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
-}
 impl Foo {
     pub fn b(&self) -> u64 {
         self.b

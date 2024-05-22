@@ -81,18 +81,6 @@ pub struct Foo {
     pub b: Enum16,
     pub payload: Vec<u8>,
 }
-impl TryFrom<&Foo> for Bytes {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Foo> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Foo) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
-    }
-}
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FooChild {
@@ -195,6 +183,12 @@ impl TryFrom<&Foo> for Bar {
         Bar::decode_partial(&parent)
     }
 }
+impl TryFrom<Foo> for Bar {
+    type Error = DecodeError;
+    fn try_from(parent: Foo) -> Result<Bar, Self::Error> {
+        (&parent).try_into()
+    }
+}
 impl TryFrom<&Bar> for Foo {
     type Error = EncodeError;
     fn try_from(packet: &Bar) -> Result<Foo, Self::Error> {
@@ -207,16 +201,10 @@ impl TryFrom<&Bar> for Foo {
         })
     }
 }
-impl TryFrom<&Bar> for Bytes {
+impl TryFrom<Bar> for Foo {
     type Error = EncodeError;
-    fn try_from(packet: &Bar) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Bar> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Bar) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
+    fn try_from(packet: Bar) -> Result<Foo, Self::Error> {
+        (&packet).try_into()
     }
 }
 impl Bar {
@@ -295,6 +283,12 @@ impl TryFrom<&Foo> for Baz {
         Baz::decode_partial(&parent)
     }
 }
+impl TryFrom<Foo> for Baz {
+    type Error = DecodeError;
+    fn try_from(parent: Foo) -> Result<Baz, Self::Error> {
+        (&parent).try_into()
+    }
+}
 impl TryFrom<&Baz> for Foo {
     type Error = EncodeError;
     fn try_from(packet: &Baz) -> Result<Foo, Self::Error> {
@@ -307,16 +301,10 @@ impl TryFrom<&Baz> for Foo {
         })
     }
 }
-impl TryFrom<&Baz> for Bytes {
+impl TryFrom<Baz> for Foo {
     type Error = EncodeError;
-    fn try_from(packet: &Baz) -> Result<Self, Self::Error> {
-        packet.encode_to_bytes()
-    }
-}
-impl TryFrom<&Baz> for Vec<u8> {
-    type Error = EncodeError;
-    fn try_from(packet: &Baz) -> Result<Self, Self::Error> {
-        packet.encode_to_vec()
+    fn try_from(packet: Baz) -> Result<Foo, Self::Error> {
+        (&packet).try_into()
     }
 }
 impl Baz {
