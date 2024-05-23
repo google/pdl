@@ -652,7 +652,7 @@ impl<'a> FieldParser<'a> {
 
         self.tokens.extend(match self.schema.decl_size(decl.key) {
             analyzer::Size::Unknown | analyzer::Size::Dynamic => quote! {
-                let (#id, #span) = #type_id::decode(#span)?;
+                let (#id, mut #span) = #type_id::decode(#span)?;
             },
             analyzer::Size::Static(width) => {
                 assert_eq!(width % 8, 0, "Typedef field type size is not a multiple of 8");

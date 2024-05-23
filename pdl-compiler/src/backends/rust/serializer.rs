@@ -132,10 +132,10 @@ impl Encoder {
                     #put_uint;
                 }
             }
-            ast::DeclDesc::Struct { .. } => quote! {
+            ast::DeclDesc::Struct { .. } | ast::DeclDesc::CustomField { .. } => quote! {
                 self.#id.encode(#buf)?;
             },
-            _ => unreachable!(),
+            _ => todo!("{:?}", decl),
         });
 
         match schema.decl_size(decl.key) {

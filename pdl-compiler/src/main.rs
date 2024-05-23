@@ -69,6 +69,11 @@ struct Opt {
     #[argh(option)]
     /// exclude declarations from the generated output.
     exclude_declaration: Vec<String>,
+
+    #[argh(option)]
+    /// custom_field import paths.
+    /// For the rust backend this is a path e.g. "module::CustomField" or "super::CustomField".
+    custom_field: Vec<String>,
 }
 
 /// Remove declarations listed in the input filter.
@@ -109,7 +114,10 @@ fn generate_backend(opt: &Opt) -> Result<(), String> {
                     println!("{}", backends::json::generate(&file).unwrap())
                 }
                 OutputFormat::Rust => {
-                    println!("{}", backends::rust::generate(&sources, &analyzed_file))
+                    println!(
+                        "{}",
+                        backends::rust::generate(&sources, &analyzed_file, &opt.custom_field)
+                    )
                 }
                 OutputFormat::RustLegacy => {
                     println!("{}", backends::rust_legacy::generate(&sources, &analyzed_file))
