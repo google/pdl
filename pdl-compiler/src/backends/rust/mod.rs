@@ -1049,6 +1049,11 @@ fn generate_decl(
         ast::DeclDesc::CustomField { id, width: Some(width), .. } => {
             generate_custom_field_decl(file.endianness.value, id, *width)
         }
+        ast::DeclDesc::CustomField { .. } => {
+            // No need to generate anything for a custom field,
+            // we just assume it will be in scope.
+            quote!()
+        }
         _ => todo!("unsupported Decl::{:?}", decl),
     }
 }
@@ -1060,15 +1065,21 @@ fn generate_decl(
 pub fn generate_tokens(
     sources: &ast::SourceDatabase,
     file: &ast::File,
+    custom_fields: &[String],
 ) -> proc_macro2::TokenStream {
     let source = sources.get(file.file).expect("could not read source");
     let preamble = preamble::generate(Path::new(source.name()));
 
     let scope = analyzer::Scope::new(file).expect("could not create scope");
     let schema = analyzer::Schema::new(file);
+    let custom_fields = custom_fields.iter().map(|custom_field| {
+        syn::parse_str::<syn::Path>(custom_field)
+            .unwrap_or_else(|err| panic!("invalid path '{custom_field}': {err:?}"))
+    });
     let decls = file.declarations.iter().map(|decl| generate_decl(&scope, &schema, file, decl));
     quote! {
         #preamble
+        #(use #custom_fields;)*
 
         #(#decls)*
     }
@@ -1078,8 +1089,13 @@ pub fn generate_tokens(
 ///
 /// The code is not formatted, pipe it through `rustfmt` to get
 /// readable source code.
-pub fn generate(sources: &ast::SourceDatabase, file: &ast::File) -> String {
-    let syntax_tree = syn::parse2(generate_tokens(sources, file)).expect("Could not parse code");
+pub fn generate(
+    sources: &ast::SourceDatabase,
+    file: &ast::File,
+    custom_fields: &[String],
+) -> String {
+    let syntax_tree =
+        syn::parse2(generate_tokens(sources, file, custom_fields)).expect("Could not parse code");
     prettyplease::unparse(&syntax_tree)
 }
 
@@ -1117,7 +1133,7 @@ mod tests {
                     let mut db = ast::SourceDatabase::new();
                     let file = parse_inline(&mut db, "test", code).unwrap();
                     let file = analyzer::analyze(&file).unwrap();
-                    let actual_code = generate(&db, &file);
+                    let actual_code = generate(&db, &file, &[]);
                     assert_snapshot_eq(
                         &format!("tests/generated/rust/{name}_{endianness}.rs"),
                         &format_rust(&actual_code),
