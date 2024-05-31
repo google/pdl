@@ -3,4 +3,5 @@ members = [
     "pdl-compiler",
     "pdl-derive",
     "pdl-runtime",
+    "pdl-tests",
 ]
