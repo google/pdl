@@ -74,6 +74,47 @@ fn pdl_proc_macro(path: syn::LitStr, input: syn::ItemMod) -> TokenStream {
     }
 }
 
+fn pdl_inline_proc_macro(code: syn::LitStr, input: syn::ItemMod) -> TokenStream {
+    // Load and parse the grammar.
+    let mut sources = pdl_compiler::ast::SourceDatabase::new();
+    let file = match pdl_compiler::parser::parse_inline(&mut sources, "stdin", code.value()) {
+        Ok(file) => file,
+        Err(err) => {
+            let mut buffer = termcolor::Buffer::no_color();
+            term::emit(&mut buffer, &term::Config::default(), &sources, &err)
+                .expect("could not emit parser diagnostics");
+            return syn::Error::new(code.span(), String::from_utf8(buffer.into_inner()).unwrap())
+                .to_compile_error();
+        }
+    };
+
+    // Run the analyzer.
+    let analyzed_file = match pdl_compiler::analyzer::analyze(&file) {
+        Ok(file) => file,
+        Err(diagnostics) => {
+            let mut buffer = termcolor::Buffer::no_color();
+            diagnostics.emit(&sources, &mut buffer).expect("could not emit analyzer diagnostics");
+            return syn::Error::new(code.span(), String::from_utf8(buffer.into_inner()).unwrap())
+                .to_compile_error();
+        }
+    };
+
+    // Generate the pdl backend implementation.
+    let parser = pdl_compiler::backends::rust::generate_tokens(&sources, &analyzed_file, &[]);
+    let mod_ident = input.ident;
+    let mod_attrs = input.attrs;
+    let mod_vis = input.vis;
+    let mod_items = input.content.map(|(_, items)| items).unwrap_or_default();
+
+    quote! {
+        #(#mod_attrs)*
+        #mod_vis mod #mod_ident {
+            #parser
+            #(#mod_items)*
+        }
+    }
+}
+
 /// The main method that's called by the proc macro
 /// (a wrapper around `pest_generator::derive_parser`)
 #[proc_macro_attribute]
@@ -86,8 +127,21 @@ pub fn pdl(
     pdl_proc_macro(attr, input).into()
 }
 
+/// The main method that's called by the proc macro
+/// (a wrapper around `pest_generator::derive_parser`)
+#[proc_macro_attribute]
+pub fn pdl_inline(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let attr = parse_macro_input!(attr as syn::LitStr);
+    let input = parse_macro_input!(input as syn::ItemMod);
+    pdl_inline_proc_macro(attr, input).into()
+}
+
 #[cfg(test)]
 mod test {
+    use super::pdl_inline_proc_macro;
     use super::pdl_proc_macro;
     use proc_macro2::TokenStream;
     use quote::quote;
@@ -162,6 +216,57 @@ mod test {
         assert!(is_compile_error(
             pdl_proc_macro(
                 make_attr(quote! { "src/test_analyzer_error.pdl" }),
+                make_input(quote! { mod Test {} }),
+            ),
+            Some("error[E")
+        ));
+    }
+
+    #[test]
+    fn test_derive_valid_inline() {
+        assert!(!is_compile_error(
+            pdl_inline_proc_macro(
+                make_attr(quote! {
+                r#"
+                    little_endian_packets
+                    packet Prout {
+                        x: 8,
+                    }
+                "# }),
+                make_input(quote! { mod Test {} }),
+            ),
+            None
+        ));
+    }
+
+    #[test]
+    fn test_derive_parser_error_inline() {
+        assert!(is_compile_error(
+            pdl_inline_proc_macro(
+                make_attr(quote! {
+                r#"
+                    little_endian_packets
+                    enum A {
+                        X = 0
+                    }
+                "# }),
+                make_input(quote! { mod Test {} }),
+            ),
+            Some("error: failed to parse input file")
+        ));
+    }
+
+    #[test]
+    fn test_derive_analyzer_error_inline() {
+        assert!(is_compile_error(
+            pdl_inline_proc_macro(
+                make_attr(quote! {
+                r#"
+                    little_endian_packets
+                    packet A {
+                        x: Unknown,
+                    }
+                "# }),
                 make_input(quote! { mod Test {} }),
             ),
             Some("error[E")
