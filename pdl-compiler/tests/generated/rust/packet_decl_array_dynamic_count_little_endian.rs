@@ -39,7 +39,7 @@ impl Foo {
 }
 impl Packet for Foo {
     fn encoded_len(&self) -> usize {
-        1 + self.x.len() * 3
+        1 + (self.x.len() * 3)
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         if self.x.len() > 0x1f {

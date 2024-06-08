@@ -539,9 +539,10 @@ impl Encoder {
         };
 
         let array_size = match element_width {
+            Some(8) => quote! { self.#id.len() },
             Some(element_width) => {
                 let element_size = proc_macro2::Literal::usize_unsuffixed(element_width / 8);
-                quote! { self.#id.len() * #element_size }
+                quote! { (self.#id.len() * #element_size) }
             }
             _ => {
                 quote! {

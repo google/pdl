@@ -35,7 +35,7 @@ impl Foo {
 }
 impl Packet for Foo {
     fn encoded_len(&self) -> usize {
-        self.inner.len() * 1
+        self.inner.len()
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         for elem in &self.inner {

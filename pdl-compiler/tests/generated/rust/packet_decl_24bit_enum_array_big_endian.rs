@@ -81,7 +81,7 @@ impl Bar {
 }
 impl Packet for Bar {
     fn encoded_len(&self) -> usize {
-        self.x.len() * 3
+        (self.x.len() * 3)
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         for elem in &self.x {
