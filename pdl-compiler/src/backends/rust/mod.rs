@@ -21,14 +21,14 @@ use std::collections::HashMap;
 use std::path::Path;
 use syn::LitInt;
 
-mod parser;
+mod decoder;
+mod encoder;
 mod preamble;
-mod serializer;
 pub mod test;
 mod types;
 
 pub use heck::ToUpperCamelCase;
-use parser::FieldParser;
+use decoder::FieldParser;
 
 pub trait ToIdent {
     /// Generate a sanitized rust identifier.
@@ -231,7 +231,7 @@ fn generate_root_packet_decl(
     }
 
     let (encode_fields, encoded_len) =
-        serializer::encode(scope, schema, endianness, "buf".to_ident(), decl);
+        encoder::encode(scope, schema, endianness, "buf".to_ident(), decl);
 
     let encode = quote! {
          fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
@@ -431,7 +431,7 @@ fn generate_derived_packet_decl(
     }
 
     let (partial_field_serializer, field_serializer, encoded_len) =
-        serializer::encode_partial(scope, schema, endianness, "buf".to_ident(), decl);
+        encoder::encode_partial(scope, schema, endianness, "buf".to_ident(), decl);
 
     let encode_partial = quote! {
         pub fn encode_partial(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
