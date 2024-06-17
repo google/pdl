@@ -116,7 +116,7 @@ impl Foo {
 }
 impl Packet for Foo {
     fn encoded_len(&self) -> usize {
-        56
+        7
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         buf.put_uint_le(u32::from(self.a) as u64, 3);

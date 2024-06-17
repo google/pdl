@@ -139,7 +139,7 @@ impl Encoder {
         });
 
         match schema.decl_size(decl.key) {
-            analyzer::Size::Static(s) => self.packet_size.constant += s,
+            analyzer::Size::Static(s) => self.packet_size.constant += s / 8,
             _ => self.packet_size.variable.push(quote! { self.#id.encoded_len() }),
         }
     }
