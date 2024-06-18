@@ -86,7 +86,7 @@ impl Bar {
 }
 impl Packet for Bar {
     fn encoded_len(&self) -> usize {
-        self.a.iter().map(Packet::encoded_len).sum::<usize>()
+        128
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         let array_size = self.a.iter().map(Packet::encoded_len).sum::<usize>();

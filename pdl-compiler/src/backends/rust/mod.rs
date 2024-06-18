@@ -27,8 +27,8 @@ mod preamble;
 pub mod test;
 mod types;
 
-pub use heck::ToUpperCamelCase;
 use decoder::FieldParser;
+pub use heck::ToUpperCamelCase;
 
 pub trait ToIdent {
     /// Generate a sanitized rust identifier.

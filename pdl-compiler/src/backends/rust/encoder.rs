@@ -579,7 +579,11 @@ impl Encoder {
             }
         });
 
-        self.packet_size.variable.push(array_size)
+        if let Some(padding_size) = padding_size {
+            self.packet_size.constant += padding_size / 8;
+        } else {
+            self.packet_size.variable.push(array_size);
+        }
     }
 
     fn encode_field(
