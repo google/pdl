@@ -110,6 +110,7 @@ fn generate_unit_tests(input: &str, packet_names: &[&str]) -> Result<String, Str
                 fn #parse_test_name() {
                     let packed = #packed;
                     let actual = #packet_name::decode_full(&packed).unwrap();
+                    assert_eq!(actual.encoded_len(), packed.len());
                     #(#assertions)*
                 }
 
@@ -118,6 +119,7 @@ fn generate_unit_tests(input: &str, packet_names: &[&str]) -> Result<String, Str
                     let packet: #packet_name = serde_json::from_str(#json)
                         .expect("Could not create packet from canonical JSON data");
                     let packed: Vec<u8> = #packed;
+                    assert_eq!(packet.encoded_len(), packed.len());
                     assert_eq!(packet.encode_to_vec(), Ok(packed));
                 }
             });
