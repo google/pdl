@@ -76,6 +76,8 @@ pub enum EncodeError {
         expected_size: usize,
         element_index: usize,
     },
+    #[error("{packet}.{field} value cannot be uniquely determined")]
+    InconsistentConditionValue { packet: &'static str, field: &'static str},
 }
 
 /// Trait implemented for all toplevel packet declarations.

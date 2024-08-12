@@ -144,7 +144,7 @@ pub enum FieldDesc {
     /// Special case of Scalar for fields used as condition for
     /// optional fields. The width is always 1.
     #[serde(rename = "flag_field")]
-    Flag { id: String, optional_field_id: String, set_value: usize },
+    Flag { id: String, optional_field_ids: Vec<(String, usize)> },
     #[serde(rename = "typedef_field")]
     Typedef { id: String, type_id: String },
     #[serde(rename = "group_field")]

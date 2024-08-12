@@ -237,12 +237,45 @@ impl Encoder {
         let shift = self.bit_shift;
 
         match &field.desc {
-            ast::FieldDesc::Flag { optional_field_id, set_value, .. } => {
+            ast::FieldDesc::Flag { optional_field_ids, .. } => {
+                let packet_name = &self.packet_name;
+                let field_id = field.id().unwrap();
+                let (optional_field_id, set_value) = &optional_field_ids[0];
                 let optional_field_id = optional_field_id.to_ident();
+
                 let cond_value_present =
                     syn::parse_str::<syn::LitInt>(&format!("{}", set_value)).unwrap();
                 let cond_value_absent =
                     syn::parse_str::<syn::LitInt>(&format!("{}", 1 - set_value)).unwrap();
+
+                if optional_field_ids.len() >= 2 {
+
+                    self.tokens.extend(quote! {
+                        let mut cond_value_is_zero = false;
+                        let mut cond_value_is_one = false;
+                    });
+
+                    for (optional_cond_field, value) in optional_field_ids {
+                        let optional_cond_field_tok = optional_cond_field.to_ident();
+                        if *value == 1 {
+                            self.tokens.extend(quote! { cond_value_is_one |= self.#optional_cond_field_tok.is_some();} );
+                            self.tokens.extend(quote! { cond_value_is_zero |= self.#optional_cond_field_tok.is_none();} );
+                        } else {
+                            self.tokens.extend(quote! { cond_value_is_one |= self.#optional_cond_field_tok.is_none();} );
+                            self.tokens.extend(quote! { cond_value_is_zero |= self.#optional_cond_field_tok.is_some();} );
+                        }
+                    }
+
+                    self.tokens.extend(quote! {
+                        if cond_value_is_zero && cond_value_is_one {
+                            return Err(EncodeError::InconsistentConditionValue {
+                                packet: #packet_name,
+                                field: #field_id,
+                            })
+                        }
+                    });
+                }
+
                 self.bit_fields.push(BitField {
                     value: quote! {
                         if self.#optional_field_id.is_some() {
