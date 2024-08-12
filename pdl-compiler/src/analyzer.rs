@@ -137,7 +137,6 @@ pub enum ErrorCode {
     InvalidConditionIdentifier = 47,
     InvalidConditionValue = 48,
     E49 = 49,
-    ReusedConditionIdentifier = 50,
     InvalidFieldOffset = 51,
     InvalidFieldSize = 52,
     InvalidPacketSize = 53,
@@ -1517,7 +1516,6 @@ fn check_optional_fields(file: &File) -> Result<(), Diagnostics> {
     let mut diagnostics: Diagnostics = Default::default();
     for decl in &file.declarations {
         let mut local_scope: HashMap<String, &Field> = HashMap::new();
-        let mut condition_ids: HashMap<String, &Field> = HashMap::new();
         for field in decl.fields() {
             if let Some(ref cond) = field.cond {
                 match &field.desc {
@@ -1597,20 +1595,6 @@ fn check_optional_fields(file: &File) -> Result<(), Diagnostics> {
                             .with_notes(vec!["note: expected 0 or 1".to_owned()]),
                     ),
                     _ => unreachable!(),
-                }
-                if let Some(prev_field) = condition_ids.insert(cond.id.to_owned(), field) {
-                    diagnostics.push(
-                        Diagnostic::error()
-                            .with_code(ErrorCode::ReusedConditionIdentifier)
-                            .with_message("reused condition identifier".to_owned())
-                            .with_labels(vec![
-                                field.loc.primary(),
-                                prev_field
-                                    .loc
-                                    .secondary()
-                                    .with_message(format!("`{}` is first used here", cond.id)),
-                            ]),
-                    )
                 }
             }
             if let Some(id) = field.id() {
@@ -1817,25 +1801,24 @@ fn desugar_flags(file: &mut File) {
             | DeclDesc::Struct { fields, .. }
             | DeclDesc::Group { fields, .. } => {
                 // Gather information about condition flags.
-                let mut condition_ids: HashMap<String, (String, usize)> = HashMap::new();
+                let mut condition_ids: HashMap<String, Vec<(String, usize)>> = HashMap::new();
                 for field in fields.iter() {
                     if let Some(ref cond) = field.cond {
-                        condition_ids.insert(
-                            cond.id.to_owned(),
-                            (field.id().unwrap().to_owned(), cond.value.unwrap()),
+
+                        condition_ids.entry(cond.id.to_owned()).or_default().push(
+                            (field.id().unwrap().to_owned(), cond.value.unwrap())
                         );
                     }
                 }
                 // Replace condition flags in the fields.
                 for field in fields.iter_mut() {
-                    if let Some((optional_field_id, set_value)) =
+                    if let Some(optional_field_ids) =
                         field.id().and_then(|id| condition_ids.get(id))
                     {
                         field.desc = FieldDesc::Flag {
                             id: field.id().unwrap().to_owned(),
-                            optional_field_id: optional_field_id.to_owned(),
-                            set_value: *set_value,
-                        }
+                            optional_field_ids: optional_field_ids.to_owned(),
+                        };
                     }
                 }
             }
@@ -3079,22 +3062,6 @@ mod test {
             c1 : 1 if c0 = 1,
             _reserved_ : 7,
             x : 8 if c1 = 1,
-        }
-        "#
-        );
-    }
-
-    #[test]
-    fn test_e50() {
-        raises!(
-            ReusedConditionIdentifier,
-            r#"
-        little_endian_packets
-        packet B {
-            c : 1,
-            _reserved_ : 7,
-            x : 8 if c = 1,
-            y : 8 if c = 0,
         }
         "#
         );
