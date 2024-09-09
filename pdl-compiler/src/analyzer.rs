@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use crate::ast::*;
 
 /// Field and declaration size information.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[allow(unused)]
 pub enum Size {
     /// Constant size in bits.

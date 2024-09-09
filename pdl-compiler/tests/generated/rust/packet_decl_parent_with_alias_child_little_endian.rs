@@ -103,9 +103,9 @@ pub enum ParentChild {
 impl Parent {
     pub fn specialize(&self) -> Result<ParentChild, DecodeError> {
         Ok(
-            match (self.v,) {
-                (_,) => ParentChild::AliasChild(self.try_into()?),
-                (Enum8::A,) => ParentChild::NormalChild(self.try_into()?),
+            match (self.v) {
+                (Enum8::B) | (Enum8::C) => ParentChild::AliasChild(self.try_into()?),
+                (Enum8::A) => ParentChild::NormalChild(self.try_into()?),
                 _ => ParentChild::None,
             },
         )
@@ -188,9 +188,9 @@ pub enum AliasChildChild {
 impl AliasChild {
     pub fn specialize(&self) -> Result<AliasChildChild, DecodeError> {
         Ok(
-            match (self.v,) {
-                (Enum8::B,) => AliasChildChild::NormalGrandChild1(self.try_into()?),
-                (Enum8::C,) => AliasChildChild::NormalGrandChild2(self.try_into()?),
+            match (self.v) {
+                (Enum8::B) => AliasChildChild::NormalGrandChild1(self.try_into()?),
+                (Enum8::C) => AliasChildChild::NormalGrandChild2(self.try_into()?),
                 _ => AliasChildChild::None,
             },
         )

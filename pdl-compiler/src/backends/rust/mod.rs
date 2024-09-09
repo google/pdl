@@ -16,8 +16,7 @@
 
 use crate::{analyzer, ast};
 use quote::{format_ident, quote};
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use syn::LitInt;
 
@@ -114,6 +113,51 @@ fn packet_constant_fields<'a>(
         .collect::<Vec<_>>()
 }
 
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Hash)]
+enum ConstraintValue {
+    Scalar(usize),
+    Tag(String, String),
+}
+
+impl quote::ToTokens for ConstraintValue {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        tokens.extend(match self {
+            ConstraintValue::Scalar(s) => {
+                let s = proc_macro2::Literal::usize_unsuffixed(*s);
+                quote!(#s)
+            }
+            ConstraintValue::Tag(e, t) => {
+                let tag_id = format_ident!("{}", t.to_upper_camel_case());
+                let type_id = format_ident!("{}", e);
+                quote!(#type_id::#tag_id)
+            }
+        })
+    }
+}
+
+fn constraint_value_ast(
+    fields: &[&'_ ast::Field],
+    constraint: &ast::Constraint,
+) -> ConstraintValue {
+    match constraint {
+        ast::Constraint { value: Some(value), .. } => ConstraintValue::Scalar(*value),
+        ast::Constraint { tag_id: Some(tag_id), .. } => {
+            let type_id = fields
+                .iter()
+                .filter_map(|f| match &f.desc {
+                    ast::FieldDesc::Typedef { id, type_id } if id == &constraint.id => {
+                        Some(type_id)
+                    }
+                    _ => None,
+                })
+                .next()
+                .unwrap();
+            ConstraintValue::Tag(type_id.clone(), tag_id.clone())
+        }
+        _ => unreachable!("Invalid constraint: {constraint:?}"),
+    }
+}
+
 fn constraint_value(
     fields: &[&'_ ast::Field],
     constraint: &ast::Constraint,
@@ -177,6 +221,206 @@ fn implements_copy(scope: &analyzer::Scope<'_>, field: &ast::Field) -> bool {
         ast::FieldDesc::Array { .. } => false,
         _ => todo!(),
     }
+}
+
+/// Generate the implementation of the specialize method.
+///
+/// The function is generated after selecting the information from the parent
+/// packet that can be used to identify with
+/// _certainty_ the child packet.
+///
+/// The discriminant information is:
+///     - field values
+///     - payload size, to disambiguate between children of
+///       identical constant size
+///
+/// The generator will raise warnings if ambiguities remain after all
+/// information is taken into account, i.e. two child packets map to the same
+/// constraints. In this case ambiguities are resolved by trying each child
+/// in order of declaration.
+fn generate_specialize_impl(
+    scope: &analyzer::Scope<'_>,
+    schema: &analyzer::Schema,
+    decl: &ast::Decl,
+    id: &str,
+    data_fields: &[&ast::Field],
+) -> Result<proc_macro2::TokenStream, String> {
+    #[derive(PartialEq, Eq)]
+    struct SpecializeCase {
+        id: String,
+        constraints: HashMap<String, ConstraintValue>,
+        size: analyzer::Size,
+    }
+
+    fn gather_specialize_cases(
+        scope: &analyzer::Scope<'_>,
+        schema: &analyzer::Schema,
+        id: &str,
+        decl: &ast::Decl,
+        data_fields: &[&ast::Field],
+        constraints: &HashMap<String, ConstraintValue>,
+        specialize_cases: &mut Vec<SpecializeCase>,
+    ) {
+        // Add local constraints to the context.
+        let mut constraints = constraints.clone();
+        for c in decl.constraints() {
+            if data_fields.iter().any(|f| f.id() == Some(&c.id)) {
+                constraints.insert(c.id.to_owned(), constraint_value_ast(data_fields, c));
+            }
+        }
+
+        // Generate specialize cases for the child declarations.
+        for decl in scope.iter_children(decl) {
+            gather_specialize_cases(
+                scope,
+                schema,
+                id,
+                decl,
+                data_fields,
+                &constraints,
+                specialize_cases,
+            );
+        }
+
+        // Add a case for the current declaration.
+        specialize_cases.push(SpecializeCase {
+            id: id.to_owned(),
+            constraints,
+            size: schema.decl_size(decl.key) + schema.payload_size(decl.key),
+        });
+    }
+
+    // Create match cases for each child declaration: the union of
+    // tuple of constaint values and packet sizes that will specialize to this
+    // declaration.
+    let mut specialize_cases = Vec::new();
+    for child_decl in scope.iter_children(decl) {
+        gather_specialize_cases(
+            scope,
+            schema,
+            child_decl.id().unwrap(),
+            child_decl,
+            data_fields,
+            &HashMap::new(),
+            &mut specialize_cases,
+        )
+    }
+
+    // List the identifiers of fields constituting the
+    // discriminant tuple.
+    let ids = specialize_cases
+        .iter()
+        .flat_map(|case| case.constraints.keys())
+        .cloned()
+        .collect::<BTreeSet<String>>()
+        .into_iter()
+        .collect::<Vec<String>>();
+
+    fn make_specialize_case(ids: &[String], case: &SpecializeCase) -> Vec<Option<ConstraintValue>> {
+        ids.iter().map(|id| case.constraints.get(id).cloned()).collect::<Vec<_>>()
+    }
+
+    fn check_specialize_cases(
+        ids: &[String],
+        with_size: bool,
+        specialize_cases: &[SpecializeCase],
+    ) -> Result<(), String> {
+        // Check unicity of constraints.
+        let mut grouped_cases = HashMap::new();
+        for case in specialize_cases {
+            let constraints = make_specialize_case(ids, case);
+            match grouped_cases.insert(
+                (constraints, if with_size { case.size } else { analyzer::Size::Unknown }),
+                case.id.clone(),
+            ) {
+                Some(id) if id != case.id => {
+                    return Err(format!("{} and {} cannot be disambiguated", id, case.id))
+                }
+                _ => (),
+            }
+        }
+
+        Ok(())
+    }
+
+    // Check if constraints are un-amiguous, and whether the packet size
+    // is required to disambiguate.
+    // TODO(henrichataing) ambiguities should be resolved by trying each
+    // case until one is successfully parsed.
+    check_specialize_cases(&ids, true, &specialize_cases)?;
+    let with_size = check_specialize_cases(&ids, false, &specialize_cases).is_err();
+
+    // Finally group match cases by matching child declaration.
+    let mut grouped_cases = BTreeMap::new();
+    for case in specialize_cases {
+        let constraints = make_specialize_case(&ids, &case);
+        let size = if with_size { case.size } else { analyzer::Size::Unknown };
+        if constraints.iter().any(Option::is_some) || size != analyzer::Size::Unknown {
+            grouped_cases
+                .entry(case.id.clone())
+                .or_insert(BTreeSet::new())
+                .insert((constraints, size));
+        }
+    }
+
+    // Build the case values and case branches.
+    // The case are ordered by child declaration order.
+    let mut case_values = vec![];
+    let mut case_ids = vec![];
+    let child_name = format_ident!("{id}Child");
+
+    for (id, cases) in grouped_cases {
+        case_ids.push(format_ident!("{id}"));
+        case_values.push(
+            cases
+                .iter()
+                .map(|(constraints, size)| {
+                    let mut case = constraints
+                        .iter()
+                        .map(|v| match v {
+                            Some(v) => quote!(#v),
+                            None => quote!(_),
+                        })
+                        .collect::<Vec<_>>();
+                    if with_size {
+                        case.push(match size {
+                            analyzer::Size::Static(s) => {
+                                let s = proc_macro2::Literal::usize_unsuffixed(s / 8);
+                                quote!(#s)
+                            }
+                            _ => quote!(_),
+                        });
+                    }
+                    case
+                })
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    let mut field_values = ids
+        .iter()
+        .map(|id| {
+            let id = id.to_ident();
+            quote!(self.#id)
+        })
+        .collect::<Vec<_>>();
+    if with_size {
+        field_values.push(quote!(self.payload.len()));
+    }
+
+    // TODO(henrichataing) the default case is necessary only if the match
+    // is non-exhaustive.
+    Ok(quote! {
+        pub fn specialize(&self) -> Result<#child_name, DecodeError> {
+            Ok(
+                match ( #( #field_values ),* ) {
+                    #( #( ( #( #case_values ),* ) )|* =>
+                        #child_name::#case_ids(self.try_into()?), )*
+                    _ => #child_name::None,
+                }
+            )
+        }
+    })
 }
 
 /// Generate code for a root packet declaration.
@@ -277,47 +521,8 @@ fn generate_root_packet_decl(
     // Provide the implementation of the specialization function.
     // The specialization function is only provided for declarations that have
     // child packets.
-    let specialize = (!children_decl.is_empty()).then(|| {
-        // Gather fields that are constrained in immediate child declarations.
-        // Keep the fields sorted by name.
-        let constraint_fields = children_decl
-            .iter()
-            .flat_map(|decl| decl.constraints().map(|c| c.id.to_owned()))
-            .collect::<BTreeSet<_>>();
-        let constraint_ids = constraint_fields.iter().map(|id| id.to_ident());
-        let children_ids = children_decl.iter().map(|decl| decl.id().unwrap().to_ident());
-
-        // Build the case values and case branches.
-        // The case are ordered by child declaration order.
-        // TODO(henrichataing) ambiguities should be resolved by trying each
-        // case until one is successfully parsed.
-        let case_values = children_decl.iter().map(|child_decl| {
-            let constraint_values = constraint_fields.iter().map(|id| {
-                let constraint = child_decl.constraints().find(|c| &c.id == id);
-                match constraint {
-                    Some(constraint) => constraint_value(&data_fields, constraint),
-                    None => quote! { _ },
-                }
-            });
-            quote! { (#( #constraint_values, )*) }
-        });
-
-        // TODO(henrichataing) the default case is necessary only if the match
-        // is non-exhaustive.
-        let default_case = quote! { _ => #child_name::None, };
-
-        quote! {
-            pub fn specialize(&self) -> Result<#child_name, DecodeError> {
-                Ok(
-                    match (#( self.#constraint_ids, )*) {
-                        #( #case_values =>
-                            #child_name::#children_ids(self.try_into()?), )*
-                        #default_case
-                    }
-                )
-            }
-        }
-    });
+    let specialize = (!children_decl.is_empty())
+        .then(|| generate_specialize_impl(scope, schema, decl, id, &data_fields).unwrap());
 
     quote! {
         #[derive(Debug, Clone, PartialEq, Eq)]
@@ -635,47 +840,8 @@ fn generate_derived_packet_decl(
     // Provide the implementation of the specialization function.
     // The specialization function is only provided for declarations that have
     // child packets.
-    let specialize = (!children_decl.is_empty()).then(|| {
-        // Gather fields that are constrained in immediate child declarations.
-        // Keep the fields sorted by name.
-        let constraint_fields = children_decl
-            .iter()
-            .flat_map(|decl| decl.constraints().map(|c| c.id.to_owned()))
-            .collect::<BTreeSet<_>>();
-        let constraint_ids = constraint_fields.iter().map(|id| id.to_ident());
-        let children_ids = children_decl.iter().map(|decl| decl.id().unwrap().to_ident());
-
-        // Build the case values and case branches.
-        // The case are ordered by child declaration order.
-        // TODO(henrichataing) ambiguities should be resolved by trying each
-        // case until one is successfully parsed.
-        let case_values = children_decl.iter().map(|child_decl| {
-            let constraint_values = constraint_fields.iter().map(|id| {
-                let constraint = child_decl.constraints().find(|c| &c.id == id);
-                match constraint {
-                    Some(constraint) => constraint_value(&data_fields, constraint),
-                    None => quote! { _ },
-                }
-            });
-            quote! { (#( #constraint_values, )*) }
-        });
-
-        // TODO(henrichataing) the default case is necessary only if the match
-        // is non-exhaustive.
-        let default_case = quote! { _ => #child_name::None, };
-
-        quote! {
-            pub fn specialize(&self) -> Result<#child_name, DecodeError> {
-                Ok(
-                    match (#( self.#constraint_ids, )*) {
-                        #( #case_values =>
-                            #child_name::#children_ids(self.try_into()?), )*
-                        #default_case
-                    }
-                )
-            }
-        }
-    });
+    let specialize = (!children_decl.is_empty())
+        .then(|| generate_specialize_impl(scope, schema, decl, id, &data_fields).unwrap());
 
     quote! {
         #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1071,7 +1237,6 @@ pub fn generate_tokens(
 ) -> proc_macro2::TokenStream {
     let source = sources.get(file.file).expect("could not read source");
     let preamble = preamble::generate(Path::new(source.name()));
-
     let scope = analyzer::Scope::new(file).expect("could not create scope");
     let schema = analyzer::Schema::new(file);
     let custom_fields = custom_fields.iter().map(|custom_field| {

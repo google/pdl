@@ -187,7 +187,6 @@ mod child_determined_by_constant_size {
     }
 
     #[test]
-    #[should_panic]
     fn test_child2() {
         // Success
         let parent = Parent::decode_full(&[2, 42, 43]).unwrap();
@@ -195,7 +194,6 @@ mod child_determined_by_constant_size {
     }
 
     #[test]
-    #[should_panic]
     fn test_none() {
         // Payload contains too many bytes; specialize fails to produce
         // a valid child.
@@ -244,13 +242,13 @@ mod child_determined_by_constraint_and_constant_size {
         // a valid child.
         let parent = Parent::decode_full(&[1, 2, 3]).unwrap();
         assert_eq!(parent.a, 1);
-        assert!(matches!(parent.specialize(), Err(DecodeError::TrailingBytes)));
+        assert!(matches!(parent.specialize(), Ok(ParentChild::None)));
 
         // Payload contains too few bytes; specialize fails to produce
         // a valid child.
         let parent = Parent::decode_full(&[1]).unwrap();
         assert_eq!(parent.a, 1);
-        assert!(matches!(parent.specialize(), Err(DecodeError::InvalidLengthError { .. })));
+        assert!(matches!(parent.specialize(), Ok(ParentChild::None)));
     }
 
     #[test]
@@ -261,7 +259,6 @@ mod child_determined_by_constraint_and_constant_size {
     }
 
     #[test]
-    #[should_panic]
     fn test_child3() {
         // Success
         let parent = Parent::decode_full(&[2, 42, 43, 1, 0]).unwrap();
@@ -269,7 +266,6 @@ mod child_determined_by_constraint_and_constant_size {
     }
 
     #[test]
-    #[should_panic]
     fn test_none() {
         // No child matches the constraint.
         let parent = Parent::decode_full(&[4, 0]).unwrap();
@@ -284,5 +280,75 @@ mod child_determined_by_constraint_and_constant_size {
         // a valid child.
         let parent = Parent::decode_full(&[2, 1]).unwrap();
         assert!(matches!(parent.specialize(), Ok(ParentChild::None)));
+    }
+}
+
+#[pdl_inline(
+    r#"
+little_endian_packets
+
+packet Parent {
+  a: 8,
+  _payload_
+}
+
+packet Alias : Parent {
+  _payload_
+}
+
+packet Child1 : Parent (a = 1) {
+  x: 16[],
+}
+
+packet Child2 : Alias (a = 2) {
+  x: 8,
+}
+
+packet Child3 : Alias (a = 3) {
+  x: 16,
+}
+"#
+)]
+#[cfg(test)]
+mod child_determined_by_child_constraint {
+    #[test]
+    fn test_child1() {
+        // Success
+        let parent = Parent::decode_full(&[1, 42, 43]).unwrap();
+        assert_eq!(parent.specialize(), Ok(ParentChild::Child1(Child1 { x: vec![11050] })));
+
+        // Payload contains too many bytes; specialize fails to produce
+        // a valid child.
+        let parent = Parent::decode_full(&[1, 2, 3, 4]).unwrap();
+        assert_eq!(parent.a, 1);
+        assert!(matches!(parent.specialize(), Err(DecodeError::InvalidArraySize { .. })));
+
+        // Payload contains too few bytes; specialize fails to produce
+        // a valid child.
+        let parent = Parent::decode_full(&[1, 2]).unwrap();
+        assert_eq!(parent.a, 1);
+        assert!(matches!(parent.specialize(), Err(DecodeError::InvalidArraySize { .. })));
+    }
+
+    #[test]
+    fn test_alias() {
+        // Success
+        let parent = Parent::decode_full(&[2, 42]).unwrap();
+        assert_eq!(parent.specialize(), Ok(ParentChild::Alias(Alias { a: 2, payload: vec![42] })));
+
+        // Payload contains an incorrect number of bytes but the specialize
+        // function does not validate grand children.
+        let parent = Parent::decode_full(&[2, 42, 43]).unwrap();
+        assert_eq!(
+            parent.specialize(),
+            Ok(ParentChild::Alias(Alias { a: 2, payload: vec![42, 43] }))
+        );
+
+        // Success
+        let parent = Parent::decode_full(&[3, 42, 43]).unwrap();
+        assert_eq!(
+            parent.specialize(),
+            Ok(ParentChild::Alias(Alias { a: 3, payload: vec![42, 43] }))
+        );
     }
 }

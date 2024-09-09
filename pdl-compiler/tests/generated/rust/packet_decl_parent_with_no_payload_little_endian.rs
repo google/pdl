@@ -95,8 +95,8 @@ pub enum ParentChild {
 impl Parent {
     pub fn specialize(&self) -> Result<ParentChild, DecodeError> {
         Ok(
-            match (self.v,) {
-                (Enum8::A,) => ParentChild::Child(self.try_into()?),
+            match (self.v) {
+                (Enum8::A) => ParentChild::Child(self.try_into()?),
                 _ => ParentChild::None,
             },
         )
