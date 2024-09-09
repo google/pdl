@@ -91,8 +91,12 @@ pub enum ParentChild {
 impl Parent {
     pub fn specialize(&self) -> Result<ParentChild, DecodeError> {
         Ok(
-            match (self.foo,) {
-                (Enum16::A,) => ParentChild::Child(self.try_into()?),
+            match (self.bar, self.baz, self.foo) {
+                (_, _, Enum16::A)
+                | (Enum16::A, _, Enum16::A)
+                | (Enum16::A, Enum16::A, Enum16::A) => {
+                    ParentChild::Child(self.try_into()?)
+                }
                 _ => ParentChild::None,
             },
         )
@@ -241,8 +245,10 @@ pub enum ChildChild {
 impl Child {
     pub fn specialize(&self) -> Result<ChildChild, DecodeError> {
         Ok(
-            match (self.bar, self.quux) {
-                (Enum16::A, Enum16::A) => ChildChild::GrandChild(self.try_into()?),
+            match (self.bar, self.baz, self.quux) {
+                (Enum16::A, _, Enum16::A) | (Enum16::A, Enum16::A, Enum16::A) => {
+                    ChildChild::GrandChild(self.try_into()?)
+                }
                 _ => ChildChild::None,
             },
         )
@@ -389,8 +395,8 @@ pub enum GrandChildChild {
 impl GrandChild {
     pub fn specialize(&self) -> Result<GrandChildChild, DecodeError> {
         Ok(
-            match (self.baz,) {
-                (Enum16::A,) => GrandChildChild::GrandGrandChild(self.try_into()?),
+            match (self.baz) {
+                (Enum16::A) => GrandChildChild::GrandGrandChild(self.try_into()?),
                 _ => GrandChildChild::None,
             },
         )
