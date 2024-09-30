@@ -72,9 +72,11 @@ pub fn mask_bits(n: usize, suffix: &str) -> syn::LitInt {
 
 /// Return the list of fields that will appear in the generated
 /// rust structs (<Packet> and <Packet>Builder).
+///
 ///  - must be a named field
 ///  - must not be a flag
 ///  - must not appear in the packet constraints.
+///
 /// The fields are presented in declaration order, with ancestor
 /// fields declared first.
 /// The payload field _ if declared _ is handled separately.
