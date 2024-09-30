@@ -935,7 +935,10 @@ def generate_packet_parser(packet: ast.Declaration) -> List[str]:
         # is given for specialization.
         for _, child in children:
             specialization.append("try:")
-            specialization.append(f"    return {child.id}.parse(fields.copy(), payload)")
+            specialization.append(f"    child, remainder = {child.id}.parse(fields.copy(), payload)")
+            specialization.append("    if remainder:")
+            specialization.append("        raise Exception('Unexpected parsing remainder')")
+            specialization.append("    return child, span")
             specialization.append("except Exception as exn:")
             specialization.append("    pass")
 
