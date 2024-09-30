@@ -46,7 +46,6 @@ fn test_pcap() {
 }
 
 #[test]
-#[cfg(disabled)]
 fn test_jpeg() {
     // The JPEG syntax depends on struct inheritance which is currently
     // not supported. https://github.com/google/pdl/issues/62
