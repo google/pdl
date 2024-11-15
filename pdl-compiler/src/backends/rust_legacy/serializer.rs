@@ -144,7 +144,10 @@ impl<'a> FieldSerializer<'a> {
 
         match &field.desc {
             ast::FieldDesc::Flag { optional_field_ids, .. } => {
-                assert!(optional_field_ids.len() == 1, "condition flag reuse not supported by legacy generator");
+                assert!(
+                    optional_field_ids.len() == 1,
+                    "condition flag reuse not supported by legacy generator"
+                );
 
                 let (optional_field_id, set_value) = &optional_field_ids[0];
                 let optional_field_id = optional_field_id.to_ident();
