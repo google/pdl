@@ -249,7 +249,6 @@ impl Encoder {
                     syn::parse_str::<syn::LitInt>(&format!("{}", 1 - set_value)).unwrap();
 
                 if optional_field_ids.len() >= 2 {
-
                     self.tokens.extend(quote! {
                         let mut cond_value_is_zero = false;
                         let mut cond_value_is_one = false;

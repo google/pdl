@@ -1804,10 +1804,10 @@ fn desugar_flags(file: &mut File) {
                 let mut condition_ids: HashMap<String, Vec<(String, usize)>> = HashMap::new();
                 for field in fields.iter() {
                     if let Some(ref cond) = field.cond {
-
-                        condition_ids.entry(cond.id.to_owned()).or_default().push(
-                            (field.id().unwrap().to_owned(), cond.value.unwrap())
-                        );
+                        condition_ids
+                            .entry(cond.id.to_owned())
+                            .or_default()
+                            .push((field.id().unwrap().to_owned(), cond.value.unwrap()));
                     }
                 }
                 // Replace condition flags in the fields.

@@ -23,7 +23,7 @@ enum Enum16 : 16 {
    Y = 0x5678,
 }
 
-packet CondTest {
+packet Test {
   cond: 1,
   _reserved_ : 7,
   a: 8 if cond = 0,
@@ -35,46 +35,38 @@ packet CondTest {
 mod optional_field {
     #[test]
     fn test_value_0() {
-      // Success
-      let test_value_0 = CondTest {
-        a: Some(255),
-        b: None,
-      };
-      let mut buf = vec![];
-      assert!(test_value_0.encode(&mut buf).is_ok());
+        let value = Test { a: Some(255), b: None };
+        let mut encoded_value = vec![];
 
-      let decoded_cond = CondTest::decode_full(&buf).unwrap();
-      assert_eq!(decoded_cond.a, test_value_0.a);
-      assert_eq!(decoded_cond.b, test_value_0.b);
+        // The optional fields provide both the same value 0.
+        assert!(value.encode(&mut encoded_value).is_ok());
+        assert_eq!(Test::decode_full(&encoded_value), Ok(value));
     }
 
     #[test]
     fn test_value_1() {
-      // Success
-      let test_value_1 = CondTest {
-        a: None,
-        b: Some(Enum16::X),
-      };
-      let mut buf = vec![];
-      assert!(test_value_1.encode(&mut buf).is_ok());
+        let value = Test { a: None, b: Some(Enum16::X) };
+        let mut encoded_value = vec![];
 
-      let decoded_cond = CondTest::decode_full(&buf).unwrap();
-      assert_eq!(decoded_cond.a, test_value_1.a);
-      assert_eq!(decoded_cond.b, test_value_1.b);
+        // The optional fields provide both the same value 0.
+        assert!(value.encode(&mut encoded_value).is_ok());
+        assert_eq!(Test::decode_full(&encoded_value), Ok(value));
     }
 
     #[test]
     fn test_value_inconsistent() {
-      let test_value_none = CondTest {
-        a: None,
-        b: None,
-      };
-      assert!(matches!(test_value_none.encode_to_vec(), Err(EncodeError::InconsistentConditionValue { .. })));
+        // The optional fields would provide the value 1 and 0
+        // for the condition flag.
+        assert!(matches!(
+            Test { a: None, b: None }.encode_to_vec(),
+            Err(EncodeError::InconsistentConditionValue { .. })
+        ));
 
-      let test_value_both = CondTest {
-        a: Some(255),
-        b: Some(Enum16::X),
-      };
-      assert!(matches!(test_value_both.encode_to_vec(), Err(EncodeError::InconsistentConditionValue { .. })));
+        // The optional fields would provide the value 0 and 1
+        // for the condition flag.
+        assert!(matches!(
+            Test { a: Some(255), b: Some(Enum16::X) }.encode_to_vec(),
+            Err(EncodeError::InconsistentConditionValue { .. })
+        ));
     }
 }
