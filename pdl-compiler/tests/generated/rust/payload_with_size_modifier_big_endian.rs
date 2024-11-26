@@ -46,7 +46,7 @@ impl Packet for Test {
                 maximum_size: 0xff,
             });
         }
-        buf.put_u8((self.payload.len() + 1) as u8);
+        buf.put_u8(((self.payload.len() + 1)) as u8);
         buf.put_slice(&self.payload);
         Ok(())
     }

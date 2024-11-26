@@ -96,7 +96,7 @@ impl Packet for Bar {
             });
         }
         let x_element_size = x_element_size as u8;
-        let value = x_size as u8 | (x_element_size << 4);
+        let value = (x_size) as u8 | (x_element_size << 4);
         buf.put_u8(value);
         for elem in &self.x {
             elem.encode(buf)?;

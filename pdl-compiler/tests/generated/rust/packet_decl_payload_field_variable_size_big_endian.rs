@@ -55,7 +55,7 @@ impl Packet for Foo {
                 maximum_size: 0xff,
             });
         }
-        buf.put_u8(self.payload.len() as u8);
+        buf.put_u8((self.payload.len()) as u8);
         buf.put_slice(&self.payload);
         buf.put_u16(self.b());
         Ok(())
