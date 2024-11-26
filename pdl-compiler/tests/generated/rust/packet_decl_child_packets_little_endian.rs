@@ -123,7 +123,7 @@ impl Packet for Foo {
                 maximum_size: 0xff,
             });
         }
-        buf.put_u8(self.payload.len() as u8);
+        buf.put_u8((self.payload.len()) as u8);
         buf.put_slice(&self.payload);
         Ok(())
     }
@@ -260,7 +260,7 @@ impl Packet for Bar {
                 maximum_size: 0xff,
             });
         }
-        buf.put_u8(1 as u8);
+        buf.put_u8((1) as u8);
         self.encode_partial(buf)?;
         Ok(())
     }
@@ -360,7 +360,7 @@ impl Packet for Baz {
                 maximum_size: 0xff,
             });
         }
-        buf.put_u8(2 as u8);
+        buf.put_u8((2) as u8);
         self.encode_partial(buf)?;
         Ok(())
     }

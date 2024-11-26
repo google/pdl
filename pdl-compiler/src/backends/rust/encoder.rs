@@ -401,7 +401,7 @@ impl Encoder {
                 });
 
                 self.bit_fields.push(BitField {
-                    value: quote!(#array_size as #field_type),
+                    value: quote!((#array_size) as #field_type),
                     field_type,
                     shift,
                 });

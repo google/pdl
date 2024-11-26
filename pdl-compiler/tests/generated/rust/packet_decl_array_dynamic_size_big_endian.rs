@@ -58,7 +58,7 @@ impl Packet for Foo {
                 maximum_value: 0x7 as u64,
             });
         }
-        let value = (self.x.len() * 3) as u8 | (self.padding() << 5);
+        let value = ((self.x.len() * 3)) as u8 | (self.padding() << 5);
         buf.put_u8(value);
         for elem in &self.x {
             buf.put_uint(*elem as u64, 3);

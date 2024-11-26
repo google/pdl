@@ -98,7 +98,7 @@ impl Packet for Bar {
                 maximum_size: 0xff_ffff_ffff_usize,
             });
         }
-        buf.put_uint_le(x_size as u64, 5);
+        buf.put_uint_le((x_size) as u64, 5);
         for elem in &self.x {
             elem.encode(buf)?;
         }

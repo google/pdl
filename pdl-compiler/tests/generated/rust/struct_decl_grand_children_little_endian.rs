@@ -126,7 +126,7 @@ impl Packet for Parent {
                 maximum_size: 0xff,
             });
         }
-        buf.put_u8(self.payload.len() as u8);
+        buf.put_u8((self.payload.len()) as u8);
         buf.put_slice(&self.payload);
         Ok(())
     }
@@ -323,7 +323,7 @@ impl Packet for Child {
                 maximum_size: 0xff,
             });
         }
-        buf.put_u8(2 + self.payload.len() as u8);
+        buf.put_u8((2 + self.payload.len()) as u8);
         self.encode_partial(buf)?;
         Ok(())
     }
@@ -460,7 +460,7 @@ impl Packet for GrandChild {
                 maximum_size: 0xff,
             });
         }
-        buf.put_u8(2 + self.payload.len() as u8);
+        buf.put_u8((2 + self.payload.len()) as u8);
         buf.put_u16_le(u16::from(self.quux()));
         self.encode_partial(buf)?;
         Ok(())
@@ -585,7 +585,7 @@ impl Packet for GrandGrandChild {
                 maximum_size: 0xff,
             });
         }
-        buf.put_u8(2 + self.payload.len() as u8);
+        buf.put_u8((2 + self.payload.len()) as u8);
         buf.put_u16_le(u16::from(self.quux()));
         self.encode_partial(buf)?;
         Ok(())
