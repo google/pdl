@@ -34,7 +34,7 @@ packet Test {
 #[cfg(test)]
 mod optional_field {
     #[test]
-    fn test_value_0() {
+    fn test_ok_value_0() {
         let value = Test { a: Some(255), b: None };
         let mut encoded_value = vec![];
 
@@ -44,7 +44,7 @@ mod optional_field {
     }
 
     #[test]
-    fn test_value_1() {
+    fn test_ok_value_1() {
         let value = Test { a: None, b: Some(Enum16::X) };
         let mut encoded_value = vec![];
 
@@ -54,7 +54,7 @@ mod optional_field {
     }
 
     #[test]
-    fn test_value_inconsistent() {
+    fn test_err_inconsistent_condition_value() {
         // The optional fields would provide the value 1 and 0
         // for the condition flag.
         assert!(matches!(
@@ -67,6 +67,54 @@ mod optional_field {
         assert!(matches!(
             Test { a: Some(255), b: Some(Enum16::X) }.encode_to_vec(),
             Err(EncodeError::InconsistentConditionValue { .. })
+        ));
+    }
+}
+
+#[pdl_inline(
+    r#"
+little_endian_packets
+
+struct Elem {
+    tag : 16,
+    _size_(value) : 16,
+    value : 8[],
+}
+
+packet Parent {
+    a : 8,
+    _size_(_payload_) : 8,
+    _payload_,
+}
+
+packet Child : Parent(a = 42) {
+    b : Elem,
+    c : Elem,
+}
+"#
+)]
+#[cfg(test)]
+mod payload_size_field {
+    #[test]
+    fn test_ok() {
+        assert_eq!(Parent { a: 1, payload: vec![] }.encode_to_vec(), Ok(vec![1, 0]));
+    }
+
+    #[test]
+    fn test_err_size_overflow() {
+        // Attempting to encode a packet with a payload size exceeding
+        // the range for the size field must fail.
+        assert!(matches!(
+            Parent { a: 42, payload: vec![1; 1024] }.encode_to_vec(),
+            Err(EncodeError::SizeOverflow { .. })
+        ));
+        assert!(matches!(
+            Child {
+                b: Elem { tag: 42, value: vec![1; 42] },
+                c: Elem { tag: 42, value: vec![1; 1024] }
+            }
+            .encode_to_vec(),
+            Err(EncodeError::SizeOverflow { .. })
         ));
     }
 }
