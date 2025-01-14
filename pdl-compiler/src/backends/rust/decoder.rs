@@ -650,7 +650,7 @@ impl<'a> FieldParser<'a> {
         let id = id.to_ident();
         let type_id = type_id.to_ident();
 
-        self.tokens.extend(match self.schema.decl_size(decl.key) {
+        self.tokens.extend(match self.schema.total_size(decl.key) {
             analyzer::Size::Unknown | analyzer::Size::Dynamic => quote! {
                 let (#id, mut #span) = #type_id::decode(#span)?;
             },
