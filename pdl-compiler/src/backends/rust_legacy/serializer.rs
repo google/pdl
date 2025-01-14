@@ -411,7 +411,7 @@ impl<'a> FieldSerializer<'a> {
             let padding_octets = padding_size / 8;
             let element_width = match &width {
                 Some(width) => Some(*width),
-                None => self.schema.decl_size(decl.unwrap().key).static_(),
+                None => self.schema.total_size(decl.unwrap().key).static_(),
             };
 
             let array_size = match element_width {

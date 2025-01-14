@@ -138,7 +138,7 @@ impl Encoder {
             _ => todo!("{:?}", decl),
         });
 
-        match schema.decl_size(decl.key) {
+        match schema.total_size(decl.key) {
             analyzer::Size::Static(s) => self.packet_size.constant += s / 8,
             _ => self.packet_size.variable.push(quote! { self.#id.encoded_len() }),
         }
@@ -567,7 +567,7 @@ impl Encoder {
 
         let element_width = match &width {
             Some(width) => Some(*width),
-            None => schema.decl_size(decl.unwrap().key).static_(),
+            None => schema.total_size(decl.unwrap().key).static_(),
         };
 
         let array_size = match element_width {
