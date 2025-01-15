@@ -189,7 +189,7 @@ trait Helpers<'i> {
     fn as_usize(&self) -> Result<usize, String>;
 }
 
-impl<'a> Context<'a> {
+impl Context<'_> {
     fn field_key(&self) -> ast::FieldKey {
         ast::FieldKey(self.key.replace(self.key.get() + 1))
     }
