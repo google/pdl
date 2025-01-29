@@ -5,6 +5,9 @@ publish = false
 edition = "2021"
 description = "PDL Rust generated code tests"
 
+[features]
+serde = []
+
 [dependencies]
 bytes = "1.4.0"
 thiserror = "1.0.47"

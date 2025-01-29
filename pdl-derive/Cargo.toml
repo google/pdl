@@ -15,6 +15,9 @@ authors = [
 exclude = ["editors/*"]
 categories = ["parsing"]
 
+[features]
+serde = []
+
 [lib]
 name = "pdl_derive"
 proc-macro = true
