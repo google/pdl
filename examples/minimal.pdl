@@ -1,0 +1,10 @@
+little_endian_packets
+
+packet Brew {
+  handle: 4,
+  spout: 5,
+  nugget: 7,
+  pizza: 63,
+  crust: 1,
+  sausage: 64,
+}

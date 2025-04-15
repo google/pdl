@@ -14,6 +14,8 @@
 
 //! PDL parser and analyzer.
 
+use std::f32::consts::E;
+
 use argh::FromArgs;
 use codespan_reporting::term::{self, termcolor};
 
@@ -24,6 +26,7 @@ use pdl_compiler::{analyzer, ast, backends, parser};
 enum OutputFormat {
     JSON,
     Rust,
+    Java,
     RustLegacy,
 }
 
@@ -34,6 +37,7 @@ impl std::str::FromStr for OutputFormat {
         match input.to_lowercase().as_str() {
             "json" => Ok(Self::JSON),
             "rust" => Ok(Self::Rust),
+            "java" => Ok(Self::Java),
             "rust_legacy" => Ok(Self::RustLegacy),
             _ => Err(format!(
                 "could not parse {:?}, valid option are 'json', 'rust', 'rust_legacy'.",
@@ -51,7 +55,7 @@ struct Opt {
     version: bool,
 
     #[argh(option, default = "OutputFormat::JSON")]
-    /// generate output in this format ("json", "rust", "rust_legacy").
+    /// generate output in this format ("json", "rust", "java", "rust_legacy",).
     /// The output will be printed on stdout in all cases.
     /// The input file is the source PDL file.
     output_format: OutputFormat,
@@ -112,19 +116,33 @@ fn generate_backend(opt: &Opt) -> Result<(), String> {
 
             match opt.output_format {
                 OutputFormat::JSON => {
-                    println!("{}", backends::json::generate(&file).unwrap())
+                    println!("{}", backends::json::generate(&file).unwrap());
+                    Ok(())
                 }
                 OutputFormat::Rust => {
                     println!(
                         "{}",
                         backends::rust::generate(&sources, &analyzed_file, &opt.custom_field)
-                    )
+                    );
+                    Ok(())
+                }
+                #[cfg(feature = "java")]
+                OutputFormat::Java => {
+                    println!(
+                        "{}",
+                        backends::java::generate(&sources, &analyzed_file, &opt.custom_field)
+                    );
+                    Ok(())
+                }
+                #[cfg(not(feature = "java"))]
+                OutputFormat::Java => {
+                    Err(String::from("For Java support, please recompile with the 'java' feature"))
                 }
                 OutputFormat::RustLegacy => {
-                    println!("{}", backends::rust_legacy::generate(&sources, &analyzed_file))
+                    println!("{}", backends::rust_legacy::generate(&sources, &analyzed_file));
+                    Ok(())
                 }
             }
-            Ok(())
         }
 
         Err(err) => {
