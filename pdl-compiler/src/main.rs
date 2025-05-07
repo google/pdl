@@ -14,7 +14,7 @@
 
 //! PDL parser and analyzer.
 
-use std::f32::consts::E;
+use std::path::Path;
 
 use argh::FromArgs;
 use codespan_reporting::term::{self, termcolor};
@@ -79,6 +79,16 @@ struct Opt {
     /// custom_field import paths.
     /// For the rust backend this is a path e.g. "module::CustomField" or "super::CustomField".
     custom_field: Vec<String>,
+
+    #[argh(option)]
+    /// directory where generated files should go.
+    /// If omitted, the generated code will be printed to stdout when supported
+    /// by the provided output format.
+    output_dir: Option<String>,
+
+    #[argh(option)]
+    /// java package to contain the generated classes.
+    java_package: Option<String>,
 }
 
 /// Remove declarations listed in the input filter.
@@ -128,11 +138,21 @@ fn generate_backend(opt: &Opt) -> Result<(), String> {
                 }
                 #[cfg(feature = "java")]
                 OutputFormat::Java => {
-                    println!(
-                        "{}",
-                        backends::java::generate(&sources, &analyzed_file, &opt.custom_field)
-                    );
-                    Ok(())
+                    let output_dir = opt.output_dir.as_ref().ok_or(String::from(
+                        "'--output-dir' is required for '--output-format java'",
+                    ))?;
+                    let package = opt
+                        .java_package
+                        .as_ref()
+                        .ok_or("'--java-package' is required for '--output-format java'")?;
+
+                    backends::java::generate(
+                        &sources,
+                        &analyzed_file,
+                        &opt.custom_field,
+                        Path::new(output_dir),
+                        package,
+                    )
                 }
                 #[cfg(not(feature = "java"))]
                 OutputFormat::Java => {
@@ -157,19 +177,35 @@ fn generate_backend(opt: &Opt) -> Result<(), String> {
 fn generate_tests(opt: &Opt) -> Result<(), String> {
     match opt.output_format {
         OutputFormat::Rust => {
-            println!("{}", backends::rust::test::generate_tests(&opt.input_file)?)
+            println!("{}", backends::rust::test::generate_tests(&opt.input_file)?);
+            Ok(())
         }
         OutputFormat::RustLegacy => {
-            println!("{}", backends::rust_legacy::test::generate_tests(&opt.input_file)?)
+            println!("{}", backends::rust_legacy::test::generate_tests(&opt.input_file)?);
+            Ok(())
         }
-        _ => {
-            return Err(format!(
-                "Canonical tests cannot be generated for the format {:?}",
-                opt.output_format
-            ))
+        #[cfg(feature = "java")]
+        OutputFormat::Java => {
+            let output_dir = opt
+                .output_dir
+                .as_ref()
+                .ok_or(String::from("'--output-dir' is required for '--output-format java'"))?;
+            let package = opt
+                .java_package
+                .as_ref()
+                .ok_or("'--java-package' is required for '--output-format java'")?;
+
+            backends::java::test::generate_tests(
+                &opt.input_file,
+                Path::new(output_dir),
+                package.clone(),
+            )
         }
+        _ => Err(format!(
+            "Canonical tests cannot be generated for the format {:?}",
+            opt.output_format
+        )),
     }
-    Ok(())
 }
 
 fn main() -> Result<(), String> {
