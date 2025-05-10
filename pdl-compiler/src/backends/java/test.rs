@@ -26,7 +26,7 @@ use std::{
     str,
 };
 
-use super::{import, write_tokens_to_file};
+use super::{import, JavaFile};
 use crate::backends::common::test::{Packet, TestVector};
 
 pub fn generate_tests(input_file: &str, output_dir: &Path, package: String) -> Result<(), String> {
@@ -36,8 +36,7 @@ pub fn generate_tests(input_file: &str, output_dir: &Path, package: String) -> R
     dir.extend(package.split("."));
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
-    JavaTestFile { packets: get_test_cases(input_file, &packets_for_test)?, package, dir }
-        .generate()
+    JavaTest { packets: get_test_cases(input_file, &packets_for_test)?, package, dir }.write_to_fs()
 }
 
 fn get_test_cases(file: &str, packet_names: &[&str]) -> Result<Vec<Packet>, String> {
@@ -49,26 +48,23 @@ fn get_test_cases(file: &str, packet_names: &[&str]) -> Result<Vec<Packet>, Stri
     Ok(packets)
 }
 
-struct JavaTestFile {
-    package: String,
+struct JavaTest {
     dir: PathBuf,
+    package: String,
     packets: Vec<Packet>,
 }
 
-impl JavaTestFile {
-    pub fn generate(&self) -> Result<(), String> {
-        let mut tokens = java::Tokens::new();
-        self.format_into(&mut tokens);
+impl JavaFile for JavaTest {
+    fn get_path(&self) -> PathBuf {
+        self.dir.join("PdlTests").with_extension("java")
+    }
 
-        write_tokens_to_file(
-            self.dir.join("PdlTests").with_extension("java"),
-            &self.package,
-            tokens,
-        )
+    fn get_package(&self) -> &str {
+        &self.package
     }
 }
 
-impl FormatInto<Java> for &JavaTestFile {
+impl FormatInto<Java> for JavaTest {
     fn format_into(self, tokens: &mut java::Tokens) {
         quote_in!(*tokens =>
             final class PdlTests {
