@@ -20,15 +20,18 @@ use genco::{
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 use std::{
     cmp,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{self, OpenOptions},
     path::{Path, PathBuf},
+    rc::Rc,
 };
 
 use crate::{
     ast::{self, EndiannessValue},
     backends::common::alignment::{ByteAligner, Chunk},
 };
+
+use super::common::alignment::Alignment;
 
 pub mod test;
 pub mod import {
@@ -65,18 +68,99 @@ pub fn generate(
     generate_classes(&file, &context).into_iter().try_for_each(|f| f.write_to_fs())
 }
 
+// TODO: Break this apart, it does multiple impls worth of work...
 fn generate_classes<'a>(file: &ast::File, context: &'a GeneratorContext) -> Vec<Class<'a>> {
+    let parent_packets: HashSet<&String> = file
+        .declarations
+        .iter()
+        .flat_map(|decl| {
+            if let ast::DeclDesc::Packet { parent_id: Some(parent_id), .. } = &decl.desc {
+                Some(parent_id)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let mut parent_classes = HashMap::new();
     let mut classes = HashMap::new();
 
     for decl in file.declarations.iter() {
         match &decl.desc {
+            // If this is a parent packet, make a new abstract class and defer parenthood to it.
+            ast::DeclDesc::Packet { id, constraints, fields, .. }
+                if parent_packets.contains(id) =>
+            {
+                let parent_name = id.to_upper_camel_case();
+                let child_name = format!("Unknown{}", id.to_upper_camel_case());
+
+                let (members, alignment) = generate_members(fields);
+
+                // TODO: Only create child packet here if this packet contains a payload. If its a parent with a
+                // body field, we don't want a 'default' child
+
+                parent_classes.insert(
+                    id,
+                    Class {
+                        name: parent_name.clone(),
+                        ctx: context,
+                        def: ClassDef::Packet {
+                            children: vec![child_name.clone()],
+                            def: PacketDef { members, alignment },
+                        },
+                    },
+                );
+
+                classes.insert(
+                    id,
+                    Class {
+                        name: child_name,
+                        ctx: context,
+                        def: ClassDef::Subpacket { parent: parent_name, def: None },
+                    },
+                );
+            }
+            // If this is a child packet, set its parent to the appropriate abstract class.
+            ast::DeclDesc::Packet { id, constraints, fields, parent_id: Some(parent_id) } => {
+                let (parent_name, children) = parent_classes
+                    .get_mut(parent_id)
+                    .and_then(|parent| {
+                        if let ClassDef::Packet { children, .. } = &mut parent.def {
+                            Some((&parent.name, children))
+                        } else {
+                            None
+                        }
+                    })
+                    .expect("Packet inherits from unknown parent");
+
+                let (members, alignment) = generate_members(fields);
+
+                let name = id.to_upper_camel_case();
+                children.push(name.clone());
+                classes.insert(
+                    id,
+                    Class {
+                        name,
+                        ctx: context,
+                        def: ClassDef::Subpacket {
+                            parent: parent_name.clone(),
+                            def: Some(PacketDef { members, alignment }),
+                        },
+                    },
+                );
+            }
+            // Otherwise, the packet has no inheritence (no parent and no children)
             ast::DeclDesc::Packet { id, constraints, fields, parent_id: None } => {
+                let (members, alignment) = generate_members(fields);
                 classes.insert(
                     id,
                     Class {
                         name: id.to_upper_camel_case(),
                         ctx: context,
-                        def: ClassDef::Packet(PacketDef::new(fields)),
+                        def: ClassDef::Packet {
+                            children: Vec::new(),
+                            def: PacketDef { members, alignment },
+                        },
                     },
                 );
             }
@@ -87,7 +171,32 @@ fn generate_classes<'a>(file: &ast::File, context: &'a GeneratorContext) -> Vec<
         }
     }
 
-    classes.into_values().collect()
+    parent_classes.into_values().chain(classes.into_values()).collect()
+}
+
+fn generate_members(fields: &Vec<ast::Field>) -> (Vec<Rc<Variable>>, Alignment<Rc<Variable>>) {
+    let mut members = Vec::new();
+    let mut aligner = ByteAligner::new(64);
+
+    for field in fields.iter() {
+        match &field.desc {
+            ast::FieldDesc::Scalar { id, width } => {
+                let variable = Rc::new(Variable {
+                    name: id.to_lower_camel_case(),
+                    ty: Type::Integral(Integral::fitting_width(*width).limit_to_int()),
+                    width: *width,
+                });
+                members.push(variable.clone());
+                aligner.add_field(variable, *width);
+            }
+            ast::FieldDesc::Payload { size_modifier } => {
+                aligner.add_payload();
+            }
+            _ => todo!(),
+        }
+    }
+
+    (members, aligner.align().expect("Failed to align members"))
 }
 
 trait JavaFile: Sized + FormatInto<Java> {
@@ -139,114 +248,104 @@ impl<'a> JavaFile for Class<'a> {
     }
 }
 
-pub enum ClassDef {
-    Packet(PacketDef),
-    Enum,
+#[derive(Debug, Clone)]
+pub enum Inherit {
+    From(String),
+    Into(Vec<String>),
 }
 
+pub enum ClassDef {
+    Packet { children: Vec<String>, def: PacketDef },
+    Subpacket { parent: String, def: Option<PacketDef> },
+}
+
+#[derive(Debug, Clone)]
 pub struct PacketDef {
-    members: Vec<Variable>,
-    chunks: Vec<Chunk<Variable>>,
+    members: Vec<Rc<Variable>>,
+    alignment: Alignment<Rc<Variable>>,
 }
 
 impl PacketDef {
-    pub fn new(fields: &Vec<ast::Field>) -> Self {
-        let mut members = vec![];
-        let mut aligner = ByteAligner::<Variable>::new(64);
-
-        for field in fields {
-            match &field.desc {
-                ast::FieldDesc::Scalar { id, width } => {
-                    let variable = Variable {
-                        ty: Type::from_width(*width).limit_to_int(),
-                        name: id.to_lower_camel_case(),
-                        width: *width,
-                    };
-
-                    aligner.add_field(variable.clone(), *width);
-                    members.push(variable);
-                }
-                _ => todo!(),
-            }
-        }
-
-        PacketDef {
-            members,
-            chunks: aligner.into_aligned_chunks().expect("Failed to align fields"),
-        }
-    }
-
-    pub fn get_byte_width(&self) -> usize {
+    pub fn static_byte_width(&self) -> usize {
         self.members.iter().map(|member| member.width).sum::<usize>() / 8
     }
 }
 
-/// The JLS specifies that operands of certain operators including
-///  - [shifts](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.19)
-///  - [bitwise operators](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.22.1)
-///
-/// are subject to [widening primitive conversion](https://docs.oracle.com/javase/specs/jls/se8/html/jls-5.html#jls-5.1.2). Effectively,
-/// this means that `byte` or `short` operands are casted to `int` before the operation. Furthermore, Java does not have unsigned types,
-/// so:
-///
-/// > A widening conversion of a signed integer value to an integral type T simply sign-extends the two's-complement representation of the integer value to fill the wider format.
-///
-/// In other words, bitwise operations on smaller types can change the binary representation of the value before the operation.
-/// To get around this, we only use types `int` and `long` for variables, even when the field would fit in something smaller. This way,
-/// we can forget that 'widening primitive conversion' is a thing and pretend that all is right with the world.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Variable {
     name: String,
     ty: Type,
     width: usize,
 }
 
-impl From<&ast::Field> for Variable {
-    fn from(field: &ast::Field) -> Self {
-        match &field.desc {
-            ast::FieldDesc::Scalar { id, width } => Variable {
-                name: id.to_lower_camel_case(),
-                ty: Type::from_width(*width),
-                width: *width,
-            },
-            _ => todo!(),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Type {
+    Integral(Integral),
+    Class(String),
+}
+
+impl Type {
+    fn width(&self) -> usize {
+        match self {
+            Type::Integral(i) => i.width(),
+            Type::Class(c) => todo!(),
         }
     }
 }
 
+impl From<Integral> for Type {
+    fn from(i: Integral) -> Self {
+        Type::Integral(i)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
-pub enum Type {
+pub enum Integral {
     Byte,
     Short,
     Int,
     Long,
 }
 
-impl Type {
-    pub fn from_width(width: usize) -> Self {
+impl Integral {
+    pub fn fitting_width(width: impl Into<usize>) -> Self {
+        let width: usize = width.into();
         if width <= 8 {
-            Type::Byte
+            Integral::Byte
         } else if width <= 16 {
-            Type::Short
+            Integral::Short
         } else if width <= 32 {
-            Type::Int
+            Integral::Int
         } else if width <= 64 {
-            Type::Long
+            Integral::Long
         } else {
             panic!("Width too large!")
         }
     }
 
+    /// The JLS specifies that operands of certain operators including
+    ///  - [shifts](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.19)
+    ///  - [bitwise operators](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.22.1)
+    ///
+    /// are subject to [widening primitive conversion](https://docs.oracle.com/javase/specs/jls/se8/html/jls-5.html#jls-5.1.2). Effectively,
+    /// this means that `byte` or `short` operands are casted to `int` before the operation. Furthermore, Java does not have unsigned types,
+    /// so:
+    ///
+    /// > A widening conversion of a signed integer value to an integral type T simply sign-extends the two's-complement representation of the integer value to fill the wider format.
+    ///
+    /// In other words, bitwise operations on smaller types can change the binary representation of the value before the operation.
+    /// To get around this, we only use types `int` and `long` for variables, even when the field would fit in something smaller. This way,
+    /// we can forget that 'widening primitive conversion' is a thing and pretend that all is right with the world.
     pub fn limit_to_int(self) -> Self {
-        cmp::max(self, Type::Int)
+        cmp::max(self, Integral::Int)
     }
 
-    pub fn get_width(&self) -> u8 {
+    pub fn width(&self) -> usize {
         match self {
-            Type::Byte => 8,
-            Type::Short => 16,
-            Type::Int => 32,
-            Type::Long => 64,
+            Integral::Byte => 8,
+            Integral::Short => 16,
+            Integral::Int => 32,
+            Integral::Long => 64,
         }
     }
 }

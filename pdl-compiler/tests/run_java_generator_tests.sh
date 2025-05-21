@@ -23,8 +23,6 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration Packet_FixedEnum_Field \
 --exclude-declaration Packet_Payload_Field_VariableSize \
 --exclude-declaration Packet_Payload_Field_SizeModifier \
---exclude-declaration Packet_Payload_Field_UnknownSize \
---exclude-declaration Packet_Payload_Field_UnknownSize_Terminal \
 --exclude-declaration Packet_Body_Field_VariableSize \
 --exclude-declaration Packet_Body_Field_UnknownSize \
 --exclude-declaration Packet_Body_Field_UnknownSize_Terminal \

@@ -1,9 +1,13 @@
 little_endian_packets
 
-packet Brew {
+packet Parent {
   handle: 4,
-  spout: 5,
-  nugget: 7,
+  spout: 4,
+  _payload_,
+  nugget: 8
+}
+
+packet Child: Parent {
   pizza: 63,
   crust: 1,
   sausage: 64,
