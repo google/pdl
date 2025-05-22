@@ -1,14 +1,15 @@
 little_endian_packets
 
-packet Parent {
-  handle: 4,
-  spout: 4,
-  _payload_,
-  nugget: 8
+packet ScalarParent {
+    a: 8,
+    _size_(_payload_): 8,
+    _payload_
 }
 
-packet Child: Parent {
-  pizza: 63,
-  crust: 1,
-  sausage: 64,
+packet EmptyParent : ScalarParent {
+    _payload_
+}
+
+packet AliasedChild_A : EmptyParent (a = 2) {
+    b: 8,
 }

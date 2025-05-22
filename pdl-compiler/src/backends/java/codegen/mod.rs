@@ -38,8 +38,8 @@ impl FormatInto<Java> for Class<'_> {
             $(match &self.def {
                 ClassDef::Packet { children, def } if children.is_empty() => $(def.gen_packet(&self.name, self.ctx)),
                 ClassDef::Packet { children, def } => $(def.gen_parent_packet(&self.name, children, self.ctx)),
-                ClassDef::Subpacket { parent, def: Some(def) } => $(def.gen_child_packet(&self.name, parent, self.ctx)),
-                ClassDef::Subpacket { parent, def: None } => $(self.gen_payload_packet(&self.name, parent)),
+                ClassDef::Subpacket { parent, def: Some(def), is_constrained } => $(def.gen_child_packet(&self.name, parent, *is_constrained, self.ctx)),
+                ClassDef::Subpacket { parent, def: None, .. } => $(self.gen_payload_packet(&self.name, parent)),
             })
         );
     }

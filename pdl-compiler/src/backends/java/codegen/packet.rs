@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+
 use genco::{
     self,
     prelude::Java,
@@ -20,6 +22,8 @@ use genco::{
     Tokens,
 };
 use heck::{self, ToUpperCamelCase};
+
+use crate::backends::java::ChildPacket;
 
 use super::{
     gen_mask, import, Chunk, Class, Expr, GeneratorContext, Integral, PacketDef, Type, Variable,
@@ -42,7 +46,7 @@ impl Class<'_> {
                     this.payload = b.payload;
                 }
 
-                protected static $parent.Builder<?> withPayload(byte[] bytes) {
+                protected static Builder withPayload(byte[] bytes) {
                     return new Builder().setPayload(bytes);
                 }
 
@@ -63,7 +67,7 @@ impl Class<'_> {
                 @Override
                 public int hashCode() { return $(&*import::ARRAYS).hashCode(payload); }
 
-                public static class Builder extends $parent.Builder<Builder> {
+                public static class Builder extends $parent.UnconstrainedBuilder<Builder> {
                     private byte[] payload;
 
                     public Builder() { }
@@ -94,7 +98,7 @@ impl PacketDef {
             public final class $name {
                 protected static int WIDTH = $(self.static_byte_width());
                 $(ctx.gen_byte_order())
-                $(self.member_defs(true))
+                $(self.member_defs(true, None))
 
                 private $name() { throw new UnsupportedOperationException(); }
 
@@ -128,7 +132,7 @@ impl PacketDef {
                 $(self.hashcode_equals_overrides(name, false))
 
                 public static class Builder {
-                    $(self.member_defs(false))
+                    $(self.member_defs(false, None))
 
                     public Builder() { }
 
@@ -136,7 +140,7 @@ impl PacketDef {
 
                     public $name build() { return new $name(this); }
 
-                    $(self.setter_defs("Builder"))
+                    $(self.setter_defs("Builder", None))
                 }
             }
         }
@@ -145,14 +149,14 @@ impl PacketDef {
     pub fn gen_parent_packet<'a>(
         &'a self,
         name: &'a String,
-        children: &'a Vec<String>,
+        children: &'a Vec<ChildPacket>,
         ctx: &'a GeneratorContext,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
-            public abstract sealed class $name permits $(for n in children join (, ) => $n) {
+            public abstract sealed class $name permits $(for n in children join (, ) => $(&n.name)) {
                 $(ctx.gen_byte_order())
                 protected static int WIDTH = $(self.static_byte_width());
-                $(self.member_defs(true))
+                $(self.member_defs(true, None))
 
                 protected $name() { throw new UnsupportedOperationException(); }
 
@@ -162,21 +166,7 @@ impl PacketDef {
                     $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
                     $(self.decoder(|member, value| quote!($(&member.ty) $(&member.name) = $value)))
 
-                    $(let mut children_iter = children.iter())
-                    $(let last = children_iter.next().unwrap())
-
-                    // TODO: Check constraints
-                    Builder<?> b;
-                    $(for child in children_iter {
-                        if (payload.length == $child.WIDTH) {
-                            b = $child.fromPayload(payload);
-                        } else
-                    }) {
-                        b = $last.withPayload(payload);
-                    }
-
-                    $(for member in self.members.iter() join (; ) => b.$(member.setter(&member.name)));
-                    return b.build();
+                    $(self.build_child_fitting_constraints(&children))
                 }
 
 
@@ -212,16 +202,30 @@ impl PacketDef {
                 $(self.hashcode_equals_overrides(name, false))
 
                 protected abstract static class Builder<B extends Builder<B>> {
-                    $(self.member_defs(false))
-
-                    public Builder() { }
+                    $(self.member_defs(false, None))
 
                     protected abstract B self();
 
                     protected abstract $name build();
-
-                    $(self.setter_defs("B"))
                 }
+
+                protected abstract static class UnconstrainedBuilder<B extends Builder<B>> extends Builder<B> {
+                    $(self.setter_defs("B", None))
+                }
+
+                $(for child in children.iter() {
+                    $(if !child.constraints.is_empty() {
+                        protected abstract static class $(&child.name)Builder<B extends Builder<B>> extends Builder<B> {
+                            protected $(&child.name)Builder() {
+                                $(for (member, value) in child.constraints.iter() {
+                                    $member = $value;
+                                })
+                            }
+
+                            $(self.setter_defs("B", Some(&child.constraints)))
+                        }
+                    })
+                })
             }
         }
     }
@@ -230,13 +234,14 @@ impl PacketDef {
         &'a self,
         name: &'a String,
         parent: &'a String,
+        is_constrained: bool,
         ctx: &'a GeneratorContext,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             public final class $name extends $parent {
                 public static int WIDTH = $parent.WIDTH + $(self.static_byte_width());
                 $(ctx.gen_byte_order())
-                $(self.member_defs(true))
+                $(self.member_defs(true, None))
 
                 private $name() { throw new UnsupportedOperationException(); }
 
@@ -273,10 +278,14 @@ impl PacketDef {
 
                 $(self.hashcode_equals_overrides(name, true))
 
-                public static class Builder extends $parent.Builder<Builder> {
-                    $(self.member_defs(false))
+                public static class Builder extends $(if is_constrained {
+                    $parent.$(name)Builder<Builder>
+                } else {
+                    $parent.UnconstrainedBuilder<Builder>
+                }) {
+                    $(self.member_defs(false, None))
 
-                    public Builder() { }
+                    public Builder() { super(); }
 
                     @Override
                     protected Builder self() { return this; }
@@ -284,16 +293,22 @@ impl PacketDef {
                     @Override
                     public $name build() { return new $name(this); }
 
-                    $(self.setter_defs("Builder"))
+                    $(self.setter_defs("Builder", None))
                 }
             }
         }
     }
 
-    fn member_defs(&self, are_final: bool) -> impl FormatInto<Java> + '_ {
+    fn member_defs<'a>(
+        &'a self,
+        are_final: bool,
+        constraints: Option<&'a HashMap<String, String>>,
+    ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(for member in self.members.iter() {
-                protected $(if are_final => final) $(&member.ty) $(&member.name);
+                protected $(if are_final => final) $(&member.ty) $(&member.name)
+                    $(if let Some(constraint) = constraints.and_then(|cs| cs.get(&member.name)) =>
+                        = $constraint);
             })
         }
     }
@@ -308,19 +323,25 @@ impl PacketDef {
         }
     }
 
-    fn setter_defs(&self, builder_type: &'static str) -> impl FormatInto<Java> + '_ {
+    fn setter_defs<'a>(
+        &'a self,
+        builder_type: &'static str,
+        constraints: Option<&'a HashMap<String, String>>,
+    ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(for member in self.members.iter() {
-                public $builder_type set$(member.name.to_upper_camel_case())($(&member.ty) $(&member.name)) {
-                    if ($(member.ty.boxed()).compareUnsigned($(&member.name), $(gen_mask(member.ty.width()))) > 0) {
-                        throw new IllegalArgumentException(
-                            "Value " + $(member.stringify())
-                            + $(quoted(format!(" too wide for field '{}' with width {}", member.name, member.ty.width())))
-                        );
+                $(if constraints.is_none_or(|cs| !cs.contains_key(&member.name)) {
+                    public $builder_type set$(member.name.to_upper_camel_case())($(&member.ty) $(&member.name)) {
+                        if ($(member.ty.boxed()).compareUnsigned($(&member.name), $(gen_mask(member.ty.width()))) > 0) {
+                            throw new IllegalArgumentException(
+                                "Value " + $(member.stringify())
+                                + $(quoted(format!(" too wide for field '{}' with width {}", member.name, member.ty.width())))
+                            );
+                        }
+                        this.$(&member.name) = $(&member.name);
+                        return self();
                     }
-                    this.$(&member.name) = $(&member.name);
-                    return self();
-                }
+                })
             })
         }
     }
@@ -439,6 +460,34 @@ impl PacketDef {
                 $(for member in members => result = 31 * result + $(member.hash_code());)
                 return result;
             }
+        }
+    }
+
+    fn build_child_fitting_constraints<'a>(
+        &'a self,
+        children: &'a Vec<ChildPacket>,
+    ) -> impl FormatInto<Java> + 'a {
+        quote_fn! {
+            $(let mut children_iter = children.iter())
+            $(let last = children_iter.next().unwrap())
+
+            Builder<?> b;
+
+            $(for child in children_iter {
+                if (payload.length == $(&child.name).WIDTH
+                    $(for member in self.members.iter() =>
+                        $(if let Some(constraint) = child.constraints.get(&member.name) =>
+                            && $(member.equals(constraint))))
+
+                ) {
+                    b = $(&child.name).fromPayload(payload);
+                } else
+            }) {
+                b = $(&last.name).withPayload(payload);
+            }
+
+            $(for member in self.members.iter() => b.$(&member.name) = $(&member.name);)
+            return b.build();
         }
     }
 }

@@ -22,12 +22,13 @@ use std::{
     cmp,
     collections::{HashMap, HashSet},
     fs::{self, OpenOptions},
+    hash::Hash,
     path::{Path, PathBuf},
     rc::Rc,
 };
 
 use crate::{
-    ast::{self, EndiannessValue},
+    ast::{self, Constraint, EndiannessValue},
     backends::common::alignment::{ByteAligner, Chunk},
 };
 
@@ -88,9 +89,7 @@ fn generate_classes<'a>(file: &ast::File, context: &'a GeneratorContext) -> Vec<
     for decl in file.declarations.iter() {
         match &decl.desc {
             // If this is a parent packet, make a new abstract class and defer parenthood to it.
-            ast::DeclDesc::Packet { id, constraints, fields, .. }
-                if parent_packets.contains(id) =>
-            {
+            ast::DeclDesc::Packet { id, fields, .. } if parent_packets.contains(id) => {
                 let parent_name = id.to_upper_camel_case();
                 let child_name = format!("Unknown{}", id.to_upper_camel_case());
 
@@ -105,7 +104,10 @@ fn generate_classes<'a>(file: &ast::File, context: &'a GeneratorContext) -> Vec<
                         name: parent_name.clone(),
                         ctx: context,
                         def: ClassDef::Packet {
-                            children: vec![child_name.clone()],
+                            children: vec![ChildPacket {
+                                name: child_name.clone(),
+                                constraints: HashMap::new(),
+                            }],
                             def: PacketDef { members, alignment },
                         },
                     },
@@ -116,7 +118,11 @@ fn generate_classes<'a>(file: &ast::File, context: &'a GeneratorContext) -> Vec<
                     Class {
                         name: child_name,
                         ctx: context,
-                        def: ClassDef::Subpacket { parent: parent_name, def: None },
+                        def: ClassDef::Subpacket {
+                            parent: parent_name,
+                            is_constrained: false,
+                            def: None,
+                        },
                     },
                 );
             }
@@ -133,10 +139,15 @@ fn generate_classes<'a>(file: &ast::File, context: &'a GeneratorContext) -> Vec<
                     })
                     .expect("Packet inherits from unknown parent");
 
+                let name = id.to_upper_camel_case();
+
+                children.push(ChildPacket {
+                    name: name.clone(),
+                    constraints: constraints.iter().map(Constraint::to_assignment).collect(),
+                });
+
                 let (members, alignment) = generate_members(fields);
 
-                let name = id.to_upper_camel_case();
-                children.push(name.clone());
                 classes.insert(
                     id,
                     Class {
@@ -144,13 +155,14 @@ fn generate_classes<'a>(file: &ast::File, context: &'a GeneratorContext) -> Vec<
                         ctx: context,
                         def: ClassDef::Subpacket {
                             parent: parent_name.clone(),
+                            is_constrained: !constraints.is_empty(),
                             def: Some(PacketDef { members, alignment }),
                         },
                     },
                 );
             }
             // Otherwise, the packet has no inheritence (no parent and no children)
-            ast::DeclDesc::Packet { id, constraints, fields, parent_id: None } => {
+            ast::DeclDesc::Packet { id, fields, parent_id: None, .. } => {
                 let (members, alignment) = generate_members(fields);
                 classes.insert(
                     id,
@@ -192,6 +204,7 @@ fn generate_members(fields: &Vec<ast::Field>) -> (Vec<Rc<Variable>>, Alignment<R
             ast::FieldDesc::Payload { size_modifier } => {
                 aligner.add_payload();
             }
+            ast::FieldDesc::Size { field_id, width } => {}
             _ => todo!(),
         }
     }
@@ -248,15 +261,9 @@ impl<'a> JavaFile for Class<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Inherit {
-    From(String),
-    Into(Vec<String>),
-}
-
 pub enum ClassDef {
-    Packet { children: Vec<String>, def: PacketDef },
-    Subpacket { parent: String, def: Option<PacketDef> },
+    Packet { children: Vec<ChildPacket>, def: PacketDef },
+    Subpacket { parent: String, is_constrained: bool, def: Option<PacketDef> },
 }
 
 #[derive(Debug, Clone)]
@@ -268,6 +275,23 @@ pub struct PacketDef {
 impl PacketDef {
     pub fn static_byte_width(&self) -> usize {
         self.members.iter().map(|member| member.width).sum::<usize>() / 8
+    }
+}
+
+pub struct ChildPacket {
+    name: String,
+    constraints: HashMap<String, String>,
+}
+
+impl Constraint {
+    fn to_assignment(&self) -> (String, String) {
+        (
+            self.id.to_lower_camel_case(),
+            self.value
+                .map(|v| v.to_string())
+                .or(self.tag_id.as_ref().map(|id| id.to_upper_camel_case()))
+                .expect("Malformed constraint"),
+        )
     }
 }
 
