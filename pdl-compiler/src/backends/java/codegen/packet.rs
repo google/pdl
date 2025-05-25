@@ -23,7 +23,7 @@ use genco::{
 };
 use heck::{self, ToUpperCamelCase};
 
-use crate::backends::java::ChildPacket;
+use crate::backends::java::{Child, Parent};
 
 use super::{
     gen_mask, import, Chunk, Class, Expr, GeneratorContext, Integral, PacketDef, Type, Variable,
@@ -33,10 +33,10 @@ impl Class<'_> {
     pub fn gen_payload_packet<'a>(
         &'a self,
         name: &'a String,
-        parent: &'a String,
+        parent_name: &'a String,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
-            public final class $name extends $parent {
+            public final class $name extends $parent_name {
                 private final byte[] payload;
 
                 private $name() { throw new UnsupportedOperationException(); }
@@ -50,7 +50,7 @@ impl Class<'_> {
                     return new Builder().setPayload(bytes);
                 }
 
-                public int width() { return $parent.WIDTH + payload.length; }
+                public int width() { return $parent_name.WIDTH + payload.length; }
 
                 byte[] getPayload() { return payload; }
 
@@ -67,7 +67,7 @@ impl Class<'_> {
                 @Override
                 public int hashCode() { return $(&*import::ARRAYS).hashCode(payload); }
 
-                public static class Builder extends $parent.UnconstrainedBuilder<Builder> {
+                public static class Builder extends $parent_name.UnconstrainedBuilder<Builder> {
                     private byte[] payload;
 
                     public Builder() { }
@@ -95,20 +95,28 @@ impl PacketDef {
         ctx: &'a GeneratorContext,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
-            public final class $name {
+            public final class $name $(if let Some(parent) = &self.parent => extends $(&parent.name)) {
                 protected static int WIDTH = $(self.static_byte_width());
                 $(ctx.gen_byte_order())
                 $(self.member_defs(true, None))
 
                 private $name() { throw new UnsupportedOperationException(); }
 
-                private $name(Builder b) { $(self.builder_assigns()) }
+                private $name(Builder b) {
+                    $(if self.parent.is_some() => super(b);)
+                    $(self.builder_assigns())
+                }
 
-                public static $name fromBytes(byte[] bytes) {
+                $(if let Some(parent) = &self.parent {
+                    protected static $(&parent.name).Builder<?> fromPayload(byte[] bytes)
+                } else {
+                    public static $name fromBytes(byte[] bytes)
+                }) {
                     $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
                     Builder b = new Builder();
                     $(self.decoder(|member, value| quote!(b.$(member.setter(value)))))
-                    return b.build();
+
+                    $(if self.parent.is_some() { return b; } else { return b.build(); })
                 }
 
                 public byte[] toBytes() {
@@ -121,22 +129,35 @@ impl PacketDef {
 
                 @Override
                 public String toString() {
-                    return $(quoted(format!("{}{{\n", name)))
+                    $(if self.parent.is_some() {
+                        String payload = $(quoted("{\n"))
+                    } else {
+                        return $(quoted(format!("{}{{\n", name)))
+                    })
+
                     $(for member in self.members.iter() {
                             + $(quoted(format!(" {}[{}]=", &member.name, member.width)))
                             + $(member.stringify()) + "\n"
                     })
                     + "}";
+
+                    $(if self.parent.is_some() => return super.toString(payload);)
                 }
 
-                $(self.hashcode_equals_overrides(name, false))
+                $(self.hashcode_equals_overrides(name, self.parent.is_some()))
 
-                public static class Builder {
+                public static final class $(match &self.parent {
+                    Some(Parent { name: parent_name, does_constrain: true }) =>
+                        Builder extends $parent_name.$(name)Builder<Builder>,
+                    Some(Parent { name: parent_name, does_constrain: false }) =>
+                        Builder extends $parent_name.$(name)UnconstrainedBuilder<Builder>,
+                    _ => Builder,
+                }) {
                     $(self.member_defs(false, None))
 
-                    public Builder() { }
+                    public Builder() { $(if self.parent.is_some() => super();) }
 
-                    private Builder self() { return this; }
+                    protected Builder self() { return this; }
 
                     public $name build() { return new $name(this); }
 
@@ -146,27 +167,38 @@ impl PacketDef {
         }
     }
 
-    pub fn gen_parent_packet<'a>(
+    pub fn gen_abstract_packet<'a>(
         &'a self,
         name: &'a String,
-        children: &'a Vec<ChildPacket>,
         ctx: &'a GeneratorContext,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
-            public abstract sealed class $name permits $(for n in children join (, ) => $(&n.name)) {
-                $(ctx.gen_byte_order())
+            public abstract sealed class $name
+            $(if let Some(parent) = &self.parent => extends $(&parent.name))
+            permits $(for child in self.children.iter() join (, ) => $(&child.name)) {
+
                 protected static int WIDTH = $(self.static_byte_width());
+                $(ctx.gen_byte_order())
                 $(self.member_defs(true, None))
 
                 protected $name() { throw new UnsupportedOperationException(); }
 
-                protected $name(Builder<?> b) { $(self.builder_assigns()) }
+                protected $name(Builder<?> b) {
+                    $(if self.parent.is_some() => super(b);)
+                    $(self.builder_assigns())
+                }
 
-                public static $name fromBytes(byte[] bytes) {
+                $(if let Some(parent) = &self.parent {
+                    protected static $(&parent.name).Builder<?> fromPayload(byte[] bytes)
+                } else {
+                    public static $name fromBytes(byte[] bytes)
+                }) {
                     $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
                     $(self.decoder(|member, value| quote!($(&member.ty) $(&member.name) = $value)))
 
-                    $(self.build_child_fitting_constraints(&children))
+                    $(self.build_child_fitting_constraints(&self.children))
+
+                    $(if self.parent.is_some() { return b; } else { return b.build(); })
                 }
 
 
@@ -178,30 +210,39 @@ impl PacketDef {
 
                 $(self.getter_defs())
 
-                protected String toString(String payload) {
-                    return getClass().getSimpleName() + $(quoted("{\n"))
-                        $(ref tokens =>
-                            let payload_offset = self.alignment.payload_offset().unwrap();
-                            let mut offset = 0;
+                $(if self.parent.is_some() => @Override)
+                protected String toString(String subPayload) {
+                    $(if self.parent.is_some() {
+                        String payload =
+                    } else {
+                        return getClass().getSimpleName() +
+                    })
 
-                            for member in self.members.iter() {
-                                if offset == payload_offset {
-                                    quote_in!(*tokens => + $(quoted("payload=")) + payload + "\n")
-                                }
-                                quote_in! {
-                                    *tokens =>
-                                        + $(quoted(format!("{}[{}]=", &member.name, member.width)))
-                                        + $(member.stringify()) + "\n"
-                                }
-                                offset += member.width;
-                            }
-                        )
+                    $(quoted("{\n"))
+                    $(for chunk in self.alignment.iter() {
+                        $(match chunk {
+                            Chunk::BitPacked { fields, .. } => $(for field in fields.iter() =>
+                                $(if !(field.is_partial && field.chunk_offset == 0) =>
+                                    + $(quoted(format!("{}[{}]=", &field.symbol.name, field.symbol.width)))
+                                    + $(field.symbol.stringify()) + "\n"
+                                )),
+                            Chunk::Payload => + $(quoted("payload=")) + subPayload + "\n",
+                        })
+                    })
                     + "}";
+
+                    $(if self.parent.is_some() => return super.toString(payload);)
                 }
 
-                $(self.hashcode_equals_overrides(name, false))
+                $(if !self.members.is_empty() => $(self.hashcode_equals_overrides(name, false)))
 
-                protected abstract static class Builder<B extends Builder<B>> {
+                protected abstract static class $(match &self.parent {
+                    Some(Parent { name: parent_name, does_constrain: true }) =>
+                        Builder<B extends $parent_name.$(name)Builder<B>> extends $parent_name.$(name)Builder<B>,
+                    Some(Parent { name: parent_name, does_constrain: false }) =>
+                        Builder<B extends $parent_name.UnconstrainedBuilder<B>> extends $parent_name.UnconstrainedBuilder<B>,
+                    _ => Builder<B extends Builder<B>>,
+                }) {
                     $(self.member_defs(false, None))
 
                     protected abstract B self();
@@ -213,7 +254,7 @@ impl PacketDef {
                     $(self.setter_defs("B", None))
                 }
 
-                $(for child in children.iter() {
+                $(for child in self.children.iter() {
                     $(if !child.constraints.is_empty() {
                         protected abstract static class $(&child.name)Builder<B extends Builder<B>> extends Builder<B> {
                             protected $(&child.name)Builder() {
@@ -226,75 +267,6 @@ impl PacketDef {
                         }
                     })
                 })
-            }
-        }
-    }
-
-    pub fn gen_child_packet<'a>(
-        &'a self,
-        name: &'a String,
-        parent: &'a String,
-        is_constrained: bool,
-        ctx: &'a GeneratorContext,
-    ) -> impl FormatInto<Java> + 'a {
-        quote_fn! {
-            public final class $name extends $parent {
-                public static int WIDTH = $parent.WIDTH + $(self.static_byte_width());
-                $(ctx.gen_byte_order())
-                $(self.member_defs(true, None))
-
-                private $name() { throw new UnsupportedOperationException(); }
-
-                private $name(Builder b) {
-                    super(b);
-                    $(self.builder_assigns())
-                }
-
-                protected static $parent.Builder<?> fromPayload(byte[] bytes) {
-                    $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
-                    Builder b = new Builder();
-                    $(self.decoder(|member, value| quote!(b.$(member.setter(value)))))
-                    return b;
-                }
-
-                public byte[] toBytes() {
-                    $(&*import::BB) buf = $(&*import::BB).allocate(WIDTH).order(BYTE_ORDER);
-                    $(self.encoder())
-                    return super.toBytes(buf);
-                }
-
-                $(self.getter_defs())
-
-                @Override
-                public String toString() {
-                    String payload = $(quoted("{\n"))
-                    $(for member in self.members.iter() {
-                            + $(quoted(format!(" {}[{}]=", &member.name, member.width)))
-                            + $(member.stringify()) + "\n"
-                    })
-                    + "}";
-                    return super.toString(payload);
-                }
-
-                $(self.hashcode_equals_overrides(name, true))
-
-                public static class Builder extends $(if is_constrained {
-                    $parent.$(name)Builder<Builder>
-                } else {
-                    $parent.UnconstrainedBuilder<Builder>
-                }) {
-                    $(self.member_defs(false, None))
-
-                    public Builder() { super(); }
-
-                    @Override
-                    protected Builder self() { return this; }
-
-                    @Override
-                    public $name build() { return new $name(this); }
-
-                    $(self.setter_defs("Builder", None))
-                }
             }
         }
     }
@@ -332,10 +304,10 @@ impl PacketDef {
             $(for member in self.members.iter() {
                 $(if constraints.is_none_or(|cs| !cs.contains_key(&member.name)) {
                     public $builder_type set$(member.name.to_upper_camel_case())($(&member.ty) $(&member.name)) {
-                        if ($(member.ty.boxed()).compareUnsigned($(&member.name), $(gen_mask(member.ty.width()))) > 0) {
+                        if ($(member.ty.boxed()).compareUnsigned($(&member.name), $(gen_mask(member.width))) > 0) {
                             throw new IllegalArgumentException(
                                 "Value " + $(member.stringify())
-                                + $(quoted(format!(" too wide for field '{}' with width {}", member.name, member.ty.width())))
+                                + $(quoted(format!(" too wide for field '{}' with width {}", member.name, member.width)))
                             );
                         }
                         this.$(&member.name) = $(&member.name);
@@ -348,7 +320,7 @@ impl PacketDef {
 
     fn builder_assigns(&self) -> impl FormatInto<Java> + '_ {
         quote_fn! {
-            $(for member in self.members.iter() join (; ) => $(&member.name) = b.$(&member.name));
+            $(for member in self.members.iter() => $(&member.name) = b.$(&member.name);)
         }
     }
 
@@ -357,15 +329,15 @@ impl PacketDef {
             $(for chunk in self.alignment.iter() {
                 $(match chunk {
                     Chunk::BitPacked { fields, width } => {
-                        $(let chunk_type = Integral::fitting_width(*width))
-                        $(let mut fields = fields.iter())
-                        $(let first = fields.next().expect("Attempt to generate encoder for chunk with no fields"))
+                    $(let chunk_type = Integral::fitting_width(*width))
+                    $(let mut fields = fields.iter())
+                    $(let first = fields.next().expect("Attempt to generate encoder for chunk with no fields"))
 
                         buf.$(chunk_type.encoder())(
                             ($chunk_type) (
                                 $(first.symbol.name.as_str()
-                                    .maybe_widen(&first.symbol.ty, chunk_type)
-                                    .maybe_shift(">>>", first.symbol_offset))
+                                .maybe_widen(&first.symbol.ty, chunk_type)
+                                .maybe_shift(">>>", first.symbol_offset))
 
                                 $(for field in fields => |
                                     $(field.symbol.name.as_str()
@@ -465,7 +437,7 @@ impl PacketDef {
 
     fn build_child_fitting_constraints<'a>(
         &'a self,
-        children: &'a Vec<ChildPacket>,
+        children: &'a Vec<Child>,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(let mut children_iter = children.iter())
@@ -487,7 +459,6 @@ impl PacketDef {
             }
 
             $(for member in self.members.iter() => b.$(&member.name) = $(&member.name);)
-            return b.build();
         }
     }
 }

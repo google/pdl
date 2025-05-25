@@ -22,7 +22,6 @@ use std::{
     cmp,
     collections::{HashMap, HashSet},
     fs::{self, OpenOptions},
-    hash::Hash,
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -69,8 +68,7 @@ pub fn generate(
     generate_classes(&file, &context).into_iter().try_for_each(|f| f.write_to_fs())
 }
 
-// TODO: Break this apart, it does multiple impls worth of work...
-fn generate_classes<'a>(file: &ast::File, context: &'a GeneratorContext) -> Vec<Class<'a>> {
+fn generate_classes<'a>(file: &'a ast::File, context: &'a GeneratorContext) -> Vec<Class<'a>> {
     let parent_packets: HashSet<&String> = file
         .declarations
         .iter()
@@ -83,83 +81,46 @@ fn generate_classes<'a>(file: &ast::File, context: &'a GeneratorContext) -> Vec<
         })
         .collect();
 
-    let mut parent_classes = HashMap::new();
-    let mut classes = HashMap::new();
+    let mut parent_classes: HashMap<&String, Class<'_>> = HashMap::new();
+    let mut classes: HashMap<&String, Class<'_>> = HashMap::new();
 
     for decl in file.declarations.iter() {
         match &decl.desc {
             // If this is a parent packet, make a new abstract class and defer parenthood to it.
-            ast::DeclDesc::Packet { id, fields, .. } if parent_packets.contains(id) => {
-                let parent_name = id.to_upper_camel_case();
-                let child_name = format!("Unknown{}", id.to_upper_camel_case());
+            ast::DeclDesc::Packet { id, fields, parent_id, constraints }
+                if parent_packets.contains(id) =>
+            {
+                let (mut parent, child) =
+                    Class::new_parent_with_default_child(id.to_upper_camel_case(), fields, context);
 
-                let (members, alignment) = generate_members(fields);
+                // This parent might also be a child
+                if let Some(parent_id) = parent_id {
+                    let grandparent = parent_classes
+                        .get_mut(parent_id)
+                        .expect("Packet inherits from unknown parent");
 
-                // TODO: Only create child packet here if this packet contains a payload. If its a parent with a
-                // body field, we don't want a 'default' child
+                    grandparent.add_child(
+                        &mut parent,
+                        constraints.iter().map(Constraint::to_assignment).collect(),
+                    );
+                }
 
-                parent_classes.insert(
-                    id,
-                    Class {
-                        name: parent_name.clone(),
-                        ctx: context,
-                        def: ClassDef::Packet {
-                            children: vec![ChildPacket {
-                                name: child_name.clone(),
-                                constraints: HashMap::new(),
-                            }],
-                            def: PacketDef { members, alignment },
-                        },
-                    },
-                );
-
-                classes.insert(
-                    id,
-                    Class {
-                        name: child_name,
-                        ctx: context,
-                        def: ClassDef::Subpacket {
-                            parent: parent_name,
-                            is_constrained: false,
-                            def: None,
-                        },
-                    },
-                );
+                parent_classes.insert(id, parent);
+                classes.insert(id, child);
             }
             // If this is a child packet, set its parent to the appropriate abstract class.
             ast::DeclDesc::Packet { id, constraints, fields, parent_id: Some(parent_id) } => {
-                let (parent_name, children) = parent_classes
-                    .get_mut(parent_id)
-                    .and_then(|parent| {
-                        if let ClassDef::Packet { children, .. } = &mut parent.def {
-                            Some((&parent.name, children))
-                        } else {
-                            None
-                        }
-                    })
-                    .expect("Packet inherits from unknown parent");
+                let parent =
+                    parent_classes.get_mut(parent_id).expect("Packet inherits from unknown parent");
 
-                let name = id.to_upper_camel_case();
-
-                children.push(ChildPacket {
-                    name: name.clone(),
-                    constraints: constraints.iter().map(Constraint::to_assignment).collect(),
-                });
-
-                let (members, alignment) = generate_members(fields);
-
-                classes.insert(
-                    id,
-                    Class {
-                        name,
-                        ctx: context,
-                        def: ClassDef::Subpacket {
-                            parent: parent_name.clone(),
-                            is_constrained: !constraints.is_empty(),
-                            def: Some(PacketDef { members, alignment }),
-                        },
-                    },
+                let child = parent.new_child(
+                    id.to_upper_camel_case(),
+                    fields,
+                    constraints.iter().map(Constraint::to_assignment).collect(),
+                    context,
                 );
+
+                classes.insert(id, child);
             }
             // Otherwise, the packet has no inheritence (no parent and no children)
             ast::DeclDesc::Packet { id, fields, parent_id: None, .. } => {
@@ -169,10 +130,12 @@ fn generate_classes<'a>(file: &ast::File, context: &'a GeneratorContext) -> Vec<
                     Class {
                         name: id.to_upper_camel_case(),
                         ctx: context,
-                        def: ClassDef::Packet {
+                        def: ClassDef::Packet(PacketDef {
+                            members,
+                            alignment,
+                            parent: None,
                             children: Vec::new(),
-                            def: PacketDef { members, alignment },
-                        },
+                        }),
                     },
                 );
             }
@@ -251,6 +214,74 @@ pub struct Class<'a> {
     def: ClassDef,
 }
 
+impl<'a> Class<'a> {
+    fn new_parent_with_default_child(
+        name: String,
+        fields: &'a Vec<ast::Field>,
+        ctx: &'a GeneratorContext,
+    ) -> (Self, Self) {
+        let child_name = format!("Unknown{}", name);
+        let (members, alignment) = generate_members(fields);
+
+        // TODO: Only create child packet here if this packet contains a payload. If its a parent with a
+        // body field, we don't want a 'default' child
+
+        (
+            Class {
+                name: name.clone(),
+                ctx,
+                def: ClassDef::AbstractPacket(PacketDef {
+                    members,
+                    alignment,
+                    parent: None,
+                    children: vec![Child { name: child_name.clone(), constraints: HashMap::new() }],
+                }),
+            },
+            Class { name: child_name, ctx, def: ClassDef::PayloadPacket { parent_name: name } },
+        )
+    }
+
+    fn new_child(
+        &mut self,
+        name: String,
+        fields: &'a Vec<ast::Field>,
+        constraints: HashMap<String, String>,
+        ctx: &'a GeneratorContext,
+    ) -> Self {
+        let (members, alignment) = generate_members(fields);
+
+        let mut child = Class {
+            name: name.clone(),
+            ctx,
+            def: ClassDef::Packet(PacketDef { members, alignment, parent: None, children: vec![] }),
+        };
+
+        self.add_child(&mut child, constraints);
+
+        child
+    }
+
+    fn add_child(&mut self, child: &mut Class, constraints: HashMap<String, String>) {
+        let child_def = match &mut child.def {
+            ClassDef::Packet(def) => def,
+            ClassDef::AbstractPacket(def) => def,
+            _ => panic!("Can't add child to non-packet"),
+        };
+        let _ = child_def
+            .parent
+            .insert(Parent { name: self.name.clone(), does_constrain: !constraints.is_empty() });
+
+        let children =
+            (if let ClassDef::AbstractPacket(PacketDef { ref mut children, .. }) = &mut self.def {
+                Some(children)
+            } else {
+                None
+            })
+            .expect("Attempt to add child to non-parent packet");
+        children.push(Child { name: child.name.clone(), constraints });
+    }
+}
+
 impl<'a> JavaFile for Class<'a> {
     fn get_path(&self) -> PathBuf {
         self.ctx.out_dir.join(&self.name).with_extension("java")
@@ -262,14 +293,17 @@ impl<'a> JavaFile for Class<'a> {
 }
 
 pub enum ClassDef {
-    Packet { children: Vec<ChildPacket>, def: PacketDef },
-    Subpacket { parent: String, is_constrained: bool, def: Option<PacketDef> },
+    Packet(PacketDef),
+    AbstractPacket(PacketDef),
+    PayloadPacket { parent_name: String },
 }
 
 #[derive(Debug, Clone)]
 pub struct PacketDef {
     members: Vec<Rc<Variable>>,
     alignment: Alignment<Rc<Variable>>,
+    parent: Option<Parent>,
+    children: Vec<Child>,
 }
 
 impl PacketDef {
@@ -278,7 +312,14 @@ impl PacketDef {
     }
 }
 
-pub struct ChildPacket {
+#[derive(Debug, Clone)]
+pub struct Parent {
+    name: String,
+    does_constrain: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Child {
     name: String,
     constraints: HashMap<String, String>,
 }

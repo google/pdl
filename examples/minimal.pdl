@@ -1,7 +1,7 @@
 little_endian_packets
 
 packet ScalarParent {
-    a: 8,
+    field_a: 8,
     _size_(_payload_): 8,
     _payload_
 }
@@ -10,6 +10,6 @@ packet EmptyParent : ScalarParent {
     _payload_
 }
 
-packet AliasedChild_A : EmptyParent (a = 2) {
-    b: 8,
+packet AliasedChild_A : EmptyParent (field_a = 2) {
+    field_c: 8,
 }

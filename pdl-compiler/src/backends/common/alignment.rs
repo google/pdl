@@ -163,17 +163,3 @@ impl<S: Symbol> DerefMut for Alignment<S> {
         &mut self.0
     }
 }
-
-impl<S: Symbol> Alignment<S> {
-    pub fn payload_offset(&self) -> Option<usize> {
-        let mut offset = 0;
-        for chunk in self.iter() {
-            if let Chunk::BitPacked { width, .. } = chunk {
-                offset += width;
-            } else {
-                return Some(offset);
-            }
-        }
-        None
-    }
-}
