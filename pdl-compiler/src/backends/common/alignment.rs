@@ -41,6 +41,8 @@ pub struct Field<S: Symbol> {
 pub enum Chunk<S: Symbol> {
     /// A chunk comprised of one or more bitpacked fields.
     BitPacked { fields: Vec<Field<S>>, width: usize },
+    /// An opaque symbol whose size is an unspecified even multiple of 8 bits.
+    Symbol(S),
     /// An opaque payload whose size is an unspecified even multiple of 8 bits.
     Payload,
 }
@@ -80,13 +82,22 @@ impl<S: Symbol> ByteAligner<S> {
         }
     }
 
+    pub fn add_symbol(&mut self, symbol: S) {
+        self.panic_if_not_at_byte_boundary();
+        self.chunks.push(Chunk::Symbol(symbol));
+    }
+
     pub fn add_payload(&mut self) {
-        match self.chunks.last() {
-            Some(Chunk::BitPacked { width, .. }) if width % 8 != 0 => {
-                panic!("Bytes must start on a byte boundary")
+        self.panic_if_not_at_byte_boundary();
+        self.chunks.push(Chunk::Payload);
+    }
+
+    fn panic_if_not_at_byte_boundary(&self) {
+        if let Some(Chunk::BitPacked { width, .. }) = self.chunks.last() {
+            if width % 8 != 0 {
+                panic!("Not on a byte boundary")
             }
-            _ => self.chunks.push(Chunk::Payload),
-        };
+        }
     }
 
     fn add_offset_field(

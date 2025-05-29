@@ -27,7 +27,7 @@ use std::{
 };
 
 use crate::{
-    ast::{self, Constraint, EndiannessValue},
+    ast::{self, Constraint, EndiannessValue, Tag, TagOther, TagRange, TagValue},
     backends::common::alignment::{ByteAligner, Chunk},
 };
 
@@ -63,6 +63,11 @@ pub fn generate(
         out_dir: dir,
         package: String::from(package),
         endianness: file.endianness.value,
+        decls: file
+            .declarations
+            .iter()
+            .flat_map(|decl| decl.id().map(|id| (String::from(id), decl.clone())))
+            .collect(),
     };
 
     generate_classes(&file, &context).into_iter().try_for_each(|f| f.write_to_fs())
@@ -124,7 +129,7 @@ fn generate_classes<'a>(file: &'a ast::File, context: &'a GeneratorContext) -> V
             }
             // Otherwise, the packet has no inheritence (no parent and no children)
             ast::DeclDesc::Packet { id, fields, parent_id: None, .. } => {
-                let (members, alignment) = generate_members(fields);
+                let (members, alignment) = generate_members(fields, context);
                 classes.insert(
                     id,
                     Class {
@@ -139,6 +144,16 @@ fn generate_classes<'a>(file: &'a ast::File, context: &'a GeneratorContext) -> V
                     },
                 );
             }
+            ast::DeclDesc::Enum { id, tags, width } => {
+                classes.insert(
+                    id,
+                    Class {
+                        name: id.to_upper_camel_case(),
+                        ctx: context,
+                        def: ClassDef::Enum { tags: tags.clone(), width: *width },
+                    },
+                );
+            }
             _ => {
                 dbg!(decl);
                 todo!()
@@ -149,7 +164,10 @@ fn generate_classes<'a>(file: &'a ast::File, context: &'a GeneratorContext) -> V
     parent_classes.into_values().chain(classes.into_values()).collect()
 }
 
-fn generate_members(fields: &Vec<ast::Field>) -> (Vec<Rc<Variable>>, Alignment<Rc<Variable>>) {
+fn generate_members<'a>(
+    fields: &'a Vec<ast::Field>,
+    ctx: &'a GeneratorContext,
+) -> (Vec<Rc<Variable>>, Alignment<Rc<Variable>>) {
     let mut members = Vec::new();
     let mut aligner = ByteAligner::new(64);
 
@@ -158,8 +176,7 @@ fn generate_members(fields: &Vec<ast::Field>) -> (Vec<Rc<Variable>>, Alignment<R
             ast::FieldDesc::Scalar { id, width } => {
                 let variable = Rc::new(Variable {
                     name: id.to_lower_camel_case(),
-                    ty: Type::Integral(Integral::fitting_width(*width).limit_to_int()),
-                    width: *width,
+                    ty: Type::integral_fitting_width(*width),
                 });
                 members.push(variable.clone());
                 aligner.add_field(variable, *width);
@@ -168,11 +185,47 @@ fn generate_members(fields: &Vec<ast::Field>) -> (Vec<Rc<Variable>>, Alignment<R
                 aligner.add_payload();
             }
             ast::FieldDesc::Size { field_id, width } => {}
-            _ => todo!(),
+            ast::FieldDesc::Typedef { id, type_id } => {
+                match &ctx.decls.get(type_id).unwrap().desc {
+                    ast::DeclDesc::Enum { id: type_id, tags, width } => {
+                        let variable = Rc::new(Variable {
+                            name: id.to_lower_camel_case(),
+                            ty: Type::EnumClass {
+                                name: type_id.to_upper_camel_case(),
+                                fits: Integral::fitting_width(*width).limit_to_int(),
+                                width: *width,
+                            },
+                        });
+                        members.push(variable.clone());
+                        aligner.add_field(variable, *width);
+                    }
+                    ast::DeclDesc::Packet { id, .. } => {
+                        let variable = Rc::new(Variable {
+                            name: id.to_lower_camel_case(),
+                            ty: Type::PacketClass(id.to_upper_camel_case()),
+                        });
+                        members.push(variable.clone());
+                        aligner.add_symbol(variable);
+                    }
+                    _ => todo!(),
+                }
+            }
+            _ => {
+                dbg!(field);
+                todo!()
+            }
         }
     }
 
     (members, aligner.align().expect("Failed to align members"))
+}
+
+pub struct GeneratorContext {
+    package: String,
+    out_dir: PathBuf,
+    pdl_src: String,
+    endianness: EndiannessValue,
+    decls: HashMap<String, ast::Decl>,
 }
 
 trait JavaFile: Sized + FormatInto<Java> {
@@ -201,13 +254,6 @@ trait JavaFile: Sized + FormatInto<Java> {
     }
 }
 
-pub struct GeneratorContext {
-    package: String,
-    out_dir: PathBuf,
-    pdl_src: String,
-    endianness: EndiannessValue,
-}
-
 pub struct Class<'a> {
     name: String,
     ctx: &'a GeneratorContext,
@@ -221,7 +267,7 @@ impl<'a> Class<'a> {
         ctx: &'a GeneratorContext,
     ) -> (Self, Self) {
         let child_name = format!("Unknown{}", name);
-        let (members, alignment) = generate_members(fields);
+        let (members, alignment) = generate_members(fields, ctx);
 
         // TODO: Only create child packet here if this packet contains a payload. If its a parent with a
         // body field, we don't want a 'default' child
@@ -248,7 +294,7 @@ impl<'a> Class<'a> {
         constraints: HashMap<String, String>,
         ctx: &'a GeneratorContext,
     ) -> Self {
-        let (members, alignment) = generate_members(fields);
+        let (members, alignment) = generate_members(fields, ctx);
 
         let mut child = Class {
             name: name.clone(),
@@ -296,6 +342,7 @@ pub enum ClassDef {
     Packet(PacketDef),
     AbstractPacket(PacketDef),
     PayloadPacket { parent_name: String },
+    Enum { tags: Vec<Tag>, width: usize },
 }
 
 #[derive(Debug, Clone)]
@@ -308,7 +355,7 @@ pub struct PacketDef {
 
 impl PacketDef {
     pub fn static_byte_width(&self) -> usize {
-        self.members.iter().map(|member| member.width).sum::<usize>() / 8
+        self.members.iter().flat_map(|member| member.ty.width()).sum::<usize>() / 8
     }
 }
 
@@ -322,6 +369,16 @@ pub struct Parent {
 pub struct Child {
     name: String,
     constraints: HashMap<String, String>,
+}
+
+impl Tag {
+    fn name(&self) -> String {
+        match self {
+            Tag::Value(TagValue { id, .. })
+            | Tag::Range(TagRange { id, .. })
+            | Tag::Other(TagOther { id, .. }) => id.to_upper_camel_case(),
+        }
+    }
 }
 
 impl Constraint {
@@ -340,27 +397,26 @@ impl Constraint {
 pub struct Variable {
     name: String,
     ty: Type,
-    width: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
-    Integral(Integral),
-    Class(String),
+    Integral { ty: Integral, width: usize },
+    PacketClass(String),
+    EnumClass { name: String, width: usize, fits: Integral },
 }
 
 impl Type {
-    fn width(&self) -> usize {
-        match self {
-            Type::Integral(i) => i.width(),
-            Type::Class(c) => todo!(),
-        }
+    fn integral_fitting_width(width: impl Into<usize> + Copy) -> Self {
+        Type::Integral { ty: Integral::fitting_width(width).limit_to_int(), width: width.into() }
     }
-}
 
-impl From<Integral> for Type {
-    fn from(i: Integral) -> Self {
-        Type::Integral(i)
+    fn width(&self) -> Option<usize> {
+        match self {
+            Type::Integral { width, .. } => Some(*width),
+            Type::PacketClass(_) => None,
+            Type::EnumClass { width, .. } => Some(*width),
+        }
     }
 }
 

@@ -22,6 +22,7 @@ use genco::{
 use heck::{self, ToUpperCamelCase};
 use std::iter::{self};
 
+mod r#enum;
 mod packet;
 
 use super::{
@@ -39,6 +40,7 @@ impl FormatInto<Java> for Class<'_> {
                 ClassDef::Packet(def) => $(def.gen_packet(&self.name, self.ctx)),
                 ClassDef::AbstractPacket(def) => $(def.gen_abstract_packet(&self.name, self.ctx)),
                 ClassDef::PayloadPacket { parent_name } => $(self.gen_payload_packet(&self.name, parent_name)),
+                ClassDef::Enum { tags, width } => $(self.gen_enum(tags, *width)),
             })
         );
     }
@@ -78,7 +80,10 @@ impl<J: FormatInto<Java>> Expr for J {
     fn maybe_widen(self, from: &Type, to: Integral) -> Tokens<Java> {
         quote! {
             $(match (from, to) {
-                (Type::Integral(Integral::Int), Integral::Long) => Integer.toUnsignedLong($(self)),
+                (Type::Integral { ty: Integral::Int, .. }, Integral::Long) => Integer.toUnsignedLong($(self)),
+                (Type::EnumClass { fits: from, width, .. }, to) =>
+                    $(quote!($(self).to$(from.capitalized())())
+                        .maybe_widen(&Type::Integral { ty: *from, width: *width }, to)),
                 _ => $(self),
             })
         }
@@ -115,8 +120,8 @@ impl Variable {
     fn stringify(&self) -> impl FormatInto<Java> + '_ {
         quote_fn! {
             $(match &self.ty {
-                Type::Integral(i) => $(i.boxed()).toHexString($(&self.name)),
-                Type::Class(_) => $(&self.name).toString(),
+                Type::Integral { ty, .. } => $(ty.boxed()).toHexString($(&self.name)),
+                Type::PacketClass(_) | Type::EnumClass {..} => $(&self.name).toString(),
             })
         }
     }
@@ -124,8 +129,8 @@ impl Variable {
     fn hash_code(&self) -> impl FormatInto<Java> + '_ {
         quote_fn! {
             $(match &self.ty {
-                Type::Integral(i) => $(i.boxed()).hashCode($(&self.name)),
-                Type::Class(_) => $(&self.name).hashCode(),
+                Type::Integral { ty, .. } => $(ty.boxed()).hashCode($(&self.name)),
+                Type::PacketClass(_) | Type::EnumClass {..} => $(&self.name).hashCode(),
             })
         }
     }
@@ -133,8 +138,8 @@ impl Variable {
     fn equals<'a>(&'a self, other: impl FormatInto<Java> + 'a) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(match &self.ty {
-                Type::Integral(_) => $(&self.name) == $other,
-                Type::Class(_) => $(&self.name).equals($other),
+                Type::Integral { .. } => $(&self.name) == $other,
+                Type::PacketClass(_) | Type::EnumClass {..} => $(&self.name).equals($other),
             })
         }
     }
@@ -143,8 +148,9 @@ impl Variable {
 impl FormatInto<Java> for &Type {
     fn format_into(self, tokens: &mut Tokens<Java>) {
         quote_in!(*tokens => $(match self {
-            Type::Integral(i) => $(*i),
-            Type::Class(import) => $import,
+            Type::Integral { ty, .. } => $(*ty),
+            Type::PacketClass(class_name) => $class_name,
+            Type::EnumClass { name, .. } => $name,
         }));
     }
 }
@@ -152,8 +158,17 @@ impl FormatInto<Java> for &Type {
 impl Type {
     fn boxed(&self) -> impl FormatInto<Java> + '_ {
         match self {
-            Type::Integral(i) => i.boxed(),
-            Type::Class(c) => c,
+            Type::Integral { ty, .. } => ty.boxed(),
+            Type::PacketClass(name) => name,
+            Type::EnumClass { name, .. } => name,
+        }
+    }
+
+    fn from_int<'a>(&'a self, expr: impl FormatInto<Java> + 'a) -> impl FormatInto<Java> + 'a {
+        match self {
+            Type::Integral { .. } => quote!($expr),
+            Type::EnumClass { name, fits, .. } => quote!($name.from$(fits.capitalized())($expr)),
+            _ => panic!("Expr of this type can't be converted to int"),
         }
     }
 }
@@ -184,6 +199,15 @@ impl Integral {
             Integral::Byte => "Byte",
             Integral::Short => "Short",
             Integral::Int => "Integer",
+            Integral::Long => "Long",
+        }
+    }
+
+    fn capitalized(&self) -> &'static str {
+        match self {
+            Integral::Byte => "Byte",
+            Integral::Short => "Short",
+            Integral::Int => "Int",
             Integral::Long => "Long",
         }
     }

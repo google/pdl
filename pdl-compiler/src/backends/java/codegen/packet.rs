@@ -114,7 +114,7 @@ impl PacketDef {
                 }) {
                     $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
                     Builder b = new Builder();
-                    $(self.decoder(|member, value| quote!(b.$(member.setter(value)))))
+                    $(self.decoder(|member, value| quote!(b.$(member.setter(member.ty.from_int(value))))))
 
                     $(if self.parent.is_some() { return b; } else { return b.build(); })
                 }
@@ -136,8 +136,11 @@ impl PacketDef {
                     })
 
                     $(for member in self.members.iter() {
-                            + $(quoted(format!(" {}[{}]=", &member.name, member.width)))
-                            + $(member.stringify()) + "\n"
+                        + $(if let Some(width) = member.ty.width() {
+                            $(quoted(format!(" {}[{}]=", &member.name, width)))
+                        } else {
+                            $(quoted(format!(" {}=", &member.name)))
+                        }) + $(member.stringify()) + "\n"
                     })
                     + "}";
 
@@ -194,7 +197,8 @@ impl PacketDef {
                     public static $name fromBytes(byte[] bytes)
                 }) {
                     $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
-                    $(self.decoder(|member, value| quote!($(&member.ty) $(&member.name) = $value)))
+                    $(self.decoder(|member, value|
+                        quote!($(&member.ty) $(&member.name) = $(member.ty.from_int(value)))))
 
                     $(self.build_child_fitting_constraints(&self.children))
 
@@ -223,9 +227,10 @@ impl PacketDef {
                         $(match chunk {
                             Chunk::BitPacked { fields, .. } => $(for field in fields.iter() =>
                                 $(if !(field.is_partial && field.chunk_offset == 0) =>
-                                    + $(quoted(format!("{}[{}]=", &field.symbol.name, field.symbol.width)))
+                                    + $(quoted(format!("{}[{}]=", &field.symbol.name, field.symbol.ty.width().unwrap())))
                                     + $(field.symbol.stringify()) + "\n"
                                 )),
+                            Chunk::Symbol(member) => + $(quoted(format!("{}=", member.name))) + $(member.stringify()),
                             Chunk::Payload => + $(quoted("payload=")) + subPayload + "\n",
                         })
                     })
@@ -302,14 +307,17 @@ impl PacketDef {
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(for member in self.members.iter() {
-                $(if constraints.is_none_or(|cs| !cs.contains_key(&member.name)) {
+                $(if constraints.is_none_or(|constraints| !constraints.contains_key(&member.name)) {
                     public $builder_type set$(member.name.to_upper_camel_case())($(&member.ty) $(&member.name)) {
-                        if ($(member.ty.boxed()).compareUnsigned($(&member.name), $(gen_mask(member.width))) > 0) {
-                            throw new IllegalArgumentException(
-                                "Value " + $(member.stringify())
-                                + $(quoted(format!(" too wide for field '{}' with width {}", member.name, member.width)))
-                            );
-                        }
+                        $(if let Type::Integral { width, .. } = member.ty =>
+                            if ($(member.ty.boxed()).compareUnsigned($(&member.name), $(gen_mask(width))) > 0) {
+                                throw new IllegalArgumentException(
+                                    "Value " + $(member.stringify())
+                                    + $(quoted(format!(" too wide for field '{}' with width {}", member.name, width)))
+                                );
+                            }
+                        )
+
                         this.$(&member.name) = $(&member.name);
                         return self();
                     }
@@ -329,22 +337,23 @@ impl PacketDef {
             $(for chunk in self.alignment.iter() {
                 $(match chunk {
                     Chunk::BitPacked { fields, width } => {
-                    $(let chunk_type = Integral::fitting_width(*width))
-                    $(let mut fields = fields.iter())
-                    $(let first = fields.next().expect("Attempt to generate encoder for chunk with no fields"))
+                        $(let chunk_type = Integral::fitting_width(*width))
+                        $(let mut fields = fields.iter())
+                        $(let first = fields.next().expect("Attempt to generate encoder for chunk with no fields"))
 
                         buf.$(chunk_type.encoder())(
                             ($chunk_type) (
-                                $(first.symbol.name.as_str()
+                                $((&first.symbol.name)
                                 .maybe_widen(&first.symbol.ty, chunk_type)
                                 .maybe_shift(">>>", first.symbol_offset))
 
                                 $(for field in fields => |
-                                    $(field.symbol.name.as_str()
+                                    $((&field.symbol.name)
                                         .maybe_widen(&field.symbol.ty, chunk_type)
                                         .maybe_shift("<<", field.chunk_offset))))
                         );
                     }
+                    Chunk::Symbol(member) => buf.put($(&member.name).toBytes()),
                     Chunk::Payload => buf.put(payload);,
                 })
             })
@@ -353,7 +362,7 @@ impl PacketDef {
 
     fn decoder<'a>(
         &'a self,
-        set_member: fn(&Variable, Tokens<Java>) -> Tokens<Java>,
+        assign: fn(&Variable, Tokens<Java>) -> Tokens<Java>,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(for (i, chunk) in self.alignment.iter().enumerate() {
@@ -365,34 +374,37 @@ impl PacketDef {
                         $chunk_type $(&chunk_name) = $(Integral::fitting_width(*width).decoder("buf"));
 
                         $(for field in fields.iter() {
-                            $(match &field.symbol.ty {
-                               Type::Integral(ty) => {
-                                   $(let decoded_field = chunk_name.as_str()
-                                       .maybe_mask(field.chunk_offset, field.width)
-                                       .maybe_cast(chunk_type, *ty))
+                            $(let ty = match field.symbol.ty {
+                                Type::Integral { ty, ..} => ty,
+                                Type::EnumClass { fits, .. } => fits,
+                                _ => unreachable!("Packed chunk with unexpected symbol")
+                            })
+                            $(let decoded_field = chunk_name.as_str()
+                                .maybe_mask(field.chunk_offset, field.width)
+                                .maybe_cast(chunk_type, ty))
 
-                                   $(if field.is_partial {
-                                       // The value is split between chunks.
-                                       $(if field.symbol_offset == 0 {
-                                           // This chunk has the lower-order bits of the value, so store them in a variable until we can
-                                           // get the higher-order bits from the next chunk.
-                                           $(&field.symbol.ty) $(&field.symbol.name)$i = $decoded_field;
-                                       } else {
-                                           // This chunk has the higher-order bits of the value, so grab the lower-order bits from the
-                                           // variable we declared.
-                                           $(set_member(
-                                               &field.symbol,
-                                               quote!($(&field.symbol.name)$(i - 1) | (($decoded_field) << $(field.symbol_offset)))));
-                                       })
-                                   } else {
-                                       // The whole value lies within this chunk, so just set it.
-                                       $(set_member(&field.symbol, decoded_field));
-                                   })
-
-                               }
-                               Type::Class(class) =>,
+                            $(if field.is_partial {
+                                // The value is split between chunks.
+                                $(if field.symbol_offset == 0 {
+                                    // This chunk has the lower-order bits of the value, so store them in a variable until we can
+                                    // get the higher-order bits from the next chunk.
+                                    $(&field.symbol.ty) $(&field.symbol.name)$i = $decoded_field;
+                                } else {
+                                    // This chunk has the higher-order bits of the value, so grab the lower-order bits from the
+                                    // variable we declared.
+                                    $(assign(
+                                        &field.symbol,
+                                        quote!($(&field.symbol.name)$(i - 1) | (($decoded_field) << $(field.symbol_offset)))));
+                                })
+                            } else {
+                                // The whole value lies within this chunk, so just set it.
+                                $(assign(&field.symbol, decoded_field));
                             })
                         })
+                    }
+                    Chunk::Symbol(member) => {
+                        byte[] $(&member.name) = new byte[$(&member.ty).width()]
+                        $(&member.name).fromBytes($(&member.name)),
                     }
                     Chunk::Payload => {
                         byte[] payload = new byte[bytes.length - WIDTH];
