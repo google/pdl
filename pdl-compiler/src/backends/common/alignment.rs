@@ -40,11 +40,9 @@ pub struct Field<S: Symbol> {
 #[derive(Debug, Clone)]
 pub enum Chunk<S: Symbol> {
     /// A chunk comprised of one or more bitpacked fields.
-    BitPacked { fields: Vec<Field<S>>, width: usize },
-    /// An opaque symbol whose size is an unspecified even multiple of 8 bits.
-    Symbol(S),
-    /// An opaque payload whose size is an unspecified even multiple of 8 bits.
-    Payload,
+    PackedBits { fields: Vec<Field<S>>, width: usize },
+    /// An opaque chunk whose width is an unspecified even multiple of 8 bits.
+    Bytes(S),
 }
 
 /// A data structure that packs a set of fields, which may not be byte-aligned, into a sequence of byte algined chunks.
@@ -66,7 +64,7 @@ impl<S: Symbol> ByteAligner<S> {
     /// represents a straightforward way to encode and decode the fields in your language.
     pub fn align(self) -> Result<Alignment<S>, &'static str> {
         match self.chunks.last() {
-            Some(Chunk::BitPacked { width, .. }) if width % 8 != 0 => {
+            Some(Chunk::PackedBits { width, .. }) if width % 8 != 0 => {
                 Err("Provided fields could not be byte aligned")
             }
             None => Err("No fields provided"),
@@ -74,7 +72,7 @@ impl<S: Symbol> ByteAligner<S> {
         }
     }
 
-    pub fn add_field(&mut self, symbol: S, width: usize) {
+    pub fn add_bit_field(&mut self, symbol: S, width: usize) {
         if width > self.max_chunk_width {
             panic!("Field too wide");
         } else {
@@ -82,18 +80,13 @@ impl<S: Symbol> ByteAligner<S> {
         }
     }
 
-    pub fn add_symbol(&mut self, symbol: S) {
+    pub fn add_bytes(&mut self, symbol: S) {
         self.panic_if_not_at_byte_boundary();
-        self.chunks.push(Chunk::Symbol(symbol));
-    }
-
-    pub fn add_payload(&mut self) {
-        self.panic_if_not_at_byte_boundary();
-        self.chunks.push(Chunk::Payload);
+        self.chunks.push(Chunk::Bytes(symbol));
     }
 
     fn panic_if_not_at_byte_boundary(&self) {
-        if let Some(Chunk::BitPacked { width, .. }) = self.chunks.last() {
+        if let Some(Chunk::PackedBits { width, .. }) = self.chunks.last() {
             if width % 8 != 0 {
                 panic!("Not on a byte boundary")
             }
@@ -108,7 +101,7 @@ impl<S: Symbol> ByteAligner<S> {
         is_partial: bool,
     ) {
         match self.chunks.last_mut() {
-            Some(Chunk::BitPacked { fields, width: chunk_width }) => {
+            Some(Chunk::PackedBits { fields, width: chunk_width }) => {
                 if *chunk_width == self.max_chunk_width {
                     self.add_field_to_new_chunk(symbol, width, symbol_offset, is_partial);
                 } else if *chunk_width + width <= self.max_chunk_width {
@@ -152,7 +145,7 @@ impl<S: Symbol> ByteAligner<S> {
         symbol_offset: usize,
         is_partial: bool,
     ) {
-        self.chunks.push(Chunk::BitPacked {
+        self.chunks.push(Chunk::PackedBits {
             fields: vec![Field { chunk_offset: 0, symbol, width, symbol_offset, is_partial }],
             width,
         });

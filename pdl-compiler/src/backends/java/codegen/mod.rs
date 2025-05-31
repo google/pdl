@@ -39,7 +39,6 @@ impl FormatInto<Java> for Class<'_> {
             $(match &self.def {
                 ClassDef::Packet(def) => $(def.gen_packet(&self.name, self.ctx)),
                 ClassDef::AbstractPacket(def) => $(def.gen_abstract_packet(&self.name, self.ctx)),
-                ClassDef::PayloadPacket { parent_name } => $(self.gen_payload_packet(&self.name, parent_name)),
                 ClassDef::Enum { tags, width } => $(self.gen_enum(tags, *width)),
             })
         );
@@ -122,6 +121,7 @@ impl Variable {
             $(match &self.ty {
                 Type::Integral { ty, .. } => $(ty.boxed()).toHexString($(&self.name)),
                 Type::PacketClass(_) | Type::EnumClass {..} => $(&self.name).toString(),
+                Type::Payload => $(&*import::ARRAYS).toString($(&self.name)),
             })
         }
     }
@@ -131,6 +131,7 @@ impl Variable {
             $(match &self.ty {
                 Type::Integral { ty, .. } => $(ty.boxed()).hashCode($(&self.name)),
                 Type::PacketClass(_) | Type::EnumClass {..} => $(&self.name).hashCode(),
+                Type::Payload => $(&*import::ARRAYS).hashCode($(&self.name)),
             })
         }
     }
@@ -140,6 +141,7 @@ impl Variable {
             $(match &self.ty {
                 Type::Integral { .. } => $(&self.name) == $other,
                 Type::PacketClass(_) | Type::EnumClass {..} => $(&self.name).equals($other),
+                Type::Payload => $(&*import::ARRAYS).equals($(&self.name), $other)
             })
         }
     }
@@ -151,6 +153,7 @@ impl FormatInto<Java> for &Type {
             Type::Integral { ty, .. } => $(*ty),
             Type::PacketClass(class_name) => $class_name,
             Type::EnumClass { name, .. } => $name,
+            Type::Payload => byte[]
         }));
     }
 }
@@ -161,6 +164,7 @@ impl Type {
             Type::Integral { ty, .. } => ty.boxed(),
             Type::PacketClass(name) => name,
             Type::EnumClass { name, .. } => name,
+            Type::Payload => "Arrays",
         }
     }
 

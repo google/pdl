@@ -182,7 +182,7 @@ fn generate_members<'a>(
                 aligner.add_field(variable, *width);
             }
             ast::FieldDesc::Payload { size_modifier } => {
-                aligner.add_payload();
+                aligner.add_symbol(Rc::new(Variable::new_payload()));
             }
             ast::FieldDesc::Size { field_id, width } => {}
             ast::FieldDesc::Typedef { id, type_id } => {
@@ -266,8 +266,14 @@ impl<'a> Class<'a> {
         fields: &'a Vec<ast::Field>,
         ctx: &'a GeneratorContext,
     ) -> (Self, Self) {
-        let child_name = format!("Unknown{}", name);
         let (members, alignment) = generate_members(fields, ctx);
+        let child_name = format!("Unknown{}", name);
+        let child_member = Rc::new(Variable::new_payload());
+        let child_alignment = {
+            let mut aligner = ByteAligner::new(64);
+            aligner.add_symbol(child_member.clone());
+            aligner.align().unwrap()
+        };
 
         // TODO: Only create child packet here if this packet contains a payload. If its a parent with a
         // body field, we don't want a 'default' child
@@ -283,7 +289,16 @@ impl<'a> Class<'a> {
                     children: vec![Child { name: child_name.clone(), constraints: HashMap::new() }],
                 }),
             },
-            Class { name: child_name, ctx, def: ClassDef::PayloadPacket { parent_name: name } },
+            Class {
+                name: child_name,
+                ctx,
+                def: ClassDef::Packet(PacketDef {
+                    members: vec![child_member],
+                    alignment: child_alignment,
+                    parent: Some(Parent { name, does_constrain: false }),
+                    children: vec![],
+                }),
+            },
         )
     }
 
@@ -341,7 +356,6 @@ impl<'a> JavaFile for Class<'a> {
 pub enum ClassDef {
     Packet(PacketDef),
     AbstractPacket(PacketDef),
-    PayloadPacket { parent_name: String },
     Enum { tags: Vec<Tag>, width: usize },
 }
 
@@ -399,9 +413,16 @@ pub struct Variable {
     ty: Type,
 }
 
+impl Variable {
+    fn new_payload() -> Self {
+        Variable { name: String::from("payload"), ty: Type::Payload }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Integral { ty: Integral, width: usize },
+    Payload,
     PacketClass(String),
     EnumClass { name: String, width: usize, fits: Integral },
 }
@@ -416,6 +437,7 @@ impl Type {
             Type::Integral { width, .. } => Some(*width),
             Type::PacketClass(_) => None,
             Type::EnumClass { width, .. } => Some(*width),
+            Type::Payload => None,
         }
     }
 }

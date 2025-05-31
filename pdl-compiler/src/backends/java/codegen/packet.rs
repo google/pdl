@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use genco::{
     self,
@@ -23,70 +23,14 @@ use genco::{
 };
 use heck::{self, ToUpperCamelCase};
 
-use crate::backends::java::{Child, Parent};
+use crate::backends::{
+    common::alignment::Alignment,
+    java::{Child, Parent},
+};
 
 use super::{
     gen_mask, import, Chunk, Class, Expr, GeneratorContext, Integral, PacketDef, Type, Variable,
 };
-
-impl Class<'_> {
-    pub fn gen_payload_packet<'a>(
-        &'a self,
-        name: &'a String,
-        parent_name: &'a String,
-    ) -> impl FormatInto<Java> + 'a {
-        quote_fn! {
-            public final class $name extends $parent_name {
-                private final byte[] payload;
-
-                private $name() { throw new UnsupportedOperationException(); }
-
-                private $name(Builder b) {
-                    super(b);
-                    this.payload = b.payload;
-                }
-
-                protected static Builder withPayload(byte[] bytes) {
-                    return new Builder().setPayload(bytes);
-                }
-
-                public int width() { return $parent_name.WIDTH + payload.length; }
-
-                byte[] getPayload() { return payload; }
-
-                @Override
-                public String toString() { return super.toString($(&*import::ARRAYS).toString(payload)); }
-
-                @Override
-                public boolean equals(Object o) {
-                    if (this == o) return true;
-                    if (!(o instanceof $name other)) return false;
-                    return super.equals(other) && payload.equals(other.payload);
-                }
-
-                @Override
-                public int hashCode() { return $(&*import::ARRAYS).hashCode(payload); }
-
-                public static class Builder extends $parent_name.UnconstrainedBuilder<Builder> {
-                    private byte[] payload;
-
-                    public Builder() { }
-
-                    @Override
-                    protected Builder self() { return this; }
-
-                    @Override
-                    public $name build() { return new $name(this); }
-
-                    Builder setPayload(byte[] payload) {
-                        this.payload = payload;
-                        return self();
-                    }
-                }
-            }
-        }
-    }
-}
 
 impl PacketDef {
     pub fn gen_packet<'a>(
@@ -107,44 +51,60 @@ impl PacketDef {
                     $(self.builder_assigns())
                 }
 
+                // Decoder
                 $(if let Some(parent) = &self.parent {
-                    protected static $(&parent.name).Builder<?> fromPayload(byte[] bytes)
+                    // If we inherit, don't build the Builder so super can add it's fields
+                    protected static $(&parent.name).Builder<?> fromPayload(byte[] bytes) {
+                        $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
+                        Builder b = new Builder();
+                        $(self.decoder(
+                            |member, value| quote!(b.$(member.setter(member.ty.from_int(value))))))
+                        return b;
+                    }
                 } else {
-                    public static $name fromBytes(byte[] bytes)
-                }) {
-                    $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
-                    Builder b = new Builder();
-                    $(self.decoder(|member, value| quote!(b.$(member.setter(member.ty.from_int(value))))))
+                    public static $name fromBytes(byte[] bytes) {
+                        $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
+                        Builder b = new Builder();
+                        $(self.decoder(
+                            |member, value| quote!(b.$(member.setter(member.ty.from_int(value))))))
+                        return b.build();
+                    }
+                })
 
-                    $(if self.parent.is_some() { return b; } else { return b.build(); })
-                }
-
-                public byte[] toBytes() {
-                    $(&*import::BB) buf = $(&*import::BB).allocate(WIDTH).order(BYTE_ORDER);
-                    $(self.encoder())
-                    return buf.array();
-                }
+                // Encoder
+                $(if self.parent.is_some() {
+                    public byte[] toBytes() {
+                        $(&*import::BB) buf = $(&*import::BB).allocate(WIDTH).order(BYTE_ORDER);
+                        $(self.encoder())
+                        return super.toBytes(buf);
+                    }
+                } else {
+                    public byte[] toBytes() {
+                        $(&*import::BB) buf = $(&*import::BB).allocate(WIDTH).order(BYTE_ORDER);
+                        $(self.encoder())
+                        return buf.array();
+                    }
+                })
 
                 $(self.getter_defs())
 
                 @Override
                 public String toString() {
+                    $(let members_str = quote!(
+                        $(for member in self.members.iter() {
+                            + $(if let Some(width) = member.ty.width() {
+                                $(quoted(format!(" {}[{}]=", &member.name, width)))
+                            } else {
+                                $(quoted(format!(" {}=", &member.name)))
+                            }) + $(member.stringify()) + "\n"
+                        }) + "}"
+                    ))
+
                     $(if self.parent.is_some() {
-                        String payload = $(quoted("{\n"))
+                        return super.toString($(quoted("{\n")) $members_str);
                     } else {
-                        return $(quoted(format!("{}{{\n", name)))
+                        return $(quoted(format!("{}{{\n", name))) $members_str;
                     })
-
-                    $(for member in self.members.iter() {
-                        + $(if let Some(width) = member.ty.width() {
-                            $(quoted(format!(" {}[{}]=", &member.name, width)))
-                        } else {
-                            $(quoted(format!(" {}=", &member.name)))
-                        }) + $(member.stringify()) + "\n"
-                    })
-                    + "}";
-
-                    $(if self.parent.is_some() => return super.toString(payload);)
                 }
 
                 $(self.hashcode_equals_overrides(name, self.parent.is_some()))
@@ -153,7 +113,7 @@ impl PacketDef {
                     Some(Parent { name: parent_name, does_constrain: true }) =>
                         Builder extends $parent_name.$(name)Builder<Builder>,
                     Some(Parent { name: parent_name, does_constrain: false }) =>
-                        Builder extends $parent_name.$(name)UnconstrainedBuilder<Builder>,
+                        Builder extends $parent_name.UnconstrainedBuilder<Builder>,
                     _ => Builder,
                 }) {
                     $(self.member_defs(false, None))
@@ -197,8 +157,8 @@ impl PacketDef {
                     public static $name fromBytes(byte[] bytes)
                 }) {
                     $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
-                    $(self.decoder(|member, value|
-                        quote!($(&member.ty) $(&member.name) = $(member.ty.from_int(value)))))
+                    $(self.decoder(
+                        |member, value| quote!($(&member.ty) $(&member.name) = $(member.ty.from_int(value)))))
 
                     $(self.build_child_fitting_constraints(&self.children))
 
@@ -225,13 +185,15 @@ impl PacketDef {
                     $(quoted("{\n"))
                     $(for chunk in self.alignment.iter() {
                         $(match chunk {
-                            Chunk::BitPacked { fields, .. } => $(for field in fields.iter() =>
+                            Chunk::PackedBits { fields, .. } => $(for field in fields.iter() =>
                                 $(if !(field.is_partial && field.chunk_offset == 0) =>
                                     + $(quoted(format!("{}[{}]=", &field.symbol.name, field.symbol.ty.width().unwrap())))
                                     + $(field.symbol.stringify()) + "\n"
                                 )),
-                            Chunk::Symbol(member) => + $(quoted(format!("{}=", member.name))) + $(member.stringify()),
-                            Chunk::Payload => + $(quoted("payload=")) + subPayload + "\n",
+                            Chunk::Bytes(member) => + $(match member.ty {
+                                Type::Payload => $(quoted("payload=")) + subPayload + "\n",
+                                _ => $(quoted(format!("{}=", member.name))) + $(member.stringify()),
+                            })
                         })
                     })
                     + "}";
@@ -336,7 +298,7 @@ impl PacketDef {
         quote_fn! {
             $(for chunk in self.alignment.iter() {
                 $(match chunk {
-                    Chunk::BitPacked { fields, width } => {
+                    Chunk::PackedBits { fields, width } => {
                         $(let chunk_type = Integral::fitting_width(*width))
                         $(let mut fields = fields.iter())
                         $(let first = fields.next().expect("Attempt to generate encoder for chunk with no fields"))
@@ -353,8 +315,10 @@ impl PacketDef {
                                         .maybe_shift("<<", field.chunk_offset))))
                         );
                     }
-                    Chunk::Symbol(member) => buf.put($(&member.name).toBytes()),
-                    Chunk::Payload => buf.put(payload);,
+                    Chunk::Bytes(member) => $(match member.ty {
+                        Type::Payload => buf.put(payload),
+                        _ => buf.put($(&member.name).toBytes()),
+                    });,
                 })
             })
         }
@@ -367,7 +331,7 @@ impl PacketDef {
         quote_fn! {
             $(for (i, chunk) in self.alignment.iter().enumerate() {
                 $(match chunk {
-                    Chunk::BitPacked { fields, width } => {
+                    Chunk::PackedBits { fields, width } => {
                         $(let chunk_name = format!("chunk{}", i))
                         $(let chunk_type = Integral::fitting_width(*width).limit_to_int())
 
@@ -402,14 +366,16 @@ impl PacketDef {
                             })
                         })
                     }
-                    Chunk::Symbol(member) => {
-                        byte[] $(&member.name) = new byte[$(&member.ty).width()]
-                        $(&member.name).fromBytes($(&member.name)),
-                    }
-                    Chunk::Payload => {
-                        byte[] payload = new byte[bytes.length - WIDTH];
-                        buf.get(payload);
-                    }
+                    Chunk::Bytes(member) => $(match member.ty {
+                        Type::Payload => {
+                            byte[] payload = new byte[bytes.length - WIDTH];
+                            buf.get(payload);
+                        },
+                        _ => {
+                            byte[] $(&member.name) = new byte[$(&member.ty).width()]
+                            $(&member.name).fromBytes($(&member.name)),
+                        }
+                    })
                 })
             })
         }
@@ -467,7 +433,7 @@ impl PacketDef {
                     b = $(&child.name).fromPayload(payload);
                 } else
             }) {
-                b = $(&last.name).withPayload(payload);
+                b = $(&last.name).fromPayload(payload);
             }
 
             $(for member in self.members.iter() => b.$(&member.name) = $(&member.name);)
