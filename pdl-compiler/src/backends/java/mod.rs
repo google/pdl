@@ -16,12 +16,15 @@ use genco::{
     self,
     prelude::{java, Java},
     tokens::FormatInto,
+    Tokens,
 };
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 use std::{
+    cell::RefCell,
     cmp,
     collections::{HashMap, HashSet},
     fs::{self, OpenOptions},
+    iter,
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -52,28 +55,25 @@ pub fn generate(
     output_dir: &Path,
     package: &str,
 ) -> Result<(), String> {
-    let source = sources.get(file.file).expect("could not read source");
-
     let mut dir = PathBuf::from(output_dir);
     dir.extend(package.split("."));
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
-    let context = GeneratorContext {
-        pdl_src: source.name().clone(),
-        out_dir: dir,
-        package: String::from(package),
-        endianness: file.endianness.value,
-        decls: file
-            .declarations
-            .iter()
-            .flat_map(|decl| decl.id().map(|id| (String::from(id), decl.clone())))
-            .collect(),
-    };
+    let classes = generate_classes(&file);
 
-    generate_classes(&file, &context).into_iter().try_for_each(|f| f.write_to_fs())
+    for (name, class) in classes.into_iter() {
+        class.write_to_fs(
+            &dir.join(name).with_extension("java"),
+            package,
+            sources.get(file.file).expect("could not read source").name(),
+            file.endianness.value,
+        )?;
+    }
+
+    Ok(())
 }
 
-fn generate_classes<'a>(file: &'a ast::File, context: &'a GeneratorContext) -> Vec<Class<'a>> {
+fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
     let parent_packets: HashSet<&String> = file
         .declarations
         .iter()
@@ -86,8 +86,7 @@ fn generate_classes<'a>(file: &'a ast::File, context: &'a GeneratorContext) -> V
         })
         .collect();
 
-    let mut parent_classes: HashMap<&String, Class<'_>> = HashMap::new();
-    let mut classes: HashMap<&String, Class<'_>> = HashMap::new();
+    let mut classes: HashMap<String, Class> = HashMap::new();
 
     for decl in file.declarations.iter() {
         match &decl.desc {
@@ -95,49 +94,63 @@ fn generate_classes<'a>(file: &'a ast::File, context: &'a GeneratorContext) -> V
             ast::DeclDesc::Packet { id, fields, parent_id, constraints }
                 if parent_packets.contains(id) =>
             {
-                let (mut parent, child) =
-                    Class::new_parent_with_default_child(id.to_upper_camel_case(), fields, context);
+                let parent_name = id.to_upper_camel_case();
+                let (members, alignment, width) = generate_members(fields, &classes);
+
+                let (mut parent, child) = Class::new_parent_with_fallback_child(
+                    parent_name.clone(),
+                    members,
+                    alignment,
+                    width,
+                );
 
                 // This parent might also be a child
                 if let Some(parent_id) = parent_id {
-                    let grandparent = parent_classes
-                        .get_mut(parent_id)
+                    let grandparent = classes
+                        .get_mut(&parent_id.to_upper_camel_case())
                         .expect("Packet inherits from unknown parent");
 
                     grandparent.add_child(
                         &mut parent,
                         constraints.iter().map(Constraint::to_assignment).collect(),
+                        None,
                     );
                 }
 
-                parent_classes.insert(id, parent);
-                classes.insert(id, child);
+                classes.insert(parent_name, parent);
+                classes.insert(child.name.clone(), child);
             }
             // If this is a child packet, set its parent to the appropriate abstract class.
             ast::DeclDesc::Packet { id, constraints, fields, parent_id: Some(parent_id) } => {
-                let parent =
-                    parent_classes.get_mut(parent_id).expect("Packet inherits from unknown parent");
+                let child_name = id.to_upper_camel_case();
+                let (members, alignment, width) = generate_members(fields, &classes);
+
+                let parent = classes
+                    .get_mut(&parent_id.to_upper_camel_case())
+                    .expect("Packet inherits from unknown parent");
 
                 let child = parent.new_child(
-                    id.to_upper_camel_case(),
-                    fields,
+                    child_name.clone(),
+                    members,
+                    alignment,
+                    width,
                     constraints.iter().map(Constraint::to_assignment).collect(),
-                    context,
                 );
 
-                classes.insert(id, child);
+                classes.insert(child_name, child);
             }
             // Otherwise, the packet has no inheritence (no parent and no children)
             ast::DeclDesc::Packet { id, fields, parent_id: None, .. } => {
-                let (members, alignment) = generate_members(fields, context);
+                let (members, alignment, width) = generate_members(fields, &classes);
+                let name = id.to_upper_camel_case();
                 classes.insert(
-                    id,
+                    name.clone(),
                     Class {
-                        name: id.to_upper_camel_case(),
-                        ctx: context,
+                        name,
                         def: ClassDef::Packet(PacketDef {
                             members,
                             alignment,
+                            width,
                             parent: None,
                             children: Vec::new(),
                         }),
@@ -145,13 +158,10 @@ fn generate_classes<'a>(file: &'a ast::File, context: &'a GeneratorContext) -> V
                 );
             }
             ast::DeclDesc::Enum { id, tags, width } => {
+                let name = id.to_upper_camel_case();
                 classes.insert(
-                    id,
-                    Class {
-                        name: id.to_upper_camel_case(),
-                        ctx: context,
-                        def: ClassDef::Enum { tags: tags.clone(), width: *width },
-                    },
+                    name.clone(),
+                    Class { name, def: ClassDef::Enum { tags: tags.clone(), width: *width } },
                 );
             }
             _ => {
@@ -161,53 +171,57 @@ fn generate_classes<'a>(file: &'a ast::File, context: &'a GeneratorContext) -> V
         }
     }
 
-    parent_classes.into_values().chain(classes.into_values()).collect()
+    // dbg!(&classes
+    //     .iter()
+    //     .map(|(name, class)| (name, &class.def))
+    //     .collect::<Vec<(&String, &ClassDef)>>());
+    classes
 }
 
-fn generate_members<'a>(
-    fields: &'a Vec<ast::Field>,
-    ctx: &'a GeneratorContext,
-) -> (Vec<Rc<Variable>>, Alignment<Rc<Variable>>) {
+fn generate_members(
+    fields: &Vec<ast::Field>,
+    classes: &HashMap<String, Class>,
+) -> (Vec<Rc<Variable>>, Alignment<Rc<Variable>>, Option<usize>) {
     let mut members = Vec::new();
     let mut aligner = ByteAligner::new(64);
+    let mut total_width = Some(0);
 
     for field in fields.iter() {
         match &field.desc {
             ast::FieldDesc::Scalar { id, width } => {
                 let variable = Rc::new(Variable {
                     name: id.to_lower_camel_case(),
-                    ty: Type::integral_fitting_width(*width),
+                    ty: Type::Integral {
+                        ty: Integral::fitting(*width).limit_to_int(),
+                        width: *width,
+                    },
                 });
                 members.push(variable.clone());
-                aligner.add_field(variable, *width);
+                aligner.add_bitfield(variable, *width);
+                total_width = total_width.map(|total_width| total_width + width);
             }
             ast::FieldDesc::Payload { size_modifier } => {
-                aligner.add_symbol(Rc::new(Variable::new_payload()));
+                aligner.add_bytes(Rc::new(Variable::new_payload()));
             }
             ast::FieldDesc::Size { field_id, width } => {}
             ast::FieldDesc::Typedef { id, type_id } => {
-                match &ctx.decls.get(type_id).unwrap().desc {
-                    ast::DeclDesc::Enum { id: type_id, tags, width } => {
-                        let variable = Rc::new(Variable {
-                            name: id.to_lower_camel_case(),
-                            ty: Type::EnumClass {
-                                name: type_id.to_upper_camel_case(),
-                                fits: Integral::fitting_width(*width).limit_to_int(),
-                                width: *width,
-                            },
-                        });
-                        members.push(variable.clone());
-                        aligner.add_field(variable, *width);
-                    }
-                    ast::DeclDesc::Packet { id, .. } => {
-                        let variable = Rc::new(Variable {
-                            name: id.to_lower_camel_case(),
-                            ty: Type::PacketClass(id.to_upper_camel_case()),
-                        });
-                        members.push(variable.clone());
-                        aligner.add_symbol(variable);
-                    }
-                    _ => todo!(),
+                let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
+                let variable = Rc::new(Variable {
+                    name: id.to_lower_camel_case(),
+                    ty: Type::Class { name: class.name.clone(), width: class.width() },
+                });
+                members.push(variable.clone());
+                if let ClassDef::Enum { width, .. } = &class.def {
+                    aligner.add_bitfield(variable, *width);
+                    total_width = total_width.map(|total_width| total_width + width);
+                } else {
+                    aligner.add_bytes(variable);
+                    total_width =
+                        if let Some((total_width, class_width)) = total_width.zip(class.width()) {
+                            Some(total_width + class_width)
+                        } else {
+                            None
+                        };
                 }
             }
             _ => {
@@ -217,61 +231,55 @@ fn generate_members<'a>(
         }
     }
 
-    (members, aligner.align().expect("Failed to align members"))
+    (members, aligner.align().expect("Failed to align members"), total_width)
 }
 
-pub struct GeneratorContext {
-    package: String,
-    out_dir: PathBuf,
-    pdl_src: String,
-    endianness: EndiannessValue,
-    decls: HashMap<String, ast::Decl>,
-}
+trait JavaFile<C>: Sized {
+    fn gen(self, context: C) -> Tokens<Java>;
 
-trait JavaFile: Sized + FormatInto<Java> {
-    /// Get the path to this file
-    fn get_path(&self) -> PathBuf;
-
-    /// Get the java package that contains this file
-    fn get_package(&self) -> &str;
-
-    /// Write this file to the filesystem at the path specified by `self.get_path()`
-    fn write_to_fs(self) -> Result<(), String> {
+    fn write_to_fs(
+        self,
+        path: &PathBuf,
+        package: &str,
+        from_pdl: &str,
+        context: C,
+    ) -> Result<(), String> {
         let file = OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
-            .open(self.get_path())
+            .open(path)
             .map_err(|err| err.to_string())?;
 
         let mut w = genco::fmt::IoWriter::new(file);
         let fmt = genco::fmt::Config::from_lang::<Java>().with_newline("\n");
-        let config = java::Config::default().with_package(self.get_package());
+        let config = java::Config::default().with_package(package);
 
-        let mut tokens = java::Tokens::new();
-        self.format_into(&mut tokens);
+        let mut tokens = Tokens::new();
+        java::block_comment(iter::once(format!("GENERATED BY PDL COMPILER FROM {}", from_pdl)))
+            .format_into(&mut tokens);
+        tokens.extend(self.gen(context));
         tokens.format_file(&mut w.as_formatter(&fmt), &config).map_err(|e| e.to_string())
     }
 }
 
-pub struct Class<'a> {
+pub struct Class {
     name: String,
-    ctx: &'a GeneratorContext,
     def: ClassDef,
 }
 
-impl<'a> Class<'a> {
-    fn new_parent_with_default_child(
+impl Class {
+    fn new_parent_with_fallback_child(
         name: String,
-        fields: &'a Vec<ast::Field>,
-        ctx: &'a GeneratorContext,
+        members: Vec<Rc<Variable>>,
+        alignment: Alignment<Rc<Variable>>,
+        width: Option<usize>,
     ) -> (Self, Self) {
-        let (members, alignment) = generate_members(fields, ctx);
-        let child_name = format!("Unknown{}", name);
+        let child_name = Self::fallback_child_name(&name);
         let child_member = Rc::new(Variable::new_payload());
         let child_alignment = {
             let mut aligner = ByteAligner::new(64);
-            aligner.add_symbol(child_member.clone());
+            aligner.add_bytes(child_member.clone());
             aligner.align().unwrap()
         };
 
@@ -281,20 +289,24 @@ impl<'a> Class<'a> {
         (
             Class {
                 name: name.clone(),
-                ctx,
                 def: ClassDef::AbstractPacket(PacketDef {
                     members,
                     alignment,
+                    width,
                     parent: None,
-                    children: vec![Child { name: child_name.clone(), constraints: HashMap::new() }],
+                    children: vec![Child {
+                        name: child_name.clone(),
+                        constraints: HashMap::new(),
+                        width: None,
+                    }],
                 }),
             },
             Class {
                 name: child_name,
-                ctx,
                 def: ClassDef::Packet(PacketDef {
                     members: vec![child_member],
                     alignment: child_alignment,
+                    width,
                     parent: Some(Parent { name, does_constrain: false }),
                     children: vec![],
                 }),
@@ -305,24 +317,34 @@ impl<'a> Class<'a> {
     fn new_child(
         &mut self,
         name: String,
-        fields: &'a Vec<ast::Field>,
-        constraints: HashMap<String, String>,
-        ctx: &'a GeneratorContext,
+        members: Vec<Rc<Variable>>,
+        alignment: Alignment<Rc<Variable>>,
+        width: Option<usize>,
+        constraints: HashMap<String, RValue>,
     ) -> Self {
-        let (members, alignment) = generate_members(fields, ctx);
-
         let mut child = Class {
-            name: name.clone(),
-            ctx,
-            def: ClassDef::Packet(PacketDef { members, alignment, parent: None, children: vec![] }),
+            name,
+            def: ClassDef::Packet(PacketDef {
+                members,
+                alignment,
+                width,
+                parent: None,
+                children: vec![],
+            }),
         };
 
-        self.add_child(&mut child, constraints);
+        let child_width = child.width();
+        self.add_child(&mut child, constraints, child_width);
 
         child
     }
 
-    fn add_child(&mut self, child: &mut Class, constraints: HashMap<String, String>) {
+    fn add_child(
+        &mut self,
+        child: &mut Class,
+        constraints: HashMap<String, RValue>,
+        child_width: Option<usize>,
+    ) {
         let child_def = match &mut child.def {
             ClassDef::Packet(def) => def,
             ClassDef::AbstractPacket(def) => def,
@@ -339,20 +361,23 @@ impl<'a> Class<'a> {
                 None
             })
             .expect("Attempt to add child to non-parent packet");
-        children.push(Child { name: child.name.clone(), constraints });
+        children.push(Child { name: child.name.clone(), constraints, width: child_width });
+    }
+
+    fn fallback_child_name(parent_name: &str) -> String {
+        format!("Unknown{}", parent_name)
+    }
+
+    pub fn width(&self) -> Option<usize> {
+        match self.def {
+            ClassDef::Packet(PacketDef { width, .. })
+            | ClassDef::AbstractPacket(PacketDef { width, .. }) => width,
+            ClassDef::Enum { width, .. } => Some(width),
+        }
     }
 }
 
-impl<'a> JavaFile for Class<'a> {
-    fn get_path(&self) -> PathBuf {
-        self.ctx.out_dir.join(&self.name).with_extension("java")
-    }
-
-    fn get_package(&self) -> &str {
-        &self.ctx.package
-    }
-}
-
+#[derive(Debug, Clone)]
 pub enum ClassDef {
     Packet(PacketDef),
     AbstractPacket(PacketDef),
@@ -363,14 +388,9 @@ pub enum ClassDef {
 pub struct PacketDef {
     members: Vec<Rc<Variable>>,
     alignment: Alignment<Rc<Variable>>,
+    width: Option<usize>,
     parent: Option<Parent>,
     children: Vec<Child>,
-}
-
-impl PacketDef {
-    pub fn static_byte_width(&self) -> usize {
-        self.members.iter().flat_map(|member| member.ty.width()).sum::<usize>() / 8
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -382,7 +402,8 @@ pub struct Parent {
 #[derive(Debug, Clone)]
 pub struct Child {
     name: String,
-    constraints: HashMap<String, String>,
+    constraints: HashMap<String, RValue>,
+    width: Option<usize>,
 }
 
 impl Tag {
@@ -395,13 +416,19 @@ impl Tag {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum RValue {
+    Integral(usize),
+    EnumTag(String),
+}
+
 impl Constraint {
-    fn to_assignment(&self) -> (String, String) {
+    fn to_assignment(&self) -> (String, RValue) {
         (
             self.id.to_lower_camel_case(),
             self.value
-                .map(|v| v.to_string())
-                .or(self.tag_id.as_ref().map(|id| id.to_upper_camel_case()))
+                .map(|integral| RValue::Integral(integral))
+                .or(self.tag_id.as_ref().map(|id| RValue::EnumTag(id.to_upper_camel_case())))
                 .expect("Malformed constraint"),
         )
     }
@@ -423,20 +450,14 @@ impl Variable {
 pub enum Type {
     Integral { ty: Integral, width: usize },
     Payload,
-    PacketClass(String),
-    EnumClass { name: String, width: usize, fits: Integral },
+    Class { name: String, width: Option<usize> },
 }
 
 impl Type {
-    fn integral_fitting_width(width: impl Into<usize> + Copy) -> Self {
-        Type::Integral { ty: Integral::fitting_width(width).limit_to_int(), width: width.into() }
-    }
-
     fn width(&self) -> Option<usize> {
         match self {
             Type::Integral { width, .. } => Some(*width),
-            Type::PacketClass(_) => None,
-            Type::EnumClass { width, .. } => Some(*width),
+            Type::Class { width, .. } => *width,
             Type::Payload => None,
         }
     }
@@ -451,7 +472,7 @@ pub enum Integral {
 }
 
 impl Integral {
-    pub fn fitting_width(width: impl Into<usize>) -> Self {
+    pub fn fitting(width: impl Into<usize>) -> Self {
         let width: usize = width.into();
         if width <= 8 {
             Integral::Byte

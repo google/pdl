@@ -72,7 +72,7 @@ impl<S: Symbol> ByteAligner<S> {
         }
     }
 
-    pub fn add_bit_field(&mut self, symbol: S, width: usize) {
+    pub fn add_bitfield(&mut self, symbol: S, width: usize) {
         if width > self.max_chunk_width {
             panic!("Field too wide");
         } else {

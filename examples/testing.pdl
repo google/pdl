@@ -17,9 +17,10 @@ packet ScalarParent {
 packet EmptyParent : ScalarParent {
     enum_field: Enum7,
     field_b: 1,
-    _payload_
+    _payload_,
+    field_c: 8,
 }
 
-packet AliasedChild_A : EmptyParent (field_a = 2) {
-    field_c: 8,
+packet AliasedChild_A : EmptyParent (field_b = 1) {
+    field_d: 8,
 }

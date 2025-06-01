@@ -23,25 +23,25 @@ use genco::{
 };
 use heck::{self, ToUpperCamelCase};
 
-use crate::backends::{
-    common::alignment::Alignment,
-    java::{Child, Parent},
+use crate::{
+    ast::EndiannessValue,
+    backends::{
+        common::alignment::Alignment,
+        java::{Child, Parent, RValue},
+    },
 };
 
-use super::{
-    gen_mask, import, Chunk, Class, Expr, GeneratorContext, Integral, PacketDef, Type, Variable,
-};
+use super::{gen_mask, import, Chunk, Class, Expr, Integral, PacketDef, Type, Variable};
 
 impl PacketDef {
     pub fn gen_packet<'a>(
         &'a self,
         name: &'a String,
-        ctx: &'a GeneratorContext,
+        endianness: EndiannessValue,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             public final class $name $(if let Some(parent) = &self.parent => extends $(&parent.name)) {
-                protected static int WIDTH = $(self.static_byte_width());
-                $(ctx.gen_byte_order())
+                $endianness
                 $(self.member_defs(true, None))
 
                 private $name() { throw new UnsupportedOperationException(); }
@@ -57,16 +57,14 @@ impl PacketDef {
                     protected static $(&parent.name).Builder<?> fromPayload(byte[] bytes) {
                         $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
                         Builder b = new Builder();
-                        $(self.decoder(
-                            |member, value| quote!(b.$(member.setter(member.ty.from_int(value))))))
+                        $(self.decoder(|member, value| quote!(b.$(member.setter(member.ty.from_int(value))))))
                         return b;
                     }
                 } else {
                     public static $name fromBytes(byte[] bytes) {
                         $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
                         Builder b = new Builder();
-                        $(self.decoder(
-                            |member, value| quote!(b.$(member.setter(member.ty.from_int(value))))))
+                        $(self.decoder(|member, value| quote!(b.$(member.setter(member.ty.from_int(value))))))
                         return b.build();
                     }
                 })
@@ -74,17 +72,22 @@ impl PacketDef {
                 // Encoder
                 $(if self.parent.is_some() {
                     public byte[] toBytes() {
-                        $(&*import::BB) buf = $(&*import::BB).allocate(WIDTH).order(BYTE_ORDER);
+                        $(&*import::BB) buf = $(&*import::BB).allocate(width()).order(BYTE_ORDER);
                         $(self.encoder())
                         return super.toBytes(buf);
                     }
                 } else {
                     public byte[] toBytes() {
-                        $(&*import::BB) buf = $(&*import::BB).allocate(WIDTH).order(BYTE_ORDER);
+                        $(&*import::BB) buf = $(&*import::BB).allocate(width()).order(BYTE_ORDER);
                         $(self.encoder())
                         return buf.array();
                     }
                 })
+
+                $(if self.parent.is_some() => @Override)
+                public int width() {
+                    $(self.width_def())
+                }
 
                 $(self.getter_defs())
 
@@ -133,15 +136,13 @@ impl PacketDef {
     pub fn gen_abstract_packet<'a>(
         &'a self,
         name: &'a String,
-        ctx: &'a GeneratorContext,
+        endianness: EndiannessValue,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             public abstract sealed class $name
             $(if let Some(parent) = &self.parent => extends $(&parent.name))
             permits $(for child in self.children.iter() join (, ) => $(&child.name)) {
-
-                protected static int WIDTH = $(self.static_byte_width());
-                $(ctx.gen_byte_order())
+                $endianness
                 $(self.member_defs(true, None))
 
                 protected $name() { throw new UnsupportedOperationException(); }
@@ -167,38 +168,41 @@ impl PacketDef {
 
 
                 protected byte[] toBytes($(&*import::BB) payload) {
-                    $(&*import::BB) buf = $(&*import::BB).allocate(WIDTH).order(BYTE_ORDER);
+                    $(&*import::BB) buf = $(&*import::BB).allocate(width()).order(BYTE_ORDER);
                     $(self.encoder())
                     return buf.array();
+                }
+
+                $(if self.parent.is_some() => @Override)
+                protected int width() {
+                    $(self.width_def())
                 }
 
                 $(self.getter_defs())
 
                 $(if self.parent.is_some() => @Override)
-                protected String toString(String subPayload) {
-                    $(if self.parent.is_some() {
-                        String payload =
-                    } else {
-                        return getClass().getSimpleName() +
-                    })
-
-                    $(quoted("{\n"))
-                    $(for chunk in self.alignment.iter() {
-                        $(match chunk {
-                            Chunk::PackedBits { fields, .. } => $(for field in fields.iter() =>
-                                $(if !(field.is_partial && field.chunk_offset == 0) =>
-                                    + $(quoted(format!("{}[{}]=", &field.symbol.name, field.symbol.ty.width().unwrap())))
-                                    + $(field.symbol.stringify()) + "\n"
-                                )),
-                            Chunk::Bytes(member) => + $(match member.ty {
-                                Type::Payload => $(quoted("payload=")) + subPayload + "\n",
-                                _ => $(quoted(format!("{}=", member.name))) + $(member.stringify()),
+                protected String toString(String payload) {
+                    $(let members_str = quote!($(quoted("{\n"))
+                        $(for chunk in self.alignment.iter() {
+                            $(match chunk {
+                                Chunk::PackedBits { fields, .. } => $(for field in fields.iter() =>
+                                    $(if !(field.is_partial && field.chunk_offset == 0) =>
+                                        + $(quoted(format!("{}[{}]=", &field.symbol.name, field.symbol.ty.width().unwrap())))
+                                        + $(field.symbol.stringify()) + "\n"
+                                    )),
+                                Chunk::Bytes(member) => + $(match member.ty {
+                                    Type::Payload => $(quoted("payload=")) + payload + "\n",
+                                    _ => $(quoted(format!("{}=", member.name))) + $(member.stringify()),
+                                })
                             })
-                        })
-                    })
-                    + "}";
+                        }) + "}"
+                    ))
 
-                    $(if self.parent.is_some() => return super.toString(payload);)
+                    $(if self.parent.is_some() {
+                        return super.toString($members_str);
+                    } else {
+                        return $members_str;
+                    })
                 }
 
                 $(if !self.members.is_empty() => $(self.hashcode_equals_overrides(name, false)))
@@ -226,7 +230,9 @@ impl PacketDef {
                         protected abstract static class $(&child.name)Builder<B extends Builder<B>> extends Builder<B> {
                             protected $(&child.name)Builder() {
                                 $(for (member, value) in child.constraints.iter() {
-                                    $member = $value;
+                                    // TODO(jmes): handle case when constraining member of ancestor
+                                    // This will likely require putting tag_id in constraint
+                                    $member = $(value.gen(&self.members.iter().find(|m| &m.name == member).unwrap().ty));
                                 })
                             }
 
@@ -265,7 +271,7 @@ impl PacketDef {
     fn setter_defs<'a>(
         &'a self,
         builder_type: &'static str,
-        constraints: Option<&'a HashMap<String, String>>,
+        constraints: Option<&'a HashMap<String, RValue>>,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(for member in self.members.iter() {
@@ -299,7 +305,7 @@ impl PacketDef {
             $(for chunk in self.alignment.iter() {
                 $(match chunk {
                     Chunk::PackedBits { fields, width } => {
-                        $(let chunk_type = Integral::fitting_width(*width))
+                        $(let chunk_type = Integral::fitting(*width))
                         $(let mut fields = fields.iter())
                         $(let first = fields.next().expect("Attempt to generate encoder for chunk with no fields"))
 
@@ -333,15 +339,15 @@ impl PacketDef {
                 $(match chunk {
                     Chunk::PackedBits { fields, width } => {
                         $(let chunk_name = format!("chunk{}", i))
-                        $(let chunk_type = Integral::fitting_width(*width).limit_to_int())
+                        $(let chunk_type = Integral::fitting(*width).limit_to_int())
 
-                        $chunk_type $(&chunk_name) = $(Integral::fitting_width(*width).decoder("buf"));
+                        $chunk_type $(&chunk_name) = $(Integral::fitting(*width).decoder("buf"));
 
                         $(for field in fields.iter() {
                             $(let ty = match field.symbol.ty {
                                 Type::Integral { ty, ..} => ty,
-                                Type::EnumClass { fits, .. } => fits,
-                                _ => unreachable!("Packed chunk with unexpected symbol")
+                                Type::Class { width: Some(width), .. } => Integral::fitting(width).limit_to_int(),
+                                _ => unreachable!("Packed chunk with dynamic width")
                             })
                             $(let decoded_field = chunk_name.as_str()
                                 .maybe_mask(field.chunk_offset, field.width)
@@ -368,8 +374,13 @@ impl PacketDef {
                     }
                     Chunk::Bytes(member) => $(match member.ty {
                         Type::Payload => {
-                            byte[] payload = new byte[bytes.length - WIDTH];
-                            buf.get(payload);
+                            $(if let Some(width) = self.width {
+                                byte[] payload = new byte[bytes.length - $(width / 8)];
+                                buf.get(payload);
+                            } else {
+                                throw new IllegalStateException("NO WAY TO DETERMINE PAYLOAD SIZE");
+                            })
+                            // TODO: Check for size field
                         },
                         _ => {
                             byte[] $(&member.name) = new byte[$(&member.ty).width()]
@@ -378,6 +389,21 @@ impl PacketDef {
                     })
                 })
             })
+        }
+    }
+
+    fn width_def<'a>(&'a self) -> impl FormatInto<Java> + 'a {
+        let (statically_sized, dynamically_sized): (Vec<_>, Vec<_>) =
+            self.members.iter().partition(|member| member.ty.width().is_some());
+
+        quote_fn! {
+            $(let static_width =
+                statically_sized.into_iter().map(|member| member.ty.width().unwrap()).sum::<usize>() / 8)
+            return
+                $(if self.parent.is_some() => super.width() +)
+                $(if static_width != 0 => $static_width)
+                $(if static_width != 0 && !dynamically_sized.is_empty() => +)
+                $(for member in dynamically_sized.into_iter() join ( + ) => $(member.gen_width()));
         }
     }
 
@@ -417,24 +443,33 @@ impl PacketDef {
         &'a self,
         children: &'a Vec<Child>,
     ) -> impl FormatInto<Java> + 'a {
+        let mut children_iter = children.iter();
+        let default = children_iter.next().expect("Parent packet must have at least 1 child");
+        let children: Vec<&Child> = children_iter
+            .filter(|child| !child.constraints.is_empty() || child.width.is_some())
+            .collect();
+
         quote_fn! {
-            $(let mut children_iter = children.iter())
-            $(let last = children_iter.next().unwrap())
+            $(if children.is_empty() {
+                Builder<?> b = $(&default.name).fromPayload(payload);
+            } else {
+                Builder<?> b;
+                $(for child in children {
+                    if (
+                        $(if let Some(width) = child.width => payload.length == $(width / 8))
+                        $(if child.width.is_some() && !child.constraints.is_empty() => &&)
+                        $(for member in self.members.iter() =>
+                            $(if let Some(value) = child.constraints.get(&member.name) =>
+                                 $(member.equals(value.gen(&member.ty)))))
+                    ) {
+                        b = $(&child.name).fromPayload(payload);
+                    } else
+                }) {
+                    b = $(&default.name).fromPayload(payload);
+                }
+            })
 
-            Builder<?> b;
 
-            $(for child in children_iter {
-                if (payload.length == $(&child.name).WIDTH
-                    $(for member in self.members.iter() =>
-                        $(if let Some(constraint) = child.constraints.get(&member.name) =>
-                            && $(member.equals(constraint))))
-
-                ) {
-                    b = $(&child.name).fromPayload(payload);
-                } else
-            }) {
-                b = $(&last.name).fromPayload(payload);
-            }
 
             $(for member in self.members.iter() => b.$(&member.name) = $(&member.name);)
         }

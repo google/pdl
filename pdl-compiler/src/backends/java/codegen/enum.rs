@@ -6,9 +6,9 @@ use crate::{
     backends::java::{Class, Integral, Type},
 };
 
-impl<'a> Class<'a> {
-    pub fn gen_enum(&'a self, tags: &'a Vec<Tag>, width: usize) -> impl FormatInto<Java> + 'a {
-        let ty = Integral::fitting_width(width).limit_to_int();
+impl Class {
+    pub fn gen_enum<'a>(&'a self, tags: &'a Vec<Tag>, width: usize) -> impl FormatInto<Java> + 'a {
+        let ty = Integral::fitting(width).limit_to_int();
 
         quote_fn! {
             public abstract sealed class $(&self.name)

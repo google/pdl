@@ -12,8 +12,9 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration UnknownSizeStruct \
 --exclude-declaration ScalarGroup \
 --exclude-declaration EnumGroup \
+--exclude-declaration ScalarParent \
 --exclude-declaration EnumParent \
---exclude-declaration Packet_Enum_Field \
+--exclude-declaration EmptyParent \
 --exclude-declaration Packet_Reserved_Field \
 --exclude-declaration Packet_Size_Field \
 --exclude-declaration Packet_Count_Field \
@@ -21,6 +22,8 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration Packet_FixedEnum_Field \
 --exclude-declaration Packet_Payload_Field_VariableSize \
 --exclude-declaration Packet_Payload_Field_SizeModifier \
+--exclude-declaration Packet_Payload_Field_UnknownSize \
+--exclude-declaration Packet_Payload_Field_UnknownSize_Terminal \
 --exclude-declaration Packet_Body_Field_VariableSize \
 --exclude-declaration Packet_Body_Field_UnknownSize \
 --exclude-declaration Packet_Body_Field_UnknownSize_Terminal \
@@ -61,8 +64,12 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration Packet_Optional_Scalar_Field \
 --exclude-declaration Packet_Optional_Enum_Field \
 --exclude-declaration Packet_Optional_Struct_Field \
+--exclude-declaration ScalarChild_A \
+--exclude-declaration ScalarChild_B \
 --exclude-declaration EnumChild_A \
 --exclude-declaration EnumChild_B \
+--exclude-declaration AliasedChild_A \
+--exclude-declaration AliasedChild_B \
 --exclude-declaration Struct_Scalar_Field \
 --exclude-declaration Struct_Enum_Field_ \
 --exclude-declaration Struct_Enum_Field \

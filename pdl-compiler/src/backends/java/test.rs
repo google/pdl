@@ -15,6 +15,7 @@
 use genco::{
     lang::Java,
     prelude::{java, quote_fn, quote_in},
+    quote,
     tokens::FormatInto,
     Tokens,
 };
@@ -35,8 +36,14 @@ pub fn generate_tests(input_file: &str, output_dir: &Path, package: String) -> R
     let mut dir = PathBuf::from(output_dir);
     dir.extend(package.split("."));
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let output_file = dir.join("PdlTests").with_extension("java");
 
-    JavaTest { packets: get_test_cases(input_file, &packets_for_test)?, package, dir }.write_to_fs()
+    JavaTest(get_test_cases(input_file, &packets_for_test)?).write_to_fs(
+        &output_file,
+        &package,
+        input_file,
+        (),
+    )
 }
 
 fn get_test_cases(file: &str, packet_names: &[&str]) -> Result<Vec<Packet>, String> {
@@ -48,30 +55,16 @@ fn get_test_cases(file: &str, packet_names: &[&str]) -> Result<Vec<Packet>, Stri
     Ok(packets)
 }
 
-struct JavaTest {
-    dir: PathBuf,
-    package: String,
-    packets: Vec<Packet>,
-}
+struct JavaTest(Vec<Packet>);
 
-impl JavaFile for JavaTest {
-    fn get_path(&self) -> PathBuf {
-        self.dir.join("PdlTests").with_extension("java")
-    }
-
-    fn get_package(&self) -> &str {
-        &self.package
-    }
-}
-
-impl FormatInto<Java> for JavaTest {
-    fn format_into(self, tokens: &mut java::Tokens) {
-        quote_in!(*tokens =>
+impl JavaFile<()> for JavaTest {
+    fn gen(self, _: ()) -> Tokens<Java> {
+        quote! {
             final class PdlTests {
-                $(for packet in self.packets.iter() => $packet)
+                $(for packet in self.0.iter() => $packet)
 
                 public static void main(String[] args) {
-                    $(for packet in self.packets.iter() {
+                    $(for packet in self.0.iter() {
                         $(for (i, _) in packet.tests.iter().enumerate() {
                             $(&packet.name).testEncode$i();
                             $(&packet.name).testDecode$i();
@@ -80,7 +73,7 @@ impl FormatInto<Java> for JavaTest {
                     System.out.println("All tests passed!");
                 }
             }
-        )
+        }
     }
 }
 
@@ -125,6 +118,8 @@ impl TestVector {
 
 fn build_packet_from_fields<'a>(name: &'a str, fields: &'a Value) -> impl FormatInto<Java> + 'a {
     let fields = fields.as_object().unwrap();
+
+    dbg!(fields);
 
     quote_fn! {
         new $name.Builder()
