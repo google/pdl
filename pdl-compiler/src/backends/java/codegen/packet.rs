@@ -46,8 +46,8 @@ impl PacketDef {
 
                 private $name() { throw new UnsupportedOperationException(); }
 
-                private $name(Builder b) {
-                    $(if self.parent.is_some() => super(b);)
+                private $name(Builder builder) {
+                    $(if self.parent.is_some() => super(builder);)
                     $(self.builder_assigns())
                 }
 
@@ -56,16 +56,16 @@ impl PacketDef {
                     // If we inherit, don't build the Builder so super can add it's fields
                     protected static $(&parent.name).Builder<?> fromPayload(byte[] bytes) {
                         $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
-                        Builder b = new Builder();
-                        $(self.decoder(|member, value| quote!(b.$(member.setter(member.ty.from_int(value))))))
-                        return b;
+                        Builder builder = new Builder();
+                        $(self.decoder(|member, value| quote!(builder.$(member.setter(member.ty.from_int(value))))))
+                        return builder;
                     }
                 } else {
                     public static $name fromBytes(byte[] bytes) {
                         $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order(BYTE_ORDER);
-                        Builder b = new Builder();
-                        $(self.decoder(|member, value| quote!(b.$(member.setter(member.ty.from_int(value))))))
-                        return b.build();
+                        Builder builder = new Builder();
+                        $(self.decoder(|member, value| quote!(builder.$(member.setter(member.ty.from_int(value))))))
+                        return builder.build();
                     }
                 })
 
@@ -147,8 +147,8 @@ impl PacketDef {
 
                 protected $name() { throw new UnsupportedOperationException(); }
 
-                protected $name(Builder<?> b) {
-                    $(if self.parent.is_some() => super(b);)
+                protected $name(Builder<?> builder) {
+                    $(if self.parent.is_some() => super(builder);)
                     $(self.builder_assigns())
                 }
 
@@ -163,7 +163,7 @@ impl PacketDef {
 
                     $(self.build_child_fitting_constraints(&self.children))
 
-                    $(if self.parent.is_some() { return b; } else { return b.build(); })
+                    $(if self.parent.is_some() { return b; } else { return builder.build(); })
                 }
 
 
@@ -232,7 +232,7 @@ impl PacketDef {
                                 $(for (member, value) in child.constraints.iter() {
                                     // TODO(jmes): handle case when constraining member of ancestor
                                     // This will likely require putting tag_id in constraint
-                                    $member = $(value.gen(&self.members.iter().find(|m| &m.name == member).unwrap().ty));
+                                    $member = $(value.generate(&self.members.iter().find(|m| &m.name == member).unwrap().ty));
                                 })
                             }
 
@@ -296,7 +296,7 @@ impl PacketDef {
 
     fn builder_assigns(&self) -> impl FormatInto<Java> + '_ {
         quote_fn! {
-            $(for member in self.members.iter() => $(&member.name) = b.$(&member.name);)
+            $(for member in self.members.iter() => $(&member.name) = builder.$(&member.name);)
         }
     }
 
@@ -451,27 +451,27 @@ impl PacketDef {
 
         quote_fn! {
             $(if children.is_empty() {
-                Builder<?> b = $(&default.name).fromPayload(payload);
+                Builder<?> builder = $(&default.name).fromPayload(payload);
             } else {
-                Builder<?> b;
+                Builder<?> builder;
                 $(for child in children {
                     if (
                         $(if let Some(width) = child.width => payload.length == $(width / 8))
                         $(if child.width.is_some() && !child.constraints.is_empty() => &&)
                         $(for member in self.members.iter() =>
                             $(if let Some(value) = child.constraints.get(&member.name) =>
-                                 $(member.equals(value.gen(&member.ty)))))
+                                 $(member.equals(value.generate(&member.ty)))))
                     ) {
-                        b = $(&child.name).fromPayload(payload);
+                        builder = $(&child.name).fromPayload(payload);
                     } else
                 }) {
-                    b = $(&default.name).fromPayload(payload);
+                    builder = $(&default.name).fromPayload(payload);
                 }
             })
 
 
 
-            $(for member in self.members.iter() => b.$(&member.name) = $(&member.name);)
+            $(for member in self.members.iter() => builder.$(&member.name) = $(&member.name);)
         }
     }
 }

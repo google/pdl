@@ -1,26 +1,13 @@
 little_endian_packets
 
-enum Enum7 : 7 {
-    A = 1,
-    B = 2..5 {
-        C = 4
-    },
-    D = 6
-}
+// TODO(jmes): implement _size_ field to get encode/decode working for this case
 
 packet ScalarParent {
-    field_a: 8,
+    a: 8,
     _size_(_payload_): 8,
     _payload_
 }
 
-packet EmptyParent : ScalarParent {
-    enum_field: Enum7,
-    field_b: 1,
-    _payload_,
-    field_c: 8,
-}
-
-packet AliasedChild_A : EmptyParent (field_b = 1) {
-    field_d: 8,
+packet ScalarChild_A : ScalarParent (a = 0) {
+    b: 8,
 }

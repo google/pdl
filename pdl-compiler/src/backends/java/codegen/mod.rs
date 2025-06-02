@@ -31,7 +31,7 @@ use super::{
 };
 
 impl JavaFile<EndiannessValue> for Class {
-    fn gen(self, endianness: EndiannessValue) -> Tokens<Java> {
+    fn generate(self, endianness: EndiannessValue) -> Tokens<Java> {
         quote! {
             $(match &self.def {
                 ClassDef::Packet(def) => $(def.gen_packet(&self.name, endianness)),
@@ -216,7 +216,7 @@ impl Integral {
         }
     }
 
-    fn capitalized(&self) -> &'static str {
+    pub fn capitalized(&self) -> &'static str {
         match self {
             Integral::Byte => "Byte",
             Integral::Short => "Short",
@@ -244,7 +244,7 @@ pub fn gen_mask(width: usize) -> impl FormatInto<Java> {
 }
 
 impl RValue {
-    fn gen<'a>(&'a self, ty: &'a Type) -> impl FormatInto<Java> + 'a {
+    fn generate<'a>(&'a self, ty: &'a Type) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(match self {
                 RValue::Integral(integral) => $(integral.to_string()),

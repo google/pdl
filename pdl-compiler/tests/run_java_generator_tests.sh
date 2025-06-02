@@ -5,14 +5,12 @@ set -euxo pipefail
 EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration UnsizedCustomField \
 --exclude-declaration Checksum \
---exclude-declaration Enum7 \
 --exclude-declaration Enum16 \
 --exclude-declaration SizedStruct \
 --exclude-declaration UnsizedStruct \
 --exclude-declaration UnknownSizeStruct \
 --exclude-declaration ScalarGroup \
 --exclude-declaration EnumGroup \
---exclude-declaration ScalarParent \
 --exclude-declaration EnumParent \
 --exclude-declaration EmptyParent \
 --exclude-declaration Packet_Reserved_Field \
@@ -64,7 +62,6 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration Packet_Optional_Scalar_Field \
 --exclude-declaration Packet_Optional_Enum_Field \
 --exclude-declaration Packet_Optional_Struct_Field \
---exclude-declaration ScalarChild_A \
 --exclude-declaration ScalarChild_B \
 --exclude-declaration EnumChild_A \
 --exclude-declaration EnumChild_B \
@@ -175,7 +172,6 @@ sed -e 's/little_endian_packets/big_endian_packets/' \
 
 mkdir -p "$OUT_DIR/java/test"
 
-
 # Little Endian Codegen
 
 cargo run --features "java" --bin pdlc -- \
@@ -190,8 +186,9 @@ cargo run --features java --bin pdlc -- \
   --output-format java \
   --tests \
   --output-dir "$OUT_DIR/java" \
-  --java-package "test.little_endian"
-
+  --java-package "test.little_endian" \
+  --pdl-file-under-test "tests/canonical/le_test_file.pdl" \
+  $EXCLUDE_DECLS
 
 # Big Endian Codegen
 
@@ -207,14 +204,16 @@ cargo run --features java --bin pdlc -- \
   --output-format java \
   --tests \
   --output-dir "$OUT_DIR/java" \
-  --java-package "test.big_endian"
+  --java-package "test.big_endian" \
+  --pdl-file-under-test "$OUT_DIR/be_test_file.pdl" \
+  $EXCLUDE_DECLS
 
 # Compile and Execute
 
 cd "$OUT_DIR/java/"
 
-javac test/big_endian/PdlTests.java
-java -enableassertions test.big_endian.PdlTests
-
 javac test/little_endian/PdlTests.java
 java -enableassertions test.little_endian.PdlTests
+
+javac test/big_endian/PdlTests.java
+java -enableassertions test.big_endian.PdlTests

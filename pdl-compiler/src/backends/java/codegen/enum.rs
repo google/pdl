@@ -58,7 +58,7 @@ impl TagValue {
 
         quote_fn! {
             public static final class $(&name) extends $super_name {
-                private $(&name)() { throw new UnsupportedOperationException(); }
+                private $(&name)() { }
 
                 @Override
                 public $ty to$(ty.capitalized())() { return $(self.value); }

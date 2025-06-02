@@ -62,7 +62,7 @@ struct Opt {
 
     #[argh(switch)]
     /// generate tests for the selected output format.
-    /// Valid for the output formats "rust", "rust_legacy".
+    /// Valid for the output formats "rust", "java", "rust_legacy".
     /// The input file must point to a JSON formatterd file with the list of
     /// test vectors.
     tests: bool,
@@ -89,6 +89,12 @@ struct Opt {
     #[argh(option)]
     /// java package to contain the generated classes.
     java_package: Option<String>,
+
+    #[argh(option)]
+    /// file containing the PDL declarations under test. This must be provded when the 'test' flag
+    /// is set and 'output_format' is 'java' to retreive type information for the packets under
+    /// test.
+    pdl_file_under_test: Option<String>,
 }
 
 /// Remove declarations listed in the input filter.
@@ -194,11 +200,17 @@ fn generate_tests(opt: &Opt) -> Result<(), String> {
                 .java_package
                 .as_ref()
                 .ok_or("'--java-package' is required for '--output-format java'")?;
+            let pdl_file_under_test = opt
+                .pdl_file_under_test
+                .as_ref()
+                .ok_or("'--pdl-file-under-test' is requred for when generating tests with '--output-format java'")?;
 
             backends::java::test::generate_tests(
                 &opt.input_file,
                 Path::new(output_dir),
                 package.clone(),
+                pdl_file_under_test,
+                &opt.exclude_declaration,
             )
         }
         _ => Err(format!(
