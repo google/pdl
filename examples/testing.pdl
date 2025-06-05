@@ -1,11 +1,20 @@
 little_endian_packets
 
-packet ScalarParent {
-    a: 8,
+enum Enum16 : 16 {
+    A = 0xaabb,
+    B = 0xccdd,
+}
+
+packet EnumParent {
+    a: Enum16,
     _size_(_payload_): 8,
     _payload_
 }
 
-packet ScalarChild_A : ScalarParent (a = 0) {
+packet EnumChild_A : EnumParent (a = A) {
     b: 8,
+}
+
+packet EnumChild_B : EnumParent (a = B) {
+    c: 16,
 }

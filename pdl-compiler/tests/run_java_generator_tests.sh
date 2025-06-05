@@ -5,13 +5,11 @@ set -euxo pipefail
 EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration UnsizedCustomField \
 --exclude-declaration Checksum \
---exclude-declaration Enum16 \
 --exclude-declaration SizedStruct \
 --exclude-declaration UnsizedStruct \
 --exclude-declaration UnknownSizeStruct \
 --exclude-declaration ScalarGroup \
 --exclude-declaration EnumGroup \
---exclude-declaration EnumParent \
 --exclude-declaration EmptyParent \
 --exclude-declaration Packet_Reserved_Field \
 --exclude-declaration Packet_Size_Field \
@@ -63,8 +61,6 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration Packet_Optional_Enum_Field \
 --exclude-declaration Packet_Optional_Struct_Field \
 --exclude-declaration ScalarChild_B \
---exclude-declaration EnumChild_A \
---exclude-declaration EnumChild_B \
 --exclude-declaration AliasedChild_A \
 --exclude-declaration AliasedChild_B \
 --exclude-declaration Struct_Scalar_Field \

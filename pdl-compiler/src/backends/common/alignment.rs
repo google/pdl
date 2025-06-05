@@ -102,7 +102,7 @@ impl<S: Symbol> ByteAligner<S> {
     ) {
         match self.chunks.last_mut() {
             Some(Chunk::PackedBits { fields, width: chunk_width }) => {
-                if *chunk_width == self.max_chunk_width {
+                if *chunk_width % 8 == 0 {
                     self.add_field_to_new_chunk(symbol, width, symbol_offset, is_partial);
                 } else if *chunk_width + width <= self.max_chunk_width {
                     fields.push(Field {

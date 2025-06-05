@@ -443,7 +443,6 @@ impl PacketDef {
         }
     }
 
-    // TODO(jmes): FIX THIS SO THAT IT INCLUDES WIDTH OF _SIZE_ FIELDS
     fn field_width_def<'a>(&'a self) -> impl FormatInto<Java> + 'a {
         let (statically_sized, dynamically_sized): (Vec<_>, Vec<_>) =
             self.members.iter().partition(|member| member.ty.width().is_some());
@@ -510,14 +509,14 @@ impl PacketDef {
                 Builder<?> builder;
                 $(for child in children {
                     if (
-                        $(if let Some(width) = child.width => payload.capacity() == $(width / 8))
-                        $(if child.width.is_some() && !child.constraints.is_empty() => &&)
                         $(for member in self.members.iter() =>
                             $(if let Some(value) = child.constraints.get(&member.name) =>
                                  $(member.equals(value.generate(&member.ty)))))
+                        $(if !child.constraints.is_empty() && child.width.is_some() => &&)
+                        $(if let Some(width) = child.width => payload.capacity() == $(width / 8))
                     ) {
                         builder = $(&child.name).fromPayload(payload);
-                    } else
+                    } else$[' ']
                 }) {
                     builder = $(&default.name).fromPayload(payload);
                 }
