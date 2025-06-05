@@ -95,13 +95,14 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
                 if parent_packets.contains(id) =>
             {
                 let parent_name = id.to_upper_camel_case();
-                let (members, alignment, width) = generate_members(fields, &classes);
+                let (members, alignment, size_fields, width) = generate_members(fields, &classes);
 
                 let (mut parent, child) = Class::new_parent_with_fallback_child(
                     parent_name.clone(),
                     members,
                     alignment,
                     width,
+                    size_fields,
                 );
 
                 // This parent might also be a child
@@ -123,7 +124,7 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
             // If this is a child packet, set its parent to the appropriate abstract class.
             ast::DeclDesc::Packet { id, constraints, fields, parent_id: Some(parent_id) } => {
                 let child_name = id.to_upper_camel_case();
-                let (members, alignment, width) = generate_members(fields, &classes);
+                let (members, alignment, size_fields, width) = generate_members(fields, &classes);
 
                 let parent = classes
                     .get_mut(&parent_id.to_upper_camel_case())
@@ -134,6 +135,7 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
                     members,
                     alignment,
                     width,
+                    size_fields,
                     constraints.iter().map(Constraint::to_assignment).collect(),
                 );
 
@@ -141,7 +143,7 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
             }
             // Otherwise, the packet has no inheritence (no parent and no children)
             ast::DeclDesc::Packet { id, fields, parent_id: None, .. } => {
-                let (members, alignment, width) = generate_members(fields, &classes);
+                let (members, alignment, size_fields, width) = generate_members(fields, &classes);
                 let name = id.to_upper_camel_case();
                 classes.insert(
                     name.clone(),
@@ -151,6 +153,7 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
                             members,
                             alignment,
                             width,
+                            size_fields,
                             parent: None,
                             children: Vec::new(),
                         }),
@@ -178,13 +181,14 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
     classes
 }
 
-fn generate_members(
-    fields: &Vec<ast::Field>,
+fn generate_members<'a>(
+    fields: &'a Vec<ast::Field>,
     classes: &HashMap<String, Class>,
-) -> (Vec<Rc<Variable>>, Alignment<Rc<Variable>>, Option<usize>) {
+) -> (Vec<Rc<Variable>>, Alignment<Rc<Variable>>, HashMap<String, usize>, Option<usize>) {
     let mut members = Vec::new();
     let mut aligner = ByteAligner::new(64);
     let mut total_width = Some(0);
+    let mut size_fields: HashMap<String, usize> = HashMap::new();
 
     for field in fields.iter() {
         match &field.desc {
@@ -201,9 +205,17 @@ fn generate_members(
                 total_width = total_width.map(|total_width| total_width + width);
             }
             ast::FieldDesc::Payload { size_modifier } => {
-                aligner.add_bytes(Rc::new(Variable::new_payload()));
+                aligner
+                    .add_bytes(Rc::new(Variable::new_payload(size_fields.get("payload").cloned())));
             }
-            ast::FieldDesc::Size { field_id, width } => {}
+            ast::FieldDesc::Size { field_id, width } => {
+                let variable = Rc::new(Variable {
+                    name: format!("{}Size", field_id.to_lower_camel_case()),
+                    ty: Type::Integral { ty: Integral::Int, width: *width },
+                });
+                aligner.add_bitfield(variable, *width);
+                size_fields.insert(field_id.to_lower_camel_case(), *width);
+            }
             ast::FieldDesc::Typedef { id, type_id } => {
                 let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
                 let variable = Rc::new(Variable {
@@ -231,7 +243,7 @@ fn generate_members(
         }
     }
 
-    (members, aligner.align().expect("Failed to align members"), total_width)
+    (members, aligner.align().expect("Failed to align members"), size_fields, total_width)
 }
 
 trait JavaFile<C>: Sized {
@@ -274,9 +286,10 @@ impl Class {
         members: Vec<Rc<Variable>>,
         alignment: Alignment<Rc<Variable>>,
         width: Option<usize>,
+        size_fields: HashMap<String, usize>,
     ) -> (Self, Self) {
         let child_name = Self::fallback_child_name(&name);
-        let child_member = Rc::new(Variable::new_payload());
+        let child_member = Rc::new(Variable::new_payload(size_fields.get("payload").cloned()));
         let child_alignment = {
             let mut aligner = ByteAligner::new(64);
             aligner.add_bytes(child_member.clone());
@@ -293,6 +306,7 @@ impl Class {
                     members,
                     alignment,
                     width,
+                    size_fields,
                     parent: None,
                     children: vec![Child {
                         name: child_name.clone(),
@@ -306,7 +320,8 @@ impl Class {
                 def: ClassDef::Packet(PacketDef {
                     members: vec![child_member],
                     alignment: child_alignment,
-                    width,
+                    width: None,
+                    size_fields: HashMap::new(),
                     parent: Some(Parent { name, does_constrain: false }),
                     children: vec![],
                 }),
@@ -320,6 +335,7 @@ impl Class {
         members: Vec<Rc<Variable>>,
         alignment: Alignment<Rc<Variable>>,
         width: Option<usize>,
+        size_fields: HashMap<String, usize>,
         constraints: HashMap<String, RValue>,
     ) -> Self {
         let mut child = Class {
@@ -328,6 +344,7 @@ impl Class {
                 members,
                 alignment,
                 width,
+                size_fields,
                 parent: None,
                 children: vec![],
             }),
@@ -389,6 +406,7 @@ pub struct PacketDef {
     members: Vec<Rc<Variable>>,
     alignment: Alignment<Rc<Variable>>,
     width: Option<usize>,
+    size_fields: HashMap<String, usize>,
     parent: Option<Parent>,
     children: Vec<Child>,
 }
@@ -441,15 +459,15 @@ pub struct Variable {
 }
 
 impl Variable {
-    fn new_payload() -> Self {
-        Variable { name: String::from("payload"), ty: Type::Payload }
+    fn new_payload(size_field: Option<usize>) -> Self {
+        Variable { name: String::from("payload"), ty: Type::Payload { size_field } }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Integral { ty: Integral, width: usize },
-    Payload,
+    Payload { size_field: Option<usize> },
     Class { name: String, width: Option<usize> },
 }
 
@@ -458,7 +476,7 @@ impl Type {
         match self {
             Type::Integral { width, .. } => Some(*width),
             Type::Class { width, .. } => *width,
-            Type::Payload => None,
+            Type::Payload { .. } => None,
         }
     }
 }

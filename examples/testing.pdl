@@ -1,7 +1,5 @@
 little_endian_packets
 
-// TODO(jmes): implement _size_ field to get encode/decode working for this case
-
 packet ScalarParent {
     a: 8,
     _size_(_payload_): 8,

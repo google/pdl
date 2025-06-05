@@ -45,10 +45,10 @@ impl JavaFile<EndiannessValue> for Class {
 impl FormatInto<Java> for EndiannessValue {
     fn format_into(self, tokens: &mut Tokens<Java>) {
         quote_in! { *tokens =>
-            private static final $(&*import::BO) BYTE_ORDER = $(match self {
+            $(match self {
                 EndiannessValue::LittleEndian => $(&*import::BO).LITTLE_ENDIAN,
                 EndiannessValue::BigEndian => $(&*import::BO).BIG_ENDIAN,
-            });
+            })
         }
     }
 }
@@ -108,6 +108,16 @@ impl<J: FormatInto<Java>> Expr for J {
 }
 
 impl Variable {
+    fn encode_value(&self) -> impl FormatInto<Java> + '_ {
+        quote_fn! {
+            $(match &self.ty {
+                Type::Integral { .. } if self.name == "payloadSize" => payload.capacity(),
+                Type::Integral { .. } if self.name.ends_with("Size") => $(self.name.strip_suffix("Size")).length,
+                _ => $(&self.name),
+            })
+        }
+    }
+
     fn setter<'a>(&'a self, expr: impl FormatInto<Java> + 'a) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             set$(self.name.to_upper_camel_case())($expr)
@@ -119,7 +129,7 @@ impl Variable {
             $(match &self.ty {
                 Type::Integral { ty, .. } => $(ty.boxed()).toHexString($(&self.name)),
                 Type::Class { .. } => $(&self.name).toString(),
-                Type::Payload => $(&*import::ARRAYS).toString($(&self.name)),
+                Type::Payload { .. } => $(&*import::ARRAYS).toString($(&self.name)),
             })
         }
     }
@@ -129,7 +139,7 @@ impl Variable {
             $(match &self.ty {
                 Type::Integral { ty, .. } => $(ty.boxed()).hashCode($(&self.name)),
                 Type::Class { .. } => $(&self.name).hashCode(),
-                Type::Payload => $(&*import::ARRAYS).hashCode($(&self.name)),
+                Type::Payload { .. } => $(&*import::ARRAYS).hashCode($(&self.name)),
             })
         }
     }
@@ -139,7 +149,7 @@ impl Variable {
             $(match &self.ty {
                 Type::Integral { .. } => $(&self.name) == $other,
                 Type::Class { .. } => $(&self.name).equals($other),
-                Type::Payload => $(&*import::ARRAYS).equals($(&self.name), $other)
+                Type::Payload { .. } => $(&*import::ARRAYS).equals($(&self.name), $other)
             })
         }
     }
@@ -150,7 +160,7 @@ impl Variable {
                 Type::Integral { width, .. } => $(*width),
                 Type::Class { width: Some(width), .. } => $(*width),
                 Type::Class { name, .. } => $name.width(),
-                Type::Payload => payload.length,
+                Type::Payload { .. } => payload.length,
             })
         }
     }
@@ -161,7 +171,7 @@ impl FormatInto<Java> for &Type {
         quote_in!(*tokens => $(match self {
             Type::Integral { ty, .. } => $(*ty),
             Type::Class { name, .. } => $name,
-            Type::Payload => byte[]
+            Type::Payload { .. } => byte[]
         }));
     }
 }
@@ -171,7 +181,7 @@ impl Type {
         match self {
             Type::Integral { ty, .. } => ty.boxed(),
             Type::Class { name, .. } => name,
-            Type::Payload => "Arrays",
+            Type::Payload { .. } => "Arrays",
         }
     }
 
