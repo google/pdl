@@ -77,7 +77,7 @@ impl<J: FormatInto<Java>> Expr for J {
         quote! {
             $(match (from, to) {
                 (Type::Integral { ty: Integral::Int, .. }, Integral::Long) => Integer.toUnsignedLong($(self)),
-                (Type::Class { width: Some(width), .. }, to) =>
+                (Type::EnumRef { width, .. }, to) =>
                     $(let from = Integral::fitting(*width).limit_to_int())
                     $(quote!($(self).to$(from.capitalized())())
                         .maybe_widen(&Type::Integral { ty: from, width: *width }, to)),
@@ -108,6 +108,20 @@ impl<J: FormatInto<Java>> Expr for J {
 }
 
 impl Variable {
+    fn value<'a>(&'a self, expr: impl FormatInto<Java> + 'a) -> impl FormatInto<Java> + 'a {
+        match &self.ty {
+            Type::Integral { .. } | Type::StructRef { .. } => {
+                quote!($expr)
+            }
+            Type::EnumRef { name, width } => {
+                quote!($name.from$(Integral::fitting(*width).limit_to_int().capitalized())($expr))
+            }
+            Type::Payload { .. } => {
+                quote!($expr.array())
+            }
+        }
+    }
+
     fn encode_value(&self) -> impl FormatInto<Java> + '_ {
         quote_fn! {
             $(match &self.ty {
@@ -128,7 +142,7 @@ impl Variable {
         quote_fn! {
             $(match &self.ty {
                 Type::Integral { ty, .. } => $(ty.boxed()).toHexString($(&self.name)),
-                Type::Class { .. } => $(&self.name).toString(),
+                Type::EnumRef { .. } | Type::StructRef { .. } => $(&self.name).toString(),
                 Type::Payload { .. } => $(&*import::ARRAYS).toString($(&self.name)),
             })
         }
@@ -138,7 +152,7 @@ impl Variable {
         quote_fn! {
             $(match &self.ty {
                 Type::Integral { ty, .. } => $(ty.boxed()).hashCode($(&self.name)),
-                Type::Class { .. } => $(&self.name).hashCode(),
+                Type::EnumRef { .. } | Type::StructRef { .. } => $(&self.name).hashCode(),
                 Type::Payload { .. } => $(&*import::ARRAYS).hashCode($(&self.name)),
             })
         }
@@ -148,7 +162,7 @@ impl Variable {
         quote_fn! {
             $(match &self.ty {
                 Type::Integral { .. } => $(&self.name) == $other,
-                Type::Class { .. } => $(&self.name).equals($other),
+                Type::EnumRef { .. } | Type::StructRef { .. } => $(&self.name).equals($other),
                 Type::Payload { .. } => $(&*import::ARRAYS).equals($(&self.name), $other)
             })
         }
@@ -157,9 +171,8 @@ impl Variable {
     fn gen_width<'a>(&'a self) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(match &self.ty {
-                Type::Integral { width, .. } => $(*width),
-                Type::Class { width: Some(width), .. } => $(*width),
-                Type::Class { name, .. } => $name.width(),
+                Type::Integral { width, .. } | Type::EnumRef { width, .. } => $(*width),
+                Type::StructRef { .. } => $(&self.name).width(),
                 Type::Payload { .. } => payload.length,
             })
         }
@@ -170,7 +183,7 @@ impl FormatInto<Java> for &Type {
     fn format_into(self, tokens: &mut Tokens<Java>) {
         quote_in!(*tokens => $(match self {
             Type::Integral { ty, .. } => $(*ty),
-            Type::Class { name, .. } => $name,
+            Type::EnumRef { name, .. } | Type::StructRef { name, .. } => $name,
             Type::Payload { .. } => byte[]
         }));
     }
@@ -180,18 +193,8 @@ impl Type {
     fn boxed(&self) -> impl FormatInto<Java> + '_ {
         match self {
             Type::Integral { ty, .. } => ty.boxed(),
-            Type::Class { name, .. } => name,
+            Type::EnumRef { name, .. } | Type::StructRef { name, .. } => name,
             Type::Payload { .. } => "Arrays",
-        }
-    }
-
-    fn from_int<'a>(&'a self, expr: impl FormatInto<Java> + 'a) -> impl FormatInto<Java> + 'a {
-        match self {
-            Type::Integral { .. } => quote!($expr),
-            Type::Class { name, width: Some(width) } => {
-                quote!($name.from$(Integral::fitting(*width).limit_to_int().capitalized())($expr))
-            }
-            _ => panic!("Expr of this type can't be converted to integral"),
         }
     }
 }

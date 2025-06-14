@@ -12,26 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
 use genco::{
     self,
     prelude::Java,
-    quote, quote_fn, quote_in,
+    quote, quote_fn,
     tokens::{quoted, FormatInto},
     Tokens,
 };
-use heck::{self, ToUpperCamelCase};
+use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 
 use crate::{
     ast::EndiannessValue,
-    backends::{
-        common::alignment::Alignment,
-        java::{Child, Parent, RValue},
-    },
+    backends::java::{Child, Parent, RValue},
 };
 
-use super::{gen_mask, import, Chunk, Class, Expr, Integral, PacketDef, Type, Variable};
+use super::{gen_mask, import, Chunk, Expr, Integral, PacketDef, Type, Variable};
 
 impl PacketDef {
     pub fn gen_packet<'a>(
@@ -60,7 +57,10 @@ impl PacketDef {
                     }
                 } else {
                     public static $name fromBytes(byte[] bytes) {
-                        $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order($endianness);
+                        return $name.fromBytes($(&*import::BB).wrap(bytes).order($endianness));
+                    }
+
+                    protected static $name fromBytes($(&*import::BB) buf) {
                         Builder builder = new Builder();
                         $(self.decoder(Self::builder_set, endianness))
                         return builder.build();
@@ -69,6 +69,7 @@ impl PacketDef {
 
                 // Encoder
                 $(if self.parent.is_some() {
+                    @Override
                     public byte[] toBytes() {
                         $(&*import::BB) buf = $(&*import::BB)
                             .allocate(fieldWidth())
@@ -166,13 +167,17 @@ impl PacketDef {
                     }
                 } else {
                     public static $name fromBytes(byte[] bytes) {
-                        $(&*import::BB) buf = $(&*import::BB).wrap(bytes).order($endianness);
+                        return $name.fromBytes($(&*import::BB).wrap(bytes).order($endianness));
+                    }
+
+                    protected static $name fromBytes($(&*import::BB) buf) {
                         $(self.decoder(Self::declare_locally, endianness))
                         $(self.build_child_fitting_constraints(&self.children))
                         return builder.build();
                     }
-
                 })
+
+                $(if self.parent.is_none() => public abstract byte[] toBytes();)
 
                 protected byte[] toBytes($(&*import::BB) payload) {
                     payload.rewind();
@@ -370,15 +375,13 @@ impl PacketDef {
                         $chunk_type $(&chunk_name) = $(Integral::fitting(*width).decoder("buf"));
 
                         $(for field in fields.iter() {
-                            $(let ty = match &field.symbol.ty {
-                                Type::Integral { ty, ..} => ty,
-                                Type::Class { width: Some(width), .. } => &Integral::fitting(*width).limit_to_int(),
-                                _ => unreachable!("Packed chunk with dynamic width")
-                            })
+                            $(let ty = Integral::fitting(
+                                    field.symbol.ty.width().expect("packed chunk with dynamic width")
+                            ).limit_to_int())
 
                             $(let decoded_field = chunk_name.as_str()
                                 .maybe_mask(field.chunk_offset, field.width)
-                                .maybe_cast(chunk_type, *ty))
+                                .maybe_cast(chunk_type, ty))
 
                             $(if field.is_partial {
                                 // The value is split between chunks.
@@ -399,23 +402,33 @@ impl PacketDef {
                             })
                         })
                     }
-                    Chunk::Bytes(member) => $(match member.ty {
+                    Chunk::Bytes(member) => $(match &member.ty {
                         Type::Payload { .. } => {
                             $(if self.size_fields.contains_key("payload") {
-                                $(&*import::BB) payload = buf.slice(buf.position(), payloadSize).order($endianness);
+                                $(assign(member, quote!(
+                                    buf.slice(buf.position(), payloadSize).order($endianness))));
                             } else {
                                 $(if let Some(width) = self.width {
-                                    $(&*import::BB) payload =
-                                        buf.slice(buf.position(), bytes.length - $(width / 8)).order($endianness);
+                                    $(assign(member, quote!(
+                                        buf.slice(buf.position(), buf.capacity() - $(width / 8)).order($endianness))));
                                 } else {
-                                    builder.setPayload(buf.array());
+                                    // If we don't know the payload's width, assume it is the last field in the packet
+                                    // (this should really be enforced by the parser) and consume all remaining bytes
+                                    // in the buffer.
+                                    $(assign(member, quote!(buf.slice())));
                                 })
                             })
                         },
-                        _ => {
-                            byte[] $(&member.name) = new byte[$(&member.ty).width()]
-                            $(&member.name).fromBytes($(&member.name)),
+                        Type::StructRef { name } => {
+                            $(let var_name = &name.to_lower_camel_case())
+                            // If the struct has dynamic width, assume it is the last field in the packet (this should
+                            // really be enforced by the parser) and decode it. Its decoder will consume all remaining
+                            // bytes in the buffer.
+                            $name $var_name = $name.fromBytes(buf.slice());
+                            $(assign(&member, quote!($var_name)));
+                            buf.position(buf.position() + $var_name.width());
                         }
+                        _ =>,
                     })
                 })
             })
@@ -428,13 +441,18 @@ impl PacketDef {
                 // Don't need to set set size fields in builder.
                 $(Self::declare_locally(member, value))
             } else {
-                builder.$(member.setter(member.ty.from_int(value)))
+                builder.$(member.setter(member.value(value)))
             })
         )
     }
 
     fn declare_locally(member: &Variable, value: Tokens<Java>) -> Tokens<Java> {
-        quote!($(&member.ty) $(&member.name) = $(member.ty.from_int(value)))
+        quote!(
+            $(match member.ty {
+                Type::Payload { .. } => ByteBuffer payload = $value,
+                _ => $(&member.ty) $(&member.name) = $(member.value(value))
+            })
+        )
     }
 
     fn width_def<'a>(&'a self) -> impl FormatInto<Java> + 'a {

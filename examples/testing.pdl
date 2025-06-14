@@ -1,20 +1,15 @@
 little_endian_packets
 
-enum Enum16 : 16 {
-    A = 0xaabb,
-    B = 0xccdd,
+struct SizedStruct {
+    a: 8,
 }
 
-packet EnumParent {
-    a: Enum16,
-    _size_(_payload_): 8,
-    _payload_
-}
-
-packet EnumChild_A : EnumParent (a = A) {
+struct UnsizedStruct {
     b: 8,
+    _payload_,
 }
 
-packet EnumChild_B : EnumParent (a = B) {
-    c: 16,
+packet Packet_Struct_Field {
+    a: SizedStruct,
+    b: UnsizedStruct,
 }

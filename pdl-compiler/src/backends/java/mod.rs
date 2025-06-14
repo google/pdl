@@ -20,9 +20,8 @@ use genco::{
 };
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 use std::{
-    cell::RefCell,
     cmp,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fs::{self, OpenOptions},
     iter,
     path::{Path, PathBuf},
@@ -74,25 +73,16 @@ pub fn generate(
 }
 
 fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
-    let parent_packets: HashSet<&String> = file
-        .declarations
-        .iter()
-        .flat_map(|decl| {
-            if let ast::DeclDesc::Packet { parent_id: Some(parent_id), .. } = &decl.desc {
-                Some(parent_id)
-            } else {
-                None
-            }
-        })
-        .collect();
-
     let mut classes: HashMap<String, Class> = HashMap::new();
 
     for decl in file.declarations.iter() {
         match &decl.desc {
             // If this is a parent packet, make a new abstract class and defer parenthood to it.
             ast::DeclDesc::Packet { id, fields, parent_id, constraints }
-                if parent_packets.contains(id) =>
+            | ast::DeclDesc::Struct { id, constraints, fields, parent_id }
+                if fields.iter().any(|field| {
+                    matches!(&field.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body)
+                }) =>
             {
                 let parent_name = id.to_upper_camel_case();
                 let (members, alignment, size_fields, width) = generate_members(fields, &classes);
@@ -122,7 +112,8 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
                 classes.insert(child.name.clone(), child);
             }
             // If this is a child packet, set its parent to the appropriate abstract class.
-            ast::DeclDesc::Packet { id, constraints, fields, parent_id: Some(parent_id) } => {
+            ast::DeclDesc::Packet { id, constraints, fields, parent_id: Some(parent_id) }
+            | ast::DeclDesc::Struct { id, constraints, fields, parent_id: Some(parent_id) } => {
                 let child_name = id.to_upper_camel_case();
                 let (members, alignment, size_fields, width) = generate_members(fields, &classes);
 
@@ -142,7 +133,8 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
                 classes.insert(child_name, child);
             }
             // Otherwise, the packet has no inheritence (no parent and no children)
-            ast::DeclDesc::Packet { id, fields, parent_id: None, .. } => {
+            ast::DeclDesc::Packet { id, fields, parent_id: None, .. }
+            | ast::DeclDesc::Struct { id, fields, parent_id: None, .. } => {
                 let (members, alignment, size_fields, width) = generate_members(fields, &classes);
                 let name = id.to_upper_camel_case();
                 classes.insert(
@@ -174,10 +166,10 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
         }
     }
 
-    // dbg!(&classes
-    //     .iter()
-    //     .map(|(name, class)| (name, &class.def))
-    //     .collect::<Vec<(&String, &ClassDef)>>());
+    dbg!(&classes
+        .iter()
+        .map(|(name, class)| (name, &class.def))
+        .collect::<Vec<(&String, &ClassDef)>>());
     classes
 }
 
@@ -187,7 +179,7 @@ fn generate_members<'a>(
 ) -> (Vec<Rc<Variable>>, Alignment<Rc<Variable>>, HashMap<String, usize>, Option<usize>) {
     let mut members = Vec::new();
     let mut aligner = ByteAligner::new(64);
-    let mut total_width = Some(0);
+    let mut field_width = Some(0);
     let mut size_fields: HashMap<String, usize> = HashMap::new();
 
     for field in fields.iter() {
@@ -202,11 +194,12 @@ fn generate_members<'a>(
                 });
                 members.push(variable.clone());
                 aligner.add_bitfield(variable, *width);
-                total_width = total_width.map(|total_width| total_width + width);
+                field_width = field_width.map(|total_width| total_width + width);
             }
             ast::FieldDesc::Payload { size_modifier } => {
                 aligner
                     .add_bytes(Rc::new(Variable::new_payload(size_fields.get("payload").cloned())));
+                field_width = None;
             }
             ast::FieldDesc::Size { field_id, width } => {
                 let variable = Rc::new(Variable {
@@ -218,22 +211,31 @@ fn generate_members<'a>(
             }
             ast::FieldDesc::Typedef { id, type_id } => {
                 let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
-                let variable = Rc::new(Variable {
-                    name: id.to_lower_camel_case(),
-                    ty: Type::Class { name: class.name.clone(), width: class.width() },
-                });
-                members.push(variable.clone());
-                if let ClassDef::Enum { width, .. } = &class.def {
-                    aligner.add_bitfield(variable, *width);
-                    total_width = total_width.map(|total_width| total_width + width);
-                } else {
-                    aligner.add_bytes(variable);
-                    total_width =
-                        if let Some((total_width, class_width)) = total_width.zip(class.width()) {
-                            Some(total_width + class_width)
+                match &class.def {
+                    ClassDef::Enum { width, .. } => {
+                        let variable = Rc::new(Variable {
+                            name: id.to_lower_camel_case(),
+                            ty: Type::EnumRef { name: class.name.clone(), width: *width },
+                        });
+                        members.push(variable.clone());
+                        aligner.add_bitfield(variable, *width);
+                        field_width = field_width.map(|total_width| total_width + width);
+                    }
+                    _ => {
+                        let variable = Rc::new(Variable {
+                            name: id.to_lower_camel_case(),
+                            ty: Type::StructRef { name: class.name.clone() },
+                        });
+                        members.push(variable.clone());
+                        aligner.add_bytes(variable);
+                        field_width = if let Some((field_width, class_width)) =
+                            field_width.zip(class.width())
+                        {
+                            Some(field_width + class_width)
                         } else {
                             None
                         };
+                    }
                 }
             }
             _ => {
@@ -243,7 +245,7 @@ fn generate_members<'a>(
         }
     }
 
-    (members, aligner.align().expect("Failed to align members"), size_fields, total_width)
+    (members, aligner.align().expect("Failed to align members"), size_fields, field_width)
 }
 
 trait JavaFile<C>: Sized {
@@ -467,16 +469,16 @@ impl Variable {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Integral { ty: Integral, width: usize },
+    EnumRef { name: String, width: usize },
+    StructRef { name: String },
     Payload { size_field: Option<usize> },
-    Class { name: String, width: Option<usize> },
 }
 
 impl Type {
     fn width(&self) -> Option<usize> {
         match self {
-            Type::Integral { width, .. } => Some(*width),
-            Type::Class { width, .. } => *width,
-            Type::Payload { .. } => None,
+            Type::Integral { width, .. } | Type::EnumRef { width, .. } => Some(*width),
+            Type::Payload { .. } | Type::StructRef { .. } => None,
         }
     }
 }
