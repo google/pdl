@@ -25,12 +25,11 @@ use std::{
     fs::{self, OpenOptions},
     iter,
     path::{Path, PathBuf},
-    rc::Rc,
 };
 
 use crate::{
     ast::{self, Constraint, EndiannessValue, Tag, TagOther, TagRange, TagValue},
-    backends::common::alignment::{ByteAligner, Chunk},
+    backends::common::alignment::{ByteAligner, Chunk, SizedSymbol, UnsizedSymbol},
 };
 
 use super::common::alignment::Alignment;
@@ -176,7 +175,7 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
 fn generate_members<'a>(
     fields: &'a Vec<ast::Field>,
     classes: &HashMap<String, Class>,
-) -> (Vec<Rc<Variable>>, Alignment<Rc<Variable>>, HashMap<String, usize>, Option<usize>) {
+) -> (Vec<Member>, Alignment<SizedMember, UnsizedMember>, HashMap<String, usize>, Option<usize>) {
     let mut members = Vec::new();
     let mut aligner = ByteAligner::new(64);
     let mut field_width = Some(0);
@@ -185,49 +184,52 @@ fn generate_members<'a>(
     for field in fields.iter() {
         match &field.desc {
             ast::FieldDesc::Scalar { id, width } => {
-                let variable = Rc::new(Variable {
+                let member = SizedMember::Integral {
                     name: id.to_lower_camel_case(),
-                    ty: Type::Integral {
-                        ty: Integral::fitting(*width).limit_to_int(),
-                        width: *width,
-                    },
-                });
-                members.push(variable.clone());
-                aligner.add_bitfield(variable, *width);
+                    ty: Integral::fitting(*width).limit_to_int(),
+                    width: *width,
+                };
+
+                members.push(member.clone().into());
+                aligner.add_bitfield(member);
                 field_width = field_width.map(|total_width| total_width + width);
             }
             ast::FieldDesc::Payload { size_modifier } => {
-                aligner
-                    .add_bytes(Rc::new(Variable::new_payload(size_fields.get("payload").cloned())));
+                aligner.add_bytes(UnsizedMember::Payload {
+                    size_field: size_fields.get("payload").cloned(),
+                });
                 field_width = None;
             }
             ast::FieldDesc::Size { field_id, width } => {
-                let variable = Rc::new(Variable {
+                let member = SizedMember::Integral {
                     name: format!("{}Size", field_id.to_lower_camel_case()),
-                    ty: Type::Integral { ty: Integral::Int, width: *width },
-                });
-                aligner.add_bitfield(variable, *width);
+                    ty: Integral::Int,
+                    width: *width,
+                };
+                aligner.add_bitfield(member);
                 size_fields.insert(field_id.to_lower_camel_case(), *width);
             }
             ast::FieldDesc::Typedef { id, type_id } => {
                 let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
                 match &class.def {
                     ClassDef::Enum { width, .. } => {
-                        let variable = Rc::new(Variable {
+                        let member = SizedMember::EnumRef {
                             name: id.to_lower_camel_case(),
-                            ty: Type::EnumRef { name: class.name.clone(), width: *width },
-                        });
-                        members.push(variable.clone());
-                        aligner.add_bitfield(variable, *width);
+                            ty: class.name.clone(),
+                            width: *width,
+                        };
+
+                        members.push(member.clone().into());
+                        aligner.add_bitfield(member);
                         field_width = field_width.map(|total_width| total_width + width);
                     }
                     _ => {
-                        let variable = Rc::new(Variable {
+                        let member = UnsizedMember::StructRef {
                             name: id.to_lower_camel_case(),
-                            ty: Type::StructRef { name: class.name.clone() },
-                        });
-                        members.push(variable.clone());
-                        aligner.add_bytes(variable);
+                            ty: class.name.clone(),
+                        };
+                        members.push(member.clone().into());
+                        aligner.add_bytes(member);
                         field_width = if let Some((field_width, class_width)) =
                             field_width.zip(class.width())
                         {
@@ -285,13 +287,14 @@ pub struct Class {
 impl Class {
     fn new_parent_with_fallback_child(
         name: String,
-        members: Vec<Rc<Variable>>,
-        alignment: Alignment<Rc<Variable>>,
+        members: Vec<Member>,
+        alignment: Alignment<SizedMember, UnsizedMember>,
         width: Option<usize>,
         size_fields: HashMap<String, usize>,
     ) -> (Self, Self) {
         let child_name = Self::fallback_child_name(&name);
-        let child_member = Rc::new(Variable::new_payload(size_fields.get("payload").cloned()));
+        let child_member =
+            UnsizedMember::Payload { size_field: size_fields.get("payload").cloned() };
         let child_alignment = {
             let mut aligner = ByteAligner::new(64);
             aligner.add_bytes(child_member.clone());
@@ -320,7 +323,7 @@ impl Class {
             Class {
                 name: child_name,
                 def: ClassDef::Packet(PacketDef {
-                    members: vec![child_member],
+                    members: vec![child_member.into()],
                     alignment: child_alignment,
                     width: None,
                     size_fields: HashMap::new(),
@@ -334,11 +337,11 @@ impl Class {
     fn new_child(
         &mut self,
         name: String,
-        members: Vec<Rc<Variable>>,
-        alignment: Alignment<Rc<Variable>>,
+        members: Vec<Member>,
+        alignment: Alignment<SizedMember, UnsizedMember>,
         width: Option<usize>,
         size_fields: HashMap<String, usize>,
-        constraints: HashMap<String, RValue>,
+        constraints: HashMap<String, ConstrainedTo>,
     ) -> Self {
         let mut child = Class {
             name,
@@ -361,7 +364,7 @@ impl Class {
     fn add_child(
         &mut self,
         child: &mut Class,
-        constraints: HashMap<String, RValue>,
+        constraints: HashMap<String, ConstrainedTo>,
         child_width: Option<usize>,
     ) {
         let child_def = match &mut child.def {
@@ -405,8 +408,8 @@ pub enum ClassDef {
 
 #[derive(Debug, Clone)]
 pub struct PacketDef {
-    members: Vec<Rc<Variable>>,
-    alignment: Alignment<Rc<Variable>>,
+    members: Vec<Member>,
+    alignment: Alignment<SizedMember, UnsizedMember>,
     width: Option<usize>,
     size_fields: HashMap<String, usize>,
     parent: Option<Parent>,
@@ -422,7 +425,7 @@ pub struct Parent {
 #[derive(Debug, Clone)]
 pub struct Child {
     name: String,
-    constraints: HashMap<String, RValue>,
+    constraints: HashMap<String, ConstrainedTo>,
     width: Option<usize>,
 }
 
@@ -437,48 +440,107 @@ impl Tag {
 }
 
 #[derive(Debug, Clone)]
-pub enum RValue {
+pub enum ConstrainedTo {
     Integral(usize),
     EnumTag(String),
 }
 
 impl Constraint {
-    fn to_assignment(&self) -> (String, RValue) {
+    fn to_assignment(&self) -> (String, ConstrainedTo) {
         (
             self.id.to_lower_camel_case(),
             self.value
-                .map(|integral| RValue::Integral(integral))
-                .or(self.tag_id.as_ref().map(|id| RValue::EnumTag(id.to_upper_camel_case())))
+                .map(|integral| ConstrainedTo::Integral(integral))
+                .or(self.tag_id.as_ref().map(|id| ConstrainedTo::EnumTag(id.to_upper_camel_case())))
                 .expect("Malformed constraint"),
         )
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Variable {
-    name: String,
-    ty: Type,
+pub enum Member {
+    Sized(SizedMember),
+    Unsized(UnsizedMember),
 }
 
-impl Variable {
-    fn new_payload(size_field: Option<usize>) -> Self {
-        Variable { name: String::from("payload"), ty: Type::Payload { size_field } }
+impl Member {
+    fn as_sized(&self) -> Option<&SizedMember> {
+        if let Self::Sized(member) = self {
+            Some(member)
+        } else {
+            None
+        }
+    }
+
+    fn as_unsized(&self) -> Option<&UnsizedMember> {
+        if let Self::Unsized(member) = self {
+            Some(member)
+        } else {
+            None
+        }
+    }
+}
+
+impl From<SizedMember> for Member {
+    fn from(value: SizedMember) -> Self {
+        Self::Sized(value)
+    }
+}
+
+impl From<UnsizedMember> for Member {
+    fn from(value: UnsizedMember) -> Self {
+        Self::Unsized(value)
+    }
+}
+
+impl Member {
+    pub fn name(&self) -> &str {
+        match self {
+            Member::Sized(member) => member.name(),
+            Member::Unsized(member) => member.name(),
+        }
+    }
+
+    pub fn is_sized(&self) -> bool {
+        matches!(self, Member::Sized(_))
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Type {
-    Integral { ty: Integral, width: usize },
-    EnumRef { name: String, width: usize },
-    StructRef { name: String },
+pub enum SizedMember {
+    Integral { name: String, ty: Integral, width: usize },
+    EnumRef { name: String, ty: String, width: usize },
+}
+
+impl SizedSymbol for SizedMember {
+    fn width(&self) -> usize {
+        match self {
+            SizedMember::Integral { width, .. } | SizedMember::EnumRef { width, .. } => *width,
+        }
+    }
+}
+
+impl SizedMember {
+    fn name(&self) -> &str {
+        match self {
+            SizedMember::Integral { name, .. } | SizedMember::EnumRef { name, .. } => name,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnsizedMember {
+    StructRef { name: String, ty: String },
     Payload { size_field: Option<usize> },
 }
 
-impl Type {
-    fn width(&self) -> Option<usize> {
+impl UnsizedSymbol for UnsizedMember {}
+
+impl UnsizedMember {
+    fn name(&self) -> &str {
         match self {
-            Type::Integral { width, .. } | Type::EnumRef { width, .. } => Some(*width),
-            Type::Payload { .. } | Type::StructRef { .. } => None,
+            UnsizedMember::StructRef { name, .. } => name,
+            UnsizedMember::Payload { .. } => "payload",
         }
     }
 }

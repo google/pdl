@@ -25,10 +25,13 @@ use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 
 use crate::{
     ast::EndiannessValue,
-    backends::java::{Child, Parent, RValue},
+    backends::{
+        common::alignment::SizedSymbol,
+        java::{Child, ConstrainedTo, Member, Parent, SizedMember, UnsizedMember},
+    },
 };
 
-use super::{gen_mask, import, Chunk, Expr, Integral, PacketDef, Type, Variable};
+use super::{gen_mask, import, Chunk, Expr, Integral, PacketDef};
 
 impl PacketDef {
     pub fn gen_packet<'a>(
@@ -102,10 +105,9 @@ impl PacketDef {
                 public String toString() {
                     $(let members_str = quote!(
                         $(for member in self.members.iter() {
-                            + $(if let Some(width) = member.ty.width() {
-                                $(quoted(format!("{}[{}]=", &member.name, width)))
-                            } else {
-                                $(quoted(format!("{}=", &member.name)))
+                            + $(match member {
+                                Member::Sized(member) => $(quoted(format!("{}[{}]=", member.name(), member.width()))),
+                                Member::Unsized(member) => $(quoted(format!("{}=", member.name())))
                             }) + $(member.stringify()) + "\n"
                         }) + "}"
                     ))
@@ -201,22 +203,25 @@ impl PacketDef {
                 $(if self.parent.is_some() => @Override)
                 protected String toString(String payload, int payloadSize) {
                     $(let members_str = quote!(
-                        $(for chunk in self.alignment.iter() {
+                        $(for chunk in self.alignment.iter() join ( + ) {
                             $(match chunk {
-                                Chunk::PackedBits { fields, .. } => $(for field in fields.iter() =>
-                                    $(if !(field.is_partial && field.chunk_offset == 0) =>
-                                        + $(quoted(format!("{}[{}]=", &field.symbol.name, field.symbol.ty.width().unwrap())))
+                                Chunk::PackedBits { fields, .. } =>
+                                    $(for field in fields.iter().filter(|f| !(f.is_partial && f.chunk_offset == 0))
+                                    join ( + ) {
+                                        $(quoted(format!("{}[{}]=", field.symbol.name(), field.symbol.width())))
                                         + $(field.symbol.stringify()) + "\n"
-                                    )),
-                                Chunk::Bytes(member) => + $(match member.ty {
-                                    Type::Payload { .. } => $(quoted("payload=")) + payload + "\n",
-                                    _ => $(quoted(format!("{}=", member.name))) + $(member.stringify()),
-                                })
+                                    }),
+                                Chunk::Bytes(member) =>
+                                    $(if let UnsizedMember::Payload { .. } = member {
+                                        "payload=" + payload + "\n"
+                                    } else {
+                                        $(quoted(format!("{}=", member.name()))) + $(member.stringify())
+                                    }),
                             })
                         })
                     ))
 
-                    return getClass().getSimpleName() + "[" + width() + "] {\n"
+                    return getClass().getSimpleName() + "[" + width() + "] {\n" +
                     $(if self.parent.is_some() {
                         super.toString($members_str, fieldWidth())
                     } else {
@@ -228,9 +233,11 @@ impl PacketDef {
 
                 protected abstract static class $(match &self.parent {
                     Some(Parent { name: parent_name, does_constrain: true }) =>
-                        Builder<B extends $parent_name.$(name)Builder<B>> extends $parent_name.$(name)Builder<B>,
+                        Builder<B extends $parent_name.$(name)Builder<B>>
+                            extends $parent_name.$(name)Builder<B>,
                     Some(Parent { name: parent_name, does_constrain: false }) =>
-                        Builder<B extends $parent_name.UnconstrainedBuilder<B>> extends $parent_name.UnconstrainedBuilder<B>,
+                        Builder<B extends $parent_name.UnconstrainedBuilder<B>>
+                            extends $parent_name.UnconstrainedBuilder<B>,
                     _ => Builder<B extends Builder<B>>,
                 }) {
                     $(self.member_defs(false, None))
@@ -248,10 +255,12 @@ impl PacketDef {
                     $(if !child.constraints.is_empty() {
                         protected abstract static class $(&child.name)Builder<B extends Builder<B>> extends Builder<B> {
                             protected $(&child.name)Builder() {
-                                $(for (member, value) in child.constraints.iter() {
+                                $(for (member_name, value) in child.constraints.iter() {
                                     // TODO(jmes): handle case when constraining member of ancestor
                                     // This will likely require putting tag_id in constraint
-                                    $member = $(value.generate(&self.members.iter().find(|m| &m.name == member).unwrap().ty));
+                                    $member_name =
+                                        $(self.members.iter().find(|member| member.name() == member_name).unwrap()
+                                            .constraint(value));
                                 })
                             }
 
@@ -270,9 +279,10 @@ impl PacketDef {
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(for member in self.members.iter() {
-                protected $(if are_final => final) $(&member.ty) $(&member.name)
-                    $(if let Some(constraint) = constraints.and_then(|cs| cs.get(&member.name)) =>
-                        = $constraint);
+                protected $(if are_final => final) $(member.ty()) $(member.name())
+                    $(if let Some(constraint) = constraints.and_then(
+                        |constraints| constraints.get(member.name())
+                    ) => = $constraint);
             })
         }
     }
@@ -280,8 +290,8 @@ impl PacketDef {
     fn getter_defs(&self) -> impl FormatInto<Java> + '_ {
         quote_fn! {
             $(for member in self.members.iter() {
-                public $(&member.ty) get$(member.name.to_upper_camel_case())() {
-                    return $(&member.name);
+                public $(member.ty()) get$(member.name().to_upper_camel_case())() {
+                    return $(member.name());
                 }
             })
         }
@@ -290,33 +300,37 @@ impl PacketDef {
     fn setter_defs<'a>(
         &'a self,
         builder_type: &'static str,
-        constraints: Option<&'a HashMap<String, RValue>>,
+        constraints: Option<&'a HashMap<String, ConstrainedTo>>,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(for member in self.members.iter() {
-                $(if constraints.is_none_or(|constraints| !constraints.contains_key(&member.name)) {
-                    public $builder_type set$(member.name.to_upper_camel_case())($(&member.ty) $(&member.name)) {
-                        $(match &member.ty {
-                            Type::Integral { width, .. } => {
-                                if ($(member.ty.boxed()).compareUnsigned($(&member.name), $(gen_mask(*width))) > 0) {
+                $(if constraints.is_none_or(|constraints| !constraints.contains_key(member.name())) {
+                    public $builder_type set$(member.name().to_upper_camel_case())($(member.ty()) $(member.name())) {
+                        $(match member {
+                            Member::Sized(SizedMember::Integral { width, ty, .. }) => {
+                                if ($(ty.boxed()).compareUnsigned($(member.name()), $(gen_mask(*width))) > 0) {
                                     throw new IllegalArgumentException(
-                                        "Value " + $(member.stringify())
-                                        + $(quoted(format!(" is too wide for field '{}' with width {}", member.name, width)))
+                                        "Value " +
+                                        $(member.stringify()) +
+                                        $(quoted(format!(
+                                            " is too wide for field '{}' with width {}", member.name(), width)))
                                     );
                                 }
                             }
-                            Type::Payload { size_field: Some(size_field) } => {
-                                if (Integer.compareUnsigned($(&member.name).length, $(gen_mask(*size_field))) > 0) {
+                            Member::Unsized(UnsizedMember::Payload { size_field: Some(size_field) }) => {
+                                if (Integer.compareUnsigned($(member.name()).length, $(gen_mask(*size_field))) > 0) {
                                     throw new IllegalArgumentException(
-                                        "Payload " + $(member.stringify())
-                                        + $(quoted(format!(" is too wide for its _size_ field with width {}", size_field)))
+                                        "Payload " +
+                                        $(member.stringify()) +
+                                        $(quoted(format!(
+                                            " is too wide for its _size_ field with width {}", size_field)))
                                     );
                                 }
                             }
-                            _ =>,
+                            _ =>, // No special checks for other members.
                         })
 
-                        this.$(&member.name) = $(&member.name);
+                        this.$(member.name()) = $(member.name());
                         return self();
                     }
                 })
@@ -326,7 +340,7 @@ impl PacketDef {
 
     fn builder_assigns(&self) -> impl FormatInto<Java> + '_ {
         quote_fn! {
-            $(for member in self.members.iter() => $(&member.name) = builder.$(&member.name);)
+            $(for member in self.members.iter() => $(member.name()) = builder.$(member.name());)
         }
     }
 
@@ -341,19 +355,19 @@ impl PacketDef {
 
                         buf.$(chunk_type.encoder())(
                             ($chunk_type) (
-                                $(first.symbol.encode_value()
-                                    .maybe_widen(&first.symbol.ty, chunk_type)
+                                $(first.symbol.expr_to_encode()
+                                    .maybe_widen(&first.symbol, chunk_type)
                                     .maybe_shift(">>>", first.symbol_offset))
 
                                 $(for field in fields => |
-                                    $(field.symbol.encode_value()
-                                        .maybe_widen(&field.symbol.ty, chunk_type)
+                                    $(field.symbol.expr_to_encode()
+                                        .maybe_widen(&field.symbol, chunk_type)
                                         .maybe_shift("<<", field.chunk_offset))))
                         );
                     }
-                    Chunk::Bytes(member) => $(match member.ty {
-                        Type::Payload { .. } => buf.put(payload),
-                        _ => buf.put($(&member.name).toBytes()),
+                    Chunk::Bytes(member) => $(match member {
+                        UnsizedMember::Payload { .. } => buf.put(payload),
+                        _ => buf.put($(member.name()).toBytes()),
                     });,
                 })
             })
@@ -362,7 +376,7 @@ impl PacketDef {
 
     fn decoder<'a>(
         &'a self,
-        assign: fn(&Variable, Tokens<Java>) -> Tokens<Java>,
+        assign: fn(Tokens<Java>, &str, Tokens<Java>) -> Tokens<Java>,
         endianness: EndiannessValue,
     ) -> impl FormatInto<Java> + 'a {
         quote_fn! {
@@ -375,84 +389,89 @@ impl PacketDef {
                         $chunk_type $(&chunk_name) = $(Integral::fitting(*width).decoder("buf"));
 
                         $(for field in fields.iter() {
-                            $(let ty = Integral::fitting(
-                                    field.symbol.ty.width().expect("packed chunk with dynamic width")
-                            ).limit_to_int())
+                            $(let integral = Integral::fitting(field.symbol.width()).limit_to_int())
 
                             $(let decoded_field = chunk_name.as_str()
                                 .maybe_mask(field.chunk_offset, field.width)
-                                .maybe_cast(chunk_type, ty))
+                                .maybe_cast(chunk_type, integral))
 
                             $(if field.is_partial {
                                 // The value is split between chunks.
                                 $(if field.symbol_offset == 0 {
                                     // This chunk has the lower-order bits of the value, so store them in a variable until we can
                                     // get the higher-order bits from the next chunk.
-                                    $(&field.symbol.ty) $(&field.symbol.name)$i = $decoded_field;
+                                    $integral $(field.symbol.name())$i = $decoded_field;
                                 } else {
                                     // This chunk has the higher-order bits of the value, so grab the lower-order bits from the
                                     // variable we declared.
                                     $(assign(
-                                        &field.symbol,
-                                        quote!($(&field.symbol.name)$(i - 1) | (($decoded_field) << $(field.symbol_offset)))));
+                                        field.symbol.ty(),
+                                        field.symbol.name(),
+                                        field.symbol.from_integral(quote!(
+                                            $(field.symbol.name())$(i - 1) | (($decoded_field) << $(field.symbol_offset))))));
                                 })
                             } else {
                                 // The whole value lies within this chunk, so just set it.
-                                $(assign(&field.symbol, decoded_field));
+                                $(assign(field.symbol.ty(), field.symbol.name(), field.symbol.from_integral(decoded_field)));
                             })
                         })
                     }
-                    Chunk::Bytes(member) => $(match &member.ty {
-                        Type::Payload { .. } => {
+                    Chunk::Bytes(member) => $(match member {
+                        UnsizedMember::Payload { .. } => {
                             $(if self.size_fields.contains_key("payload") {
-                                $(assign(member, quote!(
-                                    buf.slice(buf.position(), payloadSize).order($endianness))));
+                                // The above condition checks if *this* class contains a size field for the payload.
+                                // Unpacking `size_field` from the `UnsizedMember::Payload` would instead check if
+                                // *any* class contains a size field for the payload.
+                                $(assign(
+                                    member.ty(),
+                                    member.name(),
+                                    quote!(buf.slice(buf.position(), payloadSize).order($endianness))));
                             } else {
                                 $(if let Some(width) = self.width {
-                                    $(assign(member, quote!(
-                                        buf.slice(buf.position(), buf.capacity() - $(width / 8)).order($endianness))));
+                                    $(assign(
+                                        member.ty(),
+                                        member.name(),
+                                        quote!(buf.slice(buf.position(), buf.capacity() - $(width / 8)).order($endianness))));
                                 } else {
                                     // If we don't know the payload's width, assume it is the last field in the packet
                                     // (this should really be enforced by the parser) and consume all remaining bytes
                                     // in the buffer.
-                                    $(assign(member, quote!(buf.slice())));
+                                    $(assign(member.ty(), member.name(), quote!(buf.slice())));
                                 })
                             })
                         },
-                        Type::StructRef { name } => {
+                        UnsizedMember::StructRef { name, ty, .. } => {
                             $(let var_name = &name.to_lower_camel_case())
                             // If the struct has dynamic width, assume it is the last field in the packet (this should
                             // really be enforced by the parser) and decode it. Its decoder will consume all remaining
                             // bytes in the buffer.
-                            $name $var_name = $name.fromBytes(buf.slice());
-                            $(assign(&member, quote!($var_name)));
+                            $ty $var_name = $ty.fromBytes(buf.slice());
+                            $(assign(member.ty(), member.name(), quote!($var_name)));
                             buf.position(buf.position() + $var_name.width());
                         }
-                        _ =>,
                     })
                 })
             })
         }
     }
 
-    fn builder_set(member: &Variable, value: Tokens<Java>) -> Tokens<Java> {
-        quote!(
-            $(if member.name.ends_with("Size") {
-                // Don't need to set set size fields in builder.
-                $(Self::declare_locally(member, value))
-            } else {
-                builder.$(member.setter(member.value(value)))
-            })
-        )
+    fn builder_set(ty: Tokens<Java>, name: &str, value: Tokens<Java>) -> Tokens<Java> {
+        if name.ends_with("Size") {
+            // Don't need to set set size fields in builder.
+            Self::declare_locally(ty, name, value)
+        } else if name == "payload" {
+            quote!(builder.set$(name.to_upper_camel_case())($value.array() ))
+        } else {
+            quote!(builder.set$(name.to_upper_camel_case())($value))
+        }
     }
 
-    fn declare_locally(member: &Variable, value: Tokens<Java>) -> Tokens<Java> {
-        quote!(
-            $(match member.ty {
-                Type::Payload { .. } => ByteBuffer payload = $value,
-                _ => $(&member.ty) $(&member.name) = $(member.value(value))
-            })
-        )
+    fn declare_locally(ty: Tokens<Java>, name: &str, value: Tokens<Java>) -> Tokens<Java> {
+        if name == "payload" {
+            quote!($(&*import::BB) payload = $value)
+        } else {
+            quote!($ty $name = $value)
+        }
     }
 
     fn width_def<'a>(&'a self) -> impl FormatInto<Java> + 'a {
@@ -462,18 +481,22 @@ impl PacketDef {
     }
 
     fn field_width_def<'a>(&'a self) -> impl FormatInto<Java> + 'a {
-        let (statically_sized, dynamically_sized): (Vec<_>, Vec<_>) =
-            self.members.iter().partition(|member| member.ty.width().is_some());
+        let static_width = (self
+            .members
+            .iter()
+            .filter_map(Member::as_sized)
+            .map(|member| member.width())
+            .sum::<usize>()
+            + self.size_fields.values().sum::<usize>())
+            / 8;
+
+        let unsized_members: Vec<&UnsizedMember> =
+            self.members.iter().filter_map(Member::as_unsized).collect();
 
         quote_fn! {
             private final int fieldWidth() {
-                $(let static_width =
-                    (statically_sized.into_iter().map(|member| member.ty.width().unwrap()).sum::<usize>() +
-                        self.size_fields.values().sum::<usize>()) / 8)
-
-                return $(if static_width != 0 => $static_width)
-                    $(if static_width != 0 && !dynamically_sized.is_empty() => +)
-                    $(for member in dynamically_sized.into_iter() join ( + ) => $(member.gen_width()));
+                return $static_width
+                    $(for member in unsized_members.into_iter() => + $(member.width_expr()));
             }
         }
     }
@@ -490,7 +513,7 @@ impl PacketDef {
                 if (!(o instanceof $name other)) return false;
                 return $(if call_super => super.equals(other) &&)
                 $(for member in self.members.iter() join ( && ) {
-                    $(member.equals(quote!(other.$(&member.name))))
+                    $(member.equals(quote!(other.$(member.name()))))
                 });
             }
 
@@ -527,9 +550,11 @@ impl PacketDef {
                 Builder<?> builder;
                 $(for child in children {
                     if (
-                        $(for member in self.members.iter() =>
-                            $(if let Some(value) = child.constraints.get(&member.name) =>
-                                 $(member.equals(value.generate(&member.ty)))))
+                        $(for member in self.members.iter() {
+                            $(if let Some(value) = child.constraints.get(member.name()) {
+                                $(member.equals(member.constraint(value)))
+                            })
+                        })
                         $(if !child.constraints.is_empty() && child.width.is_some() => &&)
                         $(if let Some(width) = child.width => payload.capacity() == $(width / 8))
                     ) {
@@ -540,7 +565,7 @@ impl PacketDef {
                 }
             })
 
-            $(for member in self.members.iter() => builder.$(&member.name) = $(&member.name);)
+            $(for member in self.members.iter() => builder.$(member.name()) = $(member.name());)
         }
     }
 }

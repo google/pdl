@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use core::panic;
 use genco::{
     self,
     prelude::{java, Java},
@@ -19,16 +20,13 @@ use genco::{
     tokens::FormatInto,
     Tokens,
 };
-use heck::{self, ToUpperCamelCase};
-use std::iter::{self};
 
 mod r#enum;
 mod packet;
 
-use super::{
-    import, Chunk, Class, ClassDef, EndiannessValue, Integral, JavaFile, PacketDef, RValue, Type,
-    Variable,
-};
+use crate::backends::java::{ConstrainedTo, Member, SizedMember, UnsizedMember};
+
+use super::{import, Chunk, Class, ClassDef, EndiannessValue, Integral, JavaFile, PacketDef};
 
 impl JavaFile<EndiannessValue> for Class {
     fn generate(self, endianness: EndiannessValue) -> Tokens<Java> {
@@ -55,7 +53,7 @@ impl FormatInto<Java> for EndiannessValue {
 
 trait Expr {
     fn maybe_cast(self, from: Integral, to: Integral) -> Tokens<Java>;
-    fn maybe_widen(self, from: &Type, to: Integral) -> Tokens<Java>;
+    fn maybe_widen(self, member: &SizedMember, to: Integral) -> Tokens<Java>;
     fn maybe_shift(self, op: &'static str, by: usize) -> Tokens<Java>;
     fn maybe_mask(self, offset: usize, width: usize) -> Tokens<Java>;
 }
@@ -72,17 +70,20 @@ impl<J: FormatInto<Java>> Expr for J {
         }
     }
 
-    /// `from` and `to` must be >= int
-    fn maybe_widen(self, from: &Type, to: Integral) -> Tokens<Java> {
-        quote! {
-            $(match (from, to) {
-                (Type::Integral { ty: Integral::Int, .. }, Integral::Long) => Integer.toUnsignedLong($(self)),
-                (Type::EnumRef { width, .. }, to) =>
-                    $(let from = Integral::fitting(*width).limit_to_int())
-                    $(quote!($(self).to$(from.capitalized())())
-                        .maybe_widen(&Type::Integral { ty: from, width: *width }, to)),
-                _ => $(self),
-            })
+    /// `to` must be >= int
+    fn maybe_widen(self, member: &SizedMember, to: Integral) -> Tokens<Java> {
+        match (member, to) {
+            (SizedMember::Integral { ty: Integral::Int, .. }, Integral::Long) => {
+                quote!(Integer.toUnsignedLong($(self)))
+            }
+            (SizedMember::EnumRef { width, .. }, to) => {
+                let from = Integral::fitting(*width).limit_to_int();
+                quote!($(self).to$(from.capitalized())()).maybe_widen(
+                    &SizedMember::Integral { name: String::default(), ty: from, width: *width },
+                    to,
+                )
+            }
+            _ => quote!($(self)),
         }
     }
 
@@ -107,94 +108,114 @@ impl<J: FormatInto<Java>> Expr for J {
     }
 }
 
-impl Variable {
-    fn value<'a>(&'a self, expr: impl FormatInto<Java> + 'a) -> impl FormatInto<Java> + 'a {
-        match &self.ty {
-            Type::Integral { .. } | Type::StructRef { .. } => {
-                quote!($expr)
-            }
-            Type::EnumRef { name, width } => {
-                quote!($name.from$(Integral::fitting(*width).limit_to_int().capitalized())($expr))
-            }
-            Type::Payload { .. } => {
-                quote!($expr.array())
-            }
-        }
-    }
-
-    fn encode_value(&self) -> impl FormatInto<Java> + '_ {
-        quote_fn! {
-            $(match &self.ty {
-                Type::Integral { .. } if self.name == "payloadSize" => payload.capacity(),
-                Type::Integral { .. } if self.name.ends_with("Size") => $(self.name.strip_suffix("Size")).length,
-                _ => $(&self.name),
-            })
-        }
-    }
-
-    fn setter<'a>(&'a self, expr: impl FormatInto<Java> + 'a) -> impl FormatInto<Java> + 'a {
-        quote_fn! {
-            set$(self.name.to_upper_camel_case())($expr)
-        }
-    }
-
-    fn stringify(&self) -> impl FormatInto<Java> + '_ {
-        quote_fn! {
-            $(match &self.ty {
-                Type::Integral { ty, .. } => $(ty.boxed()).toHexString($(&self.name)),
-                Type::EnumRef { .. } | Type::StructRef { .. } => $(&self.name).toString(),
-                Type::Payload { .. } => $(&*import::ARRAYS).toString($(&self.name)),
-            })
-        }
-    }
-
-    fn hash_code(&self) -> impl FormatInto<Java> + '_ {
-        quote_fn! {
-            $(match &self.ty {
-                Type::Integral { ty, .. } => $(ty.boxed()).hashCode($(&self.name)),
-                Type::EnumRef { .. } | Type::StructRef { .. } => $(&self.name).hashCode(),
-                Type::Payload { .. } => $(&*import::ARRAYS).hashCode($(&self.name)),
-            })
-        }
-    }
-
-    fn equals<'a>(&'a self, other: impl FormatInto<Java> + 'a) -> impl FormatInto<Java> + 'a {
-        quote_fn! {
-            $(match &self.ty {
-                Type::Integral { .. } => $(&self.name) == $other,
-                Type::EnumRef { .. } | Type::StructRef { .. } => $(&self.name).equals($other),
-                Type::Payload { .. } => $(&*import::ARRAYS).equals($(&self.name), $other)
-            })
-        }
-    }
-
-    fn gen_width<'a>(&'a self) -> impl FormatInto<Java> + 'a {
-        quote_fn! {
-            $(match &self.ty {
-                Type::Integral { width, .. } | Type::EnumRef { width, .. } => $(*width),
-                Type::StructRef { .. } => $(&self.name).width(),
-                Type::Payload { .. } => payload.length,
-            })
-        }
-    }
-}
-
-impl FormatInto<Java> for &Type {
-    fn format_into(self, tokens: &mut Tokens<Java>) {
-        quote_in!(*tokens => $(match self {
-            Type::Integral { ty, .. } => $(*ty),
-            Type::EnumRef { name, .. } | Type::StructRef { name, .. } => $name,
-            Type::Payload { .. } => byte[]
-        }));
-    }
-}
-
-impl Type {
-    fn boxed(&self) -> impl FormatInto<Java> + '_ {
+impl Member {
+    fn stringify(&self) -> Tokens<Java> {
         match self {
-            Type::Integral { ty, .. } => ty.boxed(),
-            Type::EnumRef { name, .. } | Type::StructRef { name, .. } => name,
-            Type::Payload { .. } => "Arrays",
+            Member::Sized(member) => member.stringify(),
+            Member::Unsized(member) => member.stringify(),
+        }
+    }
+
+    fn ty(&self) -> Tokens<Java> {
+        match self {
+            Member::Sized(member) => member.ty(),
+            Member::Unsized(member) => member.ty(),
+        }
+    }
+
+    fn hash_code(&self) -> Tokens<Java> {
+        match self {
+            Member::Sized(SizedMember::Integral { name, ty, .. }) => {
+                quote!($(ty.boxed()).hashCode($name))
+            }
+            Member::Sized(SizedMember::EnumRef { name, .. })
+            | Member::Unsized(UnsizedMember::StructRef { name, .. }) => quote!($name.hashCode()),
+            Member::Unsized(UnsizedMember::Payload { size_field }) => {
+                quote!($(&*import::ARRAYS).hashCode(payload))
+            }
+        }
+    }
+
+    fn equals<'a>(&'a self, other: impl FormatInto<Java> + 'a) -> Tokens<Java> {
+        match self {
+            Member::Sized(SizedMember::Integral { name, .. }) => quote!($name == $other),
+            Member::Sized(SizedMember::EnumRef { name, .. })
+            | Member::Unsized(UnsizedMember::StructRef { name, .. }) => {
+                quote!($name.equals($other))
+            }
+            Member::Unsized(UnsizedMember::Payload { size_field }) => {
+                quote!($(&*import::ARRAYS).equals(payload, $other))
+            }
+        }
+    }
+
+    fn constraint(&self, to: &ConstrainedTo) -> Tokens<Java> {
+        match (self, to) {
+            (Member::Sized(SizedMember::Integral { .. }), ConstrainedTo::Integral(i)) => {
+                quote!($(*i))
+            }
+            (Member::Sized(SizedMember::EnumRef { ty, .. }), ConstrainedTo::EnumTag(tag)) => {
+                quote!($ty.$tag)
+            }
+            _ => panic!("invalid constraint"),
+        }
+    }
+}
+
+impl SizedMember {
+    fn ty(&self) -> Tokens<Java> {
+        match self {
+            SizedMember::Integral { ty, .. } => quote!($ty),
+            SizedMember::EnumRef { ty, .. } => quote!($ty),
+        }
+    }
+
+    fn stringify(&self) -> Tokens<Java> {
+        match self {
+            SizedMember::Integral { name, ty, .. } => quote!($(ty.boxed()).toHexString($name)),
+            SizedMember::EnumRef { name, .. } => quote!($name.toString()),
+        }
+    }
+
+    fn from_integral<'a>(&'a self, expr: impl FormatInto<Java> + 'a) -> Tokens<Java> {
+        match self {
+            SizedMember::Integral { .. } => quote!($expr),
+            SizedMember::EnumRef { ty, width, .. } => {
+                quote!($ty.from$(Integral::fitting(*width).limit_to_int().capitalized())($expr))
+            }
+        }
+    }
+
+    fn expr_to_encode(&self) -> Tokens<Java> {
+        if self.name() == "payloadSize" {
+            quote!(payload.capacity())
+        } else if self.name().ends_with("Size") {
+            quote!($(self.name().strip_suffix("Size")).length)
+        } else {
+            quote!($(self.name()))
+        }
+    }
+}
+
+impl UnsizedMember {
+    fn ty(&self) -> Tokens<Java> {
+        match self {
+            UnsizedMember::StructRef { ty, .. } => quote!($ty),
+            UnsizedMember::Payload { .. } => quote!(byte[]),
+        }
+    }
+
+    fn stringify(&self) -> Tokens<Java> {
+        match self {
+            UnsizedMember::StructRef { name, .. } => quote!($name.toString()),
+            UnsizedMember::Payload { .. } => quote!($(&*import::ARRAYS).toString(payload)),
+        }
+    }
+
+    fn width_expr(&self) -> Tokens<Java> {
+        match self {
+            UnsizedMember::StructRef { name, .. } => quote!($name.width()),
+            UnsizedMember::Payload { .. } => quote!(payload.length),
         }
     }
 }
@@ -241,6 +262,12 @@ impl Integral {
 
 impl FormatInto<Java> for Integral {
     fn format_into(self, tokens: &mut java::Tokens) {
+        (&self).format_into(tokens);
+    }
+}
+
+impl FormatInto<Java> for &Integral {
+    fn format_into(self, tokens: &mut java::Tokens) {
         quote_in!(*tokens => $(match self {
             Integral::Byte => byte,
             Integral::Short => short,
@@ -253,16 +280,5 @@ impl FormatInto<Java> for Integral {
 pub fn gen_mask(width: usize) -> impl FormatInto<Java> {
     quote_fn! {
         $(format!("0x{:x}", (1_u128 << width) - 1))$(if Integral::fitting(width) > Integral::Int => L)
-    }
-}
-
-impl RValue {
-    fn generate<'a>(&'a self, ty: &'a Type) -> impl FormatInto<Java> + 'a {
-        quote_fn! {
-            $(match self {
-                RValue::Integral(integral) => $(integral.to_string()),
-                RValue::EnumTag(tag) => $ty.$tag,
-            })
-        }
     }
 }

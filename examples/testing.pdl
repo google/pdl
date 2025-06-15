@@ -1,15 +1,11 @@
 little_endian_packets
 
-struct SizedStruct {
+packet ScalarParent {
     a: 8,
+    _size_(_payload_): 8,
+    _payload_
 }
 
-struct UnsizedStruct {
-    b: 8,
-    _payload_,
-}
-
-packet Packet_Struct_Field {
-    a: SizedStruct,
-    b: UnsizedStruct,
+packet EmptyParent : ScalarParent {
+    _payload_
 }

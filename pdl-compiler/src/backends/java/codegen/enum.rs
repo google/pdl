@@ -3,7 +3,7 @@ use heck::ToUpperCamelCase;
 
 use crate::{
     ast::{Tag, TagRange, TagValue},
-    backends::java::{Class, Integral, Type},
+    backends::java::{Class, Integral},
 };
 
 impl Class {
