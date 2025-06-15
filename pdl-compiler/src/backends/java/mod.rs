@@ -84,14 +84,10 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
                 }) =>
             {
                 let parent_name = id.to_upper_camel_case();
-                let (members, alignment, size_fields, width) = generate_members(fields, &classes);
 
-                let (mut parent, child) = Class::new_parent_with_fallback_child(
+                let (mut parent, child) = Class::new_parent(
                     parent_name.clone(),
-                    members,
-                    alignment,
-                    width,
-                    size_fields,
+                    PacketDef::from_fields(fields, &classes),
                 );
 
                 // This parent might also be a child
@@ -108,13 +104,13 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
                 }
 
                 classes.insert(parent_name, parent);
-                classes.insert(child.name.clone(), child);
+                classes.insert(child.name().into(), child);
             }
             // If this is a child packet, set its parent to the appropriate abstract class.
             ast::DeclDesc::Packet { id, constraints, fields, parent_id: Some(parent_id) }
             | ast::DeclDesc::Struct { id, constraints, fields, parent_id: Some(parent_id) } => {
                 let child_name = id.to_upper_camel_case();
-                let (members, alignment, size_fields, width) = generate_members(fields, &classes);
+                let def = PacketDef::from_fields(fields, &classes);
 
                 let parent = classes
                     .get_mut(&parent_id.to_upper_camel_case())
@@ -122,10 +118,7 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
 
                 let child = parent.new_child(
                     child_name.clone(),
-                    members,
-                    alignment,
-                    width,
-                    size_fields,
+                    def,
                     constraints.iter().map(Constraint::to_assignment).collect(),
                 );
 
@@ -134,29 +127,20 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
             // Otherwise, the packet has no inheritence (no parent and no children)
             ast::DeclDesc::Packet { id, fields, parent_id: None, .. }
             | ast::DeclDesc::Struct { id, fields, parent_id: None, .. } => {
-                let (members, alignment, size_fields, width) = generate_members(fields, &classes);
                 let name = id.to_upper_camel_case();
                 classes.insert(
                     name.clone(),
-                    Class {
+                    Class::Packet {
                         name,
-                        def: ClassDef::Packet(PacketDef {
-                            members,
-                            alignment,
-                            width,
-                            size_fields,
-                            parent: None,
-                            children: Vec::new(),
-                        }),
+                        def: PacketDef::from_fields(fields, &classes),
+                        parent: None,
                     },
                 );
             }
             ast::DeclDesc::Enum { id, tags, width } => {
                 let name = id.to_upper_camel_case();
-                classes.insert(
-                    name.clone(),
-                    Class { name, def: ClassDef::Enum { tags: tags.clone(), width: *width } },
-                );
+                classes
+                    .insert(name.clone(), Class::Enum { name, tags: tags.clone(), width: *width });
             }
             _ => {
                 dbg!(decl);
@@ -165,89 +149,8 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
         }
     }
 
-    dbg!(&classes
-        .iter()
-        .map(|(name, class)| (name, &class.def))
-        .collect::<Vec<(&String, &ClassDef)>>());
+    dbg!(&classes);
     classes
-}
-
-fn generate_members<'a>(
-    fields: &'a Vec<ast::Field>,
-    classes: &HashMap<String, Class>,
-) -> (Vec<Member>, Alignment<SizedMember, UnsizedMember>, HashMap<String, usize>, Option<usize>) {
-    let mut members = Vec::new();
-    let mut aligner = ByteAligner::new(64);
-    let mut field_width = Some(0);
-    let mut size_fields: HashMap<String, usize> = HashMap::new();
-
-    for field in fields.iter() {
-        match &field.desc {
-            ast::FieldDesc::Scalar { id, width } => {
-                let member = SizedMember::Integral {
-                    name: id.to_lower_camel_case(),
-                    ty: Integral::fitting(*width).limit_to_int(),
-                    width: *width,
-                };
-
-                members.push(member.clone().into());
-                aligner.add_bitfield(member);
-                field_width = field_width.map(|total_width| total_width + width);
-            }
-            ast::FieldDesc::Payload { size_modifier } => {
-                aligner.add_bytes(UnsizedMember::Payload {
-                    size_field: size_fields.get("payload").cloned(),
-                });
-                field_width = None;
-            }
-            ast::FieldDesc::Size { field_id, width } => {
-                let member = SizedMember::Integral {
-                    name: format!("{}Size", field_id.to_lower_camel_case()),
-                    ty: Integral::Int,
-                    width: *width,
-                };
-                aligner.add_bitfield(member);
-                size_fields.insert(field_id.to_lower_camel_case(), *width);
-            }
-            ast::FieldDesc::Typedef { id, type_id } => {
-                let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
-                match &class.def {
-                    ClassDef::Enum { width, .. } => {
-                        let member = SizedMember::EnumRef {
-                            name: id.to_lower_camel_case(),
-                            ty: class.name.clone(),
-                            width: *width,
-                        };
-
-                        members.push(member.clone().into());
-                        aligner.add_bitfield(member);
-                        field_width = field_width.map(|total_width| total_width + width);
-                    }
-                    _ => {
-                        let member = UnsizedMember::StructRef {
-                            name: id.to_lower_camel_case(),
-                            ty: class.name.clone(),
-                        };
-                        members.push(member.clone().into());
-                        aligner.add_bytes(member);
-                        field_width = if let Some((field_width, class_width)) =
-                            field_width.zip(class.width())
-                        {
-                            Some(field_width + class_width)
-                        } else {
-                            None
-                        };
-                    }
-                }
-            }
-            _ => {
-                dbg!(field);
-                todo!()
-            }
-        }
-    }
-
-    (members, aligner.align().expect("Failed to align members"), size_fields, field_width)
 }
 
 trait JavaFile<C>: Sized {
@@ -279,22 +182,18 @@ trait JavaFile<C>: Sized {
     }
 }
 
-pub struct Class {
-    name: String,
-    def: ClassDef,
+#[derive(Debug, Clone)]
+pub enum Class {
+    Packet { name: String, def: PacketDef, parent: Option<Parent> },
+    AbstractPacket { name: String, def: PacketDef, parent: Option<Parent>, children: Vec<Child> },
+    Enum { name: String, tags: Vec<Tag>, width: usize },
 }
 
 impl Class {
-    fn new_parent_with_fallback_child(
-        name: String,
-        members: Vec<Member>,
-        alignment: Alignment<SizedMember, UnsizedMember>,
-        width: Option<usize>,
-        size_fields: HashMap<String, usize>,
-    ) -> (Self, Self) {
-        let child_name = Self::fallback_child_name(&name);
+    fn new_parent(name: String, def: PacketDef) -> (Self, Self) {
+        let child_name = format!("Unknown{}", name);
         let child_member =
-            UnsizedMember::Payload { size_field: size_fields.get("payload").cloned() };
+            UnsizedMember::Payload { size_field: def.size_fields.get("payload").cloned() };
         let child_alignment = {
             let mut aligner = ByteAligner::new(64);
             aligner.add_bytes(child_member.clone());
@@ -302,34 +201,28 @@ impl Class {
         };
 
         // TODO: Only create child packet here if this packet contains a payload. If its a parent with a
-        // body field, we don't want a 'default' child
+        // body field, we don't want a fallback child
 
         (
-            Class {
+            Class::AbstractPacket {
                 name: name.clone(),
-                def: ClassDef::AbstractPacket(PacketDef {
-                    members,
-                    alignment,
-                    width,
-                    size_fields,
-                    parent: None,
-                    children: vec![Child {
-                        name: child_name.clone(),
-                        constraints: HashMap::new(),
-                        width: None,
-                    }],
-                }),
+                def,
+                parent: None,
+                children: vec![Child {
+                    name: child_name.clone(),
+                    constraints: HashMap::new(),
+                    width: None,
+                }],
             },
-            Class {
+            Class::Packet {
                 name: child_name,
-                def: ClassDef::Packet(PacketDef {
+                def: PacketDef {
                     members: vec![child_member.into()],
                     alignment: child_alignment,
                     width: None,
                     size_fields: HashMap::new(),
-                    parent: Some(Parent { name, does_constrain: false }),
-                    children: vec![],
-                }),
+                },
+                parent: Some(Parent { name, does_constrain: false }),
             },
         )
     }
@@ -337,23 +230,10 @@ impl Class {
     fn new_child(
         &mut self,
         name: String,
-        members: Vec<Member>,
-        alignment: Alignment<SizedMember, UnsizedMember>,
-        width: Option<usize>,
-        size_fields: HashMap<String, usize>,
+        def: PacketDef,
         constraints: HashMap<String, ConstrainedTo>,
     ) -> Self {
-        let mut child = Class {
-            name,
-            def: ClassDef::Packet(PacketDef {
-                members,
-                alignment,
-                width,
-                size_fields,
-                parent: None,
-                children: vec![],
-            }),
-        };
+        let mut child = Class::Packet { name, def, parent: None };
 
         let child_width = child.width();
         self.add_child(&mut child, constraints, child_width);
@@ -367,43 +247,36 @@ impl Class {
         constraints: HashMap<String, ConstrainedTo>,
         child_width: Option<usize>,
     ) {
-        let child_def = match &mut child.def {
-            ClassDef::Packet(def) => def,
-            ClassDef::AbstractPacket(def) => def,
+        let childs_parent = match child {
+            Class::Packet { parent, .. } | Class::AbstractPacket { parent, .. } => parent,
             _ => panic!("Can't add child to non-packet"),
         };
-        let _ = child_def
-            .parent
-            .insert(Parent { name: self.name.clone(), does_constrain: !constraints.is_empty() });
+        let _ = childs_parent
+            .insert(Parent { name: self.name().into(), does_constrain: !constraints.is_empty() });
 
-        let children =
-            (if let ClassDef::AbstractPacket(PacketDef { ref mut children, .. }) = &mut self.def {
-                Some(children)
-            } else {
-                None
-            })
-            .expect("Attempt to add child to non-parent packet");
-        children.push(Child { name: child.name.clone(), constraints, width: child_width });
+        let children = (if let Class::AbstractPacket { ref mut children, .. } = self {
+            Some(children)
+        } else {
+            None
+        })
+        .expect("Attempt to add child to non-parent packet");
+        children.push(Child { name: child.name().into(), constraints, width: child_width });
     }
 
-    fn fallback_child_name(parent_name: &str) -> String {
-        format!("Unknown{}", parent_name)
+    pub fn name(&self) -> &str {
+        match self {
+            Class::Packet { name, .. }
+            | Class::AbstractPacket { name, .. }
+            | Class::Enum { name, .. } => name,
+        }
     }
 
     pub fn width(&self) -> Option<usize> {
-        match self.def {
-            ClassDef::Packet(PacketDef { width, .. })
-            | ClassDef::AbstractPacket(PacketDef { width, .. }) => width,
-            ClassDef::Enum { width, .. } => Some(width),
+        match self {
+            Class::Packet { def, .. } | Class::AbstractPacket { def, .. } => def.width,
+            Class::Enum { width, .. } => Some(*width),
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum ClassDef {
-    Packet(PacketDef),
-    AbstractPacket(PacketDef),
-    Enum { tags: Vec<Tag>, width: usize },
 }
 
 #[derive(Debug, Clone)]
@@ -412,8 +285,88 @@ pub struct PacketDef {
     alignment: Alignment<SizedMember, UnsizedMember>,
     width: Option<usize>,
     size_fields: HashMap<String, usize>,
-    parent: Option<Parent>,
-    children: Vec<Child>,
+}
+
+impl PacketDef {
+    fn from_fields(fields: &Vec<ast::Field>, classes: &HashMap<String, Class>) -> Self {
+        let mut members = Vec::new();
+        let mut aligner = ByteAligner::new(64);
+        let mut field_width = Some(0);
+        let mut size_fields: HashMap<String, usize> = HashMap::new();
+
+        for field in fields.iter() {
+            match &field.desc {
+                ast::FieldDesc::Scalar { id, width } => {
+                    let member = SizedMember::Integral {
+                        name: id.to_lower_camel_case(),
+                        ty: Integral::fitting(*width).limit_to_int(),
+                        width: *width,
+                    };
+
+                    members.push(member.clone().into());
+                    aligner.add_bitfield(member);
+                    field_width = field_width.map(|total_width| total_width + width);
+                }
+                ast::FieldDesc::Payload { size_modifier } => {
+                    aligner.add_bytes(UnsizedMember::Payload {
+                        size_field: size_fields.get("payload").cloned(),
+                    });
+                    field_width = None;
+                }
+                ast::FieldDesc::Size { field_id, width } => {
+                    let member = SizedMember::Integral {
+                        name: format!("{}Size", field_id.to_lower_camel_case()),
+                        ty: Integral::Int,
+                        width: *width,
+                    };
+                    aligner.add_bitfield(member);
+                    size_fields.insert(field_id.to_lower_camel_case(), *width);
+                }
+                ast::FieldDesc::Typedef { id, type_id } => {
+                    let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
+                    match &class {
+                        Class::Enum { width, .. } => {
+                            let member = SizedMember::EnumRef {
+                                name: id.to_lower_camel_case(),
+                                ty: class.name().into(),
+                                width: *width,
+                            };
+
+                            members.push(member.clone().into());
+                            aligner.add_bitfield(member);
+                            field_width = field_width.map(|total_width| total_width + width);
+                        }
+                        _ => {
+                            let member = UnsizedMember::StructRef {
+                                name: id.to_lower_camel_case(),
+                                ty: class.name().into(),
+                            };
+                            members.push(member.clone().into());
+                            aligner.add_bytes(member);
+                            field_width = if let Some((field_width, class_width)) =
+                                field_width.zip(class.width())
+                            {
+                                Some(field_width + class_width)
+                            } else {
+                                None
+                            };
+                        }
+                    }
+                }
+                _ => {
+                    dbg!(field);
+                    todo!()
+                }
+            }
+        }
+
+        Self {
+            members,
+            alignment: aligner.align().expect("failed to align members"),
+            width: field_width,
+            size_fields: size_fields,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -14,7 +14,7 @@
 
 use genco::{
     lang::Java,
-    prelude::{java, quote_fn, quote_in},
+    prelude::{java, quote_fn},
     quote,
     tokens::FormatInto,
     Tokens,

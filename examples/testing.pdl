@@ -1,11 +1,9 @@
 little_endian_packets
 
-packet ScalarParent {
-    a: 8,
-    _size_(_payload_): 8,
-    _payload_
+group ScalarGroup {
+    a: 16
 }
 
-packet EmptyParent : ScalarParent {
-    _payload_
+packet Packet_ScalarGroup_Field {
+    ScalarGroup,
 }

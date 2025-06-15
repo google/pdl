@@ -26,16 +26,18 @@ mod packet;
 
 use crate::backends::java::{ConstrainedTo, Member, SizedMember, UnsizedMember};
 
-use super::{import, Chunk, Class, ClassDef, EndiannessValue, Integral, JavaFile, PacketDef};
+use super::{import, Chunk, Class, EndiannessValue, Integral, JavaFile, PacketDef};
 
 impl JavaFile<EndiannessValue> for Class {
     fn generate(self, endianness: EndiannessValue) -> Tokens<Java> {
-        quote! {
-            $(match &self.def {
-                ClassDef::Packet(def) => $(def.gen_packet(&self.name, endianness)),
-                ClassDef::AbstractPacket(def) => $(def.gen_abstract_packet(&self.name, endianness)),
-                ClassDef::Enum { tags, width } => $(self.gen_enum(tags, *width)),
-            })
+        match self {
+            Class::Packet { name, def, parent } => {
+                packet::gen_packet(&name, &def, parent.as_ref(), endianness)
+            }
+            Class::AbstractPacket { name, def, parent, children } => {
+                packet::gen_abstract_packet(&name, &def, parent.as_ref(), &children, endianness)
+            }
+            Class::Enum { name, tags, width } => r#enum::gen_enum(&name, &tags, width),
         }
     }
 }
