@@ -17,18 +17,19 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-// A language-specific symbol whose bit width is not known until runtime.
-pub trait UnsizedSymbol: Clone + Debug + Eq {}
+/// A language-specific symbol whose width is an unspecified multiple of 8-bits (this property is referred to as
+/// 'alignment').
+pub trait AlignedSymbol: Clone + Debug + Eq {}
 
-// A language-specific symbol whose bit width is known at codegen time.
-pub trait SizedSymbol: Clone + Debug + Eq {
+/// A language-specific symbol that may not be aligned to a byte boundary. Its width must be known at codegen time.
+pub trait UnalignedSymbol: Clone + Debug + Eq {
     fn width(&self) -> usize;
 }
 
-impl<T> SizedSymbol for T
+impl<T> UnalignedSymbol for T
 where
     T: Deref,
-    T::Target: SizedSymbol,
+    T::Target: UnalignedSymbol,
     T: Clone + Debug + Eq,
 {
     fn width(&self) -> usize {
@@ -36,21 +37,21 @@ where
     }
 }
 
-impl<T> UnsizedSymbol for T
+impl<T> AlignedSymbol for T
 where
     T: Deref,
-    T::Target: UnsizedSymbol,
+    T::Target: AlignedSymbol,
     T: Clone + Debug + Eq,
 {
 }
 
 /// A field that contains a partial or complete value. May not be byte aligned.
 #[derive(Debug, Clone)]
-pub struct Field<S: SizedSymbol> {
+pub struct Field<U: UnalignedSymbol> {
     /// Offset into the chunk where this field starts.
     pub chunk_offset: usize,
     /// Language-specific symbol (variable, function call, etc.) which holds the value to encode.
-    pub symbol: S,
+    pub symbol: U,
     /// Width of the encodable value in bits.
     pub width: usize,
     /// Offset into the symbol at which the encodable value starts.
@@ -62,22 +63,22 @@ pub struct Field<S: SizedSymbol> {
 /// A byte-aligned chunk.
 /// Because a chunk is byte aligned, it should be easy to encode/decode in your language.
 #[derive(Debug, Clone)]
-pub enum Chunk<S: SizedSymbol, U: UnsizedSymbol> {
+pub enum Chunk<U: UnalignedSymbol, A: AlignedSymbol> {
     /// A chunk comprised of one or more bitpacked fields.
-    PackedBits { fields: Vec<Field<S>>, width: usize },
+    PackedBits { fields: Vec<Field<U>>, width: usize },
     /// An opaque chunk whose width is an unspecified even multiple of 8 bits.
-    Bytes(U),
+    Bytes(A),
 }
 
 /// A data structure that packs a set of fields, which may not be byte-aligned, into a sequence of byte algined chunks.
 /// This is useful for generating encoding/decoding code in your language.
 #[derive(Debug)]
-pub struct ByteAligner<S: SizedSymbol, U: UnsizedSymbol> {
+pub struct ByteAligner<U: UnalignedSymbol, A: AlignedSymbol> {
     max_chunk_width: usize,
-    chunks: Vec<Chunk<S, U>>,
+    chunks: Vec<Chunk<U, A>>,
 }
 
-impl<S: SizedSymbol, U: UnsizedSymbol> ByteAligner<S, U> {
+impl<U: UnalignedSymbol, A: AlignedSymbol> ByteAligner<U, A> {
     pub fn new(max_chunk_width: usize) -> Self {
         Self { max_chunk_width, chunks: vec![] }
     }
@@ -86,7 +87,7 @@ impl<S: SizedSymbol, U: UnsizedSymbol> ByteAligner<S, U> {
     ///
     /// Each `Chunk` within the vec begins and ends at a byte boundary, so the returned data structure
     /// represents a straightforward way to encode and decode the fields in your language.
-    pub fn align(self) -> Result<Alignment<S, U>, &'static str> {
+    pub fn align(self) -> Result<Alignment<U, A>, &'static str> {
         match self.chunks.last() {
             Some(Chunk::PackedBits { width, .. }) if width % 8 != 0 => {
                 Err("Provided fields could not be byte aligned")
@@ -96,7 +97,7 @@ impl<S: SizedSymbol, U: UnsizedSymbol> ByteAligner<S, U> {
         }
     }
 
-    pub fn add_bitfield(&mut self, symbol: S) {
+    pub fn add_bitfield(&mut self, symbol: U) {
         let width = symbol.width();
         if width > self.max_chunk_width {
             panic!("Field too wide");
@@ -105,7 +106,7 @@ impl<S: SizedSymbol, U: UnsizedSymbol> ByteAligner<S, U> {
         }
     }
 
-    pub fn add_bytes(&mut self, symbol: U) {
+    pub fn add_bytes(&mut self, symbol: A) {
         self.panic_if_not_at_byte_boundary();
         self.chunks.push(Chunk::Bytes(symbol));
     }
@@ -120,7 +121,7 @@ impl<S: SizedSymbol, U: UnsizedSymbol> ByteAligner<S, U> {
 
     fn add_offset_field(
         &mut self,
-        symbol: S,
+        symbol: U,
         width: usize,
         symbol_offset: usize,
         is_partial: bool,
@@ -165,7 +166,7 @@ impl<S: SizedSymbol, U: UnsizedSymbol> ByteAligner<S, U> {
 
     fn add_field_to_new_chunk(
         &mut self,
-        symbol: S,
+        symbol: U,
         width: usize,
         symbol_offset: usize,
         is_partial: bool,
@@ -178,16 +179,16 @@ impl<S: SizedSymbol, U: UnsizedSymbol> ByteAligner<S, U> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Alignment<S: SizedSymbol, U: UnsizedSymbol>(Vec<Chunk<S, U>>);
+pub struct Alignment<U: UnalignedSymbol, A: AlignedSymbol>(Vec<Chunk<U, A>>);
 
-impl<S: SizedSymbol, U: UnsizedSymbol> Deref for Alignment<S, U> {
-    type Target = Vec<Chunk<S, U>>;
+impl<U: UnalignedSymbol, A: AlignedSymbol> Deref for Alignment<U, A> {
+    type Target = Vec<Chunk<U, A>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-impl<S: SizedSymbol, U: UnsizedSymbol> DerefMut for Alignment<S, U> {
+impl<U: UnalignedSymbol, A: AlignedSymbol> DerefMut for Alignment<U, A> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

@@ -29,7 +29,7 @@ use std::{
 
 use crate::{
     ast::{self, Constraint, EndiannessValue, Tag, TagOther, TagRange, TagValue},
-    backends::common::alignment::{ByteAligner, Chunk, SizedSymbol, UnsizedSymbol},
+    backends::common::alignment::{AlignedSymbol, ByteAligner, Chunk, UnalignedSymbol},
 };
 
 use super::common::alignment::Alignment;
@@ -193,7 +193,7 @@ impl Class {
     fn new_parent(name: String, def: PacketDef) -> (Self, Self) {
         let child_name = format!("Unknown{}", name);
         let child_member =
-            UnsizedMember::Payload { size_field: def.size_fields.get("payload").cloned() };
+            CompoundVal::Payload { size_field: def.size_fields.get("payload").cloned() };
         let child_alignment = {
             let mut aligner = ByteAligner::new(64);
             aligner.add_bytes(child_member.clone());
@@ -282,7 +282,7 @@ impl Class {
 #[derive(Debug, Clone)]
 pub struct PacketDef {
     members: Vec<Member>,
-    alignment: Alignment<SizedMember, UnsizedMember>,
+    alignment: Alignment<ScalarVal, CompoundVal>,
     width: Option<usize>,
     size_fields: HashMap<String, usize>,
 }
@@ -297,7 +297,7 @@ impl PacketDef {
         for field in fields.iter() {
             match &field.desc {
                 ast::FieldDesc::Scalar { id, width } => {
-                    let member = SizedMember::Integral {
+                    let member = ScalarVal::Integral {
                         name: id.to_lower_camel_case(),
                         ty: Integral::fitting(*width),
                         width: *width,
@@ -308,13 +308,13 @@ impl PacketDef {
                     field_width = field_width.map(|total_width| total_width + width);
                 }
                 ast::FieldDesc::Payload { size_modifier } => {
-                    aligner.add_bytes(UnsizedMember::Payload {
+                    aligner.add_bytes(CompoundVal::Payload {
                         size_field: size_fields.get("payload").cloned(),
                     });
                     field_width = None;
                 }
                 ast::FieldDesc::Size { field_id, width } => {
-                    let member = SizedMember::Integral {
+                    let member = ScalarVal::Integral {
                         name: format!("{}Size", field_id.to_lower_camel_case()),
                         ty: Integral::Int,
                         width: *width,
@@ -326,7 +326,7 @@ impl PacketDef {
                     let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
                     match &class {
                         Class::Enum { width, .. } => {
-                            let member = SizedMember::EnumRef {
+                            let member = ScalarVal::EnumRef {
                                 name: id.to_lower_camel_case(),
                                 ty: class.name().into(),
                                 width: *width,
@@ -337,7 +337,7 @@ impl PacketDef {
                             field_width = field_width.map(|total_width| total_width + width);
                         }
                         _ => {
-                            let member = UnsizedMember::StructRef {
+                            let member = CompoundVal::StructRef {
                                 name: id.to_lower_camel_case(),
                                 ty: class.name().into(),
                             };
@@ -412,21 +412,21 @@ impl Constraint {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Member {
-    Sized(SizedMember),
-    Unsized(UnsizedMember),
+    Scalar(ScalarVal),
+    Compound(CompoundVal),
 }
 
 impl Member {
-    fn as_sized(&self) -> Option<&SizedMember> {
-        if let Self::Sized(member) = self {
+    fn as_scalar(&self) -> Option<&ScalarVal> {
+        if let Self::Scalar(member) = self {
             Some(member)
         } else {
             None
         }
     }
 
-    fn as_unsized(&self) -> Option<&UnsizedMember> {
-        if let Self::Unsized(member) = self {
+    fn as_compound(&self) -> Option<&CompoundVal> {
+        if let Self::Compound(member) = self {
             Some(member)
         } else {
             None
@@ -434,66 +434,68 @@ impl Member {
     }
 }
 
-impl From<SizedMember> for Member {
-    fn from(value: SizedMember) -> Self {
-        Self::Sized(value)
+impl From<ScalarVal> for Member {
+    fn from(value: ScalarVal) -> Self {
+        Self::Scalar(value)
     }
 }
 
-impl From<UnsizedMember> for Member {
-    fn from(value: UnsizedMember) -> Self {
-        Self::Unsized(value)
+impl From<CompoundVal> for Member {
+    fn from(value: CompoundVal) -> Self {
+        Self::Compound(value)
     }
 }
 
 impl Member {
     pub fn name(&self) -> &str {
         match self {
-            Member::Sized(member) => member.name(),
-            Member::Unsized(member) => member.name(),
+            Member::Scalar(member) => member.name(),
+            Member::Compound(member) => member.name(),
         }
     }
 
     pub fn is_sized(&self) -> bool {
-        matches!(self, Member::Sized(_))
+        matches!(self, Member::Scalar(_))
     }
 }
 
+/// A value that is readily represented by a scalar Java type.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SizedMember {
+pub enum ScalarVal {
     Integral { name: String, ty: Integral, width: usize },
     EnumRef { name: String, ty: String, width: usize },
 }
 
-impl SizedSymbol for SizedMember {
+impl UnalignedSymbol for ScalarVal {
     fn width(&self) -> usize {
         match self {
-            SizedMember::Integral { width, .. } | SizedMember::EnumRef { width, .. } => *width,
+            ScalarVal::Integral { width, .. } | ScalarVal::EnumRef { width, .. } => *width,
         }
     }
 }
 
-impl SizedMember {
+impl ScalarVal {
     fn name(&self) -> &str {
         match self {
-            SizedMember::Integral { name, .. } | SizedMember::EnumRef { name, .. } => name,
+            ScalarVal::Integral { name, .. } | ScalarVal::EnumRef { name, .. } => name,
         }
     }
 }
 
+/// A value that is readily represented by a compound (non-scalar) Java type.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum UnsizedMember {
+pub enum CompoundVal {
     StructRef { name: String, ty: String },
     Payload { size_field: Option<usize> },
 }
 
-impl UnsizedSymbol for UnsizedMember {}
+impl AlignedSymbol for CompoundVal {}
 
-impl UnsizedMember {
+impl CompoundVal {
     fn name(&self) -> &str {
         match self {
-            UnsizedMember::StructRef { name, .. } => name,
-            UnsizedMember::Payload { .. } => "payload",
+            CompoundVal::StructRef { name, .. } => name,
+            CompoundVal::Payload { .. } => "payload",
         }
     }
 }
@@ -537,8 +539,8 @@ impl Integral {
     }
 }
 
-impl From<&SizedMember> for Integral {
-    fn from(member: &SizedMember) -> Self {
+impl From<&ScalarVal> for Integral {
+    fn from(member: &ScalarVal) -> Self {
         Integral::fitting(member.width())
     }
 }

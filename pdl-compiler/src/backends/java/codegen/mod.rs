@@ -25,8 +25,8 @@ mod r#enum;
 mod packet;
 
 use crate::backends::{
-    common::alignment::SizedSymbol,
-    java::{ConstrainedTo, Member, SizedMember, UnsizedMember},
+    common::alignment::UnalignedSymbol,
+    java::{CompoundVal, ConstrainedTo, Member, ScalarVal},
 };
 
 use super::{import, Chunk, Class, EndiannessValue, Integral, JavaFile, PacketDef};
@@ -133,26 +133,26 @@ impl<J: FormatInto<Java>> IntegralOps for J {
 impl Member {
     fn stringify(&self) -> Tokens<Java> {
         match self {
-            Member::Sized(member) => member.stringify(),
-            Member::Unsized(member) => member.stringify(),
+            Member::Scalar(member) => member.stringify(),
+            Member::Compound(member) => member.stringify(),
         }
     }
 
     fn ty(&self) -> Tokens<Java> {
         match self {
-            Member::Sized(member) => member.ty(),
-            Member::Unsized(member) => member.ty(),
+            Member::Scalar(member) => member.ty(),
+            Member::Compound(member) => member.ty(),
         }
     }
 
     fn hash_code(&self) -> Tokens<Java> {
         match self {
-            Member::Sized(SizedMember::Integral { name, ty, .. }) => {
+            Member::Scalar(ScalarVal::Integral { name, ty, .. }) => {
                 quote!($(ty.boxed()).hashCode($name))
             }
-            Member::Sized(SizedMember::EnumRef { name, .. })
-            | Member::Unsized(UnsizedMember::StructRef { name, .. }) => quote!($name.hashCode()),
-            Member::Unsized(UnsizedMember::Payload { size_field }) => {
+            Member::Scalar(ScalarVal::EnumRef { name, .. })
+            | Member::Compound(CompoundVal::StructRef { name, .. }) => quote!($name.hashCode()),
+            Member::Compound(CompoundVal::Payload { size_field }) => {
                 quote!($(&*import::ARRAYS).hashCode(payload))
             }
         }
@@ -160,12 +160,12 @@ impl Member {
 
     fn equals<'a>(&'a self, other: impl FormatInto<Java> + 'a) -> Tokens<Java> {
         match self {
-            Member::Sized(SizedMember::Integral { name, .. }) => quote!($name == $other),
-            Member::Sized(SizedMember::EnumRef { name, .. })
-            | Member::Unsized(UnsizedMember::StructRef { name, .. }) => {
+            Member::Scalar(ScalarVal::Integral { name, .. }) => quote!($name == $other),
+            Member::Scalar(ScalarVal::EnumRef { name, .. })
+            | Member::Compound(CompoundVal::StructRef { name, .. }) => {
                 quote!($name.equals($other))
             }
-            Member::Unsized(UnsizedMember::Payload { size_field }) => {
+            Member::Compound(CompoundVal::Payload { size_field }) => {
                 quote!($(&*import::ARRAYS).equals(payload, $other))
             }
         }
@@ -173,10 +173,10 @@ impl Member {
 
     fn constraint(&self, to: &ConstrainedTo) -> Tokens<Java> {
         match (self, to) {
-            (Member::Sized(SizedMember::Integral { .. }), ConstrainedTo::Integral(i)) => {
+            (Member::Scalar(ScalarVal::Integral { .. }), ConstrainedTo::Integral(i)) => {
                 quote!($(*i))
             }
-            (Member::Sized(SizedMember::EnumRef { ty, .. }), ConstrainedTo::EnumTag(tag)) => {
+            (Member::Scalar(ScalarVal::EnumRef { ty, .. }), ConstrainedTo::EnumTag(tag)) => {
                 quote!($ty.$tag)
             }
             _ => panic!("invalid constraint"),
@@ -184,32 +184,32 @@ impl Member {
     }
 }
 
-impl SizedMember {
+impl ScalarVal {
     fn ty(&self) -> Tokens<Java> {
         match self {
-            SizedMember::Integral { ty, .. } => quote!($ty),
-            SizedMember::EnumRef { ty, .. } => quote!($ty),
+            ScalarVal::Integral { ty, .. } => quote!($ty),
+            ScalarVal::EnumRef { ty, .. } => quote!($ty),
         }
     }
 
     fn stringify(&self) -> Tokens<Java> {
         match self {
-            SizedMember::Integral { name, ty, .. } => ty.stringify(name),
-            SizedMember::EnumRef { name, .. } => quote!($name.toString()),
+            ScalarVal::Integral { name, ty, .. } => ty.stringify(name),
+            ScalarVal::EnumRef { name, .. } => quote!($name.toString()),
         }
     }
 
     fn from_integral<'a>(&'a self, expr: impl FormatInto<Java> + 'a) -> Tokens<Java> {
         match self {
-            SizedMember::Integral { .. } => quote!($expr),
-            SizedMember::EnumRef { ty, width, .. } => {
+            ScalarVal::Integral { .. } => quote!($expr),
+            ScalarVal::EnumRef { ty, width, .. } => {
                 quote!($ty.from$(Integral::fitting(*width).capitalized())($expr))
             }
         }
     }
 
     fn expr_to_encode(&self) -> Tokens<Java> {
-        if let SizedMember::EnumRef { name, width, .. } = self {
+        if let ScalarVal::EnumRef { name, width, .. } = self {
             quote!($name.to$(Integral::fitting(*width).capitalized())())
         } else if self.name() == "payloadSize" {
             quote!(payload.capacity()).maybe_cast(Integral::Int, Integral::fitting(self.width()))
@@ -222,25 +222,25 @@ impl SizedMember {
     }
 }
 
-impl UnsizedMember {
+impl CompoundVal {
     fn ty(&self) -> Tokens<Java> {
         match self {
-            UnsizedMember::StructRef { ty, .. } => quote!($ty),
-            UnsizedMember::Payload { .. } => quote!(byte[]),
+            CompoundVal::StructRef { ty, .. } => quote!($ty),
+            CompoundVal::Payload { .. } => quote!(byte[]),
         }
     }
 
     fn stringify(&self) -> Tokens<Java> {
         match self {
-            UnsizedMember::StructRef { name, .. } => quote!($name.toString()),
-            UnsizedMember::Payload { .. } => quote!($(&*import::ARRAYS).toString(payload)),
+            CompoundVal::StructRef { name, .. } => quote!($name.toString()),
+            CompoundVal::Payload { .. } => quote!($(&*import::ARRAYS).toString(payload)),
         }
     }
 
     fn width_expr(&self) -> Tokens<Java> {
         match self {
-            UnsizedMember::StructRef { name, .. } => quote!($name.width()),
-            UnsizedMember::Payload { .. } => quote!(payload.length),
+            CompoundVal::StructRef { name, .. } => quote!($name.width()),
+            CompoundVal::Payload { .. } => quote!(payload.length),
         }
     }
 }

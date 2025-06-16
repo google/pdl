@@ -20,8 +20,8 @@ use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 use crate::{
     ast::EndiannessValue,
     backends::{
-        common::alignment::{Alignment, SizedSymbol},
-        java::{Child, ConstrainedTo, Member, Parent, SizedMember, UnsizedMember},
+        common::alignment::{Alignment, UnalignedSymbol},
+        java::{Child, CompoundVal, ConstrainedTo, Member, Parent, ScalarVal},
     },
 };
 
@@ -100,8 +100,8 @@ pub fn gen_packet(
                 $(let members_str = quote!(
                     $(for member in def.members.iter() {
                         + $(match member {
-                            Member::Sized(member) => $(quoted(format!("{}[{}]=", member.name(), member.width()))),
-                            Member::Unsized(member) => $(quoted(format!("{}=", member.name())))
+                            Member::Scalar(member) => $(quoted(format!("{}[{}]=", member.name(), member.width()))),
+                            Member::Compound(member) => $(quoted(format!("{}=", member.name())))
                         }) + $(member.stringify()) + "\n"
                     }) + "}"
                 ))
@@ -208,7 +208,7 @@ pub fn gen_abstract_packet(
                                     + $(field.symbol.stringify()) + "\n"
                                 }),
                             Chunk::Bytes(member) =>
-                                $(if let UnsizedMember::Payload { .. } = member {
+                                $(if let CompoundVal::Payload { .. } = member {
                                     "payload=" + payload + "\n"
                                 } else {
                                     $(quoted(format!("{}=", member.name()))) + $(member.stringify())
@@ -301,7 +301,7 @@ fn setter_defs(
             $(if !constraints.contains_key(member.name()) {
                 public $builder_type set$(member.name().to_upper_camel_case())($(member.ty()) $(member.name())) {
                     $(match member {
-                        Member::Sized(SizedMember::Integral { width, ty, .. }) => {
+                        Member::Scalar(ScalarVal::Integral { width, ty, .. }) => {
                             if ($(ty.compare(member.name(), gen_mask(*width))) > 0) {
                                 throw new IllegalArgumentException(
                                     "Value " +
@@ -311,7 +311,7 @@ fn setter_defs(
                                 );
                             }
                         }
-                        Member::Unsized(UnsizedMember::Payload { size_field: Some(size_field) }) => {
+                        Member::Compound(CompoundVal::Payload { size_field: Some(size_field) }) => {
                             if ($(Integral::Int.compare(quote!($(member.name()).length), gen_mask(*size_field))) > 0) {
                                 throw new IllegalArgumentException(
                                     "Payload " +
@@ -338,7 +338,7 @@ fn builder_assigns(members: &Vec<Member>) -> Tokens<Java> {
     }
 }
 
-fn encoder(alignment: &Alignment<SizedMember, UnsizedMember>) -> Tokens<Java> {
+fn encoder(alignment: &Alignment<ScalarVal, CompoundVal>) -> Tokens<Java> {
     quote! {
         $(for chunk in alignment.iter() {
             $(match chunk {
@@ -372,7 +372,7 @@ fn encoder(alignment: &Alignment<SizedMember, UnsizedMember>) -> Tokens<Java> {
 
                 }
                 Chunk::Bytes(member) => $(match member {
-                    UnsizedMember::Payload { .. } => buf.put(payload),
+                    CompoundVal::Payload { .. } => buf.put(payload),
                     _ => buf.put($(member.name()).toBytes()),
                 });,
             })
@@ -431,7 +431,7 @@ fn decoder(
                     })
                 }
                 Chunk::Bytes(member) => $(match member {
-                    UnsizedMember::Payload { .. } => {
+                    CompoundVal::Payload { .. } => {
                         $(if def.size_fields.contains_key("payload") {
                             // The above condition checks if *this* class contains a size field for the payload.
                             // Unpacking `size_field` from the `UnsizedMember::Payload` would instead check if
@@ -460,7 +460,7 @@ fn decoder(
                             })
                         })
                     },
-                    UnsizedMember::StructRef { name, ty, .. } => {
+                    CompoundVal::StructRef { name, ty, .. } => {
                         $(let var_name = &name.to_lower_camel_case())
                         // If the struct has dynamic width, assume it is the last field in the packet (this should
                         // really be enforced by the parser) and decode it. Its decoder will consume all remaining
@@ -506,12 +506,12 @@ fn width_def(call_super: bool) -> Tokens<Java> {
 
 fn field_width_def(members: &Vec<Member>, size_fields: &HashMap<String, usize>) -> Tokens<Java> {
     let static_width =
-        (members.iter().filter_map(Member::as_sized).map(|member| member.width()).sum::<usize>()
+        (members.iter().filter_map(Member::as_scalar).map(|member| member.width()).sum::<usize>()
             + size_fields.values().sum::<usize>())
             / 8;
 
-    let unsized_members: Vec<&UnsizedMember> =
-        members.iter().filter_map(Member::as_unsized).collect();
+    let unsized_members: Vec<&CompoundVal> =
+        members.iter().filter_map(Member::as_compound).collect();
 
     quote! {
         private final int fieldWidth() {
