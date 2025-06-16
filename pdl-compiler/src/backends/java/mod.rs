@@ -299,7 +299,7 @@ impl PacketDef {
                 ast::FieldDesc::Scalar { id, width } => {
                     let member = SizedMember::Integral {
                         name: id.to_lower_camel_case(),
-                        ty: Integral::fitting(*width).limit_to_int(),
+                        ty: Integral::fitting(*width),
                         width: *width,
                     };
 
@@ -522,19 +522,7 @@ impl Integral {
         }
     }
 
-    /// The JLS specifies that operands of certain operators including
-    ///  - [shifts](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.19)
-    ///  - [bitwise operators](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.22.1)
-    ///
-    /// are subject to [widening primitive conversion](https://docs.oracle.com/javase/specs/jls/se8/html/jls-5.html#jls-5.1.2). Effectively,
-    /// this means that `byte` or `short` operands are casted to `int` before the operation. Furthermore, Java does not have unsigned types,
-    /// so:
-    ///
-    /// > A widening conversion of a signed integer value to an integral type T simply sign-extends the two's-complement representation of the integer value to fill the wider format.
-    ///
-    /// In other words, bitwise operations on smaller types can change the binary representation of the value before the operation.
-    /// To get around this, we only use types `int` and `long` for variables, even when the field would fit in something smaller. This way,
-    /// we can forget that 'widening primitive conversion' is a thing and pretend that all is right with the world.
+    /// Widen to Int to avoid widening primitive conversion.
     pub fn limit_to_int(self) -> Self {
         cmp::max(self, Integral::Int)
     }
@@ -546,5 +534,11 @@ impl Integral {
             Integral::Int => 32,
             Integral::Long => 64,
         }
+    }
+}
+
+impl From<&SizedMember> for Integral {
+    fn from(member: &SizedMember) -> Self {
+        Integral::fitting(member.width())
     }
 }

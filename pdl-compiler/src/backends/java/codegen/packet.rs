@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{cmp::max, collections::HashMap};
 
 use genco::{self, prelude::Java, quote, tokens::quoted, Tokens};
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
@@ -25,7 +25,7 @@ use crate::{
     },
 };
 
-use super::{gen_mask, import, Chunk, Expr, Integral, PacketDef};
+use super::{gen_mask, import, Chunk, Integral, IntegralOps, PacketDef};
 
 pub fn gen_packet(
     name: &String,
@@ -302,7 +302,7 @@ fn setter_defs(
                 public $builder_type set$(member.name().to_upper_camel_case())($(member.ty()) $(member.name())) {
                     $(match member {
                         Member::Sized(SizedMember::Integral { width, ty, .. }) => {
-                            if ($(ty.boxed()).compareUnsigned($(member.name()), $(gen_mask(*width))) > 0) {
+                            if ($(ty.compare(member.name(), gen_mask(*width))) > 0) {
                                 throw new IllegalArgumentException(
                                     "Value " +
                                     $(member.stringify()) +
@@ -312,7 +312,7 @@ fn setter_defs(
                             }
                         }
                         Member::Unsized(UnsizedMember::Payload { size_field: Some(size_field) }) => {
-                            if (Integer.compareUnsigned($(member.name()).length, $(gen_mask(*size_field))) > 0) {
+                            if ($(Integral::Int.compare(quote!($(member.name()).length), gen_mask(*size_field))) > 0) {
                                 throw new IllegalArgumentException(
                                     "Payload " +
                                     $(member.stringify()) +
@@ -344,20 +344,32 @@ fn encoder(alignment: &Alignment<SizedMember, UnsizedMember>) -> Tokens<Java> {
             $(match chunk {
                 Chunk::PackedBits { fields, width } => {
                     $(let chunk_type = Integral::fitting(*width))
-                    $(let mut fields = fields.iter())
-                    $(let first = fields.next().expect("Attempt to generate encoder for chunk with no fields"))
+                    $(let promo_safe_type = chunk_type.limit_to_int())
 
-                    buf.$(chunk_type.encoder())(
-                        ($chunk_type) (
-                            $(first.symbol.expr_to_encode()
-                                .maybe_widen(&first.symbol, chunk_type)
-                                .maybe_shift(">>>", first.symbol_offset))
+                    $(let mut fields_iter = fields.iter())
+                    $(let first = fields_iter.next().unwrap())
 
-                            $(for field in fields => |
-                                $(field.symbol.expr_to_encode()
-                                    .maybe_widen(&field.symbol, chunk_type)
-                                    .maybe_shift("<<", field.chunk_offset))))
-                    );
+                    $(if fields.len() == 1 {
+                        buf.$(chunk_type.encoder())($(first.symbol.expr_to_encode()));
+                    } else {
+                        buf.$(chunk_type.encoder())(
+                            $(quote!(
+                                $(first.symbol.expr_to_encode()
+                                    .maybe_widen(&first.symbol, promo_safe_type)
+                                    .maybe_shift(">>>", first.symbol_offset)
+                                    .maybe_narrow(&first.symbol, promo_safe_type)
+                                )
+                                $(for field in fields_iter {
+                                    | $(field.symbol.expr_to_encode()
+                                        .maybe_widen(&field.symbol, promo_safe_type)
+                                        .maybe_shift("<<", field.chunk_offset)
+                                        .maybe_narrow(&field.symbol, promo_safe_type)
+                                    )
+                                })
+                            ).maybe_narrow(promo_safe_type, chunk_type))
+                        );
+                    })
+
                 }
                 Chunk::Bytes(member) => $(match member {
                     UnsizedMember::Payload { .. } => buf.put(payload),
@@ -378,35 +390,43 @@ fn decoder(
             $(match chunk {
                 Chunk::PackedBits { fields, width } => {
                     $(let chunk_name = format!("chunk{}", i))
-                    $(let chunk_type = Integral::fitting(*width).limit_to_int())
+                    $(let chunk_type = Integral::fitting(*width))
+                    $(let promo_safe_type = chunk_type.limit_to_int())
 
-                    $chunk_type $(&chunk_name) = $(Integral::fitting(*width).decoder("buf"));
+                    $promo_safe_type $(&chunk_name) = $(
+                        chunk_type.decoder("buf").maybe_widen(chunk_type, promo_safe_type)
+                    );
 
                     $(for field in fields.iter() {
-                        $(let integral = Integral::fitting(field.symbol.width()).limit_to_int())
-
-                        $(let decoded_field = chunk_name.as_str()
-                            .maybe_mask(field.chunk_offset, field.width)
-                            .maybe_cast(chunk_type, integral))
+                        $(let decoded_field = chunk_name.as_str().maybe_mask(field.chunk_offset, field.width))
+                        $(let field_type = Integral::fitting(field.symbol.width()))
 
                         $(if field.is_partial {
                             // The value is split between chunks.
                             $(if field.symbol_offset == 0 {
                                 // This chunk has the lower-order bits of the value, so store them in a variable until we can
                                 // get the higher-order bits from the next chunk.
-                                $integral $(field.symbol.name())$i = $decoded_field;
+                                $promo_safe_type $(field.symbol.name())$i = $decoded_field;
                             } else {
                                 // This chunk has the higher-order bits of the value, so grab the lower-order bits from the
                                 // variable we declared.
                                 $(assign(
                                     field.symbol.ty(),
                                     field.symbol.name(),
-                                    field.symbol.from_integral(quote!(
-                                        $(field.symbol.name())$(i - 1) | (($decoded_field) << $(field.symbol_offset))))));
+                                    field.symbol.from_integral(
+                                        quote!(
+                                            $(field.symbol.name())$(i - 1) | ($decoded_field << $(field.symbol_offset))
+                                        ).maybe_narrow(promo_safe_type, field_type)
+                                    )
+                                ));
                             })
                         } else {
                             // The whole value lies within this chunk, so just set it.
-                            $(assign(field.symbol.ty(), field.symbol.name(), field.symbol.from_integral(decoded_field)));
+                            $(assign(
+                                field.symbol.ty (),
+                                field.symbol.name(),
+                                field.symbol.from_integral(decoded_field.maybe_narrow(promo_safe_type, field_type))
+                            ));
                         })
                     })
                 }
@@ -419,18 +439,24 @@ fn decoder(
                             $(assign(
                                 member.ty(),
                                 member.name(),
-                                quote!(buf.slice(buf.position(), payloadSize).order($endianness))));
+                                quote!(buf.slice(buf.position(), payloadSize).order($endianness))
+                            ));
                         } else {
                             $(if let Some(width) = def.width {
                                 $(assign(
                                     member.ty(),
                                     member.name(),
-                                    quote!(buf.slice(buf.position(), buf.capacity() - $(width / 8)).order($endianness))));
+                                    quote!(buf.slice(buf.position(), buf.capacity() - $(width / 8)).order($endianness))
+                                ));
                             } else {
                                 // If we don't know the payload's width, assume it is the last field in the packet
                                 // (this should really be enforced by the parser) and consume all remaining bytes
                                 // in the buffer.
-                                $(assign(member.ty(), member.name(), quote!(buf.slice())));
+                                $(assign(
+                                    member.ty(),
+                                    member.name(),
+                                    quote!(buf.slice())
+                                ));
                             })
                         })
                     },

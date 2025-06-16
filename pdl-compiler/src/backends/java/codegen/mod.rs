@@ -24,7 +24,10 @@ use genco::{
 mod r#enum;
 mod packet;
 
-use crate::backends::java::{ConstrainedTo, Member, SizedMember, UnsizedMember};
+use crate::backends::{
+    common::alignment::SizedSymbol,
+    java::{ConstrainedTo, Member, SizedMember, UnsizedMember},
+};
 
 use super::{import, Chunk, Class, EndiannessValue, Integral, JavaFile, PacketDef};
 
@@ -53,59 +56,76 @@ impl FormatInto<Java> for EndiannessValue {
     }
 }
 
-trait Expr {
-    fn maybe_cast(self, from: Integral, to: Integral) -> Tokens<Java>;
-    fn maybe_widen(self, member: &SizedMember, to: Integral) -> Tokens<Java>;
+/// The JLS specifies that operands of certain operators including
+///  - [shifts](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.19)
+///  - [bitwise operators](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.22.1)
+///
+/// are subject to [widening primitive conversion](https://docs.oracle.com/javase/specs/jls/se8/html/jls-5.html#jls-5.1.2). Effectively,
+/// this means that `byte` or `short` operands are casted to `int` before the operation. Furthermore, Java does not have unsigned types,
+/// so:
+///
+/// > A widening conversion of a signed integer value to an integral type T simply sign-extends the two's-complement representation of the integer value to fill the wider format.
+///
+/// In other words, bitwise operations on smaller types can change the binary representation of the value before the operation.
+/// To get around this, we must sign-safe cast every smaller operand to int or long.
+trait IntegralOps {
+    fn maybe_cast(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java>;
+    fn maybe_widen(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java>;
+    fn maybe_narrow(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java>;
     fn maybe_shift(self, op: &'static str, by: usize) -> Tokens<Java>;
     fn maybe_mask(self, offset: usize, width: usize) -> Tokens<Java>;
 }
 
-impl<J: FormatInto<Java>> Expr for J {
-    /// `from` and `to` must be >= int
-    fn maybe_cast(self, from: Integral, to: Integral) -> Tokens<Java> {
-        quote! {
-            $(match (from, to) {
-                (Integral::Int, Integral::Long) => Integer.toUnsignedLong($(self)),
-                (Integral::Long, Integral::Int) => ((int) ($(self))),
-                _ => $(self),
-            })
+impl<J: FormatInto<Java>> IntegralOps for J {
+    fn maybe_cast(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java> {
+        let from = from.into();
+        if from < to {
+            match (from, to) {
+                (Integral::Byte, Integral::Short) => quote!((short) Byte.toUnsignedInt($(self))),
+                (_, Integral::Int) => quote!($(from.boxed()).toUnsignedInt($(self))),
+                (_, Integral::Long) => quote!($(from.boxed()).toUnsignedLong($(self))),
+                _ => unreachable!(),
+            }
+        } else if from > to {
+            quote!(($to) ($(self)))
+        } else {
+            quote!($(self))
         }
     }
 
-    /// `to` must be >= int
-    fn maybe_widen(self, member: &SizedMember, to: Integral) -> Tokens<Java> {
-        match (member, to) {
-            (SizedMember::Integral { ty: Integral::Int, .. }, Integral::Long) => {
-                quote!(Integer.toUnsignedLong($(self)))
-            }
-            (SizedMember::EnumRef { width, .. }, to) => {
-                let from = Integral::fitting(*width).limit_to_int();
-                quote!($(self).to$(from.capitalized())()).maybe_widen(
-                    &SizedMember::Integral { name: String::default(), ty: from, width: *width },
-                    to,
-                )
-            }
-            _ => quote!($(self)),
+    fn maybe_widen(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java> {
+        let from = from.into();
+        if from < to {
+            self.maybe_cast(from, to)
+        } else {
+            quote!($(self))
         }
     }
 
+    fn maybe_narrow(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java> {
+        let from = from.into();
+        if from > to {
+            quote!(($to) ($(self)))
+        } else {
+            quote!($(self))
+        }
+    }
+
+    /// `self` must have type >= int if `offset` != 0.
     fn maybe_mask(self, offset: usize, width: usize) -> Tokens<Java> {
-        quote! {
-            $(if width == 0 {
-                $(self.maybe_shift(">>>", offset))
-            } else {
-                ($(self.maybe_shift(">>>", offset)) & $(gen_mask(width)))
-            } )
+        if width == 0 {
+            quote!($(self.maybe_shift(">>>", offset)))
+        } else {
+            quote!($(self.maybe_shift(">>>", offset)) & $(gen_mask(width)))
         }
     }
 
+    /// `self` must have type >= int if `by` != 0.
     fn maybe_shift(self, op: &'static str, by: usize) -> Tokens<Java> {
-        quote! {
-            $(if by == 0 {
-                $(self)
-            } else {
-                ($(self) $op $by)
-            })
+        if by == 0 {
+            quote!($(self))
+        } else {
+            quote!(($(self) $op $by))
         }
     }
 }
@@ -174,7 +194,7 @@ impl SizedMember {
 
     fn stringify(&self) -> Tokens<Java> {
         match self {
-            SizedMember::Integral { name, ty, .. } => quote!($(ty.boxed()).toHexString($name)),
+            SizedMember::Integral { name, ty, .. } => ty.stringify(name),
             SizedMember::EnumRef { name, .. } => quote!($name.toString()),
         }
     }
@@ -183,16 +203,19 @@ impl SizedMember {
         match self {
             SizedMember::Integral { .. } => quote!($expr),
             SizedMember::EnumRef { ty, width, .. } => {
-                quote!($ty.from$(Integral::fitting(*width).limit_to_int().capitalized())($expr))
+                quote!($ty.from$(Integral::fitting(*width).capitalized())($expr))
             }
         }
     }
 
     fn expr_to_encode(&self) -> Tokens<Java> {
-        if self.name() == "payloadSize" {
-            quote!(payload.capacity())
+        if let SizedMember::EnumRef { name, width, .. } = self {
+            quote!($name.to$(Integral::fitting(*width).capitalized())())
+        } else if self.name() == "payloadSize" {
+            quote!(payload.capacity()).maybe_cast(Integral::Int, Integral::fitting(self.width()))
         } else if self.name().ends_with("Size") {
             quote!($(self.name().strip_suffix("Size")).length)
+                .maybe_cast(Integral::Int, Integral::fitting(self.width()))
         } else {
             quote!($(self.name()))
         }
@@ -235,15 +258,24 @@ impl Integral {
     fn decoder<'a>(&'a self, buf: impl FormatInto<Java> + 'a) -> impl FormatInto<Java> + 'a {
         quote_fn! {
             $(match self {
-                Integral::Byte => Byte.toUnsignedInt($buf.get()),
-                Integral::Short => Short.toUnsignedInt($buf.getShort()),
+                Integral::Byte => $buf.get(),
+                Integral::Short => $buf.getShort(),
                 Integral::Int => $buf.getInt(),
                 Integral::Long => $buf.getLong(),
             })
         }
     }
+    pub fn compare(&self, expr: impl FormatInto<Java>, to: impl FormatInto<Java>) -> Tokens<Java> {
+        let comparable_ty = self.limit_to_int();
+        quote!($(comparable_ty.boxed()).compareUnsigned($(expr.maybe_widen(*self, comparable_ty)), $to))
+    }
 
-    fn boxed(&self) -> &'static str {
+    fn stringify(&self, expr: impl FormatInto<Java>) -> Tokens<Java> {
+        let stringifiable = self.limit_to_int();
+        quote!($(stringifiable.boxed()).toHexString($(expr.maybe_widen(*self, stringifiable))))
+    }
+
+    pub fn boxed(&self) -> &'static str {
         match self {
             Integral::Byte => "Byte",
             Integral::Short => "Short",
@@ -258,6 +290,15 @@ impl Integral {
             Integral::Short => "Short",
             Integral::Int => "Int",
             Integral::Long => "Long",
+        }
+    }
+
+    pub fn literal(&self, expr: impl FormatInto<Java>) -> Tokens<Java> {
+        match self {
+            Integral::Byte => quote!((byte) $(expr)),
+            Integral::Short => quote!((short) $(expr)),
+            Integral::Int => quote!($(expr)),
+            Integral::Long => quote!($(expr)L),
         }
     }
 }

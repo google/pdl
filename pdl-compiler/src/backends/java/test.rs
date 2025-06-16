@@ -207,15 +207,15 @@ impl Field {
         decls: &'a HashMap<String, Decl>,
     ) -> impl FormatInto<Java> + 'a {
         match &self.desc {
-            ast::FieldDesc::Scalar { .. } => {
-                quote!($(num_to_lit(value.as_number().unwrap())))
+            ast::FieldDesc::Scalar { width, .. } => {
+                Integral::fitting(*width).literal(value.as_number().unwrap().as_u64())
             }
             ast::FieldDesc::Typedef { type_id, .. } => match &get_decl(&type_id, decls).desc {
-                DeclDesc::Enum { id, tags, width } => {
+                DeclDesc::Enum { width, .. } => {
+                    let ty = Integral::fitting(*width);
                     quote!(
                         $(type_id.to_upper_camel_case())
-                            .from$(Integral::fitting(*width).limit_to_int().capitalized())(
-                                $(num_to_lit(value.as_number().unwrap()))))
+                            .from$(ty.capitalized())($(ty.literal(value.as_number().unwrap().as_u64()))))
                 }
                 DeclDesc::Checksum { id, function, width } => todo!(),
                 DeclDesc::CustomField { id, width, function } => todo!(),
@@ -275,12 +275,6 @@ fn hex_to_array(hex: &str) -> impl FormatInto<Java> + '_ {
 
     quote_fn! {
         new byte[]{$(for byte in bytes join (, ) => $byte)}
-    }
-}
-
-fn num_to_lit(n: &Number) -> impl FormatInto<Java> + '_ {
-    quote_fn! {
-        $(let n = n.as_u64().unwrap()) $n$(if n > u32::MAX as u64 => L)
     }
 }
 

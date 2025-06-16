@@ -7,7 +7,7 @@ use crate::{
 };
 
 pub fn gen_enum(name: &String, tags: &Vec<Tag>, width: usize) -> Tokens<Java> {
-    let ty = Integral::fitting(width).limit_to_int();
+    let ty = Integral::fitting(width);
 
     quote! {
         public abstract sealed class $name
@@ -59,11 +59,11 @@ impl TagValue {
                 private $name() { }
 
                 @Override
-                public $ty to$(ty.capitalized())() { return $(self.value); }
+                public $ty to$(ty.capitalized())() { return $(ty.literal(self.value)); }
 
                 @Override
                 public String toString() { return $(quoted(format!("{}.{}(", super_name, name))) +
-                    $(ty.boxed()).toHexString($(self.value)) + ")"; }
+                    $(ty.limit_to_int().stringify(self.value)) + ")"; }
             }
         }
     }
@@ -80,7 +80,7 @@ impl TagValue {
 
     fn matches_value(&self, ty: Integral) -> Tokens<Java> {
         quote! {
-            $(ty.boxed()).compareUnsigned(value, $(self.value)) == 0
+            $(ty.compare(quote!(value), self.value)) == 0
         }
     }
 }
@@ -130,14 +130,14 @@ impl TagRange {
                 @Override
                 public String toString() {
                     return $(quoted(format!("{}.{}(", super_name, name))) +
-                        $(ty.boxed()).toHexString(value) + ")";
+                        $(ty.stringify(quote!(value))) + ")";
                 }
 
                 @Override
                 public boolean equals(Object o) {
                     if (this == o) return true;
                     if (!(o instanceof $name other)) return false;
-                    return $(ty.boxed()).compareUnsigned(value, other.value) == 0;
+                    return $(ty.compare(quote!(value), quote!(other.value))) == 0;
                 }
 
                 @Override
@@ -150,8 +150,8 @@ impl TagRange {
 
     fn matches_value(&self, ty: Integral) -> Tokens<Java> {
         quote! {
-            $(ty.boxed()).compareUnsigned(value, $(*self.range.start())) >= 0
-            && $(ty.boxed()).compareUnsigned(value, $(*self.range.end())) <= 0
+            $(ty.compare(quote!(value), *self.range.start())) >= 0
+            && $(ty.compare(quote!(value), *self.range.end())) <= 0
         }
     }
 }
@@ -159,7 +159,7 @@ impl TagRange {
 fn failed_to_decode_closed_enum(name: &String, ty: Integral) -> Tokens<Java> {
     quote! {
         throw new IllegalArgumentException(
-            $(quoted("Value ")) + $(ty.boxed()).toHexString(value) +
+            $(quoted("Value ")) + $(ty.stringify(quote!(value))) +
             $(quoted(format!(" is invalid for closed enum {}", name))));
     }
 }
