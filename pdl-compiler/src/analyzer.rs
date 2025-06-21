@@ -358,7 +358,7 @@ impl Schema {
                 // Sum the size of the non payload fields to get the
                 // declaration size. Lookup the payload field size.
                 match &field.desc {
-                    FieldDesc::Payload { .. } | FieldDesc::Body { .. } => payload_size = field_size,
+                    FieldDesc::Payload { .. } | FieldDesc::Body => payload_size = field_size,
                     _ => {
                         decl_size = decl_size
                             + match schema.padded_size.get(&field.key).unwrap() {
@@ -1242,7 +1242,7 @@ fn check_size_fields(file: &File) -> Result<(), Diagnostics> {
                 FieldDesc::Size { field_id, .. } => {
                     match decl.fields().find(|field| match &field.desc {
                         FieldDesc::Payload { .. } => field_id == "_payload_",
-                        FieldDesc::Body { .. } => field_id == "_body_",
+                        FieldDesc::Body => field_id == "_body_",
                         _ => field.id() == Some(field_id),
                     }) {
                         None => diagnostics.push(
@@ -1258,7 +1258,7 @@ fn check_size_fields(file: &File) -> Result<(), Diagnostics> {
                                     "hint: expected payload, body, or array identifier".to_owned(),
                                 ]),
                         ),
-                        Some(Field { desc: FieldDesc::Body { .. }, .. })
+                        Some(Field { desc: FieldDesc::Body, .. })
                         | Some(Field { desc: FieldDesc::Payload { .. }, .. })
                         | Some(Field { desc: FieldDesc::Array { .. }, .. }) => (),
                         Some(Field { loc, .. }) => diagnostics.push(
@@ -1407,7 +1407,7 @@ fn check_payload_fields(file: &File) -> Result<(), Diagnostics> {
         let mut payload: Option<&Field> = None;
         for field in decl.fields() {
             match &field.desc {
-                FieldDesc::Payload { .. } | FieldDesc::Body { .. } => {
+                FieldDesc::Payload { .. } | FieldDesc::Body => {
                     if let Some(prev) = payload {
                         diagnostics.push(
                             Diagnostic::error()
@@ -1629,7 +1629,7 @@ fn check_field_offsets(file: &File, scope: &Scope, schema: &Schema) -> Result<()
                         Some(Decl { desc: DeclDesc::Enum { .. }, .. })
                     ) => {}
                 FieldDesc::Payload { .. }
-                | FieldDesc::Body { .. }
+                | FieldDesc::Body
                 | FieldDesc::Typedef { .. }
                 | FieldDesc::Array { .. }
                 | FieldDesc::Padding { .. }
