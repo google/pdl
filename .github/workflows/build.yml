@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.68.0  # This is the Rust version used in Android.
+          - 1.83.0  # This is the Rust version used in Android.
           - stable
         os:
           - ubuntu-latest
