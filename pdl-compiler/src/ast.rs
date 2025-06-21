@@ -443,7 +443,7 @@ impl Decl {
     /// if present.
     pub fn payload(&self) -> Option<&Field> {
         self.fields()
-            .find(|field| matches!(&field.desc, FieldDesc::Payload { .. } | FieldDesc::Body { .. }))
+            .find(|field| matches!(&field.desc, FieldDesc::Payload { .. } | FieldDesc::Body))
     }
 
     /// Return the reference to the payload or body size field in a declaration,
@@ -513,7 +513,7 @@ impl Field {
             FieldDesc::Size { .. } => "size",
             FieldDesc::Count { .. } => "count",
             FieldDesc::ElementSize { .. } => "elementsize",
-            FieldDesc::Body { .. } => "body",
+            FieldDesc::Body => "body",
             FieldDesc::Payload { .. } => "payload",
             FieldDesc::FixedScalar { .. } | FieldDesc::FixedEnum { .. } => "fixed",
             FieldDesc::Reserved { .. } => "reserved",
