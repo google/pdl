@@ -152,18 +152,6 @@ pub struct AliasChild {
     pub v: Enum8,
     pub payload: Vec<u8>,
 }
-impl TryFrom<&Parent> for AliasChild {
-    type Error = DecodeError;
-    fn try_from(parent: &Parent) -> Result<AliasChild, Self::Error> {
-        AliasChild::decode_partial(&parent)
-    }
-}
-impl TryFrom<Parent> for AliasChild {
-    type Error = DecodeError;
-    fn try_from(parent: Parent) -> Result<AliasChild, Self::Error> {
-        (&parent).try_into()
-    }
-}
 impl TryFrom<&AliasChild> for Parent {
     type Error = EncodeError;
     fn try_from(packet: &AliasChild) -> Result<Parent, Self::Error> {
@@ -176,6 +164,18 @@ impl TryFrom<AliasChild> for Parent {
     type Error = EncodeError;
     fn try_from(packet: AliasChild) -> Result<Parent, Self::Error> {
         (&packet).try_into()
+    }
+}
+impl TryFrom<&Parent> for AliasChild {
+    type Error = DecodeError;
+    fn try_from(parent: &Parent) -> Result<AliasChild, Self::Error> {
+        AliasChild::decode_partial(&parent)
+    }
+}
+impl TryFrom<Parent> for AliasChild {
+    type Error = DecodeError;
+    fn try_from(parent: Parent) -> Result<AliasChild, Self::Error> {
+        (&parent).try_into()
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -234,18 +234,6 @@ impl Packet for AliasChild {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NormalChild {}
-impl TryFrom<&Parent> for NormalChild {
-    type Error = DecodeError;
-    fn try_from(parent: &Parent) -> Result<NormalChild, Self::Error> {
-        NormalChild::decode_partial(&parent)
-    }
-}
-impl TryFrom<Parent> for NormalChild {
-    type Error = DecodeError;
-    fn try_from(parent: Parent) -> Result<NormalChild, Self::Error> {
-        (&parent).try_into()
-    }
-}
 impl TryFrom<&NormalChild> for Parent {
     type Error = EncodeError;
     fn try_from(packet: &NormalChild) -> Result<Parent, Self::Error> {
@@ -258,6 +246,18 @@ impl TryFrom<NormalChild> for Parent {
     type Error = EncodeError;
     fn try_from(packet: NormalChild) -> Result<Parent, Self::Error> {
         (&packet).try_into()
+    }
+}
+impl TryFrom<&Parent> for NormalChild {
+    type Error = DecodeError;
+    fn try_from(parent: &Parent) -> Result<NormalChild, Self::Error> {
+        NormalChild::decode_partial(&parent)
+    }
+}
+impl TryFrom<Parent> for NormalChild {
+    type Error = DecodeError;
+    fn try_from(parent: Parent) -> Result<NormalChild, Self::Error> {
+        (&parent).try_into()
     }
 }
 impl NormalChild {
@@ -298,18 +298,6 @@ impl Packet for NormalChild {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NormalGrandChild1 {}
-impl TryFrom<&AliasChild> for NormalGrandChild1 {
-    type Error = DecodeError;
-    fn try_from(parent: &AliasChild) -> Result<NormalGrandChild1, Self::Error> {
-        NormalGrandChild1::decode_partial(&parent)
-    }
-}
-impl TryFrom<AliasChild> for NormalGrandChild1 {
-    type Error = DecodeError;
-    fn try_from(parent: AliasChild) -> Result<NormalGrandChild1, Self::Error> {
-        (&parent).try_into()
-    }
-}
 impl TryFrom<&NormalGrandChild1> for AliasChild {
     type Error = EncodeError;
     fn try_from(packet: &NormalGrandChild1) -> Result<AliasChild, Self::Error> {
@@ -324,6 +312,18 @@ impl TryFrom<NormalGrandChild1> for AliasChild {
         (&packet).try_into()
     }
 }
+impl TryFrom<&AliasChild> for NormalGrandChild1 {
+    type Error = DecodeError;
+    fn try_from(parent: &AliasChild) -> Result<NormalGrandChild1, Self::Error> {
+        NormalGrandChild1::decode_partial(&parent)
+    }
+}
+impl TryFrom<AliasChild> for NormalGrandChild1 {
+    type Error = DecodeError;
+    fn try_from(parent: AliasChild) -> Result<NormalGrandChild1, Self::Error> {
+        (&parent).try_into()
+    }
+}
 impl TryFrom<&NormalGrandChild1> for Parent {
     type Error = EncodeError;
     fn try_from(packet: &NormalGrandChild1) -> Result<Parent, Self::Error> {
@@ -333,6 +333,18 @@ impl TryFrom<&NormalGrandChild1> for Parent {
 impl TryFrom<NormalGrandChild1> for Parent {
     type Error = EncodeError;
     fn try_from(packet: NormalGrandChild1) -> Result<Parent, Self::Error> {
+        (&packet).try_into()
+    }
+}
+impl TryFrom<&Parent> for NormalGrandChild1 {
+    type Error = DecodeError;
+    fn try_from(packet: &Parent) -> Result<NormalGrandChild1, Self::Error> {
+        (&AliasChild::try_from(packet)?).try_into()
+    }
+}
+impl TryFrom<Parent> for NormalGrandChild1 {
+    type Error = DecodeError;
+    fn try_from(packet: Parent) -> Result<NormalGrandChild1, Self::Error> {
         (&packet).try_into()
     }
 }
@@ -376,18 +388,6 @@ impl Packet for NormalGrandChild1 {
 pub struct NormalGrandChild2 {
     pub payload: Vec<u8>,
 }
-impl TryFrom<&AliasChild> for NormalGrandChild2 {
-    type Error = DecodeError;
-    fn try_from(parent: &AliasChild) -> Result<NormalGrandChild2, Self::Error> {
-        NormalGrandChild2::decode_partial(&parent)
-    }
-}
-impl TryFrom<AliasChild> for NormalGrandChild2 {
-    type Error = DecodeError;
-    fn try_from(parent: AliasChild) -> Result<NormalGrandChild2, Self::Error> {
-        (&parent).try_into()
-    }
-}
 impl TryFrom<&NormalGrandChild2> for AliasChild {
     type Error = EncodeError;
     fn try_from(packet: &NormalGrandChild2) -> Result<AliasChild, Self::Error> {
@@ -402,6 +402,18 @@ impl TryFrom<NormalGrandChild2> for AliasChild {
         (&packet).try_into()
     }
 }
+impl TryFrom<&AliasChild> for NormalGrandChild2 {
+    type Error = DecodeError;
+    fn try_from(parent: &AliasChild) -> Result<NormalGrandChild2, Self::Error> {
+        NormalGrandChild2::decode_partial(&parent)
+    }
+}
+impl TryFrom<AliasChild> for NormalGrandChild2 {
+    type Error = DecodeError;
+    fn try_from(parent: AliasChild) -> Result<NormalGrandChild2, Self::Error> {
+        (&parent).try_into()
+    }
+}
 impl TryFrom<&NormalGrandChild2> for Parent {
     type Error = EncodeError;
     fn try_from(packet: &NormalGrandChild2) -> Result<Parent, Self::Error> {
@@ -411,6 +423,18 @@ impl TryFrom<&NormalGrandChild2> for Parent {
 impl TryFrom<NormalGrandChild2> for Parent {
     type Error = EncodeError;
     fn try_from(packet: NormalGrandChild2) -> Result<Parent, Self::Error> {
+        (&packet).try_into()
+    }
+}
+impl TryFrom<&Parent> for NormalGrandChild2 {
+    type Error = DecodeError;
+    fn try_from(packet: &Parent) -> Result<NormalGrandChild2, Self::Error> {
+        (&AliasChild::try_from(packet)?).try_into()
+    }
+}
+impl TryFrom<Parent> for NormalGrandChild2 {
+    type Error = DecodeError;
+    fn try_from(packet: Parent) -> Result<NormalGrandChild2, Self::Error> {
         (&packet).try_into()
     }
 }

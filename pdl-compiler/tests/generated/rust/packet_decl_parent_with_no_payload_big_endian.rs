@@ -134,6 +134,16 @@ impl Packet for Parent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Child {}
+impl From<&Child> for Parent {
+    fn from(packet: &Child) -> Parent {
+        Parent { v: Enum8::A }
+    }
+}
+impl From<Child> for Parent {
+    fn from(packet: Child) -> Parent {
+        (&packet).into()
+    }
+}
 impl TryFrom<&Parent> for Child {
     type Error = DecodeError;
     fn try_from(parent: &Parent) -> Result<Child, Self::Error> {
@@ -144,16 +154,6 @@ impl TryFrom<Parent> for Child {
     type Error = DecodeError;
     fn try_from(parent: Parent) -> Result<Child, Self::Error> {
         (&parent).try_into()
-    }
-}
-impl From<&Child> for Parent {
-    fn from(packet: &Child) -> Parent {
-        Parent { v: Enum8::A }
-    }
-}
-impl From<Child> for Parent {
-    fn from(packet: Child) -> Parent {
-        (&packet).into()
     }
 }
 impl Child {

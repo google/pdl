@@ -805,7 +805,7 @@ fn generate_derived_packet_decl(
     // the parent packet. This function is actually the parse
     // implementation. This helper is provided only if the packet has a
     // parent declaration.
-    let try_from_parent = quote! {
+    let from_parent = quote! {
         impl TryFrom<&#parent_name> for #name {
             type Error = DecodeError;
             fn try_from(parent: &#parent_name) -> Result<#name, Self::Error> {
@@ -820,6 +820,27 @@ fn generate_derived_packet_decl(
             }
         }
     };
+
+    // Provide the implementation of conversion helpers from
+    // the ancestor packets.
+    let from_ancestors = scope.iter_parents(parent_decl).map(|ancestor_decl| {
+        let ancestor_name = ancestor_decl.id().unwrap().to_ident();
+        quote! {
+            impl TryFrom<&#ancestor_name> for #name {
+                type Error = DecodeError;
+                fn try_from(packet: &#ancestor_name) -> Result<#name, Self::Error> {
+                    (&#parent_name::try_from(packet)?).try_into()
+                }
+            }
+
+            impl TryFrom<#ancestor_name> for #name {
+                type Error = DecodeError;
+                fn try_from(packet: #ancestor_name) -> Result<#name, Self::Error> {
+                    (&packet).try_into()
+                }
+            }
+        }
+    });
 
     // Provide the implementation of the enum listing child declarations of the
     // current declaration. This enum is only provided for declarations that
@@ -851,9 +872,10 @@ fn generate_derived_packet_decl(
             #payload_field
         }
 
-        #try_from_parent
         #into_parent
+        #from_parent
         #( #into_ancestors )*
+        #( #from_ancestors )*
 
         #child_struct
 
