@@ -22,11 +22,12 @@ use genco::{
 };
 
 mod r#enum;
+mod expr;
 mod packet;
 
 use crate::backends::{
     common::alignment::UnalignedSymbol,
-    java::{CompoundVal, ConstrainedTo, Member, ScalarVal},
+    java::{codegen::expr::cast_symbol, CompoundVal, ConstrainedTo, Member, ScalarVal},
 };
 
 use super::{import, Chunk, Class, EndiannessValue, Integral, JavaFile, PacketDef};
@@ -52,80 +53,6 @@ impl FormatInto<Java> for EndiannessValue {
                 EndiannessValue::LittleEndian => $(&*import::BO).LITTLE_ENDIAN,
                 EndiannessValue::BigEndian => $(&*import::BO).BIG_ENDIAN,
             })
-        }
-    }
-}
-
-/// The JLS specifies that operands of certain operators including
-///  - [shifts](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.19)
-///  - [bitwise operators](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.22.1)
-///
-/// are subject to [widening primitive conversion](https://docs.oracle.com/javase/specs/jls/se8/html/jls-5.html#jls-5.1.2). Effectively,
-/// this means that `byte` or `short` operands are casted to `int` before the operation. Furthermore, Java does not have unsigned types,
-/// so:
-///
-/// > A widening conversion of a signed integer value to an integral type T simply sign-extends the two's-complement representation of the integer value to fill the wider format.
-///
-/// In other words, bitwise operations on smaller types can change the binary representation of the value before the operation.
-/// To get around this, we must sign-safe cast every smaller operand to int or long.
-trait IntegralOps {
-    fn maybe_cast(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java>;
-    fn maybe_widen(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java>;
-    fn maybe_narrow(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java>;
-    fn maybe_shift(self, op: &'static str, by: usize) -> Tokens<Java>;
-    fn maybe_mask(self, offset: usize, width: usize) -> Tokens<Java>;
-}
-
-impl<J: FormatInto<Java>> IntegralOps for J {
-    fn maybe_cast(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java> {
-        let from = from.into();
-        if from < to {
-            match (from, to) {
-                (Integral::Byte, Integral::Short) => quote!((short) Byte.toUnsignedInt($(self))),
-                (_, Integral::Int) => quote!($(from.boxed()).toUnsignedInt($(self))),
-                (_, Integral::Long) => quote!($(from.boxed()).toUnsignedLong($(self))),
-                _ => unreachable!(),
-            }
-        } else if from > to {
-            quote!(($to) ($(self)))
-        } else {
-            quote!($(self))
-        }
-    }
-
-    fn maybe_widen(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java> {
-        let from = from.into();
-        if from < to {
-            self.maybe_cast(from, to)
-        } else {
-            quote!($(self))
-        }
-    }
-
-    fn maybe_narrow(self, from: impl Into<Integral>, to: Integral) -> Tokens<Java> {
-        let from = from.into();
-        if from > to {
-            quote!(($to) ($(self)))
-        } else {
-            quote!($(self))
-        }
-    }
-
-    /// `self` must have type >= int if `offset` != 0.
-    fn maybe_mask(self, offset: usize, width: usize) -> Tokens<Java> {
-        if width == 0 {
-            quote!($(self.maybe_shift(">>>", offset)))
-        } else {
-            quote!($(self.maybe_shift(">>>", offset)) & $(gen_mask(width)))
-        }
-    }
-
-    /// `self` must have type >= int if `by` != 0.
-    fn maybe_shift(self, op: &'static str, by: usize) -> Tokens<Java> {
-        if by == 0 {
-            quote!($(self))
-        } else {
-            quote!(($(self) $op $by))
         }
     }
 }
@@ -212,10 +139,13 @@ impl ScalarVal {
         if let ScalarVal::EnumRef { name, width, .. } = self {
             quote!($name.to$(Integral::fitting(*width).capitalized())())
         } else if self.name() == "payloadSize" {
-            quote!(payload.capacity()).maybe_cast(Integral::Int, Integral::fitting(self.width()))
+            cast_symbol(quote!(payload.capacity()), Integral::Int, Integral::fitting(self.width()))
         } else if self.name().ends_with("Size") {
-            quote!($(self.name().strip_suffix("Size")).length)
-                .maybe_cast(Integral::Int, Integral::fitting(self.width()))
+            cast_symbol(
+                quote!($(self.name().strip_suffix("Size")).length),
+                Integral::Int,
+                Integral::fitting(self.width()),
+            )
         } else {
             quote!($(self.name()))
         }
@@ -267,12 +197,17 @@ impl Integral {
     }
     pub fn compare(&self, expr: impl FormatInto<Java>, to: impl FormatInto<Java>) -> Tokens<Java> {
         let comparable_ty = self.limit_to_int();
-        quote!($(comparable_ty.boxed()).compareUnsigned($(expr.maybe_widen(*self, comparable_ty)), $to))
+        quote!($(comparable_ty.boxed()).compareUnsigned(
+            $(cast_symbol(quote!($expr), *self, comparable_ty)),
+            $to
+        ))
     }
 
     fn stringify(&self, expr: impl FormatInto<Java>) -> Tokens<Java> {
-        let stringifiable = self.limit_to_int();
-        quote!($(stringifiable.boxed()).toHexString($(expr.maybe_widen(*self, stringifiable))))
+        let stringable_ty = self.limit_to_int();
+        quote!($(stringable_ty.boxed()).toHexString(
+            $(cast_symbol(quote!($(expr)), *self, stringable_ty))
+        ))
     }
 
     pub fn boxed(&self) -> &'static str {
@@ -320,8 +255,8 @@ impl FormatInto<Java> for &Integral {
     }
 }
 
-pub fn gen_mask(width: usize) -> impl FormatInto<Java> {
-    quote_fn! {
-        $(format!("0x{:x}", (1_u128 << width) - 1))$(if Integral::fitting(width) > Integral::Int => L)
-    }
-}
+// pub fn gen_mask(width: usize) -> impl FormatInto<Java> {
+//     quote_fn! {
+//         $(format!("0x{:x}", (1_u128 << width) - 1))$(if Integral::fitting(width) > Integral::Int => L)
+//     }
+// }

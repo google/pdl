@@ -1,20 +1,9 @@
 little_endian_packets
 
-enum Enum7 : 7 {
-    A = 1,
-    B = 2,
+packet Testing123 {
+    field: 56,
 }
-
-// The parser must be able to handle bit fields with scalar values
-// up to 64 bits wide.  The parser should generate a static size guard.
-packet Packet_Scalar_Field {
-    a: 7,
-    c: 57,
-}
-
-// The parser must be able to handle bit fields with enum values
-// up to 64 bits wide.  The parser should generate a static size guard.
-packet Packet_Enum_Field {
-    a: Enum7,
-    c: 57,
-}
+// 24: (short, byte)
+// 40: (int, byte)
+// 48: (int, short)
+// 56: (int, short, byte)

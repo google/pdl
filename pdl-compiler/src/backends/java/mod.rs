@@ -21,7 +21,7 @@ use genco::{
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 use std::{
     cmp,
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     fs::{self, OpenOptions},
     iter,
     path::{Path, PathBuf},
@@ -195,7 +195,7 @@ impl Class {
         let child_member =
             CompoundVal::Payload { size_field: def.size_fields.get("payload").cloned() };
         let child_alignment = {
-            let mut aligner = ByteAligner::new(64);
+            let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
             aligner.add_bytes(child_member.clone());
             aligner.align().unwrap()
         };
@@ -290,7 +290,7 @@ pub struct PacketDef {
 impl PacketDef {
     fn from_fields(fields: &Vec<ast::Field>, classes: &HashMap<String, Class>) -> Self {
         let mut members = Vec::new();
-        let mut aligner = ByteAligner::new(64);
+        let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
         let mut field_width = Some(0);
         let mut size_fields: HashMap<String, usize> = HashMap::new();
 
