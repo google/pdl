@@ -91,7 +91,7 @@ fn generate_packet_size_getter<'a>(
 
         let decl = scope.get_type_declaration(field);
         dynamic_widths.push(match &field.desc {
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body { .. } => {
+            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
                 if is_packet {
                     quote! {
                         self.child.get_total_size()
@@ -718,10 +718,11 @@ fn generate_struct_decl(
 /// * `id` - Enum identifier.
 /// * `tags` - List of enum tags.
 /// * `width` - Width of the backing type of the enum, in bits.
-/// * `open` - Whether to generate an open or closed enum. Open enums have
-///            an additional Unknown case for unmatched valued. Complete
-///            enums (where the full range of values is covered) are
-///            automatically closed.
+/// * `open` -
+///   Whether to generate an open or closed enum. Open enums have
+///   an additional Unknown case for unmatched valued. Complete
+///   enums (where the full range of values is covered) are
+///   automatically closed.
 fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2::TokenStream {
     // Determine if the enum is open, i.e. a default tag is defined.
     fn enum_default_tag(tags: &[ast::Tag]) -> Option<ast::TagOther> {
