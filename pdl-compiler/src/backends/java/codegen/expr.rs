@@ -1,15 +1,17 @@
-/// The JLS specifies that operands of certain operators including
-///  - [shifts](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.19)
-///  - [bitwise operators](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.22.1)
-///
-/// are subject to [widening primitive conversion](https://docs.oracle.com/javase/specs/jls/se8/html/jls-5.html#jls-5.1.2). Effectively,
-/// this means that `byte` or `short` operands are casted to `int` before the operation. Furthermore, Java does not have unsigned types,
-/// so:
-///
-/// > A widening conversion of a signed integer value to an integral type T simply sign-extends the two's-complement representation of the integer value to fill the wider format.
-///
-/// In other words, bitwise operations on smaller types can change the binary representation of the value before the operation.
-/// To get around this, we must sign-safe cast every smaller operand to int or long.
+// Copyright 2025 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use std::{cell::RefCell, cmp::max};
 
 use genco::{lang::Java, quote, quote_in, tokens::FormatInto, Tokens};
@@ -72,7 +74,8 @@ fn gen_mask_val(width: usize) -> usize {
 ///
 /// - Avoids implicit widening by explicitly sign-safe casting all operands where necessary.
 /// - Automatically adds parentheses where necessary.
-/// - Prunes basic no-op expressions, ie, shift/and by literal 0, etc.  
+/// - Prunes basic no-op expressions, ie, shift/and by literal 0, apply mask to value with width
+///   equal to its type, etc.  
 #[derive(Debug)]
 pub struct ExprTree(RefCell<Vec<ExprNode>>);
 

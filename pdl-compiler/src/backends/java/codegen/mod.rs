@@ -22,6 +22,20 @@ use genco::{
 };
 
 mod r#enum;
+/// The JLS specifies that operands of certain operators including
+///  - [shifts](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.19)
+///  - [bitwise operators](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.22.1)
+///
+/// are subject to [widening primitive conversion](https://docs.oracle.com/javase/specs/jls/se8/html/jls-5.html#jls-5.1.2). Effectively,
+/// this means that `byte` or `short` operands are casted to `int` before the operation. Furthermore, Java does not have unsigned types,
+/// so:
+///
+/// > A widening conversion of a signed integer value to an integral type T simply sign-extends the two's-complement representation of the integer value to fill the wider format.
+///
+/// In other words, bitwise operations on smaller types can change the binary representation of the value before the operation.
+/// To get around this, we must sign-safe cast every smaller operand to int or long.
+///
+/// This module contains utilities for generating simplified Java expressions that perform this casting.
 mod expr;
 mod packet;
 
@@ -254,9 +268,3 @@ impl FormatInto<Java> for &Integral {
         }));
     }
 }
-
-// pub fn gen_mask(width: usize) -> impl FormatInto<Java> {
-//     quote_fn! {
-//         $(format!("0x{:x}", (1_u128 << width) - 1))$(if Integral::fitting(width) > Integral::Int => L)
-//     }
-// }

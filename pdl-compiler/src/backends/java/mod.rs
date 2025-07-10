@@ -21,7 +21,7 @@ use genco::{
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 use std::{
     cmp,
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     fs::{self, OpenOptions},
     iter,
     path::{Path, PathBuf},
