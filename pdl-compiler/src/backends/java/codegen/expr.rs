@@ -24,8 +24,10 @@ type ExprId = usize;
 enum BinOp {
     ShiftLeft,
     ShiftRight,
-    And,
-    Or,
+    BitAnd,
+    BitOr,
+    Multiply,
+    Divide,
 }
 
 impl FormatInto<Java> for BinOp {
@@ -34,8 +36,10 @@ impl FormatInto<Java> for BinOp {
             $(match self {
                 BinOp::ShiftLeft => <<,
                 BinOp::ShiftRight => >>>,
-                BinOp::And => &,
-                BinOp::Or => |,
+                BinOp::BitAnd => &,
+                BinOp::BitOr => |,
+                BinOp::Multiply => *,
+                BinOp::Divide => /,
             })
         }
     }
@@ -43,11 +47,12 @@ impl FormatInto<Java> for BinOp {
 
 #[derive(Debug)]
 enum ExprNode {
-    Symbol { val: Tokens<Java>, ty: Integral },
-    Number { val: usize, gen_hex: bool },
-    BinOp { lhs: ExprId, op: BinOp, rhs: ExprId },
-    Paren { expr: ExprId },
-    Cast { expr: ExprId, to: Integral },
+    Symbol(Tokens<Java>, Integral),
+    Number(usize),
+    HexNumber(usize),
+    BinOp(ExprId, BinOp, ExprId),
+    Paren(ExprId),
+    Cast(ExprId, Integral),
 }
 
 /// Convert the tree to Java tokens.
@@ -69,14 +74,17 @@ fn gen_mask_val(width: usize) -> usize {
     ((1_u128 << width) - 1).try_into().expect("width must be <= sizeof(usize)")
 }
 
-/// A tree representation of a bitwise Java expression. This data structure abstracts away most
+/// A tree representation of a numeric Java expression. This data structure abstracts away most
 /// minutiae of generating expressions:
 ///
 /// - Avoids implicit widening by explicitly sign-safe casting all operands where necessary.
 /// - Automatically adds parentheses where necessary.
-/// - Prunes basic no-op expressions, ie, shift/and by literal 0, apply mask to value with width
-///   equal to its type, etc.  
+/// - Prunes basic no-op expressions, ie, shift/and/mul by literal 0, apply mask to value with
+///   width equal to its type, etc.
+///
 #[derive(Debug)]
+/// **API contract**: At least one argument to all binary operators must be a non-literal (that is,
+///  not a `num(..)`).
 pub struct ExprTree(RefCell<Vec<ExprNode>>);
 
 impl ExprTree {
@@ -85,22 +93,40 @@ impl ExprTree {
     }
 
     pub fn num(&self, val: usize) -> ExprId {
-        self.0.borrow_mut().push(ExprNode::Number { val, gen_hex: false });
+        self.0.borrow_mut().push(ExprNode::Number(val));
         self.get_root()
     }
 
     pub fn hex_num(&self, val: usize) -> ExprId {
-        self.0.borrow_mut().push(ExprNode::Number { val, gen_hex: true });
+        self.0.borrow_mut().push(ExprNode::HexNumber(val));
         self.get_root()
     }
 
     pub fn symbol(&self, val: impl FormatInto<Java>, ty: Integral) -> ExprId {
-        self.0.borrow_mut().push(ExprNode::Symbol { val: quote!($val), ty });
+        self.0.borrow_mut().push(ExprNode::Symbol(quote!($val), ty));
         self.get_root()
     }
 
+    pub fn mul(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
+        if self.is_literal(lhs, 1) {
+            rhs
+        } else if self.is_literal(rhs, 1) {
+            lhs
+        } else {
+            self.op(lhs, BinOp::Multiply, rhs)
+        }
+    }
+
+    pub fn div(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
+        if self.is_literal(rhs, 1) {
+            lhs
+        } else {
+            self.op(lhs, BinOp::Divide, rhs)
+        }
+    }
+
     pub fn lshift(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
-        if self.is_zero(rhs) {
+        if self.is_literal(rhs, 0) {
             lhs
         } else {
             self.op(lhs, BinOp::ShiftLeft, rhs)
@@ -108,7 +134,7 @@ impl ExprTree {
     }
 
     pub fn rshift(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
-        if self.is_zero(rhs) {
+        if self.is_literal(rhs, 0) {
             lhs
         } else {
             self.op(lhs, BinOp::ShiftRight, rhs)
@@ -116,17 +142,21 @@ impl ExprTree {
     }
 
     pub fn and(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
-        if self.is_zero(lhs) {
-            rhs
-        } else if self.is_zero(rhs) {
-            lhs
+        if self.is_literal(lhs, 0) || self.is_literal(rhs, 0) {
+            self.num(0)
         } else {
-            self.op(lhs, BinOp::And, rhs)
+            self.op(lhs, BinOp::BitAnd, rhs)
         }
     }
 
     pub fn or(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
-        self.op(lhs, BinOp::Or, rhs)
+        if self.is_literal(lhs, 0) {
+            rhs
+        } else if self.is_literal(rhs, 0) {
+            lhs
+        } else {
+            self.op(lhs, BinOp::BitOr, rhs)
+        }
     }
 
     pub fn mask(&self, expr: ExprId, width: usize) -> ExprId {
@@ -141,15 +171,15 @@ impl ExprTree {
         exprs
             .into_iter()
             .reduce(|acc, expr| {
-                self.0.borrow_mut().push(ExprNode::BinOp { lhs: expr, op: BinOp::Or, rhs: acc });
+                self.0.borrow_mut().push(ExprNode::BinOp(expr, BinOp::BitOr, acc));
                 self.get_root()
             })
             .unwrap()
     }
 
     pub fn paren(&self, expr: ExprId) -> ExprId {
-        if matches!(self.0.borrow().get(expr).unwrap(), ExprNode::BinOp { .. }) {
-            self.0.borrow_mut().push(ExprNode::Paren { expr });
+        if matches!(self.0.borrow().get(expr).unwrap(), ExprNode::BinOp(..)) {
+            self.0.borrow_mut().push(ExprNode::Paren(expr));
             self.get_root()
         } else {
             expr
@@ -161,7 +191,7 @@ impl ExprTree {
             expr
         } else {
             let expr = self.paren(expr);
-            self.0.borrow_mut().push(ExprNode::Cast { expr, to });
+            self.0.borrow_mut().push(ExprNode::Cast(expr, to));
             self.get_root()
         }
     }
@@ -177,73 +207,60 @@ impl ExprTree {
     fn op(&self, lhs: ExprId, op: BinOp, rhs: ExprId) -> ExprId {
         let ty = max(self.ty(lhs), self.ty(rhs)).limit_to_int();
 
-        let node = ExprNode::BinOp {
-            lhs: self.paren(self.cast(lhs, ty)),
-            op,
-            rhs: self.paren(self.cast(rhs, ty)),
-        };
+        let node =
+            ExprNode::BinOp(self.paren(self.cast(lhs, ty)), op, self.paren(self.cast(rhs, ty)));
         self.0.borrow_mut().push(node);
         self.get_root()
     }
 
     fn ty(&self, expr: ExprId) -> Integral {
         match self.0.borrow().get(expr).unwrap() {
-            ExprNode::Symbol { ty, .. } => *ty,
-            ExprNode::Number { .. } => Integral::Int,
-            ExprNode::Cast { to, .. } => *to,
-            ExprNode::BinOp { lhs, .. } => self.ty(*lhs),
-            ExprNode::Paren { expr } => self.ty(*expr),
+            ExprNode::Symbol(_, ty) => *ty,
+            ExprNode::Number(..) | ExprNode::HexNumber(..) => Integral::Int,
+            ExprNode::Cast(_, to) => *to,
+            ExprNode::BinOp(lhs, ..) => self.ty(*lhs),
+            ExprNode::Paren(expr) => self.ty(*expr),
         }
     }
 
     fn leaf_ty(&self, expr: ExprId) -> Option<Integral> {
         match self.0.borrow().get(expr).unwrap() {
-            ExprNode::Symbol { ty, .. } => Some(*ty),
-            ExprNode::Number { .. } => Some(Integral::Int),
-            ExprNode::Cast { expr, .. } => self.leaf_ty(*expr),
-            ExprNode::BinOp { .. } => None,
-            ExprNode::Paren { .. } => None,
+            ExprNode::Symbol(_, ty) => Some(*ty),
+            ExprNode::Number(..) | ExprNode::HexNumber(..) => Some(Integral::Int),
+            ExprNode::Cast(expr, ..) => self.leaf_ty(*expr),
+            ExprNode::BinOp(..) => None,
+            ExprNode::Paren(..) => None,
         }
     }
 
-    fn is_zero(&self, expr: ExprId) -> bool {
+    fn is_literal(&self, expr: ExprId, literal: usize) -> bool {
         match self.0.borrow().get(expr).unwrap() {
-            ExprNode::Symbol { .. } => false,
-            ExprNode::Number { val, .. } => *val == 0,
-            ExprNode::Cast { expr, .. } => self.is_zero(*expr),
-            ExprNode::BinOp { lhs, op: BinOp::ShiftLeft, .. }
-            | ExprNode::BinOp { lhs, op: BinOp::ShiftRight, .. } => self.is_zero(*lhs),
-            ExprNode::BinOp { lhs, op: BinOp::And, rhs } => {
-                self.is_zero(*lhs) || self.is_zero(*rhs)
-            }
-            ExprNode::BinOp { lhs, op: BinOp::Or, rhs } => self.is_zero(*lhs) && self.is_zero(*rhs),
-            ExprNode::Paren { expr } => self.is_zero(*expr),
+            ExprNode::Symbol(..) | ExprNode::BinOp(..) => false,
+            ExprNode::Number(val) | ExprNode::HexNumber(val) => *val == literal,
+            ExprNode::Cast(expr, ..) | ExprNode::Paren(expr) => self.is_literal(*expr, literal),
         }
     }
 
     fn gen_expr(&self, id: ExprId) -> Tokens<Java> {
         match self.0.borrow().get(id).unwrap() {
-            ExprNode::Symbol { val, .. } => quote!($val),
-            ExprNode::Number { val, gen_hex } => quote!(
-                $(if *gen_hex {
-                    $(format!("0x{:x}", val))
-                } else {
-                    $(*val)
-                })
-            ),
-            ExprNode::Cast { expr, to } => self.gen_cast(*expr, *to),
-            ExprNode::BinOp { lhs, op, rhs } => {
+            ExprNode::Symbol(val, ..) => quote!($val),
+            ExprNode::HexNumber(val) => quote!($(format!("0x{:x}", val))),
+            ExprNode::Number(val) => quote!($(*val)),
+            ExprNode::Cast(expr, to) => self.gen_cast(*expr, *to),
+            ExprNode::BinOp(lhs, op, rhs) => {
                 quote!($(self.gen_expr(*lhs)) $(*op) $(self.gen_expr(*rhs)))
             }
-            ExprNode::Paren { expr } => quote!(($(self.gen_expr(*expr)))),
+            ExprNode::Paren(expr) => quote!(($(self.gen_expr(*expr)))),
         }
     }
 
     fn gen_cast(&self, expr: usize, to: Integral) -> Tokens<Java> {
         let from = self.ty(expr);
         match self.0.borrow().get(expr).unwrap() {
-            ExprNode::Number { .. } if to == Integral::Long => quote!($(self.gen_expr(expr))L),
-            ExprNode::Number { .. } => quote!($(self.gen_expr(expr))),
+            ExprNode::Number(..) | ExprNode::HexNumber(..) if to == Integral::Long => {
+                quote!($(self.gen_expr(expr))L)
+            }
+            ExprNode::Number(..) | ExprNode::HexNumber(..) => quote!($(self.gen_expr(expr))),
             _ if from < to => match (from, to) {
                 (Integral::Byte, Integral::Short) => {
                     quote!((short) Byte.toUnsignedInt($(self.gen_expr(expr))))

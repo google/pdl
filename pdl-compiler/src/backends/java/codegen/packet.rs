@@ -483,6 +483,88 @@ fn decoder(
                     buf.position(buf.position() + $var_name.width());
                 ));
             }
+            Chunk::Bytes(member @ CompoundVal::Array(inner, count)) => match inner.as_ref() {
+                // Member::Scalar(ScalarVal::Integral { ty, width, .. }) if *width == ty.width() => {
+                //     let elem_width = width / 8;
+
+                //     let t = ExprTree::new();
+                //     let root = if let Some(count) = count {
+                //         t.num(count * elem_width)
+                //     } else if def.count_fields.contains_key(member.name()) {
+                //         t.mul(
+                //             t.symbol(quote!($(member.name())Count), Integral::Int),
+                //             t.num(elem_width),
+                //         )
+                //     } else if def.size_fields.contains_key(member.name()) {
+                //         t.symbol(quote!($(member.name())Size), Integral::Int)
+                //     } else {
+                //         t.symbol(quote!(buf.remaining()), Integral::Int)
+                //     };
+
+                //     tokens.extend(assign(
+                //         member.ty(),
+                //         member.name(),
+                //         quote!(
+                //             buf.slice(
+                //                 buf.position(),
+                //                 $(gen_expr(&t, root))
+                //             )$(if !matches!(ty, Integral::Byte) => .as$(ty.capitalized())Buffer()).array()
+                //         ),
+                //     ))
+                // }
+                Member::Scalar(scalar) => {
+                    let elem_as_integral = Integral::fitting(scalar.width());
+                    let elem_width = scalar.width() / 8;
+
+                    if let Some(count) = count {
+                        tokens.append(quote!(int $(member.name())Count = $(*count);));
+                    } else if def.size_fields.contains_key(member.name()) {
+                        let t = ExprTree::new();
+                        let root = t.div(
+                            t.symbol(quote!($(member.name())Size), Integral::Int),
+                            t.num(elem_width),
+                        );
+                        tokens.append(quote!(int $(member.name())Count = $(gen_expr(&t, root));));
+                    } else if !def.count_fields.contains_key(member.name()) {
+                        let t = ExprTree::new();
+                        let root = t.div(
+                            t.symbol(quote!(buf.remaining()), Integral::Int),
+                            t.num(elem_width),
+                        );
+                        tokens.append(quote!(int $(member.name())Count = $(gen_expr(&t, root));));
+                    }
+
+                    tokens.append(quote!(
+                        $(member.ty()) $(member.name()) = new $(inner.ty())[$(member.name())Count];
+                        for (int i = 0; i < $(member.name())Count; i++) {
+                            $(member.name())[i] = $(scalar.from_integral(elem_as_integral.decoder("buf")));
+                        }
+                        $(assign(member.ty(), member.name(), quote!($(member.name()))));
+                    ))
+                }
+                Member::Compound(compound) => {
+                    let count_expr: &Tokens<Java> = &if let Some(count) = count {
+                        quote!($(*count))
+                    } else if def.count_fields.contains_key(member.name()) {
+                        quote!($(member.name())Count)
+                    } else {
+                        panic!("Cannot decode array of dynamic elements with no count")
+                    };
+
+                    tokens.extend(quote!(
+                        $(member.ty()) $(member.name()) = new $(inner.ty())[$count_expr];
+                        for (int i = 0; i < $count_expr; i++) {
+                            $(member.name())[i] = $(compound.ty()).fromBytes(buf);
+                        }
+                        // TODO: this will break with declare_locally
+                        $(assign(
+                            member.ty(),
+                            member.name(),
+                            quote!($(member.name())),
+                        ));
+                    ))
+                }
+            },
         }
     }
 
@@ -493,8 +575,8 @@ mod assignment {
     use super::*;
 
     pub fn build(ty: Tokens<Java>, name: &str, value: Tokens<Java>) -> Tokens<Java> {
-        if name.ends_with("Size") {
-            // Don't need to set set size fields in builder.
+        if name.ends_with("Size") || name.ends_with("Count") {
+            // Don't need to set size/count fields in builder.
             declare_locally(ty, name, value)
         } else if name == "payload" {
             quote!(builder.set$(name.to_upper_camel_case())($value.array());)

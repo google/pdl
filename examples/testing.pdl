@@ -1,9 +1,58 @@
 little_endian_packets
 
-packet Testing123 {
-    field: 56,
+// packet BASIC_StaticArray {
+//     array: 16[4],
+// }
+
+// packet BASIC_ArrayWithSizeField {
+//     _size_(array): 8,
+//     array: 16[],
+// }
+
+// packet BASIC_ArrayWithCountField {
+//     _count_(array): 8,
+//     array: 16[],
+// }
+
+// packet BASIC_ArrayThatFillsPacket {
+//     array: 16[],
+// }
+
+// enum MyEnum : 16 {
+//     A = 1,
+//     B = 2,
+//     C = 4,
+// }
+
+// packet ENUM_StaticArray {
+//     array: MyEnum[4],
+// }
+
+// packet ENUM_ArrayWithSizeField {
+//     _size_(array): 8,
+//     array: MyEnum[],
+// }
+
+// packet ENUM_ArrayWithCountField {
+//     _count_(array): 8,
+//     array: MyEnum[],
+// }
+
+// struct MyStruct {
+//     a: 32,
+// }
+
+// packet STRUCT_StaticArray {
+//     array: MyStruct[4],
+// }
+
+// packet STRUCT_ArrayWithCountField {
+//     _count_(array): 8,
+//     array: MyStruct[],
+// }
+
+
+
+packet MALIGNED_StaticArray {
+    array: 24[4],
 }
-// 24: (short, byte)
-// 40: (int, byte)
-// 48: (int, short)
-// 56: (int, short, byte)

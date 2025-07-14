@@ -93,8 +93,11 @@ impl Member {
             }
             Member::Scalar(ScalarVal::EnumRef { name, .. })
             | Member::Compound(CompoundVal::StructRef { name, .. }) => quote!($name.hashCode()),
-            Member::Compound(CompoundVal::Payload { size_field }) => {
+            Member::Compound(CompoundVal::Payload { .. }) => {
                 quote!($(&*import::ARRAYS).hashCode(payload))
+            }
+            Member::Compound(CompoundVal::Array(inner, ..)) => {
+                quote!($(&*import::ARRAYS).hashCode($(inner.name())))
             }
         }
     }
@@ -106,8 +109,11 @@ impl Member {
             | Member::Compound(CompoundVal::StructRef { name, .. }) => {
                 quote!($name.equals($other))
             }
-            Member::Compound(CompoundVal::Payload { size_field }) => {
+            Member::Compound(CompoundVal::Payload { .. }) => {
                 quote!($(&*import::ARRAYS).equals(payload, $other))
+            }
+            Member::Compound(CompoundVal::Array(inner, ..)) => {
+                quote!($(&*import::ARRAYS).equals($(inner.name()), $other))
             }
         }
     }
@@ -155,8 +161,15 @@ impl ScalarVal {
         } else if self.name() == "payloadSize" {
             cast_symbol(quote!(payload.capacity()), Integral::Int, Integral::fitting(self.width()))
         } else if self.name().ends_with("Size") {
+            // TODO(jmes): This is broken, need to multiply by element width
             cast_symbol(
                 quote!($(self.name().strip_suffix("Size")).length),
+                Integral::Int,
+                Integral::fitting(self.width()),
+            )
+        } else if self.name().ends_with("Count") {
+            cast_symbol(
+                quote!($(self.name().strip_suffix("Count")).length),
                 Integral::Int,
                 Integral::fitting(self.width()),
             )
@@ -171,6 +184,7 @@ impl CompoundVal {
         match self {
             CompoundVal::StructRef { ty, .. } => quote!($ty),
             CompoundVal::Payload { .. } => quote!(byte[]),
+            CompoundVal::Array(inner, ..) => quote!($(inner.ty())[]),
         }
     }
 
@@ -178,6 +192,7 @@ impl CompoundVal {
         match self {
             CompoundVal::StructRef { name, .. } => quote!($name.toString()),
             CompoundVal::Payload { .. } => quote!($(&*import::ARRAYS).toString(payload)),
+            CompoundVal::Array(inner, _) => quote!($(&*import::ARRAYS).toString($(inner.name()))),
         }
     }
 
@@ -185,6 +200,7 @@ impl CompoundVal {
         match self {
             CompoundVal::StructRef { name, .. } => quote!($name.width()),
             CompoundVal::Payload { .. } => quote!(payload.length),
+            CompoundVal::Array(inner, _) => quote!($(inner.name()).length),
         }
     }
 }
