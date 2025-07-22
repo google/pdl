@@ -20,6 +20,7 @@ use genco::{
     tokens::FormatInto,
     Tokens,
 };
+use std::{array, collections::HashMap};
 
 mod r#enum;
 /// The JLS specifies that operands of certain operators including
@@ -41,7 +42,10 @@ mod packet;
 
 use crate::backends::{
     common::alignment::UnalignedSymbol,
-    java::{codegen::expr::cast_symbol, CompoundVal, ConstrainedTo, Member, ScalarVal},
+    java::{
+        codegen::expr::{cast_symbol, gen_expr, ExprTree},
+        CompoundVal, ConstrainedTo, Member, ScalarVal, WidthField,
+    },
 };
 
 use super::{import, Chunk, Class, EndiannessValue, Integral, JavaFile, PacketDef};
@@ -72,9 +76,9 @@ impl FormatInto<Java> for EndiannessValue {
 }
 
 impl Member {
-    fn stringify(&self) -> Tokens<Java> {
+    fn stringify(&self, width_fields: &HashMap<String, WidthField>) -> Tokens<Java> {
         match self {
-            Member::Scalar(member) => member.stringify(),
+            Member::Scalar(member) => member.stringify(width_fields),
             Member::Compound(member) => member.stringify(),
         }
     }
@@ -96,8 +100,8 @@ impl Member {
             Member::Compound(CompoundVal::Payload { .. }) => {
                 quote!($(&*import::ARRAYS).hashCode(payload))
             }
-            Member::Compound(CompoundVal::Array(inner, ..)) => {
-                quote!($(&*import::ARRAYS).hashCode($(inner.name())))
+            Member::Compound(CompoundVal::ArrayElem { val, .. }) => {
+                quote!($(&*import::ARRAYS).hashCode($(val.name())))
             }
         }
     }
@@ -112,8 +116,8 @@ impl Member {
             Member::Compound(CompoundVal::Payload { .. }) => {
                 quote!($(&*import::ARRAYS).equals(payload, $other))
             }
-            Member::Compound(CompoundVal::Array(inner, ..)) => {
-                quote!($(&*import::ARRAYS).equals($(inner.name()), $other))
+            Member::Compound(CompoundVal::ArrayElem { val, .. }) => {
+                quote!($(&*import::ARRAYS).equals($(val.name()), $other))
             }
         }
     }
@@ -139,14 +143,25 @@ impl ScalarVal {
         }
     }
 
-    fn stringify(&self) -> Tokens<Java> {
+    fn stringify(&self, width_fields: &HashMap<String, WidthField>) -> Tokens<Java> {
         match self {
+            ScalarVal::Integral { name, ty, .. } if name.ends_with("Size") => {
+                let (array_name, _, elem_width) = self.get_size_field_info(width_fields).unwrap();
+                let t = ExprTree::new();
+                ty.stringify(gen_expr(
+                    &t,
+                    t.mul(t.symbol(quote!($array_name.length), Integral::Int), t.num(elem_width)),
+                ))
+            }
+            ScalarVal::Integral { name, ty, .. } if name.ends_with("Count") => {
+                ty.stringify(quote!($(name.strip_suffix("Count").unwrap()).length))
+            }
             ScalarVal::Integral { name, ty, .. } => ty.stringify(name),
             ScalarVal::EnumRef { name, .. } => quote!($name.toString()),
         }
     }
 
-    fn from_integral<'a>(&'a self, expr: impl FormatInto<Java> + 'a) -> Tokens<Java> {
+    fn from_integral(&self, expr: impl FormatInto<Java>) -> Tokens<Java> {
         match self {
             ScalarVal::Integral { .. } => quote!($expr),
             ScalarVal::EnumRef { ty, width, .. } => {
@@ -155,26 +170,62 @@ impl ScalarVal {
         }
     }
 
-    fn expr_to_encode(&self) -> Tokens<Java> {
-        if let ScalarVal::EnumRef { name, width, .. } = self {
-            quote!($name.to$(Integral::fitting(*width).capitalized())())
-        } else if self.name() == "payloadSize" {
-            cast_symbol(quote!(payload.capacity()), Integral::Int, Integral::fitting(self.width()))
-        } else if self.name().ends_with("Size") {
-            // TODO(jmes): This is broken, need to multiply by element width
-            cast_symbol(
-                quote!($(self.name().strip_suffix("Size")).length),
-                Integral::Int,
-                Integral::fitting(self.width()),
+    fn to_integral(
+        &self,
+        expr: impl FormatInto<Java>,
+        width_fields: &HashMap<String, WidthField>,
+    ) -> Tokens<Java> {
+        if let ScalarVal::EnumRef { width, .. } = self {
+            quote!($expr.to$(Integral::fitting(*width).capitalized())())
+        } else if let Some((array_name, _, elem_width)) = self.get_size_field_info(width_fields) {
+            let t = ExprTree::new();
+            gen_expr(
+                &t,
+                t.cast(
+                    t.mul(
+                        t.symbol(
+                            quote!($(if array_name == "payload" { payload.capacity() } else { $array_name.length })),
+                            Integral::Int,
+                        ),
+                        t.num(elem_width),
+                    ),
+                    Integral::fitting(self.width()),
+                ),
             )
-        } else if self.name().ends_with("Count") {
-            cast_symbol(
-                quote!($(self.name().strip_suffix("Count")).length),
-                Integral::Int,
-                Integral::fitting(self.width()),
-            )
+        } else if let Some((array_name, field_width)) = self.get_count_field_info(width_fields) {
+            cast_symbol(quote!($array_name.length), Integral::Int, Integral::fitting(self.width()))
         } else {
-            quote!($(self.name()))
+            quote!($expr)
+        }
+    }
+
+    fn get_size_field_info(
+        &self,
+        width_fields: &HashMap<String, WidthField>,
+    ) -> Option<(&str, usize, usize)> {
+        if let Some((array_name, WidthField::Size { field_width, elem_width })) =
+            self.name().strip_suffix("Size").and_then(|array_name| {
+                width_fields.get(array_name).map(|width_field| (array_name, width_field))
+            })
+        {
+            Some((array_name, *field_width, *elem_width))
+        } else {
+            None
+        }
+    }
+
+    fn get_count_field_info(
+        &self,
+        width_fields: &HashMap<String, WidthField>,
+    ) -> Option<(&str, usize)> {
+        if let Some((array_name, WidthField::Count { field_width })) =
+            self.name().strip_suffix("Count").and_then(|array_name| {
+                width_fields.get(array_name).map(|width_field| (array_name, width_field))
+            })
+        {
+            Some((array_name, *field_width))
+        } else {
+            None
         }
     }
 }
@@ -184,7 +235,7 @@ impl CompoundVal {
         match self {
             CompoundVal::StructRef { ty, .. } => quote!($ty),
             CompoundVal::Payload { .. } => quote!(byte[]),
-            CompoundVal::Array(inner, ..) => quote!($(inner.ty())[]),
+            CompoundVal::ArrayElem { val, .. } => quote!($(val.ty())[]),
         }
     }
 
@@ -192,7 +243,9 @@ impl CompoundVal {
         match self {
             CompoundVal::StructRef { name, .. } => quote!($name.toString()),
             CompoundVal::Payload { .. } => quote!($(&*import::ARRAYS).toString(payload)),
-            CompoundVal::Array(inner, _) => quote!($(&*import::ARRAYS).toString($(inner.name()))),
+            CompoundVal::ArrayElem { val, .. } => {
+                quote!($(&*import::ARRAYS).toString($(val.name())))
+            }
         }
     }
 
@@ -200,7 +253,7 @@ impl CompoundVal {
         match self {
             CompoundVal::StructRef { name, .. } => quote!($name.width()),
             CompoundVal::Payload { .. } => quote!(payload.length),
-            CompoundVal::Array(inner, _) => quote!($(inner.name()).length),
+            CompoundVal::ArrayElem { val, .. } => quote!($(val.name()).length),
         }
     }
 }
@@ -215,8 +268,8 @@ impl Integral {
         }
     }
 
-    fn decoder<'a>(&'a self, buf: impl FormatInto<Java> + 'a) -> impl FormatInto<Java> + 'a {
-        quote_fn! {
+    fn decode_from(&self, buf: Tokens<Java>) -> Tokens<Java> {
+        quote! {
             $(match self {
                 Integral::Byte => $buf.get(),
                 Integral::Short => $buf.getShort(),

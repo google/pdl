@@ -61,14 +61,23 @@ pub struct Field<U: UnalignedSymbol> {
     pub is_partial: bool,
 }
 
+/// A field that contains a partial value.
+#[derive(Debug, Clone)]
+pub struct Partial {
+    pub width: usize,
+    pub offset: usize,
+}
+
 /// A byte-aligned chunk.
 /// Because a chunk is byte aligned, it should be easy to encode/decode in your language.
 #[derive(Debug, Clone)]
 pub enum Chunk<U: UnalignedSymbol, A: AlignedSymbol> {
-    /// A chunk comprised of one or more bitpacked fields.
-    PackedBits { fields: Vec<Field<U>>, width: usize },
-    /// An opaque chunk whose width is an unspecified even multiple of 8 bits.
-    Bytes(A),
+    /// A chunk comprised of bitpacked fields.
+    Bitpack { fields: Vec<Field<U>>, width: usize },
+    /// A chunk whose width is a whole multiple of 8 bits.
+    SizedBytes { symbol: A, alignment: Vec<Partial>, width: usize },
+    /// A chunk whose width is an unspecified whole multiple of 8 bits.
+    UnsizedBytes(A),
 }
 
 /// A data structure that packs a set of fields, which may not be byte-aligned, into a sequence of byte algined chunks.
@@ -101,7 +110,7 @@ impl<U: UnalignedSymbol, A: AlignedSymbol> ByteAligner<U, A> {
     /// represents a straightforward way to encode and decode the fields in your language.
     pub fn align(self) -> Result<Alignment<U, A>, &'static str> {
         match self.chunks.last() {
-            Some(Chunk::PackedBits { width, .. }) if !self.allowed_chunk_widths.contains(width) => {
+            Some(Chunk::Bitpack { width, .. }) if !self.allowed_chunk_widths.contains(width) => {
                 dbg!(self);
                 Err("Provided fields could not be aligned to the allowed chunk widths")
             }
@@ -115,8 +124,35 @@ impl<U: UnalignedSymbol, A: AlignedSymbol> ByteAligner<U, A> {
         self.add_offset_field(symbol, width, 0, false);
     }
 
+    pub fn add_sized_bytes(&mut self, symbol: A, width: usize) {
+        if !self.is_aligned() {
+            panic!("sized fields must start at a byte boundary")
+        }
+        let mut alignment = Vec::new();
+
+        let mut remaining_width = width;
+        while remaining_width != 0 {
+            for chunk_width in self.allowed_chunk_widths.iter() {
+                if remaining_width >= *chunk_width {
+                    let offset = alignment
+                        .last()
+                        .map(|Partial { width, offset }| offset + width)
+                        .unwrap_or(0);
+
+                    alignment.push(Partial { width: *chunk_width, offset });
+                    remaining_width -= *chunk_width;
+                }
+            }
+        }
+
+        self.chunks.push(Chunk::SizedBytes { symbol, alignment, width });
+    }
+
     pub fn add_bytes(&mut self, symbol: A) {
-        self.chunks.push(Chunk::Bytes(symbol));
+        if !self.is_aligned() {
+            panic!("Bytes must start a byte boundary")
+        }
+        self.chunks.push(Chunk::UnsizedBytes(symbol));
     }
 
     fn add_offset_field(
@@ -126,21 +162,19 @@ impl<U: UnalignedSymbol, A: AlignedSymbol> ByteAligner<U, A> {
         symbol_offset: usize,
         is_partial: bool,
     ) {
-        if self.chunks.last().is_none_or(
-            |chunk| !matches!(chunk, Chunk::PackedBits { width, .. } if !self.allowed_chunk_widths.contains(width))
-        ) {
-            self.chunks.push(Chunk::PackedBits { fields: Vec::new(), width: 0 })
+        if self.is_aligned() {
+            self.chunks.push(Chunk::Bitpack { fields: Vec::new(), width: 0 })
         }
 
         let (fields, chunk_width) =
-            if let Some(Chunk::PackedBits { fields, width }) = self.chunks.last_mut() {
+            if let Some(Chunk::Bitpack { fields, width }) = self.chunks.last_mut() {
                 (fields, width)
             } else {
                 unreachable!()
             };
 
-        if width < *self.allowed_chunk_widths.last().unwrap()
-            || self.allowed_chunk_widths.contains(&(*chunk_width + width))
+        if self.allowed_chunk_widths.contains(&(*chunk_width + width))
+            || width < *self.allowed_chunk_widths.last().unwrap()
         {
             fields.push(Field {
                 chunk_offset: *chunk_width,
@@ -174,6 +208,11 @@ impl<U: UnalignedSymbol, A: AlignedSymbol> ByteAligner<U, A> {
                 true,
             );
         }
+    }
+
+    fn is_aligned(&self) -> bool {
+        self.chunks.last().is_none_or(
+            |chunk| !matches!(chunk, Chunk::Bitpack { width, .. } if !self.allowed_chunk_widths.contains(width)))
     }
 }
 

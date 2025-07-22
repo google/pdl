@@ -20,15 +20,15 @@ use genco::{
 };
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 use std::{
-    cmp,
+    array, cmp,
     collections::HashMap,
     fs::{self, OpenOptions},
-    hash::Hash,
     iter,
     path::{Path, PathBuf},
 };
 
 use crate::{
+    analyzer::Size,
     ast::{self, Constraint, EndiannessValue, Tag, TagOther, TagRange, TagValue},
     backends::common::alignment::{AlignedSymbol, ByteAligner, Chunk, UnalignedSymbol},
 };
@@ -76,6 +76,7 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
     let mut classes: HashMap<String, Class> = HashMap::new();
 
     for decl in file.declarations.iter() {
+        dbg!(decl.id());
         match &decl.desc {
             // If this is a parent packet, make a new abstract class and defer parenthood to it.
             ast::DeclDesc::Packet { id, fields, parent_id, constraints }
@@ -193,11 +194,9 @@ pub enum Class {
 impl Class {
     fn new_parent(name: String, def: PacketDef) -> (Self, Self) {
         let child_name = format!("Unknown{}", name);
-        let child_member =
-            CompoundVal::Payload { size_field: def.size_fields.get("payload").cloned() };
         let child_alignment = {
             let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
-            aligner.add_bytes(child_member.clone());
+            aligner.add_bytes(CompoundVal::Payload);
             aligner.align().unwrap()
         };
 
@@ -218,11 +217,10 @@ impl Class {
             Class::Packet {
                 name: child_name,
                 def: PacketDef {
-                    members: vec![child_member.into()],
+                    members: vec![CompoundVal::Payload.into()],
                     alignment: child_alignment,
                     width: None,
-                    size_fields: HashMap::new(),
-                    count_fields: HashMap::new(),
+                    width_fields: HashMap::new(),
                 },
                 parent: Some(Parent { name, does_constrain: false }),
             },
@@ -286,17 +284,16 @@ pub struct PacketDef {
     members: Vec<Member>,
     alignment: Alignment<ScalarVal, CompoundVal>,
     width: Option<usize>,
-    size_fields: HashMap<String, usize>,
-    count_fields: HashMap<String, usize>,
+    width_fields: HashMap<String, WidthField>,
 }
 
 impl PacketDef {
     fn from_fields(fields: &Vec<ast::Field>, classes: &HashMap<String, Class>) -> Self {
-        let mut members = Vec::new();
+        let mut members: Vec<Member> = Vec::new();
         let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
         let mut field_width = Some(0);
-        let mut size_fields: HashMap<String, usize> = HashMap::new();
-        let mut count_fields: HashMap<String, usize> = HashMap::new();
+        let mut width_fields: HashMap<String, WidthField> = HashMap::new();
+        let mut staged_size_fields: HashMap<String, usize> = HashMap::new();
 
         for field in fields.iter() {
             match &field.desc {
@@ -305,6 +302,7 @@ impl PacketDef {
                         name: id.to_lower_camel_case(),
                         ty: Integral::fitting(*width),
                         width: *width,
+                        is_member: true,
                     };
 
                     members.push(member.clone().into());
@@ -312,9 +310,13 @@ impl PacketDef {
                     field_width = field_width.map(|total_width| total_width + width);
                 }
                 ast::FieldDesc::Payload { size_modifier } => {
-                    aligner.add_bytes(CompoundVal::Payload {
-                        size_field: size_fields.get("payload").cloned(),
-                    });
+                    aligner.add_bytes(CompoundVal::Payload);
+                    if let Some(width) = staged_size_fields.remove("payload") {
+                        width_fields.insert(
+                            String::from("payload"),
+                            WidthField::Size { field_width: width, elem_width: 1 },
+                        );
+                    }
                     field_width = None;
                 }
                 ast::FieldDesc::Size { field_id, width } => {
@@ -322,18 +324,23 @@ impl PacketDef {
                         name: format!("{}Size", field_id.to_lower_camel_case()),
                         ty: Integral::Int,
                         width: *width,
+                        is_member: false,
                     };
                     aligner.add_bitfield(member);
-                    size_fields.insert(field_id.to_lower_camel_case(), *width);
+                    staged_size_fields.insert(field_id.to_lower_camel_case(), *width);
                 }
                 ast::FieldDesc::Count { field_id, width } => {
                     let member = ScalarVal::Integral {
                         name: format!("{}Count", field_id.to_lower_camel_case()),
                         ty: Integral::Int,
                         width: *width,
+                        is_member: false,
                     };
                     aligner.add_bitfield(member);
-                    count_fields.insert(field_id.to_lower_camel_case(), *width);
+                    width_fields.insert(
+                        field_id.to_lower_camel_case(),
+                        WidthField::Count { field_width: *width },
+                    );
                 }
                 ast::FieldDesc::Typedef { id, type_id } => {
                     let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
@@ -367,55 +374,72 @@ impl PacketDef {
                     }
                 }
                 ast::FieldDesc::Array { id, width, type_id, size_modifier, size: count } => {
-                    let (member, element_width) = if let Some(width) = width {
-                        (
-                            CompoundVal::Array(
-                                Box::new(Member::Scalar(ScalarVal::Integral {
-                                    name: id.to_lower_camel_case(),
-                                    ty: Integral::fitting(*width),
-                                    width: *width,
-                                })),
-                                *count,
-                            ),
-                            Some(width),
-                        )
-                    } else if let Some(type_id) = type_id {
-                        let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
-                        match &class {
-                            Class::Enum { width, .. } => (
-                                CompoundVal::Array(
-                                    Box::new(Member::Scalar(ScalarVal::EnumRef {
+                    let (member, elem_width) = match (width, type_id) {
+                        (Some(width), None) => {
+                            let val = CompoundVal::ArrayElem {
+                                val: Box::new(
+                                    ScalarVal::Integral {
                                         name: id.to_lower_camel_case(),
-                                        ty: class.name().into(),
+                                        ty: Integral::fitting(*width),
                                         width: *width,
-                                    })),
-                                    *count,
+                                        is_member: true,
+                                    }
+                                    .into(),
                                 ),
-                                Some(width),
-                            ),
-                            _ => (
-                                CompoundVal::Array(
-                                    Box::new(Member::Compound(CompoundVal::StructRef {
-                                        name: id.to_lower_camel_case(),
-                                        ty: class.name().into(),
-                                    })),
-                                    *count,
-                                ),
-                                None,
-                            ),
+                                count: *count,
+                            };
+                            aligner.add_sized_bytes(val.clone(), *width);
+                            (val, Some(*width))
                         }
-                    } else {
-                        panic!("invalid array field")
+                        (None, Some(type_id)) => {
+                            let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
+                            (
+                                if let Class::Enum { width, .. } = class {
+                                    let val = CompoundVal::ArrayElem {
+                                        val: Box::new(
+                                            ScalarVal::EnumRef {
+                                                name: id.to_lower_camel_case(),
+                                                ty: class.name().into(),
+                                                width: *width,
+                                            }
+                                            .into(),
+                                        ),
+                                        count: *count,
+                                    };
+                                    aligner.add_sized_bytes(val.clone(), *width);
+                                    val
+                                } else {
+                                    let val = CompoundVal::ArrayElem {
+                                        val: Box::new(
+                                            CompoundVal::StructRef {
+                                                name: id.to_lower_camel_case(),
+                                                ty: class.name().into(),
+                                            }
+                                            .into(),
+                                        ),
+                                        count: *count,
+                                    };
+                                    aligner.add_bytes(val.clone());
+                                    val
+                                },
+                                class.width(),
+                            )
+                        }
+                        _ => panic!("invalid array field"),
                     };
 
-                    members.push(member.clone().into());
-                    aligner.add_bytes(member);
+                    if let Some(size_field_width) = staged_size_fields.remove(member.name()) {
+                        width_fields.insert(
+                            String::from(member.name()),
+                            WidthField::Size {
+                                field_width: size_field_width,
+                                elem_width: elem_width.unwrap(),
+                            },
+                        );
+                    }
+                    members.push(member.into());
                     field_width = field_width
-                        .zip(
-                            count
-                                .zip(element_width)
-                                .map(|(count, element_width)| count * element_width),
-                        )
+                        .zip(count.zip(elem_width).map(|(count, elem_width)| count * elem_width))
                         .map(|(field_width, array_width)| field_width + array_width);
                 }
                 _ => {
@@ -429,8 +453,7 @@ impl PacketDef {
             members,
             alignment: aligner.align().expect("failed to align members"),
             width: field_width,
-            size_fields,
-            count_fields,
+            width_fields,
         }
     }
 }
@@ -477,6 +500,12 @@ impl Constraint {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WidthField {
+    Size { field_width: usize, elem_width: usize },
+    Count { field_width: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Member {
     Scalar(ScalarVal),
     Compound(CompoundVal),
@@ -496,6 +525,13 @@ impl Member {
             Some(member)
         } else {
             None
+        }
+    }
+
+    fn is_member(&self) -> bool {
+        match self {
+            Member::Scalar(scalar) => scalar.is_member(),
+            Member::Compound(_) => true,
         }
     }
 }
@@ -528,7 +564,7 @@ impl Member {
 /// A value that is readily represented by a scalar Java type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScalarVal {
-    Integral { name: String, ty: Integral, width: usize },
+    Integral { name: String, ty: Integral, width: usize, is_member: bool },
     EnumRef { name: String, ty: String, width: usize },
 }
 
@@ -546,14 +582,21 @@ impl ScalarVal {
             ScalarVal::Integral { name, .. } | ScalarVal::EnumRef { name, .. } => name,
         }
     }
+
+    fn is_member(&self) -> bool {
+        match self {
+            ScalarVal::Integral { is_member, .. } => *is_member,
+            _ => true,
+        }
+    }
 }
 
 /// A value that is readily represented by a compound (non-scalar) Java type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompoundVal {
     StructRef { name: String, ty: String },
-    Payload { size_field: Option<usize> },
-    Array(Box<Member>, Option<usize>),
+    Payload,
+    ArrayElem { val: Box<Member>, count: Option<usize> },
 }
 
 impl AlignedSymbol for CompoundVal {}
@@ -563,7 +606,7 @@ impl CompoundVal {
         match self {
             CompoundVal::StructRef { name, .. } => name,
             CompoundVal::Payload { .. } => "payload",
-            CompoundVal::Array(inner, _) => inner.name(),
+            CompoundVal::ArrayElem { val, .. } => val.name(),
         }
     }
 }

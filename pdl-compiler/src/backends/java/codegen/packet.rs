@@ -21,7 +21,7 @@ use crate::{
     ast::EndiannessValue,
     backends::{
         common::alignment::{Alignment, UnalignedSymbol},
-        java::{Child, CompoundVal, ConstrainedTo, Member, Parent, ScalarVal},
+        java::{Child, CompoundVal, ConstrainedTo, Member, Parent, ScalarVal, WidthField},
     },
 };
 
@@ -75,7 +75,7 @@ pub fn gen_packet(
                         .allocate(fieldWidth())
                         .order($endianness);
 
-                    $(encoder(&def.alignment))
+                    $(encoder(&def.alignment, &def.width_fields))
                     return super.toBytes(buf);
                 }
             } else {
@@ -84,7 +84,7 @@ pub fn gen_packet(
                         .allocate(fieldWidth())
                         .order($endianness);
 
-                    $(encoder(&def.alignment))
+                    $(encoder(&def.alignment, &def.width_fields))
                     return buf.array();
                 }
             })
@@ -94,7 +94,7 @@ pub fn gen_packet(
                 $(width_def(parent.is_some()))
             }
 
-            $(field_width_def(&def.members, &def.size_fields))
+            $(field_width_def(&def.members))
 
             $(getter_defs(&def.members))
 
@@ -105,7 +105,7 @@ pub fn gen_packet(
                         + $(match member {
                             Member::Scalar(member) => $(quoted(format!("{}[{}]=", member.name(), member.width()))),
                             Member::Compound(member) => $(quoted(format!("{}=", member.name())))
-                        }) + $(member.stringify()) + "\n"
+                        }) + $(member.stringify(&def.width_fields)) + "\n"
                     }) + "}"
                 ))
 
@@ -133,7 +133,7 @@ pub fn gen_packet(
 
                 public $name build() { return new $name(this); }
 
-                $(setter_defs(&def.members, &quote!(Builder), &HashMap::new()))
+                $(setter_defs(&def.members, &quote!(Builder), &HashMap::new(), &def.width_fields))
             }
         }
     }
@@ -186,7 +186,7 @@ pub fn gen_abstract_packet(
                     .allocate(fieldWidth() + payload.capacity())
                     .order($endianness);
 
-                $(encoder(&def.alignment))
+                $(encoder(&def.alignment, &def.width_fields))
                 return buf.array();
             }
 
@@ -195,7 +195,7 @@ pub fn gen_abstract_packet(
                 $(width_def(parent.is_some()))
             }
 
-            $(field_width_def(&def.members, &def.size_fields))
+            $(field_width_def(&def.members))
 
             $(getter_defs(&def.members))
 
@@ -204,13 +204,13 @@ pub fn gen_abstract_packet(
                 $(let members_str = quote!(
                     $(for chunk in def.alignment.iter() join ( + ) {
                         $(match chunk {
-                            Chunk::PackedBits { fields, .. } =>
+                            Chunk::Bitpack { fields, .. } =>
                                 $(for field in fields.iter().filter(|f| !(f.is_partial && f.chunk_offset == 0))
                                 join ( + ) {
                                     $(quoted(format!("{}[{}]=", field.symbol.name(), field.symbol.width())))
-                                    + $(field.symbol.stringify()) + "\n"
+                                    + $(field.symbol.stringify(&def.width_fields)) + "\n"
                                 }),
-                            Chunk::Bytes(member) =>
+                            Chunk::UnsizedBytes(member) | Chunk::SizedBytes { symbol: member, .. }=>
                                 $(if let CompoundVal::Payload { .. } = member {
                                     "payload=" + payload + "\n"
                                 } else {
@@ -247,7 +247,7 @@ pub fn gen_abstract_packet(
             }
 
             protected abstract static class UnconstrainedBuilder<B extends Builder<B>> extends Builder<B> {
-                $(setter_defs(&def.members, &quote!(B), &HashMap::new()))
+                $(setter_defs(&def.members, &quote!(B), &HashMap::new(), &def.width_fields))
             }
 
             $(for child in children.iter() {
@@ -263,7 +263,7 @@ pub fn gen_abstract_packet(
                             })
                         }
 
-                        $(setter_defs(&def.members, &quote!(B), &child.constraints))
+                        $(setter_defs(&def.members, &quote!(B), &child.constraints, &def.width_fields))
                     }
                 })
             })
@@ -277,7 +277,7 @@ fn member_defs(
     constraints: &HashMap<String, String>,
 ) -> Tokens<Java> {
     quote! {
-        $(for member in members.iter() {
+        $(for member in members.iter().filter(|member| member.is_member()) {
             protected $(if are_final => final) $(member.ty()) $(member.name())
                 $(if let Some(constraint) = constraints.get(member.name()) => = $constraint);
         })
@@ -286,7 +286,7 @@ fn member_defs(
 
 fn getter_defs(members: &Vec<Member>) -> Tokens<Java> {
     quote! {
-        $(for member in members.iter() {
+        $(for member in members.iter().filter(|member| member.is_member()) {
             public $(member.ty()) get$(member.name().to_upper_camel_case())() {
                 return $(member.name());
             }
@@ -298,9 +298,10 @@ fn setter_defs(
     members: &Vec<Member>,
     builder_type: &Tokens<Java>,
     constraints: &HashMap<String, ConstrainedTo>,
+    width_fields: &HashMap<String, WidthField>,
 ) -> Tokens<Java> {
     quote! {
-        $(for member in members.iter() {
+        $(for member in members.iter().filter(|member| member.is_member()) {
             $(if !constraints.contains_key(member.name()) {
                 public $builder_type set$(member.name().to_upper_camel_case())(
                     $(member.ty()) $(member.name())
@@ -310,23 +311,28 @@ fn setter_defs(
                             if ($(ty.compare(member.name(), gen_mask(*width, *ty))) > 0) {
                                 throw new IllegalArgumentException(
                                     "Value " +
-                                    $(member.stringify()) +
+                                    $(member.stringify(width_fields)) +
                                     $(quoted(format!(
                                         " is too wide for field '{}' with width {}", member.name(), width)))
                                 );
                             }
                         }
-                        Member::Compound(CompoundVal::Payload { size_field: Some(size_field) }) => {
-                            if ($(Integral::Int.compare(
-                                quote!($(member.name()).length), gen_mask(*size_field, Integral::Int))) > 0
-                            ) {
-                                throw new IllegalArgumentException(
-                                    "Payload " +
-                                    $(member.stringify()) +
-                                    $(quoted(format!(
-                                        " is too wide for its _size_ field with width {}", size_field)))
-                                );
-                            }
+                        Member::Compound(CompoundVal::Payload) => {
+                            $(if let Some(WidthField::Size { field_width, .. }) = width_fields.get("payload") {
+                                if (
+                                    $(Integral::Int.compare(
+                                        quote!($(member.name()).length),
+                                        gen_mask(*field_width, Integral::fitting(*field_width).limit_to_int()))
+                                    ) > 0
+                                ) {
+                                    throw new IllegalArgumentException(
+                                        "Payload " +
+                                        $(member.stringify(width_fields)) +
+                                        $(quoted(format!(
+                                            " is too wide for its _size_ field with width {}", field_width)))
+                                    );
+                                }
+                            })
                         }
                         _ =>, // No special checks for other members.
                     })
@@ -341,16 +347,21 @@ fn setter_defs(
 
 fn builder_assigns(members: &Vec<Member>) -> Tokens<Java> {
     quote! {
-        $(for member in members.iter() => $(member.name()) = builder.$(member.name());)
+        $(for member in members.iter().filter(|member| member.is_member()) {
+            $(member.name()) = builder.$(member.name());
+        })
     }
 }
 
-fn encoder(alignment: &Alignment<ScalarVal, CompoundVal>) -> Tokens<Java> {
+fn encoder(
+    alignment: &Alignment<ScalarVal, CompoundVal>,
+    width_fields: &HashMap<String, WidthField>,
+) -> Tokens<Java> {
     let mut tokens = Tokens::new();
 
     for chunk in alignment.iter() {
         match chunk {
-            Chunk::PackedBits { fields, width } => {
+            Chunk::Bitpack { fields, width } => {
                 let chunk_type = Integral::fitting(*width);
                 let t = ExprTree::new();
                 let root = t.cast(
@@ -361,7 +372,9 @@ fn encoder(alignment: &Alignment<ScalarVal, CompoundVal>) -> Tokens<Java> {
                                 t.lshift(
                                     t.rshift(
                                         t.symbol(
-                                            field.symbol.expr_to_encode(),
+                                            field
+                                                .symbol
+                                                .to_integral(field.symbol.name(), width_fields),
                                             Integral::fitting(field.symbol.width()),
                                         ),
                                         t.num(field.symbol_offset),
@@ -376,8 +389,47 @@ fn encoder(alignment: &Alignment<ScalarVal, CompoundVal>) -> Tokens<Java> {
 
                 tokens.extend(quote!(buf.$(chunk_type.encoder())($(gen_expr(&t, root)));));
             }
-            Chunk::Bytes(CompoundVal::Payload { .. }) => tokens.extend(quote!(buf.put(payload);)),
-            Chunk::Bytes(member) => tokens.extend(quote!(buf.put($(member.name()).toBytes());)),
+            Chunk::SizedBytes {
+                symbol: member @ CompoundVal::ArrayElem { val, count },
+                alignment,
+                width,
+            } => {
+                let elem = val.as_scalar().unwrap();
+                tokens.extend(quote!(
+                    for (int i = 0; i < $(member.name()).length; i++) {
+                        $(for partial in alignment.iter() {
+                            $(let partial_ty = Integral::fitting(partial.width))
+                            $(let t = ExprTree::new())
+                            $(let root = t.cast(
+                                t.rshift(
+                                    t.symbol(
+                                        elem.to_integral(quote!($(member.name())[i]), width_fields),
+                                        Integral::fitting(elem.width()),
+                                    ),
+                                    t.num(partial.offset),
+                                ),
+                                partial_ty,
+                            ))
+
+                            buf.$(partial_ty.encoder())($(gen_expr(&t, root)));
+                        })
+                    }
+                ));
+            }
+            Chunk::UnsizedBytes(CompoundVal::Payload { .. }) => {
+                tokens.extend(quote!(buf.put(payload);))
+            }
+            Chunk::UnsizedBytes(member @ CompoundVal::ArrayElem { val, count }) => {
+                tokens.extend(quote!(
+                    for (int i = 0; i < $(member.name()).length; i++) {
+                        buf.put($(member.name())[i].toBytes());
+                    }
+                ));
+            }
+            Chunk::UnsizedBytes(member) => {
+                tokens.extend(quote!(buf.put($(member.name()).toBytes());))
+            }
+            _ => unreachable!(),
         }
     }
 
@@ -395,10 +447,12 @@ fn decoder(
     let mut partials = Vec::new();
     for (i, chunk) in def.alignment.iter().enumerate() {
         match chunk {
-            Chunk::PackedBits { fields, width } => {
+            Chunk::Bitpack { fields, width } => {
                 let chunk_name = &quote!(chunk$i);
                 let chunk_type = Integral::fitting(*width);
-                tokens.extend(quote!($chunk_type $chunk_name = $(chunk_type.decoder("buf"));));
+                tokens.extend(
+                    quote!($chunk_type $chunk_name = $(chunk_type.decode_from(quote!(buf)));),
+                );
 
                 for field in fields.iter() {
                     if field.is_partial {
@@ -447,8 +501,64 @@ fn decoder(
                     }
                 }
             }
-            Chunk::Bytes(member @ CompoundVal::Payload { .. }) => {
-                if def.size_fields.contains_key("payload") {
+            Chunk::SizedBytes {
+                symbol: member @ CompoundVal::ArrayElem { val: elem, count },
+                alignment,
+                width,
+            } => {
+                let name = member.name();
+                let elem_width = width / 8;
+
+                if let Some(count) = count {
+                    tokens.append(quote!(int $(name)Count = $(*count);));
+                } else {
+                    match def.width_fields.get(name) {
+                        Some(WidthField::Size { .. }) => {
+                            let t = ExprTree::new();
+                            let root = t.div(
+                                t.symbol(quote!($(name)Size), Integral::Int),
+                                t.num(elem_width),
+                            );
+                            tokens.append(quote!(int $(name)Count = $(gen_expr(&t, root));));
+                        }
+                        Some(WidthField::Count { .. }) => (), // $(name)Count should already be declared
+                        None => {
+                            let t = ExprTree::new();
+                            let root = t.div(
+                                t.symbol(quote!(buf.remaining()), Integral::Int),
+                                t.num(elem_width),
+                            );
+                            tokens.append(quote!(int $(name)Count = $(gen_expr(&t, root));));
+                        }
+                    }
+                }
+
+                let t = ExprTree::new();
+                let root = t.or_all(
+                    alignment
+                        .iter()
+                        .map(|partial| {
+                            let ty = Integral::fitting(partial.width);
+                            t.lshift(
+                                t.symbol(ty.decode_from(quote!(buf)), ty),
+                                t.num(partial.offset),
+                            )
+                        })
+                        .collect(),
+                );
+
+                tokens.append(quote!(
+                    $(member.ty()) $(name) = new $(elem.ty())[$(name)Count];
+                    for (int i = 0; i < $(name)Count; i++) {
+                        $(name)[i] = $(elem.as_scalar().unwrap().from_integral(
+                            gen_expr(&t, root)
+                        ));
+                    }
+                    $(assign(member.ty(), name, quote!($(name))))
+                ))
+            }
+            Chunk::UnsizedBytes(member @ CompoundVal::Payload { .. }) => {
+                if def.width_fields.contains_key("payload") {
                     // The above condition checks if *this* class contains a size field for the payload.
                     // Unpacking `size_field` from the `UnsizedMember::Payload` would instead check if
                     // *any* class contains a size field for the payload.
@@ -460,10 +570,10 @@ fn decoder(
                 } else {
                     if let Some(width) = def.width {
                         tokens.extend(assign(
-                                    member.ty(),
-                                    member.name(),
-                                    quote!(buf.slice(buf.position(), buf.capacity() - $(width / 8)).order($endianness))
-                                ));
+                            member.ty(),
+                            member.name(),
+                            quote!(buf.slice(buf.position(), buf.capacity() - $(width / 8)).order($endianness))
+                        ));
                     } else {
                         // If we don't know the payload's width, assume it is the last field in the packet
                         // (this should really be enforced by the parser) and consume all remaining bytes
@@ -472,7 +582,7 @@ fn decoder(
                     }
                 }
             }
-            Chunk::Bytes(member @ CompoundVal::StructRef { name, ty, .. }) => {
+            Chunk::UnsizedBytes(member @ CompoundVal::StructRef { name, ty, .. }) => {
                 let var_name = &name.to_lower_camel_case();
                 // If the struct has dynamic width, assume it is the last field in the packet (this should
                 // really be enforced by the parser) and decode it. Its decoder will consume all remaining
@@ -483,88 +593,57 @@ fn decoder(
                     buf.position(buf.position() + $var_name.width());
                 ));
             }
-            Chunk::Bytes(member @ CompoundVal::Array(inner, count)) => match inner.as_ref() {
-                // Member::Scalar(ScalarVal::Integral { ty, width, .. }) if *width == ty.width() => {
-                //     let elem_width = width / 8;
+            Chunk::UnsizedBytes(member @ CompoundVal::ArrayElem { val, count }) => {
+                let count_expr: &Tokens<Java> = &if let Some(count) = count {
+                    quote!($(*count))
+                } else if let Some(WidthField::Count { .. }) = def.width_fields.get(member.name()) {
+                    quote!($(member.name())Count)
+                } else {
+                    panic!("Cannot decode array of dynamic elements with no count")
+                };
 
-                //     let t = ExprTree::new();
-                //     let root = if let Some(count) = count {
-                //         t.num(count * elem_width)
-                //     } else if def.count_fields.contains_key(member.name()) {
-                //         t.mul(
-                //             t.symbol(quote!($(member.name())Count), Integral::Int),
-                //             t.num(elem_width),
-                //         )
-                //     } else if def.size_fields.contains_key(member.name()) {
-                //         t.symbol(quote!($(member.name())Size), Integral::Int)
-                //     } else {
-                //         t.symbol(quote!(buf.remaining()), Integral::Int)
-                //     };
-
-                //     tokens.extend(assign(
-                //         member.ty(),
-                //         member.name(),
-                //         quote!(
-                //             buf.slice(
-                //                 buf.position(),
-                //                 $(gen_expr(&t, root))
-                //             )$(if !matches!(ty, Integral::Byte) => .as$(ty.capitalized())Buffer()).array()
-                //         ),
-                //     ))
-                // }
-                Member::Scalar(scalar) => {
-                    let elem_as_integral = Integral::fitting(scalar.width());
-                    let elem_width = scalar.width() / 8;
-
-                    if let Some(count) = count {
-                        tokens.append(quote!(int $(member.name())Count = $(*count);));
-                    } else if def.size_fields.contains_key(member.name()) {
-                        let t = ExprTree::new();
-                        let root = t.div(
-                            t.symbol(quote!($(member.name())Size), Integral::Int),
-                            t.num(elem_width),
-                        );
-                        tokens.append(quote!(int $(member.name())Count = $(gen_expr(&t, root));));
-                    } else if !def.count_fields.contains_key(member.name()) {
-                        let t = ExprTree::new();
-                        let root = t.div(
-                            t.symbol(quote!(buf.remaining()), Integral::Int),
-                            t.num(elem_width),
-                        );
-                        tokens.append(quote!(int $(member.name())Count = $(gen_expr(&t, root));));
+                tokens.extend(quote!(
+                    $(member.ty()) $(member.name()) = new $(val.ty())[$count_expr];
+                    for (int i = 0; i < $count_expr; i++) {
+                        $(member.name())[i] = $(val.ty()).fromBytes(buf);
                     }
+                    // TODO: this will break with declare_locally
+                    $(assign(
+                        member.ty(),
+                        member.name(),
+                        quote!($(member.name())),
+                    ));
+                ))
+            }
+            // Member::Scalar(ScalarVal::Integral { ty, width, .. }) if *width == ty.width() => {
+            //     let elem_width = width / 8;
 
-                    tokens.append(quote!(
-                        $(member.ty()) $(member.name()) = new $(inner.ty())[$(member.name())Count];
-                        for (int i = 0; i < $(member.name())Count; i++) {
-                            $(member.name())[i] = $(scalar.from_integral(elem_as_integral.decoder("buf")));
-                        }
-                        $(assign(member.ty(), member.name(), quote!($(member.name()))));
-                    ))
-                }
-                Member::Compound(compound) => {
-                    let count_expr: &Tokens<Java> = &if let Some(count) = count {
-                        quote!($(*count))
-                    } else if def.count_fields.contains_key(member.name()) {
-                        quote!($(member.name())Count)
-                    } else {
-                        panic!("Cannot decode array of dynamic elements with no count")
-                    };
+            //     let t = ExprTree::new();
+            //     let root = if let Some(count) = count {
+            //         t.num(count * elem_width)
+            //     } else if def.count_fields.contains_key(member.name()) {
+            //         t.mul(
+            //             t.symbol(quote!($(member.name())Count), Integral::Int),
+            //             t.num(elem_width),
+            //         )
+            //     } else if def.size_fields.contains_key(member.name()) {
+            //         t.symbol(quote!($(member.name())Size), Integral::Int)
+            //     } else {
+            //         t.symbol(quote!(buf.remaining()), Integral::Int)
+            //     };
 
-                    tokens.extend(quote!(
-                        $(member.ty()) $(member.name()) = new $(inner.ty())[$count_expr];
-                        for (int i = 0; i < $count_expr; i++) {
-                            $(member.name())[i] = $(compound.ty()).fromBytes(buf);
-                        }
-                        // TODO: this will break with declare_locally
-                        $(assign(
-                            member.ty(),
-                            member.name(),
-                            quote!($(member.name())),
-                        ));
-                    ))
-                }
-            },
+            //     tokens.extend(assign(
+            //         member.ty(),
+            //         member.name(),
+            //         quote!(
+            //             buf.slice(
+            //                 buf.position(),
+            //                 $(gen_expr(&t, root))
+            //             )$(if !matches!(ty, Integral::Byte) => .as$(ty.capitalized())Buffer()).array()
+            //         ),
+            //     ))
+            // }
+            _ => unreachable!(),
         }
     }
 
@@ -588,6 +667,8 @@ mod assignment {
     pub fn declare_locally(ty: Tokens<Java>, name: &str, value: Tokens<Java>) -> Tokens<Java> {
         if name == "payload" {
             quote!($(&*import::BB) payload = $value;)
+        } else if ty.to_string().unwrap().ends_with("[]") {
+            quote!()
         } else {
             quote!($ty $name = $value;)
         }
@@ -600,19 +681,29 @@ fn width_def(call_super: bool) -> Tokens<Java> {
     }
 }
 
-fn field_width_def(members: &Vec<Member>, size_fields: &HashMap<String, usize>) -> Tokens<Java> {
+fn field_width_def(members: &Vec<Member>) -> Tokens<Java> {
     let static_width =
-        (members.iter().filter_map(Member::as_scalar).map(|member| member.width()).sum::<usize>()
-            + size_fields.values().sum::<usize>())
+        members.iter().filter_map(Member::as_scalar).map(|member| member.width()).sum::<usize>()
             / 8;
 
     let unsized_members: Vec<&CompoundVal> =
         members.iter().filter_map(Member::as_compound).collect();
 
+    let t = ExprTree::new();
+    let root = if unsized_members.is_empty() {
+        t.num(static_width)
+    } else {
+        t.add(
+            t.num(static_width),
+            t.symbol(
+                quote!($(for member in unsized_members.into_iter() join ( + ) => $(member.width_expr()))),
+                Integral::Int
+            ),
+        )
+    };
     quote! {
         private final int fieldWidth() {
-            return $static_width
-                $(for member in unsized_members.into_iter() => + $(member.width_expr()));
+            return $(gen_expr(&t, root));
         }
     }
 }
@@ -624,14 +715,14 @@ fn hashcode_equals_overrides(name: &str, members: &Vec<Member>, call_super: bool
             if (this == o) return true;
             if (!(o instanceof $name other)) return false;
             return $(if call_super => super.equals(other) &&)
-            $(for member in members.iter() join ( && ) {
+            $(for member in members.iter().filter(|m| m.is_member()) join ( && ) {
                 $(member.equals(quote!(other.$(member.name()))))
             });
         }
 
         @Override
         public int hashCode() {
-            $(let mut members = members.iter())
+            $(let mut members = members.iter().filter(|m| m.is_member()))
             $(if call_super {
                 int result = super.hashCode();
             } else {
@@ -674,6 +765,8 @@ fn build_child_fitting_constraints(members: &Vec<Member>, children: &Vec<Child>)
             }
         })
 
-        $(for member in members.iter() => builder.$(member.name()) = $(member.name());)
+        $(for member in members.iter().filter(|member| member.is_member()) {
+            builder.$(member.name()) = $(member.name());
+        })
     }
 }

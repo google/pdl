@@ -26,6 +26,7 @@ enum BinOp {
     ShiftRight,
     BitAnd,
     BitOr,
+    Add,
     Multiply,
     Divide,
 }
@@ -38,6 +39,7 @@ impl FormatInto<Java> for BinOp {
                 BinOp::ShiftRight => >>>,
                 BinOp::BitAnd => &,
                 BinOp::BitOr => |,
+                BinOp::Add => +,
                 BinOp::Multiply => *,
                 BinOp::Divide => /,
             })
@@ -105,6 +107,16 @@ impl ExprTree {
     pub fn symbol(&self, val: impl FormatInto<Java>, ty: Integral) -> ExprId {
         self.0.borrow_mut().push(ExprNode::Symbol(quote!($val), ty));
         self.get_root()
+    }
+
+    pub fn add(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
+        if self.is_literal(lhs, 0) {
+            rhs
+        } else if self.is_literal(rhs, 0) {
+            lhs
+        } else {
+            self.op(lhs, BinOp::Add, rhs)
+        }
     }
 
     pub fn mul(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
