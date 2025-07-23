@@ -1,88 +1,89 @@
 little_endian_packets
 
-packet BASIC_StaticArray {
-    array: 16[4],
-}
+// packet BASIC_StaticArray {
+//     array: 16[4],
+// }
 
-packet BASIC_ArrayWithSizeField {
-    _size_(array): 8,
-    array: 16[],
-}
+// packet BASIC_ArrayWithSizeField {
+//     _size_(array): 8,
+//     array: 16[],
+// }
 
-packet BASIC_ArrayWithCountField {
-    _count_(array): 8,
-    array: 16[],
-}
+// packet BASIC_ArrayWithCountField {
+//     _count_(array): 8,
+//     array: 16[],
+// }
 
-packet BASIC_ArrayThatFillsPacket {
-    array: 16[],
-}
+// packet BASIC_ArrayThatFillsPacket {
+//     array: 16[],
+// }
 
-enum MyEnum : 16 {
-    A = 1,
-    B = 2,
-    C = 4,
-}
+// enum MyEnum : 16 {
+//     A = 1,
+//     B = 2,
+//     C = 4,
+// }
 
-packet ENUM_StaticArray {
-    array: MyEnum[4],
-}
+// packet ENUM_StaticArray {
+//     array: MyEnum[4],
+// }
 
-packet ENUM_ArrayWithSizeField {
-    _size_(array): 8,
-    array: MyEnum[],
-}
+// packet ENUM_ArrayWithSizeField {
+//     _size_(array): 8,
+//     array: MyEnum[],
+// }
 
-packet ENUM_ArrayWithCountField {
-    _count_(array): 8,
-    array: MyEnum[],
-}
+// packet ENUM_ArrayWithCountField {
+//     _count_(array): 8,
+//     array: MyEnum[],
+// }
 
-struct MyStruct {
-    a: 32,
-}
+// struct MyStruct {
+//     a: 32,
+// }
 
-packet STRUCT_StaticArray {
-    array: MyStruct[4],
-}
+// packet STRUCT_StaticArray {
+//     array: MyStruct[4],
+// }
 
-packet STRUCT_ArrayWithCountField {
-    _count_(array): 8,
-    array: MyStruct[],
-}
+// packet STRUCT_ArrayWithCountField {
+//     _count_(array): 8,
+//     array: MyStruct[],
+// }
 
-packet TestPacket {
-    pizza: 7,
-    crust: 9,
-    lettuce: 4,
-    sausage: 4,
-}
+// packet TestPacket {
+//     pizza: 7,
+//     crust: 9,
+//     lettuce: 4,
+//     sausage: 4,
+// }
 
-packet MALIGNED_StaticArray {
-    array: 24[4],
-}
+// packet MALIGNED_StaticArray {
+//     array: 24[4],
+// }
 
-packet parent_with_array {
-    _size_(array): 8,
-    array: 16[],
-    _payload_,
-}
+// packet parent_with_array {
+//     _size_(array): 8,
+//     array: 16[],
+//     _payload_,
+// }
 
-packet child_of_parent_with_array : parent_with_array {
-    myfield: 8,
-}
+// packet child_of_parent_with_array : parent_with_array {
+//     myfield: 8,
+// }
 
 
+// TODO: there is a bug here, width of ChildStructField is only 32 bits when it should be 40
 struct a_mostly_static_parent {
     parent_field: 8,
     _payload_,
 }
 
 struct a_static_child : a_mostly_static_parent {
-    child_field: 16,
+    child_field: 16,∂
 }
 
-// TODO: broken because children do not override fromBytes. This is a bug independent from arrays.
-packet ArrayOfStaticChildStruct {
-    array: a_static_child[4],
+packet ChildStructField {
+    static_field: 16,
+    struct_field: a_static_child,
 }

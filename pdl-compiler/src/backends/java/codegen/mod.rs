@@ -16,7 +16,7 @@ use core::panic;
 use genco::{
     self,
     prelude::{java, Java},
-    quote, quote_fn, quote_in,
+    quote, quote_in,
     tokens::FormatInto,
     Tokens,
 };
@@ -40,12 +40,9 @@ mod r#enum;
 mod expr;
 mod packet;
 
-use crate::backends::{
-    common::alignment::UnalignedSymbol,
-    java::{
-        codegen::expr::{cast_symbol, gen_expr, ExprTree},
-        CompoundVal, ConstrainedTo, Member, ScalarVal, WidthField,
-    },
+use crate::backends::java::{
+    codegen::expr::{cast_symbol, gen_expr, ExprTree},
+    ConstrainedTo, Field, WidthField,
 };
 
 use super::{import, Chunk, Class, EndiannessValue, Integral, JavaFile, PacketDef};
@@ -75,77 +72,26 @@ impl FormatInto<Java> for EndiannessValue {
     }
 }
 
-impl Member {
-    fn stringify(&self, width_fields: &HashMap<String, WidthField>) -> Tokens<Java> {
+impl Field {
+    pub fn width_expr(&self) -> Tokens<Java> {
         match self {
-            Member::Scalar(member) => member.stringify(width_fields),
-            Member::Compound(member) => member.stringify(),
+            Field::StructRef { name, .. } => quote!($name.width()),
+            Field::Payload { .. } => quote!(payload.length),
+            Field::ArrayElem { val, .. } => {
+                let t = ExprTree::new();
+                let root = t.mul(
+                    t.symbol(quote!($(val.name()).length), Integral::Int),
+                    t.num(val.width().unwrap()),
+                );
+                gen_expr(&t, root)
+            }
+            _ => quote!($(self.width().unwrap())),
         }
     }
 
-    fn ty(&self) -> Tokens<Java> {
+    pub fn stringify(&self, width_fields: &HashMap<String, WidthField>) -> Tokens<Java> {
         match self {
-            Member::Scalar(member) => member.ty(),
-            Member::Compound(member) => member.ty(),
-        }
-    }
-
-    fn hash_code(&self) -> Tokens<Java> {
-        match self {
-            Member::Scalar(ScalarVal::Integral { name, ty, .. }) => {
-                quote!($(ty.boxed()).hashCode($name))
-            }
-            Member::Scalar(ScalarVal::EnumRef { name, .. })
-            | Member::Compound(CompoundVal::StructRef { name, .. }) => quote!($name.hashCode()),
-            Member::Compound(CompoundVal::Payload { .. }) => {
-                quote!($(&*import::ARRAYS).hashCode(payload))
-            }
-            Member::Compound(CompoundVal::ArrayElem { val, .. }) => {
-                quote!($(&*import::ARRAYS).hashCode($(val.name())))
-            }
-        }
-    }
-
-    fn equals<'a>(&'a self, other: impl FormatInto<Java> + 'a) -> Tokens<Java> {
-        match self {
-            Member::Scalar(ScalarVal::Integral { name, .. }) => quote!($name == $other),
-            Member::Scalar(ScalarVal::EnumRef { name, .. })
-            | Member::Compound(CompoundVal::StructRef { name, .. }) => {
-                quote!($name.equals($other))
-            }
-            Member::Compound(CompoundVal::Payload { .. }) => {
-                quote!($(&*import::ARRAYS).equals(payload, $other))
-            }
-            Member::Compound(CompoundVal::ArrayElem { val, .. }) => {
-                quote!($(&*import::ARRAYS).equals($(val.name()), $other))
-            }
-        }
-    }
-
-    fn constraint(&self, to: &ConstrainedTo) -> Tokens<Java> {
-        match (self, to) {
-            (Member::Scalar(ScalarVal::Integral { .. }), ConstrainedTo::Integral(i)) => {
-                quote!($(*i))
-            }
-            (Member::Scalar(ScalarVal::EnumRef { ty, .. }), ConstrainedTo::EnumTag(tag)) => {
-                quote!($ty.$tag)
-            }
-            _ => panic!("invalid constraint"),
-        }
-    }
-}
-
-impl ScalarVal {
-    fn ty(&self) -> Tokens<Java> {
-        match self {
-            ScalarVal::Integral { ty, .. } => quote!($ty),
-            ScalarVal::EnumRef { ty, .. } => quote!($ty),
-        }
-    }
-
-    fn stringify(&self, width_fields: &HashMap<String, WidthField>) -> Tokens<Java> {
-        match self {
-            ScalarVal::Integral { name, ty, .. } if name.ends_with("Size") => {
+            Field::Integral { name, ty, .. } if name.ends_with("Size") => {
                 let (array_name, _, elem_width) = self.get_size_field_info(width_fields).unwrap();
                 let t = ExprTree::new();
                 ty.stringify(gen_expr(
@@ -153,29 +99,77 @@ impl ScalarVal {
                     t.mul(t.symbol(quote!($array_name.length), Integral::Int), t.num(elem_width)),
                 ))
             }
-            ScalarVal::Integral { name, ty, .. } if name.ends_with("Count") => {
+            Field::Integral { name, ty, .. } if name.ends_with("Count") => {
                 ty.stringify(quote!($(name.strip_suffix("Count").unwrap()).length))
             }
-            ScalarVal::Integral { name, ty, .. } => ty.stringify(name),
-            ScalarVal::EnumRef { name, .. } => quote!($name.toString()),
-        }
-    }
-
-    fn from_integral(&self, expr: impl FormatInto<Java>) -> Tokens<Java> {
-        match self {
-            ScalarVal::Integral { .. } => quote!($expr),
-            ScalarVal::EnumRef { ty, width, .. } => {
-                quote!($ty.from$(Integral::fitting(*width).capitalized())($expr))
+            Field::Integral { name, ty, .. } => ty.stringify(name),
+            Field::EnumRef { name, .. } => quote!($name.toString()),
+            Field::StructRef { name, .. } => quote!($name.toString()),
+            Field::Payload { .. } => quote!($(&*import::ARRAYS).toString(payload)),
+            Field::ArrayElem { val, .. } => {
+                quote!($(&*import::ARRAYS).toString($(val.name())))
             }
         }
     }
 
-    fn to_integral(
+    pub fn ty(&self) -> Tokens<Java> {
+        match self {
+            Field::Integral { ty, .. } => quote!($ty),
+            Field::EnumRef { ty, .. } => quote!($ty),
+            Field::StructRef { ty, .. } => quote!($ty),
+            Field::Payload { .. } => quote!(byte[]),
+            Field::ArrayElem { val, .. } => quote!($(val.ty())[]),
+        }
+    }
+
+    pub fn hash_code(&self) -> Tokens<Java> {
+        match self {
+            Field::Integral { name, ty, .. } => quote!($(ty.boxed()).hashCode($name)),
+            Field::EnumRef { name, .. } | Field::StructRef { name, .. } => quote!($name.hashCode()),
+            Field::Payload { .. } => quote!($(&*import::ARRAYS).hashCode(payload)),
+            Field::ArrayElem { val, .. } => quote!($(&*import::ARRAYS).hashCode($(val.name()))),
+        }
+    }
+
+    pub fn equals(&self, other: impl FormatInto<Java>) -> Tokens<Java> {
+        match self {
+            Field::Integral { name, .. } => quote!($name == $other),
+            Field::EnumRef { name, .. } | Field::StructRef { name, .. } => {
+                quote!($name.equals($other))
+            }
+            Field::Payload { .. } => quote!($(&*import::ARRAYS).equals(payload, $other)),
+            Field::ArrayElem { val, .. } => {
+                quote!($(&*import::ARRAYS).equals($(val.name()), $other))
+            }
+        }
+    }
+
+    pub fn constraint(&self, to: &ConstrainedTo) -> Tokens<Java> {
+        match (self, to) {
+            (Field::Integral { .. }, ConstrainedTo::Integral(i)) => quote!($(*i)),
+            (Field::EnumRef { ty, .. }, ConstrainedTo::EnumTag(tag)) => quote!($ty.$tag),
+            _ => panic!("invalid constraint"),
+        }
+    }
+
+    pub fn try_decode_from_num(&self, expr: impl FormatInto<Java>) -> Result<Tokens<Java>, ()> {
+        match self {
+            Field::Integral { .. } => Ok(quote!($expr)),
+            Field::EnumRef { ty, width, .. } => {
+                Ok(quote!($ty.from$(Integral::fitting(*width).capitalized())($expr)))
+            }
+            _ => Err(()),
+        }
+    }
+
+    pub fn try_encode_to_num(
         &self,
         expr: impl FormatInto<Java>,
         width_fields: &HashMap<String, WidthField>,
-    ) -> Tokens<Java> {
-        if let ScalarVal::EnumRef { width, .. } = self {
+    ) -> Result<Tokens<Java>, ()> {
+        let width = self.width().ok_or(())?;
+
+        Ok(if let Field::EnumRef { width, .. } = self {
             quote!($expr.to$(Integral::fitting(*width).capitalized())())
         } else if let Some((array_name, _, elem_width)) = self.get_size_field_info(width_fields) {
             let t = ExprTree::new();
@@ -189,14 +183,14 @@ impl ScalarVal {
                         ),
                         t.num(elem_width),
                     ),
-                    Integral::fitting(self.width()),
+                    Integral::fitting(width),
                 ),
             )
         } else if let Some((array_name, field_width)) = self.get_count_field_info(width_fields) {
-            cast_symbol(quote!($array_name.length), Integral::Int, Integral::fitting(self.width()))
+            cast_symbol(quote!($array_name.length), Integral::Int, Integral::fitting(width))
         } else {
             quote!($expr)
-        }
+        })
     }
 
     fn get_size_field_info(
@@ -226,34 +220,6 @@ impl ScalarVal {
             Some((array_name, *field_width))
         } else {
             None
-        }
-    }
-}
-
-impl CompoundVal {
-    fn ty(&self) -> Tokens<Java> {
-        match self {
-            CompoundVal::StructRef { ty, .. } => quote!($ty),
-            CompoundVal::Payload { .. } => quote!(byte[]),
-            CompoundVal::ArrayElem { val, .. } => quote!($(val.ty())[]),
-        }
-    }
-
-    fn stringify(&self) -> Tokens<Java> {
-        match self {
-            CompoundVal::StructRef { name, .. } => quote!($name.toString()),
-            CompoundVal::Payload { .. } => quote!($(&*import::ARRAYS).toString(payload)),
-            CompoundVal::ArrayElem { val, .. } => {
-                quote!($(&*import::ARRAYS).toString($(val.name())))
-            }
-        }
-    }
-
-    fn width_expr(&self) -> Tokens<Java> {
-        match self {
-            CompoundVal::StructRef { name, .. } => quote!($name.width()),
-            CompoundVal::Payload { .. } => quote!(payload.length),
-            CompoundVal::ArrayElem { val, .. } => quote!($(val.name()).length),
         }
     }
 }
