@@ -74,16 +74,31 @@ little_endian_packets
 
 
 // TODO: there is a bug here, width of ChildStructField is only 32 bits when it should be 40
+// struct a_mostly_static_parent {
+//     parent_field: 8,
+//     _payload_,
+// }
+
+// struct a_static_child : a_mostly_static_parent {
+//     child_field: 16,
+// }
+
+// packet ChildStructField {
+//     static_field: 16,
+//     struct_field: a_static_child,
+// }
+
+
 struct a_mostly_static_parent {
     parent_field: 8,
     _payload_,
 }
 
 struct a_static_child : a_mostly_static_parent {
-    child_field: 16,∂
+    child_field: 16,
 }
 
 packet ChildStructField {
-    static_field: 16,
-    struct_field: a_static_child,
+    _size_(array): 8,
+    array: a_static_child[],
 }

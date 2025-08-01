@@ -17,11 +17,12 @@ use std::collections::HashMap;
 use genco::{self, prelude::Java, quote, tokens::quoted, Tokens};
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 
-use crate::{
-    ast::EndiannessValue,
-    backends::{
-        common::alignment::Alignment,
-        java::{Child, ConstrainedTo, Field, Parent, WidthField},
+use crate::backends::{
+    common::alignment::Alignment,
+    java::{
+        codegen::expr::ExprId,
+        inheritance::{ClassHeirarchy, Constraint, InheritanceNode},
+        Context, Field, WidthField,
     },
 };
 
@@ -30,12 +31,10 @@ use super::{
     import, Chunk, Integral, PacketDef,
 };
 
-pub fn gen_packet(
-    name: &String,
-    def: &PacketDef,
-    parent: Option<&Parent>,
-    endianness: EndiannessValue,
-) -> Tokens<Java> {
+pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java> {
+    let endianness = ctx.endianness;
+    let parent = ctx.heirarchy.parent(name);
+
     quote! {
         public final class $name $(if let Some(parent) = parent => extends $(&parent.name)) {
             $(member_defs(&def.members, true, &HashMap::new()))
@@ -61,13 +60,13 @@ pub fn gen_packet(
 
                 protected static $(&parent.name).Builder<?> fromPayload($(&*import::BB) buf) {
                     Builder builder = new Builder();
-                    $(decoder(def, assignment::build, endianness))
+                    $(decoder(name, def, assignment::build, ctx))
                     return builder;
                 }
             } else {
                 protected static $name fromBytes($(&*import::BB) buf) {
                     Builder builder = new Builder();
-                    $(decoder(def, assignment::build, endianness))
+                    $(decoder(name, def, assignment::build, ctx))
                     return builder.build();
                 }
             })
@@ -94,12 +93,9 @@ pub fn gen_packet(
                 }
             })
 
-            $(if parent.is_some() => @Override)
-            public int width() {
-                $(width_def(parent.is_some()))
-            }
+            $(width_def(name, &ctx.heirarchy, true))
 
-            $(field_width_def(&def.members))
+            $(field_width_def(name, &ctx.heirarchy, &def.members))
 
             $(getter_defs(&def.members))
 
@@ -107,7 +103,7 @@ pub fn gen_packet(
             public String toString() {
                 $(let members_str = quote!(
                     $(for member in def.members.iter() {
-                        + $(match member.width() {
+                        + $(match member.width().or_else(|| ctx.heirarchy.width(member.name())) {
                             Some(width) => $(quoted(format!("{}[{}]=", member.name(), width))),
                             None => $(quoted(format!("{}=", member.name())))
                         }) + $(member.stringify(&def.width_fields)) + "\n"
@@ -123,12 +119,15 @@ pub fn gen_packet(
 
             $(hashcode_equals_overrides(name, &def.members, parent.is_some()))
 
-            public static final class $(match parent {
-                Some(Parent { name: parent_name, does_constrain: true }) =>
-                    Builder extends $parent_name.$(name)Builder<Builder>,
-                Some(Parent { name: parent_name, does_constrain: false }) =>
-                    Builder extends $parent_name.UnconstrainedBuilder<Builder>,
-                _ => Builder,
+            public static final class
+            $(if let Some(parent) = parent {
+                $(if ctx.heirarchy.get(name).constraints.is_empty() {
+                    Builder extends $(&parent.name).UnconstrainedBuilder<Builder>
+                } else {
+                    Builder extends $(&parent.name).$(name)Builder<Builder>
+                })
+            } else {
+                Builder
             }) {
                 $(member_defs(&def.members, false, &HashMap::new()))
 
@@ -144,13 +143,11 @@ pub fn gen_packet(
     }
 }
 
-pub fn gen_abstract_packet(
-    name: &String,
-    def: &PacketDef,
-    parent: Option<&Parent>,
-    children: &Vec<Child>,
-    endianness: EndiannessValue,
-) -> Tokens<Java> {
+pub fn gen_abstract_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java> {
+    let endianness = ctx.endianness;
+    let parent = ctx.heirarchy.parent(name);
+    let children = &ctx.heirarchy.children(name);
+
     quote! {
         public abstract sealed class $name
         $(if let Some(parent) = parent => extends $(&parent.name))
@@ -167,7 +164,7 @@ pub fn gen_abstract_packet(
             // Decoder
             $(if let Some(parent) = parent {
                 protected static $(&parent.name).Builder<?> fromPayload($(&*import::BB) buf) {
-                    $(decoder(def, assignment::declare_locally, endianness))
+                    $(decoder(name, def, assignment::declare_locally, ctx))
                     $(build_child_fitting_constraints(&def.members, children))
                     return builder;
                 }
@@ -177,7 +174,7 @@ pub fn gen_abstract_packet(
                 }
 
                 protected static $name fromBytes($(&*import::BB) buf) {
-                    $(decoder(def, assignment::declare_locally, endianness))
+                    $(decoder(name, def, assignment::declare_locally, ctx))
                     $(build_child_fitting_constraints(&def.members, children))
                     return builder.build();
                 }
@@ -195,12 +192,9 @@ pub fn gen_abstract_packet(
                 return buf.array();
             }
 
-            $(if parent.is_some() => @Override)
-            protected int width() {
-                $(width_def(parent.is_some()))
-            }
+            $(width_def(name, &ctx.heirarchy, false))
 
-            $(field_width_def(&def.members))
+            $(field_width_def(name, &ctx.heirarchy, &def.members))
 
             $(getter_defs(&def.members))
 
@@ -208,7 +202,7 @@ pub fn gen_abstract_packet(
             protected String toString(String payload, int payloadSize) {
                 $(let members_str = quote!(
                     $(for member in def.members.iter() {
-                        + $(match member.width() {
+                        + $(match member.width().or_else(|| ctx.heirarchy.width(member.name())) {
                             Some(width) => {
                                 $(quoted(format!("{}[{}]=", member.name(), width))) +
                                     $(if member.name() == "payloadSize" {
@@ -238,14 +232,17 @@ pub fn gen_abstract_packet(
 
             $(if !def.members.is_empty() => $(hashcode_equals_overrides(name, &def.members, false)))
 
-            protected abstract static class $(match &parent {
-                Some(Parent { name: parent_name, does_constrain: true }) =>
-                    Builder<B extends $parent_name.$(name)Builder<B>>
-                        extends $parent_name.$(name)Builder<B>,
-                Some(Parent { name: parent_name, does_constrain: false }) =>
-                    Builder<B extends $parent_name.UnconstrainedBuilder<B>>
-                        extends $parent_name.UnconstrainedBuilder<B>,
-                _ => Builder<B extends Builder<B>>,
+            protected abstract static class
+            $(if let Some(parent) = parent {
+                $(if ctx.heirarchy.get(name).constraints.is_empty() {
+                    Builder<B extends $(&parent.name).UnconstrainedBuilder<B>>
+                    extends $(&parent.name).UnconstrainedBuilder<B>
+                } else {
+                    Builder<B extends $(&parent.name).$(name)Builder<B>>
+                    extends $(&parent.name).$(name)Builder<B>
+                })
+            } else {
+                Builder<B extends Builder<B>>
             }) {
                 $(member_defs(&def.members, false, &HashMap::new()))
 
@@ -305,7 +302,7 @@ fn getter_defs(members: &Vec<Field>) -> Tokens<Java> {
 fn setter_defs(
     members: &Vec<Field>,
     builder_type: &Tokens<Java>,
-    constraints: &HashMap<String, ConstrainedTo>,
+    constraints: &HashMap<String, Constraint>,
     width_fields: &HashMap<String, WidthField>,
 ) -> Tokens<Java> {
     quote! {
@@ -448,9 +445,10 @@ fn encoder(
 }
 
 fn decoder(
+    name: &String,
     def: &PacketDef,
     assign: fn(Tokens<Java>, &str, Tokens<Java>) -> Tokens<Java>,
-    endianness: EndiannessValue,
+    ctx: &Context,
 ) -> Tokens<Java> {
     let mut tokens = Tokens::new();
 
@@ -565,27 +563,24 @@ fn decoder(
             }
             Chunk::UnsizedBytes(member @ Field::Payload { .. }) => {
                 if def.width_fields.contains_key("payload") {
-                    // The above condition checks if *this* class contains a size field for the payload.
-                    // Unpacking `size_field` from the `UnsizedMember::Payload` would instead check if
-                    // *any* class contains a size field for the payload.
                     tokens.extend(assign(
                         member.ty(),
                         member.name(),
-                        quote!(buf.slice(buf.position(), payloadSize).order($endianness)),
+                        quote!(buf.slice(buf.position(), payloadSize).order($(ctx.endianness))),
                     ));
-                } else {
-                    if let Some(width) = def.width {
-                        tokens.extend(assign(
+                } else if let Some(width) =
+                    ctx.heirarchy.field_width_without_dyn_field(name, member.name())
+                {
+                    tokens.extend(assign(
                             member.ty(),
                             member.name(),
-                            quote!(buf.slice(buf.position(), buf.capacity() - $(width / 8)).order($endianness))
+                            quote!(buf.slice(buf.position(), buf.capacity() - $(width / 8)).order($(ctx.endianness)))
                         ));
-                    } else {
-                        // If we don't know the payload's width, assume it is the last field in the packet
-                        // (this should really be enforced by the parser) and consume all remaining bytes
-                        // in the buffer.
-                        tokens.extend(assign(member.ty(), member.name(), quote!(buf.slice())));
-                    }
+                } else {
+                    // If we don't know the payload's width, assume it is the last field in the packet
+                    // (this should really be enforced by the parser) and consume all remaining bytes
+                    // in the buffer.
+                    tokens.extend(assign(member.ty(), member.name(), quote!(buf.slice())));
                 }
             }
             Chunk::UnsizedBytes(member @ Field::StructRef { name, ty, .. }) => {
@@ -631,35 +626,41 @@ mod assignment {
     }
 }
 
-fn width_def(call_super: bool) -> Tokens<Java> {
+fn width_def(name: &str, heirarchy: &ClassHeirarchy, is_public: bool) -> Tokens<Java> {
     quote! {
-        return $(if call_super => super.width() +) fieldWidth();
+        $(if heirarchy.parent(name).is_some() => @Override)
+        $(if is_public { public } else { protected }) int width() {
+            $(if let Some(width) = heirarchy.width(name) {
+                return $(width / 8);
+            } else {
+                return $(if heirarchy.parent(name).is_some() => super.width() +) fieldWidth();
+            })
+
+        }
     }
 }
 
-fn field_width_def(members: &Vec<Field>) -> Tokens<Java> {
-    let static_width = members.iter().filter_map(|field| field.width()).sum::<usize>() / 8;
-    let unsized_members: Vec<&Field> = members
-        .iter()
-        .filter(|field| field.width().is_none())
-        .filter(|field| if let Field::Payload { is_member } = field { *is_member } else { true })
-        .collect();
+fn field_width_def(name: &str, heirarchy: &ClassHeirarchy, members: &Vec<Field>) -> Tokens<Java> {
+    let inheritence = heirarchy.get(name);
 
     let t = ExprTree::new();
-    let root = if unsized_members.is_empty() {
-        t.num(static_width)
-    } else {
-        t.add(
-            t.num(static_width),
-            t.symbol(
-                quote!($(for member in unsized_members.into_iter() join ( + ) => $(member.width_expr()))),
-                Integral::Int
-            ),
-        )
-    };
+    let mut exprs: Vec<ExprId> = members
+        .iter()
+        .filter_map(|member| {
+            if member.name() == "payload" && !member.is_member() {
+                None
+            } else if inheritence.dyn_fields.contains(member.name()) {
+                Some(t.symbol(member.width_expr(heirarchy), Integral::Int))
+            } else {
+                None
+            }
+        })
+        .collect();
+    exprs.push(t.num(heirarchy.static_field_width(name) / 8));
+
     quote! {
         private final int fieldWidth() {
-            return $(gen_expr(&t, root));
+            return $(gen_expr(&t, t.sum(exprs)));
         }
     }
 }
@@ -692,11 +693,15 @@ fn hashcode_equals_overrides(name: &str, members: &Vec<Field>, call_super: bool)
     }
 }
 
-fn build_child_fitting_constraints(members: &Vec<Field>, children: &Vec<Child>) -> Tokens<Java> {
+fn build_child_fitting_constraints(
+    members: &Vec<Field>,
+    children: &Vec<&InheritanceNode>,
+) -> Tokens<Java> {
     let mut children_iter = children.iter();
     let default = children_iter.next().expect("Parent packet must have at least 1 child");
-    let children: Vec<&Child> = children_iter
-        .filter(|child| !child.constraints.is_empty() || child.width.is_some())
+    let children: Vec<&InheritanceNode> = children_iter
+        .map(|child| *child)
+        .filter(|child| !child.constraints.is_empty() || child.field_width().is_some())
         .collect();
 
     quote! {
@@ -711,8 +716,8 @@ fn build_child_fitting_constraints(members: &Vec<Field>, children: &Vec<Child>) 
                             $(member.equals(member.constraint(value)))
                         })
                     })
-                    $(if !child.constraints.is_empty() && child.width.is_some() => &&)
-                    $(if let Some(width) = child.width => payload.capacity() == $(width / 8))
+                    $(if !child.constraints.is_empty() && child.field_width().is_some() => &&)
+                    $(if let Some(width) = child.field_width() => payload.capacity() == $(width / 8))
                 ) {
                     builder = $(&child.name).fromPayload(payload);
                 } else$[' ']

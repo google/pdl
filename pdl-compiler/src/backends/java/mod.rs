@@ -28,8 +28,11 @@ use std::{
 };
 
 use crate::{
-    ast::{self, Constraint, EndiannessValue, Tag, TagOther, TagRange, TagValue},
-    backends::common::alignment::{ByteAligner, Chunk},
+    ast::{self, EndiannessValue, Tag, TagOther, TagRange, TagValue},
+    backends::{
+        common::alignment::{ByteAligner, Chunk},
+        java::inheritance::{ClassHeirarchy, Constraint},
+    },
 };
 
 use super::common::alignment::Alignment;
@@ -45,6 +48,7 @@ pub mod import {
 }
 
 mod codegen;
+mod inheritance;
 
 pub fn generate(
     sources: &ast::SourceDatabase,
@@ -57,22 +61,24 @@ pub fn generate(
     dir.extend(package.split("."));
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
-    let classes = generate_classes(&file);
+    let (classes, heirarchy) = generate_classes(&file);
+    let context = Context { endianness: file.endianness.value, heirarchy };
 
     for (name, class) in classes.into_iter() {
         class.write_to_fs(
             &dir.join(name).with_extension("java"),
             package,
             sources.get(file.file).expect("could not read source").name(),
-            file.endianness.value,
+            &context,
         )?;
     }
 
     Ok(())
 }
 
-fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
+fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy) {
     let mut classes: HashMap<String, Class> = HashMap::new();
+    let mut heirarchy = ClassHeirarchy::new();
 
     for decl in file.declarations.iter() {
         dbg!(decl.id());
@@ -85,24 +91,32 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
                 }) =>
             {
                 let parent_name = id.to_upper_camel_case();
+                let parent_def = PacketDef::from_fields(fields, &classes, &heirarchy);
 
-                let (mut parent, child) = Class::new_parent(
-                    parent_name.clone(),
-                    PacketDef::from_fields(fields, &classes),
-                );
-
-                // This parent might also be a child
                 if let Some(parent_id) = parent_id {
                     let grandparent = classes
                         .get_mut(&parent_id.to_upper_camel_case())
                         .expect("Packet inherits from unknown parent");
 
-                    grandparent.add_child(
-                        &mut parent,
-                        constraints.iter().map(Constraint::to_assignment).collect(),
-                        None,
+                    heirarchy.add_child(
+                        String::from(grandparent.name()),
+                        parent_name.clone(),
+                        constraints.iter().map(ast::Constraint::to_assignment).collect(),
+                        &parent_def.members,
                     );
+                } else {
+                    heirarchy.add_class(parent_name.clone(), &parent_def.members);
                 }
+
+                heirarchy.add_child(
+                    String::from(parent_name.clone()),
+                    ClassHeirarchy::default_child_name(&parent_name),
+                    HashMap::new(),
+                    &vec![Field::Payload { is_member: true }],
+                );
+
+                let (parent, child) =
+                    Class::new_parent_with_default_child(parent_name.clone(), parent_def);
 
                 classes.insert(parent_name, parent);
                 classes.insert(child.name().into(), child);
@@ -111,32 +125,28 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
             ast::DeclDesc::Packet { id, constraints, fields, parent_id: Some(parent_id) }
             | ast::DeclDesc::Struct { id, constraints, fields, parent_id: Some(parent_id) } => {
                 let child_name = id.to_upper_camel_case();
-                let def = PacketDef::from_fields(fields, &classes);
+                let def = PacketDef::from_fields(fields, &classes, &heirarchy);
 
                 let parent = classes
                     .get_mut(&parent_id.to_upper_camel_case())
                     .expect("Packet inherits from unknown parent");
 
-                let child = parent.new_child(
+                heirarchy.add_child(
+                    String::from(parent.name()),
                     child_name.clone(),
-                    def,
-                    constraints.iter().map(Constraint::to_assignment).collect(),
+                    constraints.iter().map(ast::Constraint::to_assignment).collect(),
+                    &def.members,
                 );
-
-                classes.insert(child_name, child);
+                classes.insert(child_name.clone(), Class::Packet { name: child_name, def });
             }
             // Otherwise, the packet has no inheritence (no parent and no children)
             ast::DeclDesc::Packet { id, fields, parent_id: None, .. }
             | ast::DeclDesc::Struct { id, fields, parent_id: None, .. } => {
                 let name = id.to_upper_camel_case();
-                classes.insert(
-                    name.clone(),
-                    Class::Packet {
-                        name,
-                        def: PacketDef::from_fields(fields, &classes),
-                        parent: None,
-                    },
-                );
+                let def = PacketDef::from_fields(fields, &classes, &heirarchy);
+
+                heirarchy.add_class(name.clone(), &def.members);
+                classes.insert(name.clone(), Class::Packet { name, def });
             }
             ast::DeclDesc::Enum { id, tags, width } => {
                 let name = id.to_upper_camel_case();
@@ -151,7 +161,14 @@ fn generate_classes(file: &ast::File) -> HashMap<String, Class> {
     }
 
     dbg!(&classes);
-    classes
+    dbg!(&heirarchy);
+    dbg!(classes
+        .values()
+        .filter_map(|class| heirarchy
+            .width(class.name())
+            .map(|width| (String::from(class.name()), width)))
+        .collect::<Vec<(String, usize)>>());
+    (classes, heirarchy)
 }
 
 trait JavaFile<C>: Sized {
@@ -183,16 +200,20 @@ trait JavaFile<C>: Sized {
     }
 }
 
+pub struct Context {
+    endianness: EndiannessValue,
+    heirarchy: ClassHeirarchy,
+}
+
 #[derive(Debug, Clone)]
 pub enum Class {
-    Packet { name: String, def: PacketDef, parent: Option<Parent> },
-    AbstractPacket { name: String, def: PacketDef, parent: Option<Parent>, children: Vec<Child> },
+    Packet { name: String, def: PacketDef },
+    AbstractPacket { name: String, def: PacketDef },
     Enum { name: String, tags: Vec<Tag>, width: usize },
 }
 
 impl Class {
-    fn new_parent(name: String, def: PacketDef) -> (Self, Self) {
-        let child_name = format!("Unknown{}", name);
+    fn new_parent_with_default_child(name: String, def: PacketDef) -> (Self, Self) {
         let child_alignment = {
             let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
             aligner.add_bytes(Field::Payload { is_member: true });
@@ -203,63 +224,16 @@ impl Class {
         // body field, we don't want a fallback child
 
         (
-            Class::AbstractPacket {
-                name: name.clone(),
-                def,
-                parent: None,
-                children: vec![Child {
-                    name: child_name.clone(),
-                    constraints: HashMap::new(),
-                    width: None,
-                }],
-            },
+            Class::AbstractPacket { name: name.clone(), def },
             Class::Packet {
-                name: child_name,
+                name: ClassHeirarchy::default_child_name(&name),
                 def: PacketDef {
                     members: vec![Field::Payload { is_member: true }],
                     alignment: child_alignment,
-                    width: None,
                     width_fields: HashMap::new(),
                 },
-                parent: Some(Parent { name, does_constrain: false }),
             },
         )
-    }
-
-    fn new_child(
-        &mut self,
-        name: String,
-        def: PacketDef,
-        constraints: HashMap<String, ConstrainedTo>,
-    ) -> Self {
-        let mut child = Class::Packet { name, def, parent: None };
-
-        let child_width = child.width();
-        self.add_child(&mut child, constraints, child_width);
-
-        child
-    }
-
-    fn add_child(
-        &mut self,
-        child: &mut Class,
-        constraints: HashMap<String, ConstrainedTo>,
-        child_width: Option<usize>,
-    ) {
-        let childs_parent = match child {
-            Class::Packet { parent, .. } | Class::AbstractPacket { parent, .. } => parent,
-            _ => panic!("Can't add child to non-packet"),
-        };
-        let _ = childs_parent
-            .insert(Parent { name: self.name().into(), does_constrain: !constraints.is_empty() });
-
-        let children = (if let Class::AbstractPacket { ref mut children, .. } = self {
-            Some(children)
-        } else {
-            None
-        })
-        .expect("Attempt to add child to non-parent packet");
-        children.push(Child { name: child.name().into(), constraints, width: child_width });
     }
 
     pub fn name(&self) -> &str {
@@ -269,29 +243,23 @@ impl Class {
             | Class::Enum { name, .. } => name,
         }
     }
-
-    /// The field width of the class. That is, not including the width of inherited fields.
-    pub fn width(&self) -> Option<usize> {
-        match self {
-            Class::Packet { def, .. } | Class::AbstractPacket { def, .. } => def.width,
-            Class::Enum { width, .. } => Some(*width),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
 pub struct PacketDef {
     members: Vec<Field>,
     alignment: Alignment<Field>,
-    width: Option<usize>,
     width_fields: HashMap<String, WidthField>,
 }
 
 impl PacketDef {
-    fn from_fields(fields: &Vec<ast::Field>, classes: &HashMap<String, Class>) -> Self {
+    fn from_fields(
+        fields: &Vec<ast::Field>,
+        classes: &HashMap<String, Class>,
+        heirarchy: &ClassHeirarchy,
+    ) -> Self {
         let mut members: Vec<Field> = Vec::new();
         let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
-        let mut field_width = Some(0);
         let mut width_fields: HashMap<String, WidthField> = HashMap::new();
         let mut staged_size_fields: HashMap<String, usize> = HashMap::new();
 
@@ -307,7 +275,6 @@ impl PacketDef {
 
                     members.push(member.clone().into());
                     aligner.add_bitfield(member, *width);
-                    field_width = field_width.map(|total_width| total_width + width);
                 }
                 ast::FieldDesc::Payload { size_modifier } => {
                     let member = Field::Payload { is_member: false };
@@ -319,7 +286,6 @@ impl PacketDef {
                             WidthField::Size { field_width: width, elem_width: 1 },
                         );
                     }
-                    field_width = None;
                 }
                 ast::FieldDesc::Size { field_id, width } => {
                     let member = Field::Integral {
@@ -358,23 +324,14 @@ impl PacketDef {
 
                             members.push(member.clone().into());
                             aligner.add_bitfield(member, *width);
-                            field_width = field_width.map(|total_width| total_width + width);
                         }
                         _ => {
                             let member = Field::StructRef {
                                 name: id.to_lower_camel_case(),
                                 ty: class.name().into(),
-                                width: class.width(),
                             };
                             members.push(member.clone().into());
                             aligner.add_bytes(member);
-                            field_width = if let Some((field_width, class_width)) =
-                                field_width.zip(class.width())
-                            {
-                                Some(field_width + class_width)
-                            } else {
-                                None
-                            };
                         }
                     }
                 }
@@ -420,7 +377,6 @@ impl PacketDef {
                                             Field::StructRef {
                                                 name: id.to_lower_camel_case(),
                                                 ty: class.name().into(),
-                                                width: class.width(),
                                             }
                                             .into(),
                                         ),
@@ -429,7 +385,9 @@ impl PacketDef {
                                     aligner.add_bytes(val.clone());
                                     val
                                 },
-                                class.width().expect("can't have array of non-static elements"),
+                                heirarchy
+                                    .width(class.name())
+                                    .expect("Can't have array of non-static element"),
                             )
                         }
                         _ => panic!("invalid array field"),
@@ -445,9 +403,6 @@ impl PacketDef {
                         );
                     }
                     members.push(member.into());
-                    field_width = field_width
-                        .zip(*count)
-                        .map(|(field_width, count)| field_width + (count * elem_width))
                 }
                 _ => {
                     dbg!(field);
@@ -456,26 +411,8 @@ impl PacketDef {
             }
         }
 
-        Self {
-            members,
-            alignment: aligner.align().expect("failed to align members"),
-            width: field_width,
-            width_fields,
-        }
+        Self { members, alignment: aligner.align().expect("failed to align members"), width_fields }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Parent {
-    name: String,
-    does_constrain: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct Child {
-    name: String,
-    constraints: HashMap<String, ConstrainedTo>,
-    width: Option<usize>,
 }
 
 impl Tag {
@@ -488,19 +425,13 @@ impl Tag {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum ConstrainedTo {
-    Integral(usize),
-    EnumTag(String),
-}
-
-impl Constraint {
-    fn to_assignment(&self) -> (String, ConstrainedTo) {
+impl ast::Constraint {
+    fn to_assignment(&self) -> (String, Constraint) {
         (
             self.id.to_lower_camel_case(),
             self.value
-                .map(|integral| ConstrainedTo::Integral(integral))
-                .or(self.tag_id.as_ref().map(|id| ConstrainedTo::EnumTag(id.to_upper_camel_case())))
+                .map(|integral| Constraint::Integral(integral))
+                .or(self.tag_id.as_ref().map(|id| Constraint::EnumTag(id.to_upper_camel_case())))
                 .expect("Malformed constraint"),
         )
     }
@@ -516,7 +447,7 @@ pub enum WidthField {
 pub enum Field {
     Integral { name: String, ty: Integral, width: usize, is_member: bool },
     EnumRef { name: String, ty: String, width: usize },
-    StructRef { name: String, ty: String, width: Option<usize> },
+    StructRef { name: String, ty: String },
     Payload { is_member: bool },
     ArrayElem { val: Box<Field>, count: Option<usize> },
 }
@@ -534,7 +465,6 @@ impl Field {
     pub fn width(&self) -> Option<usize> {
         match self {
             Field::Integral { width, .. } | Field::EnumRef { width, .. } => Some(*width),
-            Field::StructRef { width, .. } => *width,
             _ => None,
         }
     }
@@ -543,6 +473,13 @@ impl Field {
         match self {
             Field::Integral { is_member, .. } | Field::Payload { is_member } => *is_member,
             _ => true,
+        }
+    }
+
+    pub fn class(&self) -> Option<&String> {
+        match self {
+            Field::EnumRef { ty, .. } | Field::StructRef { ty, .. } => Some(ty),
+            _ => None,
         }
     }
 }

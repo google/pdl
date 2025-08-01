@@ -42,19 +42,18 @@ mod packet;
 
 use crate::backends::java::{
     codegen::expr::{cast_symbol, gen_expr, ExprTree},
-    ConstrainedTo, Field, WidthField,
+    inheritance::{ClassHeirarchy, Constraint},
+    Context, Field, WidthField,
 };
 
 use super::{import, Chunk, Class, EndiannessValue, Integral, JavaFile, PacketDef};
 
-impl JavaFile<EndiannessValue> for Class {
-    fn generate(self, endianness: EndiannessValue) -> Tokens<Java> {
+impl JavaFile<&Context> for Class {
+    fn generate(self, context: &Context) -> Tokens<Java> {
         match self {
-            Class::Packet { name, def, parent } => {
-                packet::gen_packet(&name, &def, parent.as_ref(), endianness)
-            }
-            Class::AbstractPacket { name, def, parent, children } => {
-                packet::gen_abstract_packet(&name, &def, parent.as_ref(), &children, endianness)
+            Class::Packet { name, def } => packet::gen_packet(&name, &def, context),
+            Class::AbstractPacket { name, def } => {
+                packet::gen_abstract_packet(&name, &def, context)
             }
             Class::Enum { name, tags, width } => r#enum::gen_enum(&name, &tags, width),
         }
@@ -73,7 +72,7 @@ impl FormatInto<Java> for EndiannessValue {
 }
 
 impl Field {
-    pub fn width_expr(&self) -> Tokens<Java> {
+    pub fn width_expr(&self, heirarchy: &ClassHeirarchy) -> Tokens<Java> {
         match self {
             Field::StructRef { name, .. } => quote!($name.width()),
             Field::Payload { .. } => quote!(payload.length),
@@ -81,7 +80,7 @@ impl Field {
                 let t = ExprTree::new();
                 let root = t.mul(
                     t.symbol(quote!($(val.name()).length), Integral::Int),
-                    t.num(val.width().unwrap()),
+                    t.num(heirarchy.width(val.class().unwrap()).unwrap()),
                 );
                 gen_expr(&t, root)
             }
@@ -144,10 +143,10 @@ impl Field {
         }
     }
 
-    pub fn constraint(&self, to: &ConstrainedTo) -> Tokens<Java> {
+    pub fn constraint(&self, to: &Constraint) -> Tokens<Java> {
         match (self, to) {
-            (Field::Integral { .. }, ConstrainedTo::Integral(i)) => quote!($(*i)),
-            (Field::EnumRef { ty, .. }, ConstrainedTo::EnumTag(tag)) => quote!($ty.$tag),
+            (Field::Integral { .. }, Constraint::Integral(i)) => quote!($(*i)),
+            (Field::EnumRef { ty, .. }, Constraint::EnumTag(tag)) => quote!($ty.$tag),
             _ => panic!("invalid constraint"),
         }
     }

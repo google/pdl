@@ -18,7 +18,7 @@ use genco::{lang::Java, quote, quote_in, tokens::FormatInto, Tokens};
 
 use crate::backends::java::Integral;
 
-type ExprId = usize;
+pub type ExprId = usize;
 
 #[derive(Copy, Clone, Debug)]
 enum BinOp {
@@ -119,6 +119,10 @@ impl ExprTree {
         }
     }
 
+    pub fn sum(&self, exprs: Vec<ExprId>) -> ExprId {
+        self.apply_to_all(exprs, |lhs, rhs| self.add(lhs, rhs))
+    }
+
     pub fn mul(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
         if self.is_literal(lhs, 1) {
             rhs
@@ -171,22 +175,16 @@ impl ExprTree {
         }
     }
 
+    pub fn or_all(&self, exprs: Vec<ExprId>) -> ExprId {
+        self.apply_to_all(exprs, |lhs, rhs| self.or(lhs, rhs))
+    }
+
     pub fn mask(&self, expr: ExprId, width: usize) -> ExprId {
         if self.leaf_ty(expr).is_some_and(|ty| ty.width() == width) {
             expr
         } else {
             self.paren(self.and(expr, self.hex_num(gen_mask_val(width))))
         }
-    }
-
-    pub fn or_all(&self, exprs: Vec<ExprId>) -> ExprId {
-        exprs
-            .into_iter()
-            .reduce(|acc, expr| {
-                self.0.borrow_mut().push(ExprNode::BinOp(expr, BinOp::BitOr, acc));
-                self.get_root()
-            })
-            .unwrap()
     }
 
     pub fn paren(&self, expr: ExprId) -> ExprId {
@@ -223,6 +221,17 @@ impl ExprTree {
             ExprNode::BinOp(self.paren(self.cast(lhs, ty)), op, self.paren(self.cast(rhs, ty)));
         self.0.borrow_mut().push(node);
         self.get_root()
+    }
+
+    fn apply_to_all<F>(&self, exprs: Vec<ExprId>, bin_op: F) -> ExprId
+    where
+        F: Fn(ExprId, ExprId) -> ExprId,
+    {
+        if exprs.is_empty() {
+            self.get_root()
+        } else {
+            exprs.into_iter().reduce(|acc, expr| bin_op(expr, acc)).unwrap()
+        }
     }
 
     fn ty(&self, expr: ExprId) -> Integral {
