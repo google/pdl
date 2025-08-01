@@ -281,7 +281,12 @@ impl ExprTree {
             ExprNode::Number(..) | ExprNode::HexNumber(..) if to == Integral::Long => {
                 quote!($(self.gen_expr(expr))L)
             }
-            ExprNode::Number(..) | ExprNode::HexNumber(..) => quote!($(self.gen_expr(expr))),
+            ExprNode::Number(..) | ExprNode::HexNumber(..) if to == Integral::Int => {
+                quote!($(self.gen_expr(expr)))
+            }
+            ExprNode::Number(..) | ExprNode::HexNumber(..) => {
+                quote!(($to) $(self.gen_expr(expr)))
+            }
             _ if from < to => match (from, to) {
                 (Integral::Byte, Integral::Short) => {
                     quote!((short) Byte.toUnsignedInt($(self.gen_expr(expr))))

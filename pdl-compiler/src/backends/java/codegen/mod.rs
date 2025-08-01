@@ -102,6 +102,7 @@ impl Field {
                 ty.stringify(quote!($(name.strip_suffix("Count").unwrap()).length))
             }
             Field::Integral { name, ty, .. } => ty.stringify(name),
+            Field::Reserved { .. } => quote!("..."),
             Field::EnumRef { name, .. } => quote!($name.toString()),
             Field::StructRef { name, .. } => quote!($name.toString()),
             Field::Payload { .. } => quote!($(&*import::ARRAYS).toString(payload)),
@@ -118,6 +119,7 @@ impl Field {
             Field::StructRef { ty, .. } => quote!($ty),
             Field::Payload { .. } => quote!(byte[]),
             Field::ArrayElem { val, .. } => quote!($(val.ty())[]),
+            other => panic!("cannot ty() {:?}", other),
         }
     }
 
@@ -127,6 +129,7 @@ impl Field {
             Field::EnumRef { name, .. } | Field::StructRef { name, .. } => quote!($name.hashCode()),
             Field::Payload { .. } => quote!($(&*import::ARRAYS).hashCode(payload)),
             Field::ArrayElem { val, .. } => quote!($(&*import::ARRAYS).hashCode($(val.name()))),
+            other => panic!("cannot hash {:?}", other),
         }
     }
 
@@ -140,6 +143,7 @@ impl Field {
             Field::ArrayElem { val, .. } => {
                 quote!($(&*import::ARRAYS).equals($(val.name()), $other))
             }
+            other => panic!("cannot eq {:?}", other),
         }
     }
 
@@ -185,7 +189,7 @@ impl Field {
                     Integral::fitting(width),
                 ),
             )
-        } else if let Some((array_name, field_width)) = self.get_count_field_info(width_fields) {
+        } else if let Some((array_name, _)) = self.get_count_field_info(width_fields) {
             cast_symbol(quote!($array_name.length), Integral::Int, Integral::fitting(width))
         } else {
             quote!($expr)

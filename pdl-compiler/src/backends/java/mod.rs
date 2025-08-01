@@ -276,6 +276,11 @@ impl PacketDef {
                     members.push(member.clone().into());
                     aligner.add_bitfield(member, *width);
                 }
+                ast::FieldDesc::Reserved { width } => {
+                    let member = Field::Reserved { width: *width };
+                    members.push(member.clone());
+                    aligner.add_bitfield(member, *width);
+                }
                 ast::FieldDesc::Payload { size_modifier } => {
                     let member = Field::Payload { is_member: false };
                     members.push(member.clone());
@@ -446,6 +451,7 @@ pub enum WidthField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Field {
     Integral { name: String, ty: Integral, width: usize, is_member: bool },
+    Reserved { width: usize },
     EnumRef { name: String, ty: String, width: usize },
     StructRef { name: String, ty: String },
     Payload { is_member: bool },
@@ -456,6 +462,7 @@ impl Field {
     pub fn name(&self) -> &str {
         match self {
             Field::Integral { name, .. } | Field::EnumRef { name, .. } => name,
+            Field::Reserved { .. } => "reserved",
             Field::StructRef { name, .. } => name,
             Field::Payload { .. } => "payload",
             Field::ArrayElem { val, .. } => val.name(),
@@ -464,15 +471,10 @@ impl Field {
 
     pub fn width(&self) -> Option<usize> {
         match self {
-            Field::Integral { width, .. } | Field::EnumRef { width, .. } => Some(*width),
+            Field::Integral { width, .. }
+            | Field::EnumRef { width, .. }
+            | Field::Reserved { width } => Some(*width),
             _ => None,
-        }
-    }
-
-    pub fn is_member(&self) -> bool {
-        match self {
-            Field::Integral { is_member, .. } | Field::Payload { is_member } => *is_member,
-            _ => true,
         }
     }
 
@@ -481,6 +483,18 @@ impl Field {
             Field::EnumRef { ty, .. } | Field::StructRef { ty, .. } => Some(ty),
             _ => None,
         }
+    }
+
+    pub fn is_member(&self) -> bool {
+        match self {
+            Field::Integral { is_member, .. } | Field::Payload { is_member } => *is_member,
+            Field::Reserved { .. } => false,
+            _ => true,
+        }
+    }
+
+    pub fn is_reserved(&self) -> bool {
+        matches!(self, Self::Reserved { .. })
     }
 }
 
@@ -494,17 +508,21 @@ pub enum Integral {
 
 impl Integral {
     pub fn fitting(width: impl Into<usize>) -> Self {
+        Self::try_fitting(width).expect("width too large!")
+    }
+
+    pub fn try_fitting(width: impl Into<usize>) -> Option<Self> {
         let width: usize = width.into();
         if width <= 8 {
-            Integral::Byte
+            Some(Integral::Byte)
         } else if width <= 16 {
-            Integral::Short
+            Some(Integral::Short)
         } else if width <= 32 {
-            Integral::Int
+            Some(Integral::Int)
         } else if width <= 64 {
-            Integral::Long
+            Some(Integral::Long)
         } else {
-            panic!("Width too large!")
+            None
         }
     }
 

@@ -152,8 +152,9 @@ impl ClassHeirarchy {
 
         for field in fields {
             match field {
-                Field::Integral { width, .. } => static_width += width,
-                Field::EnumRef { width, .. } => static_width += width,
+                Field::Integral { width, .. }
+                | Field::EnumRef { width, .. }
+                | Field::Reserved { width } => static_width += width,
                 Field::StructRef { name, ty } => {
                     if let Some(width) = self.width(ty) {
                         static_width += width

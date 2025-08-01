@@ -89,16 +89,24 @@ little_endian_packets
 // }
 
 
-struct a_mostly_static_parent {
-    parent_field: 8,
-    _payload_,
-}
+// struct a_mostly_static_parent {
+//     parent_field: 8,
+//     _payload_,
+// }
 
-struct a_static_child : a_mostly_static_parent {
-    child_field: 16,
-}
+// struct a_static_child : a_mostly_static_parent {
+//     _reserved_: 13,
+//     child_field: 51,
+// }
 
-packet ChildStructField {
-    _size_(array): 8,
-    array: a_static_child[],
+// packet ChildStructField {
+//     _size_(array): 8,
+//     array: a_static_child[],
+// }
+
+
+// TOOD: Aligner bugged in this case
+struct a_static_child {
+    field_1: 13,
+    field_2: 51,
 }

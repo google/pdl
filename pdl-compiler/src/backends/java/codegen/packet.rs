@@ -375,19 +375,23 @@ fn encoder(
                             .iter()
                             .map(|field| {
                                 t.lshift(
-                                    t.rshift(
-                                        t.symbol(
-                                            field
-                                                .symbol
-                                                .try_encode_to_num(
-                                                    field.symbol.name(),
-                                                    width_fields,
-                                                )
-                                                .unwrap(),
-                                            Integral::fitting(field.symbol.width().unwrap()),
-                                        ),
-                                        t.num(field.symbol_offset),
-                                    ),
+                                    if field.symbol.is_reserved() {
+                                        t.num(0)
+                                    } else {
+                                        t.rshift(
+                                            t.symbol(
+                                                field
+                                                    .symbol
+                                                    .try_encode_to_num(
+                                                        field.symbol.name(),
+                                                        width_fields,
+                                                    )
+                                                    .unwrap(),
+                                                Integral::fitting(field.symbol.width().unwrap()),
+                                            ),
+                                            t.num(field.symbol_offset),
+                                        )
+                                    },
                                     t.num(field.chunk_offset),
                                 )
                             })
@@ -427,7 +431,7 @@ fn encoder(
                 ));
             }
             Chunk::UnsizedBytes(Field::Payload { .. }) => tokens.extend(quote!(buf.put(payload);)),
-            Chunk::UnsizedBytes(member @ Field::ArrayElem { val, count }) => {
+            Chunk::UnsizedBytes(member @ Field::ArrayElem { .. }) => {
                 tokens.extend(quote!(
                     for (int i = 0; i < $(member.name()).length; i++) {
                         buf.put($(member.name())[i].toBytes());
@@ -464,13 +468,13 @@ fn decoder(
                 );
 
                 for field in fields.iter() {
+                    let field_type = Integral::try_fitting(field.symbol.width().unwrap())
+                        .unwrap_or(Integral::Long);
+
                     if field.is_partial {
                         partials.push(t.lshift(
                             t.mask(
-                                t.cast(
-                                    t.symbol(chunk_name, chunk_type),
-                                    Integral::fitting(field.symbol.width().unwrap()),
-                                ),
+                                t.cast(t.symbol(chunk_name, chunk_type), field_type),
                                 field.width,
                             ),
                             t.num(field.symbol_offset),
@@ -478,6 +482,23 @@ fn decoder(
 
                         if field.symbol_offset + field.width == field.symbol.width().unwrap() {
                             // We have all partials of the value and can write the decoder for it
+                            if !field.symbol.is_reserved() {
+                                tokens.extend(assign(
+                                    field.symbol.ty(),
+                                    field.symbol.name(),
+                                    field
+                                        .symbol
+                                        .try_decode_from_num(gen_expr(
+                                            &t,
+                                            t.or_all(partials.drain(..).collect()),
+                                        ))
+                                        .unwrap(),
+                                ));
+                            }
+                            t.clear();
+                        }
+                    } else {
+                        if !field.symbol.is_reserved() {
                             tokens.extend(assign(
                                 field.symbol.ty(),
                                 field.symbol.name(),
@@ -485,33 +506,20 @@ fn decoder(
                                     .symbol
                                     .try_decode_from_num(gen_expr(
                                         &t,
-                                        t.or_all(partials.drain(..).collect()),
+                                        t.cast(
+                                            t.mask(
+                                                t.rshift(
+                                                    t.symbol(chunk_name, chunk_type),
+                                                    t.num(field.chunk_offset),
+                                                ),
+                                                field.width,
+                                            ),
+                                            field_type,
+                                        ),
                                     ))
                                     .unwrap(),
                             ));
-                            t.clear();
                         }
-                    } else {
-                        tokens.extend(assign(
-                            field.symbol.ty(),
-                            field.symbol.name(),
-                            field
-                                .symbol
-                                .try_decode_from_num(gen_expr(
-                                    &t,
-                                    t.cast(
-                                        t.mask(
-                                            t.rshift(
-                                                t.symbol(chunk_name, chunk_type),
-                                                t.num(field.chunk_offset),
-                                            ),
-                                            field.width,
-                                        ),
-                                        Integral::fitting(field.symbol.width().unwrap()),
-                                    ),
-                                ))
-                                .unwrap(),
-                        ));
                         t.clear();
                     }
                 }
