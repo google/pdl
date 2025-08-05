@@ -20,17 +20,18 @@ use genco::{
     Tokens,
 };
 use heck::ToUpperCamelCase;
-use serde_json::{Number, Value};
+use serde_json::{Map, Value};
 use std::{
     collections::{HashMap, HashSet},
     fs, iter,
     path::{Path, PathBuf},
+    slice::Iter,
     str,
 };
 
-use super::{import, Integral, JavaFile};
+use super::{import, Class, Integral, JavaFile};
 use crate::{
-    ast::{self, Decl, DeclDesc, Field},
+    ast::{self, Decl, DeclDesc, Field, FieldDesc},
     backends::common::test::{Packet, TestVector},
     parser,
 };
@@ -128,7 +129,11 @@ impl TestVector {
         quote_fn! {
             $(java::block_comment(iter::once(format!("0x{}", &self.packed))))$['\n']
             static void testEncode$test_id() {
-                $(maybe_child.to_upper_camel_case()) packet = $(self.build_packet_from_fields(id, decls));
+                $(Class::name_from_id(maybe_child)) packet = $(build_packet_from_fields(
+                    self.packet.as_ref().unwrap_or(id),
+                    self.unpacked.as_object().unwrap(),
+                    decls
+                ));
                 byte[] encodedPacket = packet.toBytes();
                 byte[] expectedBytes = $(hex_to_array(&self.packed));
                 assert $(&*import::ARRAYS).equals(expectedBytes, encodedPacket);
@@ -142,42 +147,21 @@ impl TestVector {
         test_id: usize,
         decls: &'a HashMap<String, Decl>,
     ) -> impl FormatInto<Java> + 'a {
-        let packet_name = id.to_upper_camel_case();
+        let packet_name = format!(
+            "{}{}",
+            if self.unpacked.as_object().unwrap().contains_key("payload") { "Unknown" } else { "" },
+            self.packet
+                .as_ref()
+                .map(|child_id| Class::name_from_id(child_id))
+                .unwrap_or(Class::name_from_id(id))
+        );
 
         quote_fn! {
             $(java::block_comment(iter::once(format!("{}", &self.unpacked))))$['\n']
             static void testDecode$test_id() {
-                $(if let Some(child) = &self.packet {
-                    $(&packet_name) genericDecodedPacket = $(&packet_name).fromBytes($(hex_to_array(&self.packed)));
-                    if (!(genericDecodedPacket instanceof $(child.to_upper_camel_case()) decodedPacket))
-                        throw new AssertionError();
-                } else {
-                    $(&packet_name) decodedPacket = $(&packet_name).fromBytes($(hex_to_array(&self.packed)));
-                })
+                $(&packet_name) decodedPacket = $(&packet_name).fromBytes($(hex_to_array(&self.packed)));
                 $(self.gen_asserts_for_fields(id, decls))
             }
-        }
-    }
-
-    fn build_packet_from_fields<'a>(
-        &'a self,
-        id: &'a String,
-        decls: &'a HashMap<String, Decl>,
-    ) -> impl FormatInto<Java> + 'a {
-        let fields_json = self.unpacked.as_object().unwrap();
-        let maybe_child = self.packet.as_ref().unwrap_or(id);
-        let decl = get_decl(maybe_child, decls);
-        let constraints: HashSet<&String> = decl.constraints().map(|c| &c.id).collect();
-
-        quote_fn! {
-            new $(maybe_child.to_upper_camel_case()).Builder()
-                $(for (field_id, value) in fields_json.iter() {
-                    $(if !constraints.contains(field_id) {
-                        .set$(field_id.to_upper_camel_case())(
-                            $(get_field(maybe_child, field_id, decls).construct(value, decls)))
-                    })
-                })
-                .build()
         }
     }
 
@@ -207,36 +191,49 @@ impl Field {
         decls: &'a HashMap<String, Decl>,
     ) -> impl FormatInto<Java> + 'a {
         match &self.desc {
-            ast::FieldDesc::Scalar { width, .. } => {
+            FieldDesc::Scalar { width, .. }
+            | FieldDesc::Size { width, .. }
+            | FieldDesc::Count { width, .. } => {
                 Integral::fitting(*width).literal(value.as_number().unwrap().as_u64())
             }
-            ast::FieldDesc::Typedef { type_id, .. } => match &get_decl(&type_id, decls).desc {
-                DeclDesc::Enum { width, .. } => {
+            FieldDesc::Reserved { width } => Integral::fitting(*width).literal(0),
+            FieldDesc::Typedef { type_id, .. } => {
+                quote!($(get_decl(&type_id, decls).desc.construct(value, decls)))
+            }
+            FieldDesc::Checksum { field_id } => todo!(),
+            FieldDesc::Padding { size } => todo!(),
+            FieldDesc::ElementSize { field_id, width } => todo!(),
+            FieldDesc::Body => todo!(),
+            FieldDesc::Payload { size_modifier } => {
+                quote!(new byte[]{
+                    $(for value in value.as_array().unwrap() join (, ) {
+                        $(Integral::Byte.literal(value.as_number().unwrap().as_u64()))
+                    })
+                })
+            }
+            FieldDesc::FixedScalar { width, value } => todo!(),
+            FieldDesc::FixedEnum { enum_id, tag_id } => todo!(),
+            FieldDesc::Array { id, width, type_id, size_modifier, size } => {
+                if let Some(width) = width {
                     let ty = Integral::fitting(*width);
-                    quote!(
-                        $(type_id.to_upper_camel_case())
-                            .from$(ty.capitalized())($(ty.literal(value.as_number().unwrap().as_u64()))))
+                    quote!(new $ty[]{
+                        $(for value in value.as_array().unwrap() join (, ) {
+                            $(ty.literal(value.as_number().unwrap().as_u64()))
+                        })
+                    })
+                } else if let Some(id) = type_id {
+                    let ty = get_decl(id, decls);
+                    quote!(new $(Class::name_from_id(id))[]{
+                        $(for value in value.as_array().unwrap() join (, ) {
+                            $(ty.desc.construct(value, decls))
+                        })
+                    })
+                } else {
+                    panic!("invalid array element")
                 }
-                DeclDesc::Checksum { id, function, width } => todo!(),
-                DeclDesc::CustomField { id, width, function } => todo!(),
-                DeclDesc::Packet { id, constraints, fields, parent_id } => todo!(),
-                DeclDesc::Struct { id, constraints, fields, parent_id } => todo!(),
-                DeclDesc::Group { id, fields } => todo!(),
-                DeclDesc::Test { type_id, test_cases } => todo!(),
-            },
-            ast::FieldDesc::Checksum { field_id } => todo!(),
-            ast::FieldDesc::Padding { size } => todo!(),
-            ast::FieldDesc::Size { field_id, width } => todo!(),
-            ast::FieldDesc::Count { field_id, width } => todo!(),
-            ast::FieldDesc::ElementSize { field_id, width } => todo!(),
-            ast::FieldDesc::Body => todo!(),
-            ast::FieldDesc::Payload { size_modifier } => todo!(),
-            ast::FieldDesc::FixedScalar { width, value } => todo!(),
-            ast::FieldDesc::FixedEnum { enum_id, tag_id } => todo!(),
-            ast::FieldDesc::Reserved { width } => todo!(),
-            ast::FieldDesc::Array { id, width, type_id, size_modifier, size } => todo!(),
-            ast::FieldDesc::Flag { id, optional_field_ids } => todo!(),
-            ast::FieldDesc::Group { group_id, constraints } => todo!(),
+            }
+            FieldDesc::Flag { id, optional_field_ids } => todo!(),
+            FieldDesc::Group { group_id, constraints } => todo!(),
         }
     }
 
@@ -245,25 +242,69 @@ impl Field {
         field: impl FormatInto<Java> + 'a,
         other: impl FormatInto<Java> + 'a,
     ) -> impl FormatInto<Java> + 'a {
-        quote_fn! {
-            $(match &self.desc {
-                ast::FieldDesc::Scalar { .. } => $field == $other,
-                ast::FieldDesc::Body
-                | ast::FieldDesc::Payload { .. } => Arrays.equals($field, $other),
-                ast::FieldDesc::Typedef { .. }
-                | ast::FieldDesc::FixedEnum { .. } => $field.equals($other),
-                ast::FieldDesc::Checksum { .. } => todo!(),
-                ast::FieldDesc::Padding { .. } => todo!(),
-                ast::FieldDesc::Size { .. } => todo!(),
-                ast::FieldDesc::Count { .. } => todo!(),
-                ast::FieldDesc::ElementSize { .. } => todo!(),
-                ast::FieldDesc::FixedScalar { .. } => todo!(),
-                ast::FieldDesc::Reserved { .. } => todo!(),
-                ast::FieldDesc::Array { .. } => todo!(),
-                ast::FieldDesc::Flag { .. } => todo!(),
-                ast::FieldDesc::Group { .. } => todo!(),
-            })
+        match &self.desc {
+            FieldDesc::Scalar { .. } | FieldDesc::Size { .. } | FieldDesc::Count { .. } => {
+                quote!($field == $other)
+            }
+            FieldDesc::Body | FieldDesc::Payload { .. } | FieldDesc::Array { .. } => {
+                quote!(Arrays.equals($field, $other))
+            }
+            FieldDesc::Typedef { .. } | FieldDesc::FixedEnum { .. } => {
+                quote!($field.equals($other))
+            }
+            FieldDesc::Checksum { .. } => todo!(),
+            FieldDesc::Padding { .. } => todo!(),
+            FieldDesc::ElementSize { .. } => todo!(),
+            FieldDesc::FixedScalar { .. } => todo!(),
+            FieldDesc::Reserved { .. } => quote!(),
+            FieldDesc::Flag { .. } => todo!(),
+            FieldDesc::Group { .. } => todo!(),
         }
+    }
+}
+
+impl DeclDesc {
+    fn construct<'a>(
+        &'a self,
+        value: &'a Value,
+        decls: &'a HashMap<String, Decl>,
+    ) -> impl FormatInto<Java> + 'a {
+        match self {
+            DeclDesc::Enum { id, width, .. } => {
+                let ty = Integral::fitting(*width);
+                quote!($(Class::name_from_id(id))
+                    .from$(ty.capitalized())($(ty.literal(value.as_number().unwrap().as_u64()))))
+            }
+            DeclDesc::Checksum { id, function, width } => todo!(),
+            DeclDesc::CustomField { id, width, function } => todo!(),
+            DeclDesc::Packet { id, constraints, fields, parent_id } => todo!(),
+            DeclDesc::Struct { id, constraints, fields, parent_id } => {
+                quote!($(build_packet_from_fields(&id, value.as_object().unwrap(), decls)))
+            }
+            DeclDesc::Group { id, fields } => todo!(),
+            DeclDesc::Test { type_id, test_cases } => todo!(),
+        }
+    }
+}
+
+fn build_packet_from_fields<'a>(
+    id: &'a str,
+    fields_json: &'a Map<String, Value>,
+    decls: &'a HashMap<String, Decl>,
+) -> impl FormatInto<Java> + 'a {
+    let decl = get_decl(id, decls);
+    let constraints: HashSet<&String> = decl.constraints().map(|c| &c.id).collect();
+    let is_unknown_child = fields_json.contains_key("payload");
+
+    quote_fn! {
+        new $(if is_unknown_child => Unknown)$(Class::name_from_id(id)).Builder()
+            $(for (field_id, value) in fields_json.iter() {
+                $(if !constraints.contains(field_id) {
+                    .set$(field_id.to_upper_camel_case())(
+                        $(get_field(id, field_id, decls).construct(value, decls)))
+                })
+            })
+            .build()
     }
 }
 
@@ -284,14 +325,23 @@ fn get_decl<'a>(id: &'a str, decls: &'a HashMap<String, Decl>) -> &'a Decl {
 
 fn get_field<'a>(id: &'a str, field_id: &'a str, decls: &'a HashMap<String, Decl>) -> &'a Field {
     let decl = get_decl(id, decls);
-    let field = decl.fields().find(|field| field.id().is_some_and(|id| id == field_id));
-    // dbg!(decl, id, field_id);
+    let field = json_id_to_field(field_id, decl.fields());
+    // dbg!(decl, id, field_id, field);
 
     if let Some(field) = field {
         field
     } else if let Some(parent_id) = decl.parent_id() {
         get_field(parent_id, field_id, decls)
     } else {
-        panic!("packet {} not found in pdl file under test", id);
+        panic!("field {} not found in packet {} in pdl file under test", field_id, id);
     }
+}
+
+fn json_id_to_field<'a>(field_id: &'a str, mut fields: Iter<'a, Field>) -> Option<&'a Field> {
+    fields.find(|field| match field.desc {
+        _ if field.id().is_some_and(|id| id == field_id) => true,
+        FieldDesc::Payload { .. } if field_id == "payload" => true,
+        FieldDesc::Body { .. } if field_id == "body" => true,
+        _ => false,
+    })
 }

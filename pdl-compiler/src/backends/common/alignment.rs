@@ -15,7 +15,7 @@
 use std::{
     cmp::Reverse,
     fmt::Debug,
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut, Range},
 };
 
 pub trait Symbol: Clone + Debug + Eq {}
@@ -56,6 +56,15 @@ pub enum Chunk<S: Symbol> {
     UnsizedBytes(S),
 }
 
+impl<S: Symbol> Chunk<S> {
+    fn get_bitpack(self) -> Option<(Vec<Field<S>>, usize)> {
+        match self {
+            Chunk::Bitpack { fields, width } => Some((fields, width)),
+            _ => None,
+        }
+    }
+}
+
 /// A data structure that packs a set of fields, which may not be byte-aligned, into a sequence of byte algined chunks.
 /// This is useful for generating encoding/decoding code in your language.
 #[derive(Debug, Clone)]
@@ -63,6 +72,45 @@ pub struct ByteAligner<S: Symbol> {
     /// Sorted in descending order.
     allowed_chunk_widths: Vec<usize>,
     chunks: Vec<Chunk<S>>,
+}
+
+struct Chunker<'a> {
+    allowed_chunk_widths: &'a Vec<usize>,
+    remaining_width: usize,
+    symbol_offset: usize,
+}
+
+impl<'a> Chunker<'a> {
+    fn new(symbol_width: usize, allowed_chunk_widths: &'a Vec<usize>) -> Self {
+        Self {
+            allowed_chunk_widths: allowed_chunk_widths,
+            remaining_width: symbol_width,
+            symbol_offset: 0,
+        }
+    }
+}
+
+impl Iterator for Chunker<'_> {
+    type Item = Partial;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining_width == 0 {
+            None
+        } else {
+            for chunk_width in self.allowed_chunk_widths.iter() {
+                if *chunk_width <= self.remaining_width {
+                    let partial = Partial { width: *chunk_width, offset: self.symbol_offset };
+                    self.symbol_offset += chunk_width;
+                    self.remaining_width -= chunk_width;
+                    return Some(partial);
+                }
+            }
+            let partial = Partial { width: self.remaining_width, offset: self.symbol_offset };
+            self.symbol_offset += self.remaining_width;
+            self.remaining_width = 0;
+            Some(partial)
+        }
+    }
 }
 
 impl<S: Symbol> ByteAligner<S> {
@@ -84,105 +132,133 @@ impl<S: Symbol> ByteAligner<S> {
     ///
     /// Each `Chunk` within the vec begins and ends at a byte boundary, so the returned data structure
     /// represents a straightforward way to encode and decode the fields in your language.
-    pub fn align(self) -> Result<Alignment<S>, &'static str> {
+    pub fn align(mut self) -> Result<Alignment<S>, &'static str> {
         match self.chunks.last() {
-            Some(Chunk::Bitpack { width, .. }) if !self.allowed_chunk_widths.contains(width) => {
+            Some(Chunk::Bitpack { width, .. }) if *width % 8 != 0 => {
                 dbg!(self);
                 Err("Provided fields could not be aligned to the allowed chunk widths")
             }
             None => Err("No fields provided"),
-            _ => Ok(Alignment(self.chunks)),
+            _ => {
+                self.repack_last_chunk();
+                Ok(Alignment(self.chunks))
+            }
         }
     }
 
     pub fn add_bitfield(&mut self, symbol: S, width: usize) {
-        self.add_offset_field(symbol, width, 0, false);
+        match self.chunks.last_mut() {
+            Some(Chunk::Bitpack { fields, width: chunk_width }) if *chunk_width % 8 != 0 => {
+                // Update this chunk with field
+                if *chunk_width + width > *self.allowed_chunk_widths.first().unwrap() {
+                    panic!("total field width grew beyond maximum chunk width before aligning to a byte boundary")
+                }
+                fields.push(Field {
+                    chunk_offset: *chunk_width,
+                    symbol: symbol,
+                    width,
+                    symbol_offset: 0,
+                    is_partial: false,
+                });
+                *chunk_width += width;
+            }
+            _ => {
+                // Add field to new chunk
+                self.repack_last_chunk();
+                self.chunks.push(Chunk::Bitpack {
+                    fields: vec![Field {
+                        chunk_offset: 0,
+                        symbol: symbol.clone(),
+                        width,
+                        symbol_offset: 0,
+                        is_partial: false,
+                    }],
+                    width,
+                });
+            }
+        }
+    }
+
+    fn repack_last_chunk(&mut self) {
+        if let Some(Chunk::Bitpack { width, .. }) = self.chunks.last() {
+            if !self.allowed_chunk_widths.contains(width) {
+                let (old_fields, old_chunk_width) =
+                    self.chunks.pop().unwrap().get_bitpack().unwrap();
+
+                let mut cur_width = 0;
+                while cur_width != old_chunk_width {
+                    for chunk_width in self.allowed_chunk_widths.iter() {
+                        if *chunk_width <= (old_chunk_width - cur_width) {
+                            self.chunks.push(Chunk::Bitpack {
+                                fields: Self::rechunk_to_range(
+                                    &old_fields,
+                                    cur_width..(cur_width + *chunk_width),
+                                ),
+                                width: *chunk_width,
+                            });
+                            cur_width += *chunk_width
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn rechunk_to_range(fields: &Vec<Field<S>>, range: Range<usize>) -> Vec<Field<S>> {
+        let mut in_range = Vec::new();
+
+        for field in fields {
+            let field_range = field.chunk_offset..(field.chunk_offset + field.width);
+
+            if range.contains(&field_range.start) && range.contains(&(field_range.end - 1)) {
+                in_range.push(field.clone());
+            } else if field_range.contains(&range.start) && field_range.contains(&(range.end - 1)) {
+                in_range.push(Field {
+                    chunk_offset: range.start,
+                    symbol: field.symbol.clone(),
+                    width: range.end - range.start,
+                    symbol_offset: range.start - field_range.start,
+                    is_partial: true,
+                });
+            } else if range.contains(&field_range.start) {
+                in_range.push(Field {
+                    chunk_offset: field_range.start,
+                    symbol: field.symbol.clone(),
+                    width: range.end - field_range.start,
+                    symbol_offset: 0,
+                    is_partial: true,
+                });
+            } else if range.contains(&(field_range.end - 1)) {
+                in_range.push(Field {
+                    chunk_offset: range.start,
+                    symbol: field.symbol.clone(),
+                    width: field_range.end - range.start,
+                    symbol_offset: range.start - field_range.start,
+                    is_partial: true,
+                });
+            }
+        }
+
+        in_range
     }
 
     pub fn add_sized_bytes(&mut self, symbol: S, width: usize) {
         if !self.is_aligned() {
             panic!("sized fields must start at a byte boundary")
         }
-        let mut alignment = Vec::new();
-
-        let mut remaining_width = width;
-        while remaining_width != 0 {
-            for chunk_width in self.allowed_chunk_widths.iter() {
-                if remaining_width >= *chunk_width {
-                    let offset = alignment
-                        .last()
-                        .map(|Partial { width, offset }| offset + width)
-                        .unwrap_or(0);
-
-                    alignment.push(Partial { width: *chunk_width, offset });
-                    remaining_width -= *chunk_width;
-                }
-            }
-        }
-
-        self.chunks.push(Chunk::SizedBytes { symbol, alignment, width });
+        self.chunks.push(Chunk::SizedBytes {
+            symbol,
+            alignment: Vec::from_iter(Chunker::new(width, &self.allowed_chunk_widths)),
+            width,
+        });
     }
 
     pub fn add_bytes(&mut self, symbol: S) {
         if !self.is_aligned() {
             panic!("Bytes must start a byte boundary")
         }
+
         self.chunks.push(Chunk::UnsizedBytes(symbol));
-    }
-
-    fn add_offset_field(
-        &mut self,
-        symbol: S,
-        width: usize,
-        symbol_offset: usize,
-        is_partial: bool,
-    ) {
-        if self.is_aligned() {
-            self.chunks.push(Chunk::Bitpack { fields: Vec::new(), width: 0 })
-        }
-
-        let (fields, chunk_width) =
-            if let Some(Chunk::Bitpack { fields, width }) = self.chunks.last_mut() {
-                (fields, width)
-            } else {
-                unreachable!()
-            };
-
-        if self.allowed_chunk_widths.contains(&(*chunk_width + width))
-            || width < *self.allowed_chunk_widths.last().unwrap()
-        {
-            fields.push(Field {
-                chunk_offset: *chunk_width,
-                symbol: symbol.clone(),
-                width,
-                symbol_offset,
-                is_partial,
-            });
-            *chunk_width += width;
-        } else {
-            let width_for_this_chunk = *self
-                .allowed_chunk_widths
-                .iter()
-                .find(|allowed_width| **allowed_width <= width)
-                .unwrap();
-            let width_for_next_chunk = width - width_for_this_chunk;
-
-            fields.push(Field {
-                chunk_offset: *chunk_width,
-                symbol: symbol.clone(),
-                width: width_for_this_chunk,
-                symbol_offset,
-                is_partial: true,
-            });
-            *chunk_width += width_for_this_chunk;
-
-            self.add_offset_field(
-                symbol,
-                width_for_next_chunk,
-                symbol_offset + width_for_this_chunk,
-                true,
-            );
-        }
     }
 
     fn is_aligned(&self) -> bool {

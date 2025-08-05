@@ -27,6 +27,7 @@ enum BinOp {
     BitAnd,
     BitOr,
     Add,
+    Sub,
     Multiply,
     Divide,
 }
@@ -40,6 +41,7 @@ impl FormatInto<Java> for BinOp {
                 BinOp::BitAnd => &,
                 BinOp::BitOr => |,
                 BinOp::Add => +,
+                BinOp::Sub => -,
                 BinOp::Multiply => *,
                 BinOp::Divide => /,
             })
@@ -121,6 +123,14 @@ impl ExprTree {
 
     pub fn sum(&self, exprs: Vec<ExprId>) -> ExprId {
         self.apply_to_all(exprs, |lhs, rhs| self.add(lhs, rhs))
+    }
+
+    pub fn sub(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
+        if self.is_literal(rhs, 0) {
+            lhs
+        } else {
+            self.op(lhs, BinOp::Sub, rhs)
+        }
     }
 
     pub fn mul(&self, lhs: ExprId, rhs: ExprId) -> ExprId {

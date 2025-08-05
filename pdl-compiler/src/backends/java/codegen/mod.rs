@@ -80,7 +80,11 @@ impl Field {
                 let t = ExprTree::new();
                 let root = t.mul(
                     t.symbol(quote!($(val.name()).length), Integral::Int),
-                    t.num(heirarchy.width(val.class().unwrap()).unwrap()),
+                    t.num(
+                        val.width()
+                            .unwrap_or_else(|| heirarchy.width(val.class().unwrap()).unwrap())
+                            / 8,
+                    ),
                 );
                 gen_expr(&t, root)
             }
@@ -184,7 +188,7 @@ impl Field {
                             quote!($(if array_name == "payload" { payload.capacity() } else { $array_name.length })),
                             Integral::Int,
                         ),
-                        t.num(elem_width),
+                        t.num(elem_width / 8),
                     ),
                     Integral::fitting(width),
                 ),
@@ -297,12 +301,19 @@ impl FormatInto<Java> for Integral {
 }
 
 impl FormatInto<Java> for &Integral {
-    fn format_into(self, tokens: &mut java::Tokens) {
+    fn format_into(self, tokens: &mut Tokens<Java>) {
         quote_in!(*tokens => $(match self {
             Integral::Byte => byte,
             Integral::Short => short,
             Integral::Int => int,
             Integral::Long => long,
         }));
+    }
+}
+
+fn byte_buffer_to_array(expr: &Tokens<Java>) -> Tokens<Java> {
+    quote! {
+        byte[] tmp = new byte[$expr.remaining()];
+        $expr.get(tmp);
     }
 }

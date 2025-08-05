@@ -81,7 +81,6 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
     let mut heirarchy = ClassHeirarchy::new();
 
     for decl in file.declarations.iter() {
-        dbg!(decl.id());
         match &decl.desc {
             // If this is a parent packet, make a new abstract class and defer parenthood to it.
             ast::DeclDesc::Packet { id, fields, parent_id, constraints }
@@ -90,12 +89,12 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
                     matches!(&field.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body)
                 }) =>
             {
-                let parent_name = id.to_upper_camel_case();
+                let parent_name = Class::name_from_id(id);
                 let parent_def = PacketDef::from_fields(fields, &classes, &heirarchy);
 
                 if let Some(parent_id) = parent_id {
                     let grandparent = classes
-                        .get_mut(&parent_id.to_upper_camel_case())
+                        .get_mut(&Class::name_from_id(parent_id))
                         .expect("Packet inherits from unknown parent");
 
                     heirarchy.add_child(
@@ -124,11 +123,11 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
             // If this is a child packet, set its parent to the appropriate abstract class.
             ast::DeclDesc::Packet { id, constraints, fields, parent_id: Some(parent_id) }
             | ast::DeclDesc::Struct { id, constraints, fields, parent_id: Some(parent_id) } => {
-                let child_name = id.to_upper_camel_case();
+                let child_name = Class::name_from_id(id);
                 let def = PacketDef::from_fields(fields, &classes, &heirarchy);
 
                 let parent = classes
-                    .get_mut(&parent_id.to_upper_camel_case())
+                    .get_mut(&Class::name_from_id(parent_id))
                     .expect("Packet inherits from unknown parent");
 
                 heirarchy.add_child(
@@ -142,14 +141,14 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
             // Otherwise, the packet has no inheritence (no parent and no children)
             ast::DeclDesc::Packet { id, fields, parent_id: None, .. }
             | ast::DeclDesc::Struct { id, fields, parent_id: None, .. } => {
-                let name = id.to_upper_camel_case();
+                let name = Class::name_from_id(id);
                 let def = PacketDef::from_fields(fields, &classes, &heirarchy);
 
                 heirarchy.add_class(name.clone(), &def.members);
                 classes.insert(name.clone(), Class::Packet { name, def });
             }
             ast::DeclDesc::Enum { id, tags, width } => {
-                let name = id.to_upper_camel_case();
+                let name = Class::name_from_id(id);
                 classes
                     .insert(name.clone(), Class::Enum { name, tags: tags.clone(), width: *width });
             }
@@ -213,6 +212,14 @@ pub enum Class {
 }
 
 impl Class {
+    fn name_from_id(id: &str) -> String {
+        if id.ends_with("_") {
+            format!("{}_", id.to_upper_camel_case())
+        } else {
+            id.to_upper_camel_case()
+        }
+    }
+
     fn new_parent_with_default_child(name: String, def: PacketDef) -> (Self, Self) {
         let child_alignment = {
             let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
@@ -241,6 +248,13 @@ impl Class {
             Class::Packet { name, .. }
             | Class::AbstractPacket { name, .. }
             | Class::Enum { name, .. } => name,
+        }
+    }
+
+    pub fn width(&self) -> Option<usize> {
+        match self {
+            Class::Enum { width, .. } => Some(*width),
+            _ => None,
         }
     }
 }
@@ -288,7 +302,7 @@ impl PacketDef {
                     if let Some(width) = staged_size_fields.remove("payload") {
                         width_fields.insert(
                             String::from("payload"),
-                            WidthField::Size { field_width: width, elem_width: 1 },
+                            WidthField::Size { field_width: width, elem_width: 8 },
                         );
                     }
                 }
@@ -318,7 +332,7 @@ impl PacketDef {
                     );
                 }
                 ast::FieldDesc::Typedef { id, type_id } => {
-                    let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
+                    let class = classes.get(&Class::name_from_id(type_id)).unwrap();
                     match &class {
                         Class::Enum { width, .. } => {
                             let member = Field::EnumRef {
@@ -360,7 +374,7 @@ impl PacketDef {
                             (val, *width)
                         }
                         (None, Some(type_id)) => {
-                            let class = classes.get(&type_id.to_upper_camel_case()).unwrap();
+                            let class = classes.get(&Class::name_from_id(type_id)).unwrap();
                             (
                                 if let Class::Enum { width, .. } = class {
                                     let val = Field::ArrayElem {
@@ -390,9 +404,11 @@ impl PacketDef {
                                     aligner.add_bytes(val.clone());
                                     val
                                 },
-                                heirarchy
-                                    .width(class.name())
-                                    .expect("Can't have array of non-static element"),
+                                class.width().unwrap_or_else(|| {
+                                    heirarchy
+                                        .width(class.name())
+                                        .expect("Can't have array of non-static element")
+                                }),
                             )
                         }
                         _ => panic!("invalid array field"),

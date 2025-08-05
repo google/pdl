@@ -544,7 +544,7 @@ fn decoder(
                         .collect(),
                 );
 
-                tokens.extend(declare_array_count(elem, *count, &def.width_fields));
+                tokens.extend(declare_array_count(elem, *count, &def.width_fields, &ctx.heirarchy));
                 tokens.extend(quote!(
                     $(member.ty()) $(name) = new $(elem.ty())[$(name)Count];
                     for (int i = 0; i < $(name)Count; i++) {
@@ -555,7 +555,7 @@ fn decoder(
             }
             Chunk::UnsizedBytes(member @ Field::ArrayElem { val, count }) => {
                 let name = member.name();
-                tokens.extend(declare_array_count(val, *count, &def.width_fields));
+                tokens.extend(declare_array_count(val, *count, &def.width_fields, &ctx.heirarchy));
                 tokens.extend(quote!(
                     $(member.ty()) $name = new $(val.ty())[$(name)Count];
                     for (int i = 0; i < $(name)Count; i++) {
@@ -566,7 +566,7 @@ fn decoder(
                         member.ty(),
                         name,
                         quote!($name),
-                    ));
+                    ))
                 ))
             }
             Chunk::UnsizedBytes(member @ Field::Payload { .. }) => {
@@ -579,17 +579,25 @@ fn decoder(
                 } else if let Some(width) =
                     ctx.heirarchy.field_width_without_dyn_field(name, member.name())
                 {
+                    let t = ExprTree::new();
+                    let root =
+                        t.sub(t.symbol(quote!(buf.capacity()), Integral::Int), t.num(width / 8));
                     tokens.extend(assign(
                             member.ty(),
                             member.name(),
-                            quote!(buf.slice(buf.position(), buf.capacity() - $(width / 8)).order($(ctx.endianness)))
+                            quote!(buf.slice(buf.position(), $(gen_expr(&t, root))).order($(ctx.endianness)))
                         ));
                 } else {
                     // If we don't know the payload's width, assume it is the last field in the packet
                     // (this should really be enforced by the parser) and consume all remaining bytes
                     // in the buffer.
-                    tokens.extend(assign(member.ty(), member.name(), quote!(buf.slice())));
+                    tokens.extend(assign(
+                        member.ty(),
+                        member.name(),
+                        quote!(buf.slice().order($(ctx.endianness))),
+                    ));
                 }
+                tokens.extend(quote!(buf.position(buf.position() + payload.capacity());));
             }
             Chunk::UnsizedBytes(member @ Field::StructRef { name, ty, .. }) => {
                 let var_name = &name.to_lower_camel_case();
@@ -597,8 +605,8 @@ fn decoder(
                 // really be enforced by the parser) and decode it. Its decoder will consume all remaining
                 // bytes in the buffer.
                 tokens.extend(quote!(
-                    $ty $var_name = $ty.fromBytes(buf.slice());
-                    $(assign(member.ty(), member.name(), quote!($var_name)));
+                    $ty $var_name = $ty.fromBytes(buf.slice().order($(ctx.endianness)));
+                    $(assign(member.ty(), member.name(), quote!($var_name)))
                     buf.position(buf.position() + $var_name.width());
                 ));
             }
@@ -617,7 +625,12 @@ mod assignment {
             // Don't need to set size/count fields in builder.
             declare_locally(ty, name, value)
         } else if name == "payload" {
-            quote!(builder.set$(name.to_upper_camel_case())($value.array());)
+            quote!(
+                $(&*import::BB) payload = $value;
+                byte[] payloadBytes = new byte[payload.remaining()];
+                payload.get(payloadBytes);
+                builder.setPayload(payloadBytes);
+            )
         } else {
             quote!(builder.set$(name.to_upper_camel_case())($value);)
         }
@@ -674,29 +687,39 @@ fn field_width_def(name: &str, heirarchy: &ClassHeirarchy, members: &Vec<Field>)
 }
 
 fn hashcode_equals_overrides(name: &str, members: &Vec<Field>, call_super: bool) -> Tokens<Java> {
+    let members: Vec<&Field> = members.iter().filter(|m| m.is_member()).collect();
     quote! {
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
-            if (!(o instanceof $name other)) return false;
-            return $(if call_super => super.equals(other) &&)
-            $(for member in members.iter().filter(|m| m.is_member()) join ( && ) {
-                $(member.equals(quote!(other.$(member.name()))))
-            });
+            $(if members.is_empty() {
+                return $(if call_super => super.equals(other) &&) o instanceof $name;
+            } else {
+                if (!(o instanceof $name other)) return false;
+                return $(if call_super => super.equals(other) &&)
+                    $(for member in members.iter() join ( && ) {
+                        $(member.equals(quote!(other.$(member.name()))))
+                    });
+            })
         }
 
         @Override
         public int hashCode() {
-            $(let mut members = members.iter().filter(|m| m.is_member()))
-            $(if call_super {
-                int result = super.hashCode();
+            $(if members.is_empty() {
+                return $(if call_super => 31 * super.equals(other) +)
+                    this.getClass().getSimpleName().hashCode();
             } else {
-                $(let first = members.next().expect("cannot generate hashCode for packet with no members"))
-                int result = $(first.hash_code());
-            })
+                $(let mut members = members.iter())
+                $(if call_super {
+                    int result = super.hashCode();
+                } else {
+                    $(let first = members.next().unwrap())
+                    int result = $(first.hash_code());
+                })
 
-            $(for member in members => result = 31 * result + $(member.hash_code());)
-            return result;
+                $(for member in members => result = 31 * result + $(member.hash_code());)
+                return result;
+            })
         }
     }
 }
@@ -746,6 +769,7 @@ fn declare_array_count(
     val: &Box<Field>,
     count: Option<usize>,
     width_fields: &HashMap<String, WidthField>,
+    heirarchy: &ClassHeirarchy,
 ) -> Tokens<Java> {
     let name = val.name();
 
@@ -764,7 +788,9 @@ fn declare_array_count(
                 quote!()
             }
             None => {
-                if let Some(elem_width) = val.width() {
+                if let Some(elem_width) =
+                    val.width().or_else(|| val.class().and_then(|class| heirarchy.width(class)))
+                {
                     let t = ExprTree::new();
                     let root = t.div(
                         t.symbol(quote!(buf.remaining()), Integral::Int),
