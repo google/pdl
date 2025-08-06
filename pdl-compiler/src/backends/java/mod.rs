@@ -86,12 +86,12 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
             // If this is a parent packet, make a new abstract class and defer parenthood to it.
             ast::DeclDesc::Packet { id, fields, parent_id, constraints }
             | ast::DeclDesc::Struct { id, constraints, fields, parent_id }
-                if fields.iter().any(|field| {
-                    matches!(&field.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body)
-                }) =>
+                if has_payload_or_body(fields) =>
             {
                 let parent_name = Class::name_from_id(id);
                 let parent_def = PacketDef::from_fields(fields, &classes, &heirarchy);
+                let child_name =
+                    has_payload(fields).then(|| ClassHeirarchy::fallback_child_name(&parent_name));
 
                 if let Some(parent_id) = parent_id {
                     let grandparent = classes
@@ -108,18 +108,25 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
                     heirarchy.add_class(parent_name.clone(), &parent_def.members);
                 }
 
-                heirarchy.add_child(
-                    String::from(parent_name.clone()),
-                    ClassHeirarchy::default_child_name(&parent_name),
-                    HashMap::new(),
-                    &vec![Field::Payload { is_member: true }],
+                classes.insert(
+                    parent_name.clone(),
+                    Class::AbstractPacket {
+                        name: parent_name.clone(),
+                        def: parent_def,
+                        fallback_child: child_name.clone(),
+                    },
                 );
 
-                let (parent, child) =
-                    Class::new_parent_with_default_child(parent_name.clone(), parent_def);
+                if let Some(child_name) = child_name {
+                    heirarchy.add_child(
+                        String::from(parent_name.clone()),
+                        child_name.clone(),
+                        HashMap::new(),
+                        &vec![Field::Payload { is_member: true }],
+                    );
 
-                classes.insert(parent_name, parent);
-                classes.insert(child.name().into(), child);
+                    classes.insert(child_name, Class::new_fallback_child(&parent_name));
+                }
             }
             // If this is a child packet, set its parent to the appropriate abstract class.
             ast::DeclDesc::Packet { id, constraints, fields, parent_id: Some(parent_id) }
@@ -184,6 +191,16 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
     (classes, heirarchy)
 }
 
+fn has_payload_or_body(fields: &Vec<ast::Field>) -> bool {
+    fields
+        .iter()
+        .any(|field| matches!(&field.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body))
+}
+
+fn has_payload(fields: &Vec<ast::Field>) -> bool {
+    fields.iter().any(|field| matches!(&field.desc, ast::FieldDesc::Payload { .. }))
+}
+
 trait JavaFile<C>: Sized {
     fn generate(self, context: C) -> Tokens<Java>;
 
@@ -221,7 +238,7 @@ pub struct Context {
 #[derive(Debug, Clone)]
 pub enum Class {
     Packet { name: String, def: PacketDef },
-    AbstractPacket { name: String, def: PacketDef },
+    AbstractPacket { name: String, def: PacketDef, fallback_child: Option<String> },
     Enum { name: String, tags: Vec<Tag>, width: usize, fallback_tag: Option<TagOther> },
 }
 
@@ -234,27 +251,19 @@ impl Class {
         }
     }
 
-    fn new_parent_with_default_child(name: String, def: PacketDef) -> (Self, Self) {
-        let child_alignment = {
-            let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
-            aligner.add_bytes(Field::Payload { is_member: true });
-            aligner.align().unwrap()
-        };
-
-        // TODO: Only create child packet here if this packet contains a payload. If its a parent with a
-        // body field, we don't want a fallback child
-
-        (
-            Class::AbstractPacket { name: name.clone(), def },
-            Class::Packet {
-                name: ClassHeirarchy::default_child_name(&name),
-                def: PacketDef {
-                    members: vec![Field::Payload { is_member: true }],
-                    alignment: child_alignment,
-                    width_fields: HashMap::new(),
+    fn new_fallback_child(parent_name: &str) -> Self {
+        Class::Packet {
+            name: ClassHeirarchy::fallback_child_name(parent_name),
+            def: PacketDef {
+                members: vec![Field::Payload { is_member: true }],
+                alignment: {
+                    let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
+                    aligner.add_bytes(Field::Payload { is_member: true });
+                    aligner.align().unwrap()
                 },
+                width_fields: HashMap::new(),
             },
-        )
+        }
     }
 
     pub fn name(&self) -> &str {
@@ -309,7 +318,7 @@ impl PacketDef {
                     members.push(member.clone());
                     aligner.add_bitfield(member, *width);
                 }
-                ast::FieldDesc::Payload { .. } => {
+                ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
                     let member = Field::Payload { is_member: false };
                     members.push(member.clone());
                     aligner.add_bytes(member);
@@ -321,29 +330,36 @@ impl PacketDef {
                     }
                 }
                 ast::FieldDesc::Size { field_id, width } => {
+                    let field_name = if field_id == "body" {
+                        String::from("payload")
+                    } else {
+                        field_id.to_lower_camel_case()
+                    };
                     let member = Field::Integral {
-                        name: format!("{}Size", field_id.to_lower_camel_case()),
+                        name: format!("{}Size", field_name),
                         ty: Integral::Int,
                         width: *width,
                         is_member: false,
                     };
                     members.push(member.clone());
                     aligner.add_bitfield(member, *width);
-                    staged_size_fields.insert(field_id.to_lower_camel_case(), *width);
+                    staged_size_fields.insert(field_name, *width);
                 }
                 ast::FieldDesc::Count { field_id, width } => {
+                    let field_name = if field_id == "body" {
+                        String::from("payload")
+                    } else {
+                        field_id.to_lower_camel_case()
+                    };
                     let member = Field::Integral {
-                        name: format!("{}Count", field_id.to_lower_camel_case()),
+                        name: format!("{}Count", field_name),
                         ty: Integral::Int,
                         width: *width,
                         is_member: false,
                     };
                     members.push(member.clone());
                     aligner.add_bitfield(member, *width);
-                    width_fields.insert(
-                        field_id.to_lower_camel_case(),
-                        WidthField::Count { field_width: *width },
-                    );
+                    width_fields.insert(field_name, WidthField::Count { field_width: *width });
                 }
                 ast::FieldDesc::Typedef { id, type_id } => {
                     let class = classes.get(&Class::name_from_id(type_id)).unwrap();

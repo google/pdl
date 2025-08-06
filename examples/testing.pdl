@@ -1,7 +1,10 @@
 little_endian_packets
 
-enum Enum_Complete_WithRange_ : 8 {
-    A = 0,
-    B = 1,
-    C = 2..255,
+packet Parent {
+    _body_,
+    a: 16,
+}
+
+packet Child : Parent {
+    b: 8,
 }

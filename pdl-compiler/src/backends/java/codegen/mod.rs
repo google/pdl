@@ -52,8 +52,8 @@ impl JavaFile<&Context> for Class {
     fn generate(self, context: &Context) -> Tokens<Java> {
         match self {
             Class::Packet { name, def } => packet::gen_packet(&name, &def, context),
-            Class::AbstractPacket { name, def } => {
-                packet::gen_abstract_packet(&name, &def, context)
+            Class::AbstractPacket { name, def, fallback_child } => {
+                packet::gen_abstract_packet(&name, &def, fallback_child.as_ref(), context)
             }
             Class::Enum { name, tags, width, fallback_tag } => {
                 r#enum::gen_enum(&name, &tags, width, fallback_tag)

@@ -38,7 +38,7 @@ impl ClassHeirarchy {
         ClassHeirarchy(HashMap::new())
     }
 
-    pub fn default_child_name(parent_name: &str) -> String {
+    pub fn fallback_child_name(parent_name: &str) -> String {
         format!("Unknown{}", parent_name)
     }
 

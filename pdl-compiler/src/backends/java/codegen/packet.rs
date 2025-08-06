@@ -51,7 +51,7 @@ pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java>
                     if ($(&parent.name).fromBytes(buf) instanceof $name self) {
                         return self;
                     } else {
-                        throw new IllegalArgumentException("Provided bytes decodes to a different subpacket of " + $(quoted(&parent.name)));
+                        throw new IllegalArgumentException("Provided bytes decode to a different subpacket of " + $(quoted(&parent.name)));
                     }
                 }
 
@@ -140,7 +140,12 @@ pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java>
     }
 }
 
-pub fn gen_abstract_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java> {
+pub fn gen_abstract_packet(
+    name: &String,
+    def: &PacketDef,
+    fallback_child: Option<&String>,
+    ctx: &Context,
+) -> Tokens<Java> {
     let endianness = ctx.endianness;
     let parent = ctx.heirarchy.parent(name);
     let children = &ctx.heirarchy.children(name);
@@ -162,7 +167,7 @@ pub fn gen_abstract_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tok
             $(if let Some(parent) = parent {
                 protected static $(&parent.name).Builder<?> fromPayload($(&*import::BB) buf) {
                     $(decoder(name, def, assignment::declare_locally, ctx))
-                    $(build_child_fitting_constraints(&def.members, children))
+                    $(build_child_fitting_constraints(name, &def.members, children, fallback_child))
                     return builder;
                 }
             } else {
@@ -172,7 +177,7 @@ pub fn gen_abstract_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tok
 
                 protected static $name fromBytes($(&*import::BB) buf) {
                     $(decoder(name, def, assignment::declare_locally, ctx))
-                    $(build_child_fitting_constraints(&def.members, children))
+                    $(build_child_fitting_constraints(name, &def.members, children, fallback_child))
                     return builder.build();
                 }
             })
@@ -737,20 +742,33 @@ fn hashcode_equals_overrides(name: &str, members: &Vec<Field>, call_super: bool)
 }
 
 fn build_child_fitting_constraints(
+    name: &String,
     members: &Vec<Field>,
     children: &Vec<&InheritanceNode>,
+    fallback_child: Option<&String>,
 ) -> Tokens<Java> {
     let mut children_iter = children.iter();
-    let default = children_iter.next().expect("Parent packet must have at least 1 child");
+    let fallback = fallback_child
+        .is_some()
+        .then(|| children_iter.next().expect("Parent packet must have at least 1 child"));
+
     let children: Vec<&InheritanceNode> = children_iter
         .map(|child| *child)
         .filter(|child| !child.constraints.is_empty() || child.field_width().is_some())
         .collect();
 
-    quote! {
-        $(if children.is_empty() {
-            Builder<?> builder = $(&default.name).fromPayload(payload);
+    let mut tokens = Tokens::new();
+
+    if children.is_empty() {
+        if let Some(fallback) = fallback {
+            tokens.extend(quote!(
+                Builder<?> builder = $(&fallback.name).fromPayload(payload);
+            ));
         } else {
+            panic!("Packet with _body_ field and no children!")
+        }
+    } else {
+        tokens.extend(quote!(
             Builder<?> builder;
             $(for child in children {
                 if (
@@ -764,15 +782,29 @@ fn build_child_fitting_constraints(
                 ) {
                     builder = $(&child.name).fromPayload(payload);
                 } else$[' ']
-            }) {
-                builder = $(&default.name).fromPayload(payload);
-            }
-        })
+            })
+        ));
 
+        if let Some(fallback) = fallback {
+            tokens.extend(quote!({
+                builder = $(&fallback.name).fromPayload(payload);
+            }))
+        } else {
+            tokens.extend(quote!({
+                throw new IllegalArgumentException(
+                    $(quoted(format!("Provided bytes do not decode into any child of {}", name)));
+                )
+            }));
+        }
+    }
+
+    tokens.extend(quote! {
         $(for member in members.iter().filter(|member| member.is_member()) {
             builder.$(member.name()) = $(member.name());
         })
-    }
+    });
+
+    tokens
 }
 
 /// Generates a decalaration $(val.name())Count that stores the number of elements in the array
