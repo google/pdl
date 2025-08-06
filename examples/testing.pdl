@@ -154,10 +154,28 @@
 
 little_endian_packets
 
-enum Enum_Incomplete_Truncated_Closed_WithRange_ : 3 {
-    A = 0,
-    B = 1..6 {
-        X = 1,
-        Y = 2,
-    }
+struct UnsizedStruct {
+    _size_(array): 2,
+    _reserved_: 6,
+    array: 8[],
+}
+
+packet Packet_Array_Field_UnsizedElement_ConstantSize {
+    array: UnsizedStruct[4],
+}
+
+packet Packet_Array_Field_UnsizedElement_VariableSize {
+    _size_(array) : 4,
+    _reserved_: 4,
+    array: UnsizedStruct[],
+}
+
+packet Packet_Array_Field_UnsizedElement_VariableCount {
+    _count_(array) : 4,
+    _reserved_: 4,
+    array: UnsizedStruct[],
+}
+
+packet Packet_Array_Field_UnsizedElement_UnknownSize {
+    array: UnsizedStruct[],
 }

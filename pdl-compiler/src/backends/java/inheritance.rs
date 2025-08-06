@@ -166,12 +166,10 @@ impl ClassHeirarchy {
                     non_static_fields.insert(String::from("payload"));
                 }
                 Field::ArrayElem { val, count } => {
-                    if let Some(count) = count {
-                        static_width += count
-                            * val.width().unwrap_or_else(|| {
-                                self.width(val.class().unwrap())
-                                    .expect("can't have array of non-static elements")
-                            })
+                    if let Some((count, width)) =
+                        count.zip(val.width().or_else(|| self.width(val.class().unwrap())))
+                    {
+                        static_width += count * width;
                     } else {
                         non_static_fields.insert(String::from(val.name()));
                     }

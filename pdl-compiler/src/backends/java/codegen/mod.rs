@@ -77,16 +77,16 @@ impl Field {
             Field::StructRef { name, .. } => quote!($name.width()),
             Field::Payload { .. } => quote!(payload.length),
             Field::ArrayElem { val, .. } => {
-                let t = ExprTree::new();
-                let root = t.mul(
-                    t.symbol(quote!($(val.name()).length), Integral::Int),
-                    t.num(
-                        val.width()
-                            .unwrap_or_else(|| heirarchy.width(val.class().unwrap()).unwrap())
-                            / 8,
-                    ),
-                );
-                gen_expr(&t, root)
+                if let Some(width) = val.width().or_else(|| heirarchy.width(val.class().unwrap())) {
+                    let t = ExprTree::new();
+                    let root = t.mul(
+                        t.symbol(quote!($(val.name()).length), Integral::Int),
+                        t.num(width / 8),
+                    );
+                    gen_expr(&t, root)
+                } else {
+                    sum_array_elem_widths(val.name())
+                }
             }
             _ => quote!($(self.width().unwrap())),
         }
@@ -96,11 +96,19 @@ impl Field {
         match self {
             Field::Integral { name, ty, .. } if name.ends_with("Size") => {
                 let (array_name, _, elem_width) = self.get_size_field_info(width_fields).unwrap();
-                let t = ExprTree::new();
-                ty.stringify(gen_expr(
-                    &t,
-                    t.mul(t.symbol(quote!($array_name.length), Integral::Int), t.num(elem_width)),
-                ))
+                let expr = if let Some(elem_width) = elem_width {
+                    let t = ExprTree::new();
+                    gen_expr(
+                        &t,
+                        t.mul(
+                            t.symbol(quote!($array_name.length), Integral::Int),
+                            t.num(elem_width),
+                        ),
+                    )
+                } else {
+                    sum_array_elem_widths(array_name)
+                };
+                ty.stringify(expr)
             }
             Field::Integral { name, ty, .. } if name.ends_with("Count") => {
                 ty.stringify(quote!($(name.strip_suffix("Count").unwrap()).length))
@@ -180,19 +188,29 @@ impl Field {
             quote!($expr.to$(Integral::fitting(*width).capitalized())())
         } else if let Some((array_name, _, elem_width)) = self.get_size_field_info(width_fields) {
             let t = ExprTree::new();
-            gen_expr(
-                &t,
-                t.cast(
-                    t.mul(
-                        t.symbol(
-                            quote!($(if array_name == "payload" { payload.capacity() } else { $array_name.length })),
-                            Integral::Int,
+            if let Some(elem_width) = elem_width {
+                gen_expr(
+                    &t,
+                    t.cast(
+                        t.mul(
+                            t.symbol(
+                                quote!($(if array_name == "payload" { payload.limit() } else { $array_name.length })),
+                                Integral::Int,
+                            ),
+                            t.num(elem_width / 8),
                         ),
-                        t.num(elem_width / 8),
+                        Integral::fitting(width),
                     ),
-                    Integral::fitting(width),
-                ),
-            )
+                )
+            } else {
+                gen_expr(
+                    &t,
+                    t.cast(
+                        t.symbol(sum_array_elem_widths(array_name), Integral::Int),
+                        Integral::fitting(width),
+                    ),
+                )
+            }
         } else if let Some((array_name, _)) = self.get_count_field_info(width_fields) {
             cast_symbol(quote!($array_name.length), Integral::Int, Integral::fitting(width))
         } else {
@@ -203,7 +221,7 @@ impl Field {
     fn get_size_field_info(
         &self,
         width_fields: &HashMap<String, WidthField>,
-    ) -> Option<(&str, usize, usize)> {
+    ) -> Option<(&str, usize, Option<usize>)> {
         if let Some((array_name, WidthField::Size { field_width, elem_width })) =
             self.name().strip_suffix("Size").and_then(|array_name| {
                 width_fields.get(array_name).map(|width_field| (array_name, width_field))
@@ -311,9 +329,6 @@ impl FormatInto<Java> for &Integral {
     }
 }
 
-fn byte_buffer_to_array(expr: &Tokens<Java>) -> Tokens<Java> {
-    quote! {
-        byte[] tmp = new byte[$expr.remaining()];
-        $expr.get(tmp);
-    }
+fn sum_array_elem_widths(name: impl FormatInto<Java>) -> Tokens<Java> {
+    quote!($(&*import::ARRAYS).stream($name).mapToInt(elem -> elem.width()).sum())
 }

@@ -185,7 +185,7 @@ pub fn gen_abstract_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tok
             protected byte[] toBytes($(&*import::BB) payload) {
                 payload.rewind();
                 $(&*import::BB) buf = $(&*import::BB)
-                    .allocate(fieldWidth() + payload.capacity())
+                    .allocate(fieldWidth() + payload.limit())
                     .order($endianness);
 
                 $(encoder(&def.alignment, &def.width_fields))
@@ -441,7 +441,10 @@ fn encoder(
             Chunk::UnsizedBytes(member) => {
                 tokens.extend(quote!(buf.put($(member.name()).toBytes());))
             }
-            _ => unreachable!(),
+            other => {
+                dbg!(other);
+                unreachable!();
+            }
         }
     }
 
@@ -525,7 +528,7 @@ fn decoder(
                 }
             }
             Chunk::SizedBytes {
-                symbol: member @ Field::ArrayElem { val: elem, count },
+                symbol: member @ Field::ArrayElem { val, count },
                 alignment,
                 width,
             } => {
@@ -544,30 +547,41 @@ fn decoder(
                         .collect(),
                 );
 
-                tokens.extend(declare_array_count(elem, *count, &def.width_fields, &ctx.heirarchy));
                 tokens.extend(quote!(
-                    $(member.ty()) $(name) = new $(elem.ty())[$(name)Count];
+                    $(declare_array_count(val, *count, &def.width_fields, &ctx.heirarchy).unwrap())
+                    $(member.ty()) $(name) = new $(val.ty())[$(name)Count];
                     for (int i = 0; i < $(name)Count; i++) {
-                        $(name)[i] = $(elem.try_decode_from_num(gen_expr(&t, root)).unwrap());
+                        $(name)[i] = $(val.try_decode_from_num(gen_expr(&t, root)).unwrap());
                     }
                     $(assign(member.ty(), name, quote!($(name))))
                 ))
             }
             Chunk::UnsizedBytes(member @ Field::ArrayElem { val, count }) => {
-                let name = member.name();
-                tokens.extend(declare_array_count(val, *count, &def.width_fields, &ctx.heirarchy));
-                tokens.extend(quote!(
-                    $(member.ty()) $name = new $(val.ty())[$(name)Count];
-                    for (int i = 0; i < $(name)Count; i++) {
-                        $name[i] = $(val.ty()).fromBytes(buf);
-                    }
-                    // TODO: this will break with declare_locally
-                    $(assign(
-                        member.ty(),
-                        name,
-                        quote!($name),
+                let arr_name = member.name();
+                if let Some(count_decl) =
+                    declare_array_count(val, *count, &def.width_fields, &ctx.heirarchy)
+                {
+                    tokens.extend(quote!(
+                        $(count_decl)
+                        $(member.ty()) $arr_name = new $(val.ty())[$(arr_name)Count];
+                        for (int i = 0; i < $(arr_name)Count; i++) {
+                            $arr_name[i] = $(val.ty()).fromBytes(buf);
+                        }
+                        // TODO: this will break with declare_locally
+                        $(assign(member.ty(), arr_name, quote!($arr_name)))
                     ))
-                ))
+                } else {
+                    tokens.extend(quote!(
+                        $(declare_array_size(name, val, &def.width_fields, &ctx.heirarchy))
+                        $(&*import::LIST)<$(val.ty())> $(arr_name)List = new $(&*import::LIST)<$(val.ty())>();
+                        while ($(arr_name)Size != 0) {
+                            $(val.ty()) elem = $(val.ty()).fromBytes(buf);
+                            $(arr_name)List.add(elem);
+                            $(arr_name)Size -= elem.width();
+                        }
+                        $(assign(member.ty(), arr_name, quote!($(arr_name)List.toArray(new $(val.ty())[0]))))
+                    ));
+                }
             }
             Chunk::UnsizedBytes(member @ Field::Payload { .. }) => {
                 if def.width_fields.contains_key("payload") {
@@ -576,41 +590,44 @@ fn decoder(
                         member.name(),
                         quote!(buf.slice(buf.position(), payloadSize).order($(ctx.endianness))),
                     ));
-                } else if let Some(width) =
+                } else if let Some(width_without_payload) =
                     ctx.heirarchy.field_width_without_dyn_field(name, member.name())
                 {
                     let t = ExprTree::new();
-                    let root =
-                        t.sub(t.symbol(quote!(buf.capacity()), Integral::Int), t.num(width / 8));
+                    let root = t.sub(
+                        t.symbol(quote!(buf.limit()), Integral::Int),
+                        t.num(width_without_payload / 8),
+                    );
                     tokens.extend(assign(
                             member.ty(),
                             member.name(),
                             quote!(buf.slice(buf.position(), $(gen_expr(&t, root))).order($(ctx.endianness)))
                         ));
                 } else {
-                    // If we don't know the payload's width, assume it is the last field in the packet
-                    // (this should really be enforced by the parser) and consume all remaining bytes
-                    // in the buffer.
+                    // Assume payload is the last field in the packet (this should really be enforced by the parser)
+                    // and consume all remaining bytes in the buffer.
                     tokens.extend(assign(
                         member.ty(),
                         member.name(),
                         quote!(buf.slice().order($(ctx.endianness))),
                     ));
                 }
-                tokens.extend(quote!(buf.position(buf.position() + payload.capacity());));
+                tokens.extend(quote!(buf.position(buf.position() + payload.limit());));
             }
             Chunk::UnsizedBytes(member @ Field::StructRef { name, ty, .. }) => {
                 let var_name = &name.to_lower_camel_case();
-                // If the struct has dynamic width, assume it is the last field in the packet (this should
-                // really be enforced by the parser) and decode it. Its decoder will consume all remaining
-                // bytes in the buffer.
+                // Assume struct is the last field in the packet (this should really be enforced by the parser) and decode it.
+                // Its decoder will consume all remaining bytes in the buffer.
                 tokens.extend(quote!(
                     $ty $var_name = $ty.fromBytes(buf.slice().order($(ctx.endianness)));
                     $(assign(member.ty(), member.name(), quote!($var_name)))
                     buf.position(buf.position() + $var_name.width());
                 ));
             }
-            _ => unreachable!(),
+            other => {
+                dbg!(other);
+                unreachable!();
+            }
         }
     }
 
@@ -748,7 +765,7 @@ fn build_child_fitting_constraints(
                         })
                     })
                     $(if !child.constraints.is_empty() && child.field_width().is_some() => &&)
-                    $(if let Some(width) = child.field_width() => payload.capacity() == $(width / 8))
+                    $(if let Some(width) = child.field_width() => payload.limit() == $(width / 8))
                 ) {
                     builder = $(&child.name).fromPayload(payload);
                 } else$[' ']
@@ -770,22 +787,27 @@ fn declare_array_count(
     count: Option<usize>,
     width_fields: &HashMap<String, WidthField>,
     heirarchy: &ClassHeirarchy,
-) -> Tokens<Java> {
+) -> Option<Tokens<Java>> {
     let name = val.name();
 
     if let Some(count) = count {
-        quote!(int $(name)Count = $count;)
+        Some(quote!(int $(name)Count = $count;))
     } else {
         match width_fields.get(name) {
-            Some(WidthField::Size { elem_width, .. }) => {
+            Some(WidthField::Size { field_width, elem_width: Some(elem_width) }) => {
                 let t = ExprTree::new();
                 let root =
                     t.div(t.symbol(quote!($(name)Size), Integral::Int), t.num(*elem_width / 8));
-                quote!(int $(name)Count = $(gen_expr(&t, root));)
+                Some(quote!(int $(name)Count = $(gen_expr(&t, root));))
+            }
+            Some(WidthField::Size { elem_width: None, .. }) => {
+                // We have dynamic array of dynamically sized elements.
+                // No way to calculate the count in this case.
+                None
             }
             Some(WidthField::Count { .. }) => {
                 // No-op: $(name)Count should already be declared
-                quote!()
+                Some(quote!())
             }
             None => {
                 if let Some(elem_width) =
@@ -796,11 +818,33 @@ fn declare_array_count(
                         t.symbol(quote!(buf.remaining()), Integral::Int),
                         t.num(elem_width / 8),
                     );
-                    quote!(int $(name)Count = $(gen_expr(&t, root));)
+                    Some(quote!(int $(name)Count = $(gen_expr(&t, root));))
                 } else {
-                    panic!("Cannot decode array of dynamic elements with no count")
+                    None
                 }
             }
         }
+    }
+}
+
+fn declare_array_size(
+    class_name: &String,
+    val: &Box<Field>,
+    width_fields: &HashMap<String, WidthField>,
+    heirarchy: &ClassHeirarchy,
+) -> Tokens<Java> {
+    if let Some(WidthField::Size { .. }) = width_fields.get(val.name()) {
+        // No-op: $(name)Size should already be declared
+        quote!()
+    } else if let Some(width_without_arr) =
+        heirarchy.field_width_without_dyn_field(class_name, val.name())
+    {
+        let t = ExprTree::new();
+        let root =
+            t.sub(t.symbol(quote!(buf.limit()), Integral::Int), t.num(width_without_arr / 8));
+        quote!(int $(val.name())Size = $(gen_expr(&t, root));)
+    } else {
+        // Assume array is the last field in the packet and consume all remaining bytes.
+        quote!(int $(val.name())Size = buf.limit();)
     }
 }

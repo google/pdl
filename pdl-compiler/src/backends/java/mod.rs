@@ -45,6 +45,7 @@ pub mod import {
     pub static BO: Lazy<java::Import> = Lazy::new(|| java::import("java.nio", "ByteOrder"));
     pub static BB: Lazy<java::Import> = Lazy::new(|| java::import("java.nio", "ByteBuffer"));
     pub static ARRAYS: Lazy<java::Import> = Lazy::new(|| java::import("java.util", "Arrays"));
+    pub static LIST: Lazy<java::Import> = Lazy::new(|| java::import("java.util", "ArrayList"));
 }
 
 mod codegen;
@@ -159,14 +160,14 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
         }
     }
 
-    dbg!(&classes);
-    dbg!(&heirarchy);
-    dbg!(classes
-        .values()
-        .filter_map(|class| heirarchy
-            .width(class.name())
-            .map(|width| (String::from(class.name()), width)))
-        .collect::<Vec<(String, usize)>>());
+    // dbg!(&classes);
+    // dbg!(&heirarchy);
+    // dbg!(classes
+    //     .values()
+    //     .filter_map(|class| heirarchy
+    //         .width(class.name())
+    //         .map(|width| (String::from(class.name()), width)))
+    //     .collect::<Vec<(String, usize)>>());
     (classes, heirarchy)
 }
 
@@ -302,7 +303,7 @@ impl PacketDef {
                     if let Some(width) = staged_size_fields.remove("payload") {
                         width_fields.insert(
                             String::from("payload"),
-                            WidthField::Size { field_width: width, elem_width: 8 },
+                            WidthField::Size { field_width: width, elem_width: Some(8) },
                         );
                     }
                 }
@@ -371,7 +372,7 @@ impl PacketDef {
                             };
                             aligner.add_sized_bytes(val.clone(), *width);
 
-                            (val, *width)
+                            (val, Some(*width))
                         }
                         (None, Some(type_id)) => {
                             let class = classes.get(&Class::name_from_id(type_id)).unwrap();
@@ -404,11 +405,7 @@ impl PacketDef {
                                     aligner.add_bytes(val.clone());
                                     val
                                 },
-                                class.width().unwrap_or_else(|| {
-                                    heirarchy
-                                        .width(class.name())
-                                        .expect("Can't have array of non-static element")
-                                }),
+                                class.width().or_else(|| heirarchy.width(class.name())),
                             )
                         }
                         _ => panic!("invalid array field"),
@@ -460,7 +457,7 @@ impl ast::Constraint {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WidthField {
-    Size { field_width: usize, elem_width: usize },
+    Size { field_width: usize, elem_width: Option<usize> },
     Count { field_width: usize },
 }
 
