@@ -59,19 +59,14 @@ enum ExprNode {
     Cast(ExprId, Integral),
 }
 
-/// Convert the tree to Java tokens.
-pub fn gen_expr(tree: &ExprTree, root: ExprId) -> Tokens<Java> {
-    quote!($(tree.gen_expr(root)))
-}
-
 pub fn cast_symbol(symbol: Tokens<Java>, from: Integral, to: Integral) -> Tokens<Java> {
     let t = ExprTree::new();
-    gen_expr(&t, t.cast(t.symbol(symbol, from), to))
+    t.gen_expr(t.cast(t.symbol(symbol, from), to))
 }
 
-pub fn gen_mask(width: usize, ty: Integral) -> Tokens<Java> {
+pub fn literal(ty: Integral, val: usize) -> Tokens<Java> {
     let t = ExprTree::new();
-    gen_expr(&t, t.cast(t.hex_num(gen_mask_val(width)), ty))
+    t.gen_expr(t.cast(t.num(val), ty))
 }
 
 fn gen_mask_val(width: usize) -> usize {
@@ -94,6 +89,24 @@ pub struct ExprTree(RefCell<Vec<ExprNode>>);
 impl ExprTree {
     pub fn new() -> Self {
         Self(RefCell::new(Vec::new()))
+    }
+
+    /// Convert the tree to Java tokens.
+    pub fn gen_expr(&self, id: ExprId) -> Tokens<Java> {
+        match self.0.borrow().get(id).unwrap() {
+            ExprNode::Symbol(val, ..) => quote!($val),
+            ExprNode::HexNumber(val) => quote!($(format!("0x{:x}", val))),
+            ExprNode::Number(val) => quote!($(*val)),
+            ExprNode::Cast(expr, to) => self.gen_cast(*expr, *to),
+            ExprNode::BinOp(lhs, op, rhs) => {
+                quote!($(self.gen_expr(*lhs)) $(*op) $(self.gen_expr(*rhs)))
+            }
+            ExprNode::Paren(expr) => quote!(($(self.gen_expr(*expr)))),
+        }
+    }
+
+    pub fn clear(&self) {
+        self.0.borrow_mut().clear();
     }
 
     pub fn num(&self, val: usize) -> ExprId {
@@ -189,14 +202,6 @@ impl ExprTree {
         self.apply_to_all(exprs, |lhs, rhs| self.or(lhs, rhs))
     }
 
-    pub fn mask(&self, expr: ExprId, width: usize) -> ExprId {
-        if self.leaf_ty(expr).is_some_and(|ty| ty.width() == width) {
-            expr
-        } else {
-            self.paren(self.and(expr, self.hex_num(gen_mask_val(width))))
-        }
-    }
-
     pub fn paren(&self, expr: ExprId) -> ExprId {
         if matches!(self.0.borrow().get(expr).unwrap(), ExprNode::BinOp(..)) {
             self.0.borrow_mut().push(ExprNode::Paren(expr));
@@ -216,8 +221,27 @@ impl ExprTree {
         }
     }
 
-    pub fn clear(&self) {
-        self.0.borrow_mut().clear();
+    pub fn mask(&self, expr: ExprId, width: usize) -> ExprId {
+        if self.leaf_ty(expr).is_some_and(|ty| ty.width() == width) {
+            expr
+        } else {
+            self.paren(self.and(expr, self.hex_num(gen_mask_val(width))))
+        }
+    }
+
+    pub fn compare(&self, expr: ExprId, to: ExprId) -> Tokens<Java> {
+        let ty = max(self.ty(expr), self.ty(to)).limit_to_int();
+
+        quote! {
+            $(ty.boxed()).compareUnsigned(
+                $(self.gen_expr(self.cast(expr, ty))),
+                $(self.gen_expr(self.cast(to, ty)))
+            )
+        }
+    }
+
+    pub fn compare_width(&self, expr: ExprId, width: usize) -> Tokens<Java> {
+        self.compare(expr, self.cast(self.hex_num(gen_mask_val(width)), self.ty(expr)))
     }
 
     fn get_root(&self) -> ExprId {
@@ -269,19 +293,6 @@ impl ExprTree {
             ExprNode::Symbol(..) | ExprNode::BinOp(..) => false,
             ExprNode::Number(val) | ExprNode::HexNumber(val) => *val == literal,
             ExprNode::Cast(expr, ..) | ExprNode::Paren(expr) => self.is_literal(*expr, literal),
-        }
-    }
-
-    fn gen_expr(&self, id: ExprId) -> Tokens<Java> {
-        match self.0.borrow().get(id).unwrap() {
-            ExprNode::Symbol(val, ..) => quote!($val),
-            ExprNode::HexNumber(val) => quote!($(format!("0x{:x}", val))),
-            ExprNode::Number(val) => quote!($(*val)),
-            ExprNode::Cast(expr, to) => self.gen_cast(*expr, *to),
-            ExprNode::BinOp(lhs, op, rhs) => {
-                quote!($(self.gen_expr(*lhs)) $(*op) $(self.gen_expr(*rhs)))
-            }
-            ExprNode::Paren(expr) => quote!(($(self.gen_expr(*expr)))),
         }
     }
 

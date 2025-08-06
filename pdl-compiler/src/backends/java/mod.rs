@@ -54,7 +54,7 @@ mod inheritance;
 pub fn generate(
     sources: &ast::SourceDatabase,
     file: &ast::File,
-    custom_fields: &[String],
+    _: &[String],
     output_dir: &Path,
     package: &str,
 ) -> Result<(), String> {
@@ -150,8 +150,21 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
             }
             ast::DeclDesc::Enum { id, tags, width } => {
                 let name = Class::name_from_id(id);
-                classes
-                    .insert(name.clone(), Class::Enum { name, tags: tags.clone(), width: *width });
+                classes.insert(
+                    name.clone(),
+                    Class::Enum {
+                        name,
+                        tags: tags.clone(),
+                        width: *width,
+                        fallback_tag: tags.iter().find_map(|tag| {
+                            if let Tag::Other(fallback) = tag {
+                                Some(fallback.clone())
+                            } else {
+                                None
+                            }
+                        }),
+                    },
+                );
             }
             _ => {
                 dbg!(decl);
@@ -209,7 +222,7 @@ pub struct Context {
 pub enum Class {
     Packet { name: String, def: PacketDef },
     AbstractPacket { name: String, def: PacketDef },
-    Enum { name: String, tags: Vec<Tag>, width: usize },
+    Enum { name: String, tags: Vec<Tag>, width: usize, fallback_tag: Option<TagOther> },
 }
 
 impl Class {
@@ -296,7 +309,7 @@ impl PacketDef {
                     members.push(member.clone());
                     aligner.add_bitfield(member, *width);
                 }
-                ast::FieldDesc::Payload { size_modifier } => {
+                ast::FieldDesc::Payload { .. } => {
                     let member = Field::Payload { is_member: false };
                     members.push(member.clone());
                     aligner.add_bytes(member);
@@ -355,7 +368,7 @@ impl PacketDef {
                         }
                     }
                 }
-                ast::FieldDesc::Array { id, width, type_id, size_modifier, size: count } => {
+                ast::FieldDesc::Array { id, width, type_id, size: count, .. } => {
                     let (member, elem_width) = match (width, type_id) {
                         (Some(width), None) => {
                             let val = Field::ArrayElem {
@@ -440,6 +453,24 @@ impl Tag {
             | Tag::Range(TagRange { id, .. })
             | Tag::Other(TagOther { id, .. }) => id.to_upper_camel_case(),
         }
+    }
+}
+
+impl TagValue {
+    fn name(&self) -> String {
+        self.id.to_upper_camel_case()
+    }
+}
+
+impl TagRange {
+    fn name(&self) -> String {
+        self.id.to_upper_camel_case()
+    }
+}
+
+impl TagOther {
+    fn name(&self) -> String {
+        self.id.to_upper_camel_case()
     }
 }
 

@@ -26,10 +26,7 @@ use crate::backends::{
     },
 };
 
-use super::{
-    expr::{gen_expr, gen_mask, ExprTree},
-    import, Chunk, Integral, PacketDef,
-};
+use super::{expr::ExprTree, import, Chunk, Integral, PacketDef};
 
 pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java> {
     let endianness = ctx.endianness;
@@ -313,7 +310,8 @@ fn setter_defs(
                 ) {
                     $(match member {
                         Field::Integral { width, ty, .. } => {
-                            if ($(ty.compare(member.name(), gen_mask(*width, *ty))) > 0) {
+                            $(let t = ExprTree::new())
+                            if ($(t.compare_width(t.symbol(member.name(), *ty), *width)) > 0) {
                                 throw new IllegalArgumentException(
                                     "Value " +
                                     $(member.stringify(width_fields)) +
@@ -324,11 +322,12 @@ fn setter_defs(
                         }
                         Field::Payload { .. } => {
                             $(if let Some(WidthField::Size { field_width, .. }) = width_fields.get("payload") {
+                                $(let t = ExprTree::new())
                                 if (
-                                    $(Integral::Int.compare(
-                                        quote!($(member.name()).length),
-                                        gen_mask(*field_width, Integral::fitting(*field_width).limit_to_int()))
-                                    ) > 0
+                                    $(t.compare_width(
+                                        t.symbol(quote!($(member.name()).length), Integral::Int),
+                                        *field_width
+                                    )) > 0
                                 ) {
                                     throw new IllegalArgumentException(
                                         "Payload " +
@@ -400,10 +399,10 @@ fn encoder(
                     chunk_type,
                 );
 
-                tokens.extend(quote!(buf.$(chunk_type.encoder())($(gen_expr(&t, root)));));
+                tokens.extend(quote!(buf.$(chunk_type.encoder())($(t.gen_expr(root)));));
             }
             Chunk::SizedBytes {
-                symbol: member @ Field::ArrayElem { val, count },
+                symbol: member @ Field::ArrayElem { val, .. },
                 alignment,
                 width,
             } => {
@@ -425,7 +424,7 @@ fn encoder(
                                 partial_ty,
                             ))
 
-                            buf.$(partial_ty.encoder())($(gen_expr(&t, root)));
+                            buf.$(partial_ty.encoder())($(t.gen_expr(root)));
                         })
                     }
                 ));
@@ -491,10 +490,9 @@ fn decoder(
                                     field.symbol.name(),
                                     field
                                         .symbol
-                                        .try_decode_from_num(gen_expr(
-                                            &t,
-                                            t.or_all(partials.drain(..).collect()),
-                                        ))
+                                        .try_decode_from_num(
+                                            t.gen_expr(t.or_all(partials.drain(..).collect())),
+                                        )
                                         .unwrap(),
                                 ));
                             }
@@ -507,19 +505,16 @@ fn decoder(
                                 field.symbol.name(),
                                 field
                                     .symbol
-                                    .try_decode_from_num(gen_expr(
-                                        &t,
-                                        t.cast(
-                                            t.mask(
-                                                t.rshift(
-                                                    t.symbol(chunk_name, chunk_type),
-                                                    t.num(field.chunk_offset),
-                                                ),
-                                                field.width,
+                                    .try_decode_from_num(t.gen_expr(t.cast(
+                                        t.mask(
+                                            t.rshift(
+                                                t.symbol(chunk_name, chunk_type),
+                                                t.num(field.chunk_offset),
                                             ),
-                                            field_type,
+                                            field.width,
                                         ),
-                                    ))
+                                        field_type,
+                                    )))
                                     .unwrap(),
                             ));
                         }
@@ -530,7 +525,7 @@ fn decoder(
             Chunk::SizedBytes {
                 symbol: member @ Field::ArrayElem { val, count },
                 alignment,
-                width,
+                ..
             } => {
                 let name = member.name();
                 let t = ExprTree::new();
@@ -551,7 +546,7 @@ fn decoder(
                     $(declare_array_count(val, *count, &def.width_fields, &ctx.heirarchy).unwrap())
                     $(member.ty()) $(name) = new $(val.ty())[$(name)Count];
                     for (int i = 0; i < $(name)Count; i++) {
-                        $(name)[i] = $(val.try_decode_from_num(gen_expr(&t, root)).unwrap());
+                        $(name)[i] = $(val.try_decode_from_num(t.gen_expr(root)).unwrap());
                     }
                     $(assign(member.ty(), name, quote!($(name))))
                 ))
@@ -601,7 +596,7 @@ fn decoder(
                     tokens.extend(assign(
                             member.ty(),
                             member.name(),
-                            quote!(buf.slice(buf.position(), $(gen_expr(&t, root))).order($(ctx.endianness)))
+                            quote!(buf.slice(buf.position(), $(t.gen_expr(root))).order($(ctx.endianness)))
                         ));
                 } else {
                     // Assume payload is the last field in the packet (this should really be enforced by the parser)
@@ -698,7 +693,7 @@ fn field_width_def(name: &str, heirarchy: &ClassHeirarchy, members: &Vec<Field>)
 
     quote! {
         private final int fieldWidth() {
-            return $(gen_expr(&t, t.sum(exprs)));
+            return $(t.gen_expr(t.sum(exprs)));
         }
     }
 }
@@ -794,11 +789,11 @@ fn declare_array_count(
         Some(quote!(int $(name)Count = $count;))
     } else {
         match width_fields.get(name) {
-            Some(WidthField::Size { field_width, elem_width: Some(elem_width) }) => {
+            Some(WidthField::Size { elem_width: Some(elem_width), .. }) => {
                 let t = ExprTree::new();
                 let root =
                     t.div(t.symbol(quote!($(name)Size), Integral::Int), t.num(*elem_width / 8));
-                Some(quote!(int $(name)Count = $(gen_expr(&t, root));))
+                Some(quote!(int $(name)Count = $(t.gen_expr(root));))
             }
             Some(WidthField::Size { elem_width: None, .. }) => {
                 // We have dynamic array of dynamically sized elements.
@@ -818,7 +813,7 @@ fn declare_array_count(
                         t.symbol(quote!(buf.remaining()), Integral::Int),
                         t.num(elem_width / 8),
                     );
-                    Some(quote!(int $(name)Count = $(gen_expr(&t, root));))
+                    Some(quote!(int $(name)Count = $(t.gen_expr(root));))
                 } else {
                     None
                 }
@@ -842,7 +837,7 @@ fn declare_array_size(
         let t = ExprTree::new();
         let root =
             t.sub(t.symbol(quote!(buf.limit()), Integral::Int), t.num(width_without_arr / 8));
-        quote!(int $(val.name())Size = $(gen_expr(&t, root));)
+        quote!(int $(val.name())Size = $(t.gen_expr(root));)
     } else {
         // Assume array is the last field in the packet and consume all remaining bytes.
         quote!(int $(val.name())Size = buf.limit();)

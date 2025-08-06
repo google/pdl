@@ -58,21 +58,7 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration Struct_Optional_Enum_Field_ \
 --exclude-declaration Struct_Optional_Enum_Field \
 --exclude-declaration Struct_Optional_Struct_Field_ \
---exclude-declaration Struct_Optional_Struct_Field \
---exclude-declaration Enum_Incomplete_Truncated_Closed_ \
---exclude-declaration Enum_Incomplete_Truncated_Closed \
---exclude-declaration Enum_Incomplete_Truncated_Open_ \
---exclude-declaration Enum_Incomplete_Truncated_Open \
---exclude-declaration Enum_Incomplete_Truncated_Closed_WithRange_ \
---exclude-declaration Enum_Incomplete_Truncated_Closed_WithRange \
---exclude-declaration Enum_Incomplete_Truncated_Open_WithRange_ \
---exclude-declaration Enum_Incomplete_Truncated_Open_WithRange \
---exclude-declaration Enum_Complete_Truncated_ \
---exclude-declaration Enum_Complete_Truncated \
---exclude-declaration Enum_Complete_Truncated_WithRange_ \
---exclude-declaration Enum_Complete_Truncated_WithRange \
---exclude-declaration Enum_Complete_WithRange_ \
---exclude-declaration Enum_Complete_WithRange"
+--exclude-declaration Struct_Optional_Struct_Field"
 
 mkdir -p out/
 OUT_DIR="$(pwd)/out"

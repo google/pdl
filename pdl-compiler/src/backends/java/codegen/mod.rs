@@ -20,7 +20,7 @@ use genco::{
     tokens::FormatInto,
     Tokens,
 };
-use std::{array, collections::HashMap};
+use std::collections::HashMap;
 
 mod r#enum;
 /// The JLS specifies that operands of certain operators including
@@ -37,11 +37,11 @@ mod r#enum;
 /// To get around this, we must sign-safe cast every smaller operand to int or long.
 ///
 /// This module contains utilities for generating simplified Java expressions that perform this casting.
-mod expr;
+pub mod expr;
 mod packet;
 
 use crate::backends::java::{
-    codegen::expr::{cast_symbol, gen_expr, ExprTree},
+    codegen::expr::{cast_symbol, ExprTree},
     inheritance::{ClassHeirarchy, Constraint},
     Context, Field, WidthField,
 };
@@ -55,7 +55,9 @@ impl JavaFile<&Context> for Class {
             Class::AbstractPacket { name, def } => {
                 packet::gen_abstract_packet(&name, &def, context)
             }
-            Class::Enum { name, tags, width } => r#enum::gen_enum(&name, &tags, width),
+            Class::Enum { name, tags, width, fallback_tag } => {
+                r#enum::gen_enum(&name, &tags, width, fallback_tag)
+            }
         }
     }
 }
@@ -83,7 +85,7 @@ impl Field {
                         t.symbol(quote!($(val.name()).length), Integral::Int),
                         t.num(width / 8),
                     );
-                    gen_expr(&t, root)
+                    t.gen_expr(root)
                 } else {
                     sum_array_elem_widths(val.name())
                 }
@@ -98,13 +100,10 @@ impl Field {
                 let (array_name, _, elem_width) = self.get_size_field_info(width_fields).unwrap();
                 let expr = if let Some(elem_width) = elem_width {
                     let t = ExprTree::new();
-                    gen_expr(
-                        &t,
-                        t.mul(
-                            t.symbol(quote!($array_name.length), Integral::Int),
-                            t.num(elem_width),
-                        ),
-                    )
+                    t.gen_expr(t.mul(
+                        t.symbol(quote!($array_name.length), Integral::Int),
+                        t.num(elem_width),
+                    ))
                 } else {
                     sum_array_elem_widths(array_name)
                 };
@@ -189,8 +188,7 @@ impl Field {
         } else if let Some((array_name, _, elem_width)) = self.get_size_field_info(width_fields) {
             let t = ExprTree::new();
             if let Some(elem_width) = elem_width {
-                gen_expr(
-                    &t,
+                t.gen_expr(
                     t.cast(
                         t.mul(
                             t.symbol(
@@ -203,13 +201,10 @@ impl Field {
                     ),
                 )
             } else {
-                gen_expr(
-                    &t,
-                    t.cast(
-                        t.symbol(sum_array_elem_widths(array_name), Integral::Int),
-                        Integral::fitting(width),
-                    ),
-                )
+                t.gen_expr(t.cast(
+                    t.symbol(sum_array_elem_widths(array_name), Integral::Int),
+                    Integral::fitting(width),
+                ))
             }
         } else if let Some((array_name, _)) = self.get_count_field_info(width_fields) {
             cast_symbol(quote!($array_name.length), Integral::Int, Integral::fitting(width))
@@ -269,13 +264,6 @@ impl Integral {
             })
         }
     }
-    pub fn compare(&self, expr: impl FormatInto<Java>, to: impl FormatInto<Java>) -> Tokens<Java> {
-        let comparable_ty = self.limit_to_int();
-        quote!($(comparable_ty.boxed()).compareUnsigned(
-            $(cast_symbol(quote!($expr), *self, comparable_ty)),
-            $to
-        ))
-    }
 
     fn stringify(&self, expr: impl FormatInto<Java>) -> Tokens<Java> {
         let stringable_ty = self.limit_to_int();
@@ -299,15 +287,6 @@ impl Integral {
             Integral::Short => "Short",
             Integral::Int => "Int",
             Integral::Long => "Long",
-        }
-    }
-
-    pub fn literal(&self, expr: impl FormatInto<Java>) -> Tokens<Java> {
-        match self {
-            Integral::Byte => quote!((byte) $(expr)),
-            Integral::Short => quote!((short) $(expr)),
-            Integral::Int => quote!($(expr)),
-            Integral::Long => quote!($(expr)L),
         }
     }
 }

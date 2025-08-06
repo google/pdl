@@ -32,7 +32,10 @@ use std::{
 use super::{import, Class, Integral, JavaFile};
 use crate::{
     ast::{self, Decl, DeclDesc, Field, FieldDesc},
-    backends::common::test::{Packet, TestVector},
+    backends::{
+        common::test::{Packet, TestVector},
+        java::codegen::expr::literal,
+    },
     parser,
 };
 
@@ -194,31 +197,27 @@ impl Field {
             FieldDesc::Scalar { width, .. }
             | FieldDesc::Size { width, .. }
             | FieldDesc::Count { width, .. } => {
-                Integral::fitting(*width).literal(value.as_number().unwrap().as_u64())
+                literal(Integral::fitting(*width), json_val_to_usize(value))
             }
-            FieldDesc::Reserved { width } => Integral::fitting(*width).literal(0),
+            FieldDesc::Reserved { width } => literal(Integral::fitting(*width), 0),
             FieldDesc::Typedef { type_id, .. } => {
                 quote!($(get_decl(&type_id, decls).desc.construct(value, decls)))
             }
-            FieldDesc::Checksum { field_id } => todo!(),
-            FieldDesc::Padding { size } => todo!(),
-            FieldDesc::ElementSize { field_id, width } => todo!(),
-            FieldDesc::Body => todo!(),
-            FieldDesc::Payload { size_modifier } => {
+
+            FieldDesc::Payload { .. } => {
                 quote!(new byte[]{
                     $(for value in value.as_array().unwrap() join (, ) {
-                        $(Integral::Byte.literal(value.as_number().unwrap().as_u64()))
+                        $(literal(Integral::Byte, json_val_to_usize(value)))
                     })
                 })
             }
-            FieldDesc::FixedScalar { width, value } => todo!(),
-            FieldDesc::FixedEnum { enum_id, tag_id } => todo!(),
-            FieldDesc::Array { id, width, type_id, size_modifier, size } => {
+
+            FieldDesc::Array { width, type_id, .. } => {
                 if let Some(width) = width {
                     let ty = Integral::fitting(*width);
                     quote!(new $ty[]{
                         $(for value in value.as_array().unwrap() join (, ) {
-                            $(ty.literal(value.as_number().unwrap().as_u64()))
+                            $(literal(ty, json_val_to_usize(value)))
                         })
                     })
                 } else if let Some(id) = type_id {
@@ -232,8 +231,10 @@ impl Field {
                     panic!("invalid array element")
                 }
             }
-            FieldDesc::Flag { id, optional_field_ids } => todo!(),
-            FieldDesc::Group { group_id, constraints } => todo!(),
+            other => {
+                dbg!(other);
+                todo!()
+            }
         }
     }
 
@@ -252,13 +253,10 @@ impl Field {
             FieldDesc::Typedef { .. } | FieldDesc::FixedEnum { .. } => {
                 quote!($field.equals($other))
             }
-            FieldDesc::Checksum { .. } => todo!(),
-            FieldDesc::Padding { .. } => todo!(),
-            FieldDesc::ElementSize { .. } => todo!(),
-            FieldDesc::FixedScalar { .. } => todo!(),
-            FieldDesc::Reserved { .. } => quote!(),
-            FieldDesc::Flag { .. } => todo!(),
-            FieldDesc::Group { .. } => todo!(),
+            other => {
+                dbg!(other);
+                todo!()
+            }
         }
     }
 }
@@ -272,17 +270,17 @@ impl DeclDesc {
         match self {
             DeclDesc::Enum { id, width, .. } => {
                 let ty = Integral::fitting(*width);
-                quote!($(Class::name_from_id(id))
-                    .from$(ty.capitalized())($(ty.literal(value.as_number().unwrap().as_u64()))))
+                quote!($(Class::name_from_id(id)).from$(ty.capitalized())(
+                    $(literal(ty, json_val_to_usize(value)))
+                ))
             }
-            DeclDesc::Checksum { id, function, width } => todo!(),
-            DeclDesc::CustomField { id, width, function } => todo!(),
-            DeclDesc::Packet { id, constraints, fields, parent_id } => todo!(),
-            DeclDesc::Struct { id, constraints, fields, parent_id } => {
+            DeclDesc::Struct { id, .. } => {
                 quote!($(build_packet_from_fields(&id, value.as_object().unwrap(), decls)))
             }
-            DeclDesc::Group { id, fields } => todo!(),
-            DeclDesc::Test { type_id, test_cases } => todo!(),
+            other => {
+                dbg!(other);
+                todo!()
+            }
         }
     }
 }
@@ -344,4 +342,8 @@ fn json_id_to_field<'a>(field_id: &'a str, mut fields: Iter<'a, Field>) -> Optio
         FieldDesc::Body { .. } if field_id == "body" => true,
         _ => false,
     })
+}
+
+fn json_val_to_usize(val: &Value) -> usize {
+    val.as_number().unwrap().as_u64().unwrap() as usize
 }

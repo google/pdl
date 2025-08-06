@@ -1,12 +1,22 @@
+use std::iter;
+
 use genco::{lang::Java, quote, tokens::quoted, Tokens};
 use heck::ToUpperCamelCase;
 
 use crate::{
-    ast::{Tag, TagRange, TagValue},
-    backends::java::{Class, Integral},
+    ast::{Tag, TagOther, TagRange, TagValue},
+    backends::java::{
+        codegen::expr::{cast_symbol, literal, ExprTree},
+        Integral,
+    },
 };
 
-pub fn gen_enum(name: &String, tags: &Vec<Tag>, width: usize) -> Tokens<Java> {
+pub fn gen_enum(
+    name: &String,
+    tags: &Vec<Tag>,
+    width: usize,
+    fallback_tag: Option<TagOther>,
+) -> Tokens<Java> {
     let ty = Integral::fitting(width);
 
     quote! {
@@ -15,27 +25,28 @@ pub fn gen_enum(name: &String, tags: &Vec<Tag>, width: usize) -> Tokens<Java> {
 
             public static $name from$(ty.capitalized())($ty value) {
                 $(for tag in tags.iter() {
-                    $(let tag_name = tag.id().to_upper_camel_case())
                     $(match tag {
                         Tag::Value(tag) => if ($(tag.matches_value(ty))) {
-                            return $tag_name;
+                            return $(tag.name());
                         } else$[' '],
                         Tag::Range(tag) => if ($(tag.matches_value(ty))) {
-                            return new $tag_name(value);
+                            return new $(tag.name())(value);
                         } else$[' '],
                         _ =>,
                     })
-                }) {
+                }) $(if let Some(fallback_tag) = fallback_tag {{
+                    return new $(fallback_tag.name())(value);
+                }} else {{
                     $(failed_to_decode_closed_enum(&name, ty))
-                }
+                }})
+
             }
 
             $(for tag in tags.iter() {
-                $(let tag_name = &tag.name())
                 $(match tag {
-                    Tag::Value(_) => public static final $tag_name $tag_name = new $tag_name();,
+                    Tag::Value(_) => public static final $(tag.name()) $(tag.name()) = new $(tag.name())();,
                     Tag::Range(tag) => $(tag.static_factory(name, ty)),
-                    _ =>,
+                    Tag::Other(tag) => $(tag.static_factory(name, ty)),
                 })
             })
 
@@ -43,8 +54,8 @@ pub fn gen_enum(name: &String, tags: &Vec<Tag>, width: usize) -> Tokens<Java> {
 
             $(for tag in tags.iter() => $(match tag {
                 Tag::Value(tag) => $(tag.def(name, ty)),
-                Tag::Range(tag) => $(tag.def(name, ty)),
-                _ =>,
+                Tag::Range(tag) => $(tag.def(&tag.name(), name, ty)),
+                Tag::Other(tag) => $(tag.def(&tag.name(), name, ty)),
             }))
         }
     }
@@ -52,73 +63,57 @@ pub fn gen_enum(name: &String, tags: &Vec<Tag>, width: usize) -> Tokens<Java> {
 
 impl TagValue {
     fn def(&self, super_name: &String, ty: Integral) -> Tokens<Java> {
-        let name = &self.id.to_upper_camel_case();
-
         quote! {
-            public static final class $name extends $super_name {
-                private $name() { }
+            public static final class $(self.name()) extends $super_name {
+                private $(self.name())() { }
 
                 @Override
-                public $ty to$(ty.capitalized())() { return $(ty.literal(self.value)); }
+                public $ty to$(ty.capitalized())() {
+                    return $(literal(ty, self.value));
+                }
 
                 @Override
-                public String toString() { return $(quoted(format!("{}.{}(", super_name, name))) +
+                public String toString() { return $(quoted(format!("{}.{}(", super_name, self.name()))) +
                     $(ty.limit_to_int().stringify(self.value)) + ")"; }
             }
         }
     }
 
-    fn subtag_def(&self, super_name: &String) -> Tokens<Java> {
-        let name = &self.id.to_upper_camel_case();
-
+    fn subtag_def(&self, super_name: &String, ty: Integral) -> Tokens<Java> {
         quote! {
-            public static final class $name extends $super_name {
-                private $name() { super($(self.value)); }
-            }
-        }
-    }
-
-    fn matches_value(&self, ty: Integral) -> Tokens<Java> {
-        quote! {
-            $(ty.compare(quote!(value), self.value)) == 0
-        }
-    }
-}
-
-impl TagRange {
-    fn static_factory(&self, super_name: &String, ty: Integral) -> Tokens<Java> {
-        let name = &self.id.to_upper_camel_case();
-
-        quote! {
-            public static $name $name($ty value) {
-                $(for tag in self.tags.iter() {
-                    if ($(tag.matches_value(ty))) {
-                        return $name.$(tag.id.to_upper_camel_case());
-                    } else$[' ']
-                }) if ($(self.matches_value(ty))) {
-                    return new $name(value);
-                } else {
-                    $(failed_to_decode_closed_enum(&format!("{}.{}", super_name, name), ty))
+            public static final class $(self.name()) extends $super_name {
+                private $(self.name())() {
+                    super($(cast_symbol(quote!($(self.value)), Integral::Int, ty)));
                 }
             }
         }
     }
 
-    fn def(&self, super_name: &String, ty: Integral) -> Tokens<Java> {
-        let name = &self.id.to_upper_camel_case();
-
+    fn matches_value(&self, ty: Integral) -> Tokens<Java> {
+        let t = ExprTree::new();
         quote! {
-            $(if self.tags.is_empty() {
-                public static final class $name extends $super_name
-            } else {
+            $(t.compare(t.symbol(quote!(value), ty), t.num(self.value))) == 0
+        }
+    }
+}
+
+trait MultiValueTag {
+    fn has_subtags(&self) -> bool;
+    fn subtags(&self) -> impl Iterator<Item = &TagValue>;
+    fn static_factory(&self, super_name: &String, ty: Integral) -> Tokens<Java>;
+
+    fn def(&self, name: &String, super_name: &String, ty: Integral) -> Tokens<Java> {
+        quote! {
+            $(if self.has_subtags() {
                 public static sealed class $name extends $super_name permits
-                $(for tag in self.tags.iter() => $name.$(tag.id.to_upper_camel_case()))
+                $(for tag in self.subtags() join (, ) => $name.$(tag.name()))
+            } else {
+                public static final class $name extends $super_name
             }) {
                 private final $ty value;
 
-                $(for tag in self.tags.iter() {
-                    $(let tag_name = &tag.id.to_upper_camel_case())
-                    public static final $tag_name $tag_name = new $tag_name();
+                $(for tag in self.subtags() {
+                    public static final $(tag.name()) $(tag.name()) = new $(tag.name())();
                 })
 
                 private $name($ty value) { this.value = value; }
@@ -135,23 +130,83 @@ impl TagRange {
 
                 @Override
                 public boolean equals(Object o) {
+                    $(let t = ExprTree::new())
                     if (this == o) return true;
                     if (!(o instanceof $name other)) return false;
-                    return $(ty.compare(quote!(value), quote!(other.value))) == 0;
+                    return $(t.compare(
+                        t.symbol(quote!(value), ty),
+                        t.symbol(quote!(other.value), ty))
+                    ) == 0;
                 }
 
                 @Override
                 public int hashCode() { return $(ty.boxed()).hashCode(value); }
 
-                $(for tag in self.tags.iter() => $(tag.subtag_def(&name)))
+                $(for tag in self.subtags() => $(tag.subtag_def(name, ty)))
             }
         }
     }
+}
 
-    fn matches_value(&self, ty: Integral) -> Tokens<Java> {
+impl MultiValueTag for TagRange {
+    fn has_subtags(&self) -> bool {
+        !self.tags.is_empty()
+    }
+
+    fn subtags(&self) -> impl Iterator<Item = &TagValue> {
+        self.tags.iter()
+    }
+
+    fn static_factory(&self, super_name: &String, ty: Integral) -> Tokens<Java> {
         quote! {
-            $(ty.compare(quote!(value), *self.range.start())) >= 0
-            && $(ty.compare(quote!(value), *self.range.end())) <= 0
+            public static $(self.name()) $(self.name())($ty value) {
+                $(for tag in self.tags.iter() {
+                    if ($(tag.matches_value(ty))) {
+                        return $(self.name()).$(tag.id.to_upper_camel_case());
+                    } else$[' ']
+                }) if ($(self.matches_value(ty))) {
+                    return new $(self.name())(value);
+                } else {
+                    $(failed_to_decode_closed_enum(&format!("{}.{}", super_name, self.name()), ty))
+                }
+            }
+        }
+    }
+}
+
+impl MultiValueTag for TagOther {
+    fn has_subtags(&self) -> bool {
+        false
+    }
+
+    fn subtags(&self) -> impl Iterator<Item = &TagValue> {
+        iter::empty::<&TagValue>()
+    }
+
+    fn static_factory(&self, super_name: &String, ty: Integral) -> Tokens<Java> {
+        quote! {
+            public static $(self.name()) $(self.name())($ty value) {
+                $super_name tag = $super_name.fromByte(value);
+                if (!(tag instanceof $(self.name()) self)) {
+                    throw new IllegalArgumentException(
+                        "Value " + $(ty.stringify(quote!(value))) +
+                        " is invalid for the fallback tag because it matches named tag " +
+                        tag
+                    );
+                }
+                return self;
+            }
+        }
+    }
+}
+
+impl TagRange {
+    fn matches_value(&self, ty: Integral) -> Tokens<Java> {
+        let t = ExprTree::new();
+
+        quote! {
+            $(t.compare(t.symbol(quote!(value), ty), t.num(*self.range.start()))) >= 0
+            && $(t.compare(t.symbol(quote!(value),ty), t.num(*self.range.end()))) <= 0
         }
     }
 }
@@ -159,7 +214,7 @@ impl TagRange {
 fn failed_to_decode_closed_enum(name: &String, ty: Integral) -> Tokens<Java> {
     quote! {
         throw new IllegalArgumentException(
-            $(quoted("Value ")) + $(ty.stringify(quote!(value))) +
+            "Value " + $(ty.stringify(quote!(value))) +
             $(quoted(format!(" is invalid for closed enum {}", name))));
     }
 }
