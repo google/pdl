@@ -20,7 +20,7 @@ use crate::backends::java::Integral;
 
 pub type ExprId = usize;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug, Copy, Clone)]
 enum BinOp {
     ShiftLeft,
     ShiftRight,
@@ -124,6 +124,7 @@ impl ExprTree {
         self.get_root()
     }
 
+    #[allow(dead_code)]
     pub fn add(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
         if self.is_literal(lhs, 0) {
             rhs
@@ -135,7 +136,7 @@ impl ExprTree {
     }
 
     pub fn sum(&self, exprs: Vec<ExprId>) -> ExprId {
-        self.apply_to_all(exprs, |lhs, rhs| self.add(lhs, rhs))
+        self.op_all(exprs, BinOp::Add)
     }
 
     pub fn sub(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
@@ -165,7 +166,7 @@ impl ExprTree {
     }
 
     pub fn lshift(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
-        if self.is_literal(rhs, 0) {
+        if self.is_literal(lhs, 0) || self.is_literal(rhs, 0) {
             lhs
         } else {
             self.op(lhs, BinOp::ShiftLeft, rhs)
@@ -173,7 +174,7 @@ impl ExprTree {
     }
 
     pub fn rshift(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
-        if self.is_literal(rhs, 0) {
+        if self.is_literal(lhs, 0) || self.is_literal(rhs, 0) {
             lhs
         } else {
             self.op(lhs, BinOp::ShiftRight, rhs)
@@ -188,6 +189,7 @@ impl ExprTree {
         }
     }
 
+    #[allow(dead_code)]
     pub fn or(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
         if self.is_literal(lhs, 0) {
             rhs
@@ -199,7 +201,7 @@ impl ExprTree {
     }
 
     pub fn or_all(&self, exprs: Vec<ExprId>) -> ExprId {
-        self.apply_to_all(exprs, |lhs, rhs| self.or(lhs, rhs))
+        self.op_all(exprs, BinOp::BitOr)
     }
 
     pub fn paren(&self, expr: ExprId) -> ExprId {
@@ -257,14 +259,19 @@ impl ExprTree {
         self.get_root()
     }
 
-    fn apply_to_all<F>(&self, exprs: Vec<ExprId>, bin_op: F) -> ExprId
-    where
-        F: Fn(ExprId, ExprId) -> ExprId,
-    {
+    fn op_all(&self, exprs: Vec<ExprId>, op: BinOp) -> ExprId {
         if exprs.is_empty() {
             self.get_root()
         } else {
-            exprs.into_iter().reduce(|acc, expr| bin_op(expr, acc)).unwrap()
+            let ty = exprs.iter().map(|expr| self.ty(*expr)).max().unwrap();
+            exprs
+                .into_iter()
+                .map(|expr| self.cast(expr, ty))
+                .reduce(|acc, expr| {
+                    self.0.borrow_mut().push(ExprNode::BinOp(acc, op, expr));
+                    self.get_root()
+                })
+                .unwrap()
         }
     }
 

@@ -1,10 +1,9 @@
 big_endian_packets
 
-packet Parent {
-  a: 8,
-  _payload_,
-}
-
-packet Child : Parent(a = 1) {
-  b: 16,
+struct TechnologySet {
+    uwb: 1,
+    ble_cs: 1,
+    wifi_nan_rtt: 1,
+    ble_rssi: 1,
+    _reserved_: 12,
 }

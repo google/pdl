@@ -192,6 +192,13 @@ impl Field {
         decls: &'a HashMap<String, Decl>,
     ) -> impl FormatInto<Java> + 'a {
         match &self.desc {
+            FieldDesc::Scalar { width: 1, .. } => {
+                if json_val_to_usize(value) == 1 {
+                    quote!(true)
+                } else {
+                    quote!(false)
+                }
+            }
             FieldDesc::Scalar { width, .. }
             | FieldDesc::Size { width, .. }
             | FieldDesc::Count { width, .. } => {

@@ -21,7 +21,7 @@ For example, `cargo run --features "java" -- --output-format java examples/testi
 
 ## Packets
 
-Packets come with a builder, with the type of each field being the smallest Java integral type that fits the declared field width. Packet classes have a static `void fromBytes(byte[])` and an instance `byte[] toBytes()`. They override `hashCode`, `equals`, and `toString`.
+Packets come with a builder, with the type of each field being the smallest Java integral type that fits the declared field width, or `boolean` if the field is 1 bit wide. Packet classes have a static `void fromBytes(byte[])` and an instance `byte[] toBytes()`. They override `hashCode`, `equals`, and `toString`.
 
 ```
 packet MyPacket {
@@ -63,7 +63,7 @@ UnknownParent packet2 = new UnknownParent.Builder().setA((byte) 1).setPayload(ne
 
 ## Enums
 
-Enums also map to Java inheritence. Each enum generates an abstract class with a static `void from<T>(<T>)` and instance `<T> to<T>()` where `<T>` is the smallest integral Java type that fits the enum's width. The enum has inner subclasses for each tag. Single-valued tags have singletons that shadow their class definitions while range and default tags have a constructor. Enum classes override `hashCode`, `equals`, and `toString` as expected.
+Enums also map to a Java inheritence heirarchy. Each enum generates an abstract class with a static `void from<T>(<T>)` and instance `<T> to<T>()` where `<T>` is the smallest integral Java type that fits the enum's width. The enum has inner subclasses for each tag. Single-valued tags have singletons that shadow their class definitions while range and default tags have a constructor. Enum classes override `hashCode`, `equals`, and `toString` as expected.
 
 ```
 enum MyEnum : 7 {

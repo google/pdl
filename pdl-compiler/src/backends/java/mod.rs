@@ -308,7 +308,7 @@ impl PacketDef {
                 ast::FieldDesc::Scalar { id, width } => {
                     let member = Field::Integral {
                         name: id.to_lower_camel_case(),
-                        ty: Integral::fitting(*width),
+                        ty: if *width == 1 { Integral::Int } else { Integral::fitting(*width) },
                         width: *width,
                         is_member: true,
                     };
@@ -544,6 +544,16 @@ impl Field {
         }
     }
 
+    pub fn integral_ty(&self) -> Option<Integral> {
+        match self {
+            Field::Integral { ty, .. } => Some(*ty),
+            Field::EnumRef { width, .. } | Field::Reserved { width } => {
+                Some(Integral::fitting(*width))
+            }
+            _ => None,
+        }
+    }
+
     pub fn class(&self) -> Option<&String> {
         match self {
             Field::EnumRef { ty, .. } | Field::StructRef { ty, .. } => Some(ty),
@@ -574,21 +584,17 @@ pub enum Integral {
 
 impl Integral {
     pub fn fitting(width: impl Into<usize>) -> Self {
-        Self::try_fitting(width).expect("width too large!")
-    }
-
-    pub fn try_fitting(width: impl Into<usize>) -> Option<Self> {
         let width: usize = width.into();
         if width <= 8 {
-            Some(Integral::Byte)
+            Integral::Byte
         } else if width <= 16 {
-            Some(Integral::Short)
+            Integral::Short
         } else if width <= 32 {
-            Some(Integral::Int)
+            Integral::Int
         } else if width <= 64 {
-            Some(Integral::Long)
+            Integral::Long
         } else {
-            None
+            panic!("integral width {width} is too large")
         }
     }
 

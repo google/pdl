@@ -321,7 +321,7 @@ fn setter_defs(
                 $(member.ty()) $(member.name())
             ) {
                 $(match member {
-                    Field::Integral { width, ty, .. } => {
+                    Field::Integral { width, ty, .. } if *width != 1 => {
                         $(let t = ExprTree::new())
                         if ($(t.compare_width(t.symbol(member.name(), *ty), *width)) > 0) {
                             throw new IllegalArgumentException(
@@ -428,7 +428,7 @@ fn encoder(
                                                         width_fields,
                                                     )
                                                     .unwrap(),
-                                                Integral::fitting(field.symbol.width().unwrap()),
+                                                field.symbol.integral_ty().unwrap(),
                                             ),
                                             t.num(field.symbol_offset),
                                         )
@@ -512,8 +512,7 @@ fn decoder(
                 );
 
                 for field in fields.iter() {
-                    let field_type = Integral::try_fitting(field.symbol.width().unwrap())
-                        .unwrap_or(Integral::Long);
+                    let field_type = field.symbol.integral_ty().unwrap();
 
                     if field.is_partial {
                         partials.push(t.lshift(

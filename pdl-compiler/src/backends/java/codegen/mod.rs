@@ -112,6 +112,7 @@ impl Field {
             Field::Integral { name, ty, .. } if name.ends_with("Count") => {
                 ty.stringify(quote!($(name.strip_suffix("Count").unwrap()).length))
             }
+            Field::Integral { name, width: 1, .. } => quote!(($name ? 1 : 0)),
             Field::Integral { name, ty, .. } => ty.stringify(name),
             Field::Reserved { .. } => quote!("..."),
             Field::EnumRef { name, .. } => quote!($name.toString()),
@@ -125,6 +126,7 @@ impl Field {
 
     pub fn ty(&self) -> Tokens<Java> {
         match self {
+            Field::Integral { width: 1, .. } => quote!(boolean),
             Field::Integral { ty, .. } => quote!($ty),
             Field::EnumRef { ty, .. } => quote!($ty),
             Field::StructRef { ty, .. } => quote!($ty),
@@ -136,6 +138,7 @@ impl Field {
 
     pub fn hash_code(&self) -> Tokens<Java> {
         match self {
+            Field::Integral { name, width: 1, .. } => quote!(Boolean.hashCode($name)),
             Field::Integral { name, ty, .. } => quote!($(ty.boxed()).hashCode($name)),
             Field::EnumRef { name, .. } | Field::StructRef { name, .. } => quote!($name.hashCode()),
             Field::Payload { .. } => quote!($(&*import::ARRAYS).hashCode(payload)),
@@ -160,6 +163,8 @@ impl Field {
 
     pub fn constraint(&self, to: &Constraint) -> Tokens<Java> {
         match (self, to) {
+            (Field::Integral { width: 1, .. }, Constraint::Integral(0)) => quote!(false),
+            (Field::Integral { width: 1, .. }, Constraint::Integral(1)) => quote!(true),
             (Field::Integral { .. }, Constraint::Integral(i)) => quote!($(*i)),
             (Field::EnumRef { ty, .. }, Constraint::EnumTag(tag)) => quote!($ty.$tag),
             _ => panic!("invalid constraint"),
@@ -168,6 +173,7 @@ impl Field {
 
     pub fn try_decode_from_num(&self, expr: impl FormatInto<Java>) -> Result<Tokens<Java>, String> {
         match self {
+            Field::Integral { width: 1, .. } => Ok(quote!($expr != 0)),
             Field::Integral { .. } => Ok(quote!($expr)),
             Field::EnumRef { ty, width, .. } => {
                 Ok(quote!($ty.from$(Integral::fitting(*width).capitalized())($expr)))
@@ -211,6 +217,8 @@ impl Field {
             }
         } else if let Some((array_name, _)) = self.get_count_field_info(width_fields) {
             cast_symbol(quote!($array_name.length), Integral::Int, Integral::fitting(width))
+        } else if let Field::Integral { width: 1, .. } = self {
+            quote!(($expr ? 1 : 0))
         } else {
             quote!($expr)
         })
