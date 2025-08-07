@@ -36,8 +36,7 @@ impl std::str::FromStr for OutputFormat {
             "rust" => Ok(Self::Rust),
             "rust_legacy" => Ok(Self::RustLegacy),
             _ => Err(format!(
-                "could not parse {:?}, valid option are 'json', 'rust', 'rust_legacy'.",
-                input
+                "could not parse {input:?}, valid option are 'json', 'rust', 'rust_legacy'."
             )),
         }
     }

@@ -224,7 +224,7 @@ impl<'d> Scope<'d> {
                                 decl.loc.primary(),
                                 prev.loc
                                     .secondary()
-                                    .with_message(format!("`{}` is first declared here", id)),
+                                    .with_message(format!("`{id}` is first declared here")),
                             ]),
                     )
                 }
@@ -574,7 +574,7 @@ fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<(), Diagnostics>
                     None => diagnostics.push(
                         Diagnostic::error()
                             .with_code(ErrorCode::UndeclaredGroupIdentifier)
-                            .with_message(format!("undeclared group identifier `{}`", group_id))
+                            .with_message(format!("undeclared group identifier `{group_id}`"))
                             .with_labels(vec![field.loc.primary()])
                             .with_notes(vec!["hint: expected group identifier".to_owned()]),
                     ),
@@ -584,7 +584,7 @@ fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<(), Diagnostics>
                     Some(_) => diagnostics.push(
                         Diagnostic::error()
                             .with_code(ErrorCode::InvalidGroupIdentifier)
-                            .with_message(format!("invalid group identifier `{}`", group_id))
+                            .with_message(format!("invalid group identifier `{group_id}`"))
                             .with_labels(vec![field.loc.primary()])
                             .with_notes(vec!["hint: expected group identifier".to_owned()]),
                     ),
@@ -637,7 +637,7 @@ fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<(), Diagnostics>
                     .push(
                         Diagnostic::error()
                             .with_code(ErrorCode::UndeclaredParentIdentifier)
-                            .with_message(format!("undeclared parent identifier `{}`", parent_id))
+                            .with_message(format!("undeclared parent identifier `{parent_id}`"))
                             .with_labels(vec![decl.loc.primary()])
                             .with_notes(vec![format!("hint: expected {} identifier", decl.kind())]),
                     ),
@@ -652,7 +652,7 @@ fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<(), Diagnostics>
                 (_, Some(_)) => diagnostics.push(
                     Diagnostic::error()
                         .with_code(ErrorCode::InvalidParentIdentifier)
-                        .with_message(format!("invalid parent identifier `{}`", parent_id))
+                        .with_message(format!("invalid parent identifier `{parent_id}`"))
                         .with_labels(vec![decl.loc.primary()])
                         .with_notes(vec![format!("hint: expected {} identifier", decl.kind())]),
                 ),
@@ -677,7 +677,7 @@ fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<(), Diagnostics>
                 None => diagnostics.push(
                     Diagnostic::error()
                         .with_code(ErrorCode::UndeclaredTestIdentifier)
-                        .with_message(format!("undeclared test identifier `{}`", type_id))
+                        .with_message(format!("undeclared test identifier `{type_id}`"))
                         .with_labels(vec![decl.loc.primary()])
                         .with_notes(vec!["hint: expected packet identifier".to_owned()]),
                 ),
@@ -685,7 +685,7 @@ fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<(), Diagnostics>
                 Some(_) => diagnostics.push(
                     Diagnostic::error()
                         .with_code(ErrorCode::InvalidTestIdentifier)
-                        .with_message(format!("invalid test identifier `{}`", type_id))
+                        .with_message(format!("invalid test identifier `{type_id}`"))
                         .with_labels(vec![decl.loc.primary()])
                         .with_notes(vec!["hint: expected packet identifier".to_owned()]),
                 ),
@@ -718,7 +718,7 @@ fn check_field_identifiers(file: &File) -> Result<(), Diagnostics> {
                                 field.loc.primary(),
                                 prev.loc
                                     .secondary()
-                                    .with_message(format!("`{}` is first declared here", id)),
+                                    .with_message(format!("`{id}` is first declared here")),
                             ]),
                     )
                 }
@@ -1015,8 +1015,7 @@ fn check_constraint(
                     Diagnostic::error()
                         .with_code(ErrorCode::ConstraintValueOutOfRange)
                         .with_message(format!(
-                            "constraint value `{}` is larger than maximum value",
-                            value
+                            "constraint value `{value}` is larger than maximum value"
                         ))
                         .with_labels(vec![constraint.loc.primary(), field.loc.secondary()]),
                 ),
@@ -1047,7 +1046,7 @@ fn check_constraint(
                         None => diagnostics.push(
                             Diagnostic::error()
                                 .with_code(ErrorCode::E20)
-                                .with_message(format!("undeclared enum tag `{}`", tag_id))
+                                .with_message(format!("undeclared enum tag `{tag_id}`"))
                                 .with_labels(vec![
                                     constraint.loc.primary(),
                                     field.loc.secondary().with_message(format!(
@@ -1059,7 +1058,7 @@ fn check_constraint(
                         Some(Tag::Range { .. }) => diagnostics.push(
                             Diagnostic::error()
                                 .with_code(ErrorCode::E42)
-                                .with_message(format!("enum tag `{}` defines a range", tag_id))
+                                .with_message(format!("enum tag `{tag_id}` defines a range"))
                                 .with_labels(vec![
                                     constraint.loc.primary(),
                                     field.loc.secondary().with_message(format!(
@@ -1340,8 +1339,7 @@ fn check_fixed_fields(file: &File, scope: &Scope) -> Result<(), Diagnostics> {
                         Diagnostic::error()
                             .with_code(ErrorCode::FixedValueOutOfRange)
                             .with_message(format!(
-                                "fixed value `{}` is larger than maximum value",
-                                value
+                                "fixed value `{value}` is larger than maximum value"
                             ))
                             .with_labels(vec![field.loc.primary()]),
                     )
@@ -1350,7 +1348,7 @@ fn check_fixed_fields(file: &File, scope: &Scope) -> Result<(), Diagnostics> {
                     None => diagnostics.push(
                         Diagnostic::error()
                             .with_code(ErrorCode::E33)
-                            .with_message(format!("undeclared type identifier `{}`", enum_id))
+                            .with_message(format!("undeclared type identifier `{enum_id}`"))
                             .with_labels(vec![field.loc.primary()])
                             .with_notes(vec!["hint: expected enum identifier".to_owned()]),
                     ),
@@ -1359,7 +1357,7 @@ fn check_fixed_fields(file: &File, scope: &Scope) -> Result<(), Diagnostics> {
                             diagnostics.push(
                                 Diagnostic::error()
                                     .with_code(ErrorCode::E34)
-                                    .with_message(format!("undeclared tag identifier `{}`", tag_id))
+                                    .with_message(format!("undeclared tag identifier `{tag_id}`"))
                                     .with_labels(vec![
                                         field.loc.primary(),
                                         enum_decl.loc.secondary(),
@@ -1370,12 +1368,12 @@ fn check_fixed_fields(file: &File, scope: &Scope) -> Result<(), Diagnostics> {
                     Some(decl) => diagnostics.push(
                         Diagnostic::error()
                             .with_code(ErrorCode::E35)
-                            .with_message(format!("invalid type identifier `{}`", enum_id))
+                            .with_message(format!("invalid type identifier `{enum_id}`"))
                             .with_labels(vec![
                                 field.loc.primary(),
                                 decl.loc
                                     .secondary()
-                                    .with_message(format!("`{}` is declared here", enum_id)),
+                                    .with_message(format!("`{enum_id}` is declared here")),
                             ])
                             .with_notes(vec!["hint: expected enum identifier".to_owned()]),
                     ),
@@ -1469,7 +1467,7 @@ fn check_array_fields(file: &File) -> Result<(), Diagnostics> {
                                 field
                                     .loc
                                     .secondary()
-                                    .with_message(format!("`{}` has constant size {}", id, size)),
+                                    .with_message(format!("`{id}` has constant size {size}")),
                             ]),
                     )
                 }
