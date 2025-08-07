@@ -62,7 +62,7 @@ pub fn generate(
     dir.extend(package.split("."));
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
-    let (classes, heirarchy) = generate_classes(&file);
+    let (classes, heirarchy) = generate_classes(file);
     let context = Context { endianness: file.endianness.value, heirarchy };
 
     for (name, class) in classes.into_iter() {
@@ -123,7 +123,7 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
                     let child = Class::new_fallback_child(&parent_name, width_field_width);
 
                     heirarchy.add_child(
-                        String::from(parent_name.clone()),
+                        parent_name.clone(),
                         child_name.clone(),
                         HashMap::new(),
                         child.fields().unwrap(),
@@ -187,13 +187,13 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
     (classes, heirarchy)
 }
 
-fn has_payload_or_body(fields: &Vec<ast::Field>) -> bool {
+fn has_payload_or_body(fields: &[ast::Field]) -> bool {
     fields
         .iter()
         .any(|field| matches!(&field.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body))
 }
 
-fn has_payload(fields: &Vec<ast::Field>) -> bool {
+fn has_payload(fields: &[ast::Field]) -> bool {
     fields.iter().any(|field| matches!(&field.desc, ast::FieldDesc::Payload { .. }))
 }
 
@@ -294,7 +294,7 @@ pub struct PacketDef {
 
 impl PacketDef {
     fn from_fields(
-        fields: &Vec<ast::Field>,
+        fields: &[ast::Field],
         classes: &HashMap<String, Class>,
         heirarchy: &ClassHeirarchy,
     ) -> Self {
@@ -313,7 +313,7 @@ impl PacketDef {
                         is_member: true,
                     };
 
-                    members.push(member.clone().into());
+                    members.push(member.clone());
                     aligner.add_bitfield(member, *width);
                 }
                 ast::FieldDesc::Reserved { width } => {
@@ -380,7 +380,7 @@ impl PacketDef {
                                 width: *width,
                             };
 
-                            members.push(member.clone().into());
+                            members.push(member.clone());
                             aligner.add_bitfield(member, *width);
                         }
                         _ => {
@@ -388,7 +388,7 @@ impl PacketDef {
                                 name: id.to_lower_camel_case(),
                                 ty: class.name().into(),
                             };
-                            members.push(member.clone().into());
+                            members.push(member.clone());
                             aligner.add_bytes(member);
                         }
                     }
@@ -397,15 +397,12 @@ impl PacketDef {
                     let (member, elem_width) = match (width, type_id) {
                         (Some(width), None) => {
                             let val = Field::ArrayElem {
-                                val: Box::new(
-                                    Field::Integral {
-                                        name: id.to_lower_camel_case(),
-                                        ty: Integral::fitting(*width),
-                                        width: *width,
-                                        is_member: true,
-                                    }
-                                    .into(),
-                                ),
+                                val: Box::new(Field::Integral {
+                                    name: id.to_lower_camel_case(),
+                                    ty: Integral::fitting(*width),
+                                    width: *width,
+                                    is_member: true,
+                                }),
                                 count: *count,
                             };
                             aligner.add_sized_bytes(val.clone(), *width);
@@ -417,27 +414,21 @@ impl PacketDef {
                             (
                                 if let Class::Enum { width, .. } = class {
                                     let val = Field::ArrayElem {
-                                        val: Box::new(
-                                            Field::EnumRef {
-                                                name: id.to_lower_camel_case(),
-                                                ty: class.name().into(),
-                                                width: *width,
-                                            }
-                                            .into(),
-                                        ),
+                                        val: Box::new(Field::EnumRef {
+                                            name: id.to_lower_camel_case(),
+                                            ty: class.name().into(),
+                                            width: *width,
+                                        }),
                                         count: *count,
                                     };
                                     aligner.add_sized_bytes(val.clone(), *width);
                                     val
                                 } else {
                                     let val = Field::ArrayElem {
-                                        val: Box::new(
-                                            Field::StructRef {
-                                                name: id.to_lower_camel_case(),
-                                                ty: class.name().into(),
-                                            }
-                                            .into(),
-                                        ),
+                                        val: Box::new(Field::StructRef {
+                                            name: id.to_lower_camel_case(),
+                                            ty: class.name().into(),
+                                        }),
                                         count: *count,
                                     };
                                     aligner.add_bytes(val.clone());
@@ -452,13 +443,10 @@ impl PacketDef {
                     if let Some(size_field_width) = staged_size_fields.remove(member.name()) {
                         width_fields.insert(
                             String::from(member.name()),
-                            WidthField::Size {
-                                field_width: size_field_width,
-                                elem_width: elem_width,
-                            },
+                            WidthField::Size { field_width: size_field_width, elem_width },
                         );
                     }
-                    members.push(member.into());
+                    members.push(member);
                 }
                 _ => {
                     dbg!(field);
@@ -504,7 +492,7 @@ impl ast::Constraint {
         (
             self.id.to_lower_camel_case(),
             self.value
-                .map(|integral| Constraint::Integral(integral))
+                .map(Constraint::Integral)
                 .or(self.tag_id.as_ref().map(|id| Constraint::EnumTag(id.to_upper_camel_case())))
                 .expect("Malformed constraint"),
         )

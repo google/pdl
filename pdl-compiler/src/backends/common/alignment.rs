@@ -116,7 +116,7 @@ impl<S: Symbol> ByteAligner<S> {
                 }
                 fields.push(Field {
                     chunk_offset: *chunk_width,
-                    symbol: symbol,
+                    symbol,
                     width,
                     symbol_offset: 0,
                     is_partial: false,

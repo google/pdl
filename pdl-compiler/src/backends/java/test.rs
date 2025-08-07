@@ -16,7 +16,7 @@ use genco::{
     lang::Java,
     prelude::{java, quote_fn},
     quote,
-    tokens::FormatInto,
+    tokens::{quoted, FormatInto},
     Tokens,
 };
 use heck::ToUpperCamelCase;
@@ -44,7 +44,7 @@ pub fn generate_tests(
     output_dir: &Path,
     package: String,
     pdl_file_under_test: &str,
-    exclude_packets: &Vec<String>,
+    exclude_packets: &[String],
 ) -> Result<(), String> {
     let mut dir = PathBuf::from(output_dir);
     dir.extend(package.split("."));
@@ -56,12 +56,8 @@ pub fn generate_tests(
             .expect("failed to parse pdl file under test. Please verify that the file compiles.")
             .declarations
             .into_iter()
-            .flat_map(
-                |decl| if let Some(id) = decl.id() { Some((String::from(id), decl)) } else { None },
-            )
+            .flat_map(|decl| decl.id().map(String::from).map(|id| (id, decl)))
             .collect();
-
-    // dbg!(&decls, decls.contains_key("ScalarParent"));
 
     JavaTest(get_test_cases(input_file, exclude_packets)?).write_to_fs(
         &output_file,
@@ -71,7 +67,7 @@ pub fn generate_tests(
     )
 }
 
-fn get_test_cases(file: &str, exclude_packets: &Vec<String>) -> Result<Vec<Packet>, String> {
+fn get_test_cases(file: &str, exclude_packets: &[String]) -> Result<Vec<Packet>, String> {
     let data = fs::read_to_string(file).map_err(|err| err.to_string())?;
     let mut packets: Vec<Packet> = serde_json::from_str(&data).map_err(|err| err.to_string())?;
 
@@ -79,7 +75,7 @@ fn get_test_cases(file: &str, exclude_packets: &Vec<String>) -> Result<Vec<Packe
 
     packets.retain(|p| !exclude_packets.contains(&p.name));
     for packet in packets.iter_mut() {
-        packet.tests.retain(|t| !t.packet.as_ref().is_some_and(|p| exclude_packets.contains(&p)));
+        packet.tests.retain(|t| !t.packet.as_ref().is_some_and(|p| exclude_packets.contains(p)));
     }
 
     Ok(packets)
@@ -96,8 +92,10 @@ impl JavaFile<HashMap<String, Decl>> for JavaTest {
                 public static void main(String[] args) {
                     $(for packet in self.0.iter() {
                         $(for (i, _) in packet.tests.iter().enumerate() {
+                            System.out.println("┌─[TEST] " + $(quoted(&packet.name)) + $i);
                             TEST_$(&packet.name).testEncode$i();
                             TEST_$(&packet.name).testDecode$i();
+                            System.out.println("└─[PASS]");
                         })
                     })
                     System.out.println("All tests passed!");
@@ -201,7 +199,7 @@ impl Field {
             }
             FieldDesc::Reserved { width } => literal(Integral::fitting(*width), 0),
             FieldDesc::Typedef { type_id, .. } => {
-                quote!($(get_decl(&type_id, decls).desc.construct(value, decls)))
+                quote!($(get_decl(type_id, decls).desc.construct(value, decls)))
             }
 
             FieldDesc::Payload { .. } => {
@@ -275,7 +273,7 @@ impl DeclDesc {
                 ))
             }
             DeclDesc::Struct { id, .. } => {
-                quote!($(build_packet_from_fields(&id, value.as_object().unwrap(), decls)))
+                quote!($(build_packet_from_fields(id, value.as_object().unwrap(), decls)))
             }
             other => {
                 dbg!(other);
@@ -318,7 +316,7 @@ fn hex_to_array(hex: &str) -> impl FormatInto<Java> + '_ {
 }
 
 fn get_decl<'a>(id: &'a str, decls: &'a HashMap<String, Decl>) -> &'a Decl {
-    decls.get(id).expect(&format!("Could not find decl {}", id))
+    decls.get(id).unwrap_or_else(|| panic!("Could not find decl {id}"))
 }
 
 fn get_field<'a>(id: &'a str, field_id: &'a str, decls: &'a HashMap<String, Decl>) -> &'a Field {
@@ -339,7 +337,7 @@ fn json_id_to_field<'a>(field_id: &'a str, mut fields: Iter<'a, Field>) -> Optio
     fields.find(|field| match field.desc {
         _ if field.id().is_some_and(|id| id == field_id) => true,
         FieldDesc::Payload { .. } if field_id == "payload" => true,
-        FieldDesc::Body { .. } if field_id == "body" => true,
+        FieldDesc::Body if field_id == "body" => true,
         _ => false,
     })
 }

@@ -14,7 +14,7 @@ sed -e 's/little_endian_packets/big_endian_packets/' \
 
 mkdir -p "$OUT_DIR/canonical_test/src"
 
-cargo run --bin pdlc -- \
+cargo run --all-features --bin pdlc -- \
     tests/canonical/le_test_file.pdl \
     --output-format rust \
     --exclude-declaration UnsizedCustomField \
@@ -40,12 +40,12 @@ cargo run --bin pdlc -- \
     --exclude-declaration Packet_Array_ElementSize_UnsizedCustomField \
     --exclude-declaration Packet_Array_ElementSize_SizedCustomField \
     > "$OUT_DIR/canonical_test/src/le_backend.rs"
-cargo run --bin pdlc -- \
+cargo run --all-features --bin pdlc -- \
     tests/canonical/le_test_vectors.json \
     --output-format rust \
     --tests \
     >> "$OUT_DIR/canonical_test/src/le_backend.rs"
-cargo run --bin pdlc -- \
+cargo run --all-features --bin pdlc -- \
     "$OUT_DIR/be_test_file.pdl" \
     --output-format rust \
     --exclude-declaration UnsizedCustomField \
@@ -65,7 +65,7 @@ cargo run --bin pdlc -- \
     --exclude-declaration Packet_Array_ElementSize_UnsizedCustomField \
     --exclude-declaration Packet_Array_ElementSize_SizedCustomField \
     > "$OUT_DIR/canonical_test/src/be_backend.rs"
-cargo run --bin pdlc -- \
+cargo run --all-features --bin pdlc -- \
     tests/canonical/be_test_vectors.json \
     --output-format rust \
     --tests \

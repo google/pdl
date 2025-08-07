@@ -166,13 +166,16 @@ impl Field {
         }
     }
 
-    pub fn try_decode_from_num(&self, expr: impl FormatInto<Java>) -> Result<Tokens<Java>, ()> {
+    pub fn try_decode_from_num(&self, expr: impl FormatInto<Java>) -> Result<Tokens<Java>, String> {
         match self {
             Field::Integral { .. } => Ok(quote!($expr)),
             Field::EnumRef { ty, width, .. } => {
                 Ok(quote!($ty.from$(Integral::fitting(*width).capitalized())($expr)))
             }
-            _ => Err(()),
+            _ => Err(format!(
+                "failed to decode field from num: {}",
+                quote!($expr).to_string().unwrap()
+            )),
         }
     }
 
@@ -180,8 +183,8 @@ impl Field {
         &self,
         expr: impl FormatInto<Java>,
         width_fields: &HashMap<String, WidthField>,
-    ) -> Result<Tokens<Java>, ()> {
-        let width = self.width().ok_or(())?;
+    ) -> Result<Tokens<Java>, String> {
+        let width = self.width().ok_or("cannot encode field with dynamic width into num")?;
 
         Ok(if let Field::EnumRef { width, .. } = self {
             quote!($expr.to$(Integral::fitting(*width).capitalized())())

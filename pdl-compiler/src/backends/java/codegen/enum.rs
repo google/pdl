@@ -13,7 +13,7 @@ use crate::{
 
 pub fn gen_enum(
     name: &String,
-    tags: &Vec<Tag>,
+    tags: &[Tag],
     width: usize,
     fallback_tag: Option<TagOther>,
 ) -> Tokens<Java> {
@@ -37,7 +37,7 @@ pub fn gen_enum(
                 }) $(if let Some(fallback_tag) = fallback_tag {{
                     return new $(fallback_tag.name())(value);
                 }} else {{
-                    $(failed_to_decode_closed_enum(&name, ty))
+                    $(failed_to_decode_closed_enum(name, ty))
                 }})
 
             }
@@ -100,7 +100,7 @@ impl TagValue {
 trait MultiValueTag {
     fn has_subtags(&self) -> bool;
     fn subtags(&self) -> impl Iterator<Item = &TagValue>;
-    fn static_factory(&self, super_name: &String, ty: Integral) -> Tokens<Java>;
+    fn static_factory(&self, super_name: &str, ty: Integral) -> Tokens<Java>;
 
     fn def(&self, name: &String, super_name: &String, ty: Integral) -> Tokens<Java> {
         quote! {
@@ -157,7 +157,7 @@ impl MultiValueTag for TagRange {
         self.tags.iter()
     }
 
-    fn static_factory(&self, super_name: &String, ty: Integral) -> Tokens<Java> {
+    fn static_factory(&self, super_name: &str, ty: Integral) -> Tokens<Java> {
         quote! {
             public static $(self.name()) $(self.name())($ty value) {
                 $(for tag in self.tags.iter() {
@@ -183,7 +183,7 @@ impl MultiValueTag for TagOther {
         iter::empty::<&TagValue>()
     }
 
-    fn static_factory(&self, super_name: &String, ty: Integral) -> Tokens<Java> {
+    fn static_factory(&self, super_name: &str, ty: Integral) -> Tokens<Java> {
         quote! {
             public static $(self.name()) $(self.name())($ty value) {
                 $super_name tag = $super_name.fromByte(value);

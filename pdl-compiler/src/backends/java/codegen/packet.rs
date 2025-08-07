@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 
 use genco::{self, prelude::Java, quote, tokens::quoted, Tokens};
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
@@ -285,7 +285,7 @@ pub fn gen_abstract_packet(
 }
 
 fn member_defs(
-    members: &Vec<Field>,
+    members: &[Field],
     are_final: bool,
     constraints: &HashMap<String, String>,
 ) -> Tokens<Java> {
@@ -297,7 +297,7 @@ fn member_defs(
     }
 }
 
-fn getter_defs(members: &Vec<Field>) -> Tokens<Java> {
+fn getter_defs(members: &[Field]) -> Tokens<Java> {
     quote! {
         $(for member in members.iter().filter(|member| member.is_member()) {
             public $(member.ty()) get$(member.name().to_upper_camel_case())() {
@@ -308,7 +308,7 @@ fn getter_defs(members: &Vec<Field>) -> Tokens<Java> {
 }
 
 fn setter_defs(
-    members: &Vec<Field>,
+    members: &[Field],
     builder_type: &Tokens<Java>,
     constraints: &HashMap<String, Constraint>,
     width_fields: &HashMap<String, WidthField>,
@@ -391,7 +391,7 @@ fn assert_array_fits_width_field(
     }
 }
 
-fn builder_assigns(members: &Vec<Field>) -> Tokens<Java> {
+fn builder_assigns(members: &[Field]) -> Tokens<Java> {
     quote! {
         $(for member in members.iter().filter(|member| member.is_member()) {
             $(member.name()) = builder.$(member.name());
@@ -493,7 +493,7 @@ fn encoder(
 }
 
 fn decoder(
-    name: &String,
+    name: &str,
     def: &PacketDef,
     assign: fn(Tokens<Java>, &str, Tokens<Java>) -> Tokens<Java>,
     ctx: &Context,
@@ -533,7 +533,7 @@ fn decoder(
                                     field
                                         .symbol
                                         .try_decode_from_num(
-                                            t.gen_expr(t.or_all(partials.drain(..).collect())),
+                                            t.gen_expr(t.or_all(mem::take(&mut partials))),
                                         )
                                         .unwrap(),
                                 ));
@@ -714,7 +714,7 @@ fn width_def(name: &str, heirarchy: &ClassHeirarchy, is_public: bool) -> Tokens<
     }
 }
 
-fn field_width_def(name: &str, heirarchy: &ClassHeirarchy, members: &Vec<Field>) -> Tokens<Java> {
+fn field_width_def(name: &str, heirarchy: &ClassHeirarchy, members: &[Field]) -> Tokens<Java> {
     let inheritence = heirarchy.get(name);
 
     let t = ExprTree::new();
@@ -739,7 +739,7 @@ fn field_width_def(name: &str, heirarchy: &ClassHeirarchy, members: &Vec<Field>)
     }
 }
 
-fn hashcode_equals_overrides(name: &str, members: &Vec<Field>, call_super: bool) -> Tokens<Java> {
+fn hashcode_equals_overrides(name: &str, members: &[Field], call_super: bool) -> Tokens<Java> {
     let members: Vec<&Field> = members.iter().filter(|m| m.is_member()).collect();
     quote! {
         @Override
@@ -779,7 +779,7 @@ fn hashcode_equals_overrides(name: &str, members: &Vec<Field>, call_super: bool)
 
 fn build_child_fitting_constraints(
     name: &String,
-    members: &Vec<Field>,
+    members: &[Field],
     children: &Vec<&InheritanceNode>,
     fallback_child: Option<&String>,
 ) -> Tokens<Java> {
@@ -789,7 +789,7 @@ fn build_child_fitting_constraints(
         .then(|| children_iter.next().expect("Parent packet must have at least 1 child"));
 
     let children: Vec<&InheritanceNode> = children_iter
-        .map(|child| *child)
+        .copied()
         .filter(|child| !child.constraints.is_empty() || child.field_width().is_some())
         .collect();
 
@@ -846,7 +846,7 @@ fn build_child_fitting_constraints(
 /// Generates a decalaration $(val.name())Count that stores the number of elements in the array
 /// described by the function args.
 fn declare_array_count(
-    val: &Box<Field>,
+    val: &Field,
     count: Option<usize>,
     width_fields: &HashMap<String, WidthField>,
     heirarchy: &ClassHeirarchy,
@@ -891,8 +891,8 @@ fn declare_array_count(
 }
 
 fn declare_array_size(
-    class_name: &String,
-    val: &Box<Field>,
+    class_name: &str,
+    val: &Field,
     width_fields: &HashMap<String, WidthField>,
     heirarchy: &ClassHeirarchy,
 ) -> Tokens<Java> {

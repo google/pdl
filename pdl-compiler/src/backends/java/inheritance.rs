@@ -30,7 +30,7 @@ impl InheritanceNode {
 
 /// Every packet goes in the heirarchy, even ones with no inheritence
 /// That way we can look up sizes of any packet
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ClassHeirarchy(HashMap<String, InheritanceNode>);
 
 impl ClassHeirarchy {
@@ -66,7 +66,7 @@ impl ClassHeirarchy {
     ) {
         self.0
             .get_mut(&parent_name)
-            .expect(&format!("parent {} does not exist", parent_name))
+            .unwrap_or_else(|| panic!("parent {parent_name} does not exist"))
             .children
             .push(child_name.clone());
 

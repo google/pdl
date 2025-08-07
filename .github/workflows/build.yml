@@ -36,7 +36,7 @@ jobs:
         run: rustup component add rustfmt
 
       - name: Rust tests
-        run: cargo test
+        run: cargo test --features "java"
 
   documentation:
     name: Documentation

@@ -74,14 +74,14 @@ mkdir -p "$OUT_DIR/java/test"
 
 # Little Endian Codegen
 
-cargo run --features "java" --bin pdlc -- \
+cargo run --all-features --bin pdlc -- \
   tests/canonical/le_test_file.pdl \
   --output-format java \
   --output-dir "$OUT_DIR/java" \
   --java-package test.little_endian \
   $EXCLUDE_DECLS
 
-cargo run --features java --bin pdlc -- \
+cargo run --all-features --bin pdlc -- \
   tests/canonical/le_test_vectors.json \
   --output-format java \
   --tests \
@@ -92,14 +92,14 @@ cargo run --features java --bin pdlc -- \
 
 # Big Endian Codegen
 
-cargo run --features "java" --bin pdlc -- \
+cargo run --all-features --bin pdlc -- \
   "$OUT_DIR/be_test_file.pdl" \
   --output-format java \
   --output-dir "$OUT_DIR/java" \
   --java-package test.big_endian \
   $EXCLUDE_DECLS
 
-cargo run --features java --bin pdlc -- \
+cargo run --all-features --bin pdlc -- \
   tests/canonical/be_test_vectors.json \
   --output-format java \
   --tests \
