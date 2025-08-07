@@ -113,7 +113,7 @@ pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java>
                 $(if parent.is_some() {
                     return super.toString($(quoted("{ ")) $members_str, fieldWidth());
                 } else {
-                    return $(quoted(format!("{}{{ ", name))) $members_str;
+                    return $(quoted(format!("{name}{{ "))) $members_str;
                 })
             }
 
@@ -233,7 +233,7 @@ pub fn gen_abstract_packet(
                 $(if parent.is_some() {
                     return super.toString($(quoted("{ ")) $members_str, fieldWidth());
                 } else {
-                    return $(quoted(format!("{}{{ ", name))) $members_str;
+                    return $(quoted(format!("{name}{{ "))) $members_str;
                 })
             }
 
@@ -383,8 +383,7 @@ fn assert_array_fits_width_field(
         if ($compare_width > 0) {
             throw new IllegalArgumentException(
                 "Value " + $stringified_arr + $(quoted(format!(
-                    " is too wide for its _size_ or _count_ field with width {}",
-                    width_field_width
+                    " is too wide for its _size_ or _count_ field with width {width_field_width}"
                 )))
             );
         }
@@ -827,7 +826,7 @@ fn build_child_fitting_constraints(
         } else {
             tokens.extend(quote!({
                 throw new IllegalArgumentException(
-                    $(quoted(format!("Provided bytes do not decode into any child of {}", name)));
+                    $(quoted(format!("Provided bytes do not decode into any child of {name}")));
                 )
             }));
         }

@@ -53,7 +53,7 @@ impl ClassHeirarchy {
     }
 
     pub fn fallback_child_name(parent_name: &str) -> String {
-        format!("Unknown{}", parent_name)
+        format!("Unknown{parent_name}")
     }
 
     pub fn add_class(&mut self, name: String, fields: &Vec<Field>) {
@@ -124,7 +124,7 @@ impl ClassHeirarchy {
     pub fn field_width_without_dyn_field(&self, name: &str, exclude: &str) -> Option<usize> {
         let root = self.get(name);
         if !root.dyn_fields.contains(exclude) {
-            panic!("{} is not a dyn field of {}", exclude, name);
+            panic!("{exclude} is not a dyn field of {name}");
         } else if root.dyn_fields.len() == 1 {
             Some(root.static_field_width)
         } else {

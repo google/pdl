@@ -138,7 +138,7 @@ trait MultiValueTag {
 
                 @Override
                 public String toString() {
-                    return $(quoted(format!("{}.{}(", super_name, name))) +
+                    return $(quoted(format!("{super_name}.{name}("))) +
                         $(ty.stringify(quote!(value))) + ")";
                 }
 
@@ -229,6 +229,6 @@ fn failed_to_decode_closed_enum(name: &String, ty: Integral) -> Tokens<Java> {
     quote! {
         throw new IllegalArgumentException(
             "Value " + $(ty.stringify(quote!(value))) +
-            $(quoted(format!(" is invalid for closed enum {}", name))));
+            $(quoted(format!(" is invalid for closed enum {name}"))));
     }
 }

@@ -336,7 +336,7 @@ fn get_field<'a>(id: &'a str, field_id: &'a str, decls: &'a HashMap<String, Decl
     } else if let Some(parent_id) = decl.parent_id() {
         get_field(parent_id, field_id, decls)
     } else {
-        panic!("field {} not found in packet {} in pdl file under test", field_id, id);
+        panic!("field {field_id} not found in packet {id} in pdl file under test");
     }
 }
 
