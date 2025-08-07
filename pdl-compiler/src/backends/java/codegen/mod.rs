@@ -267,7 +267,7 @@ impl Integral {
 
     fn stringify(&self, expr: impl FormatInto<Java>) -> Tokens<Java> {
         let stringable_ty = self.limit_to_int();
-        quote!($(stringable_ty.boxed()).toHexString(
+        quote!("0x" + $(stringable_ty.boxed()).toHexString(
             $(cast_symbol(quote!($(expr)), *self, stringable_ty))
         ))
     }
