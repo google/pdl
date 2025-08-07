@@ -190,7 +190,7 @@ fn constraint_value(
 fn constraint_value_str(fields: &[&'_ ast::Field], constraint: &ast::Constraint) -> String {
     match constraint {
         ast::Constraint { value: Some(value), .. } => {
-            format!("{}", value)
+            format!("{value}")
         }
         ast::Constraint { tag_id: Some(tag_id), .. } => {
             let tag_id = format_ident!("{}", tag_id.to_upper_camel_case());
@@ -204,7 +204,7 @@ fn constraint_value_str(fields: &[&'_ ast::Field], constraint: &ast::Constraint)
                 })
                 .next()
                 .unwrap();
-            format!("{}::{}", type_id, tag_id)
+            format!("{type_id}::{tag_id}")
         }
         _ => unreachable!("Invalid constraint: {constraint:?}"),
     }
@@ -968,7 +968,7 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
 
     // Format a constant value as hexadecimal constant.
     fn format_value(value: usize) -> LitInt {
-        syn::parse_str::<syn::LitInt>(&format!("{:#x}", value)).unwrap()
+        syn::parse_str::<syn::LitInt>(&format!("{value:#x}")).unwrap()
     }
 
     // Backing type for the enum.
@@ -1069,11 +1069,11 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
     let derived_signed_into_types = [8, 16, 32, 64]
         .into_iter()
         .filter(|w| *w > width)
-        .map(|w| syn::parse_str::<syn::Type>(&format!("i{}", w)).unwrap());
+        .map(|w| syn::parse_str::<syn::Type>(&format!("i{w}")).unwrap());
     let derived_unsigned_into_types = [8, 16, 32, 64]
         .into_iter()
         .filter(|w| *w >= width && *w != backing_type.width)
-        .map(|w| syn::parse_str::<syn::Type>(&format!("u{}", w)).unwrap());
+        .map(|w| syn::parse_str::<syn::Type>(&format!("u{w}")).unwrap());
     let derived_into_types = derived_signed_into_types.chain(derived_unsigned_into_types);
 
     quote! {

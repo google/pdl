@@ -57,10 +57,10 @@ fn generate_unit_tests(input: &str, packet_names: &[&str]) -> Result<String, Str
         for (i, test_vector) in packet.tests.iter().enumerate() {
             let test_packet = test_vector.packet.as_deref().unwrap_or(packet.name.as_str());
             if !packet_names.contains(&test_packet) {
-                eprintln!("Skipping packet {}", test_packet);
+                eprintln!("Skipping packet {test_packet}");
                 continue;
             }
-            eprintln!("Generating tests for packet {}", test_packet);
+            eprintln!("Generating tests for packet {test_packet}");
 
             let parse_test_name = format_ident!(
                 "test_parse_{}_vector_{}_0x{}",

@@ -171,11 +171,11 @@ mod test {
     }
 
     fn make_attr(input: TokenStream) -> syn::LitStr {
-        syn::parse2::<syn::LitStr>(input.into()).unwrap()
+        syn::parse2::<syn::LitStr>(input).unwrap()
     }
 
     fn make_input(input: TokenStream) -> syn::ItemMod {
-        syn::parse2::<syn::ItemMod>(input.into()).unwrap()
+        syn::parse2::<syn::ItemMod>(input).unwrap()
     }
 
     #[test]
