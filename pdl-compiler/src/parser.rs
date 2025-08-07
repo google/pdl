@@ -231,11 +231,11 @@ impl<'i> Helpers<'i> for Node<'i> {
 }
 
 fn err_unexpected_rule<T>(expected: Rule, found: Rule) -> Result<T, String> {
-    Err(format!("expected rule {:?}, got {:?}", expected, found))
+    Err(format!("expected rule {expected:?}, got {found:?}"))
 }
 
 fn err_missing_rule<T>(expected: Rule) -> Result<T, String> {
-    Err(format!("expected rule {:?}, got nothing", expected))
+    Err(format!("expected rule {expected:?}, got nothing"))
 }
 
 fn expect<'i>(iter: &mut impl Iterator<Item = Node<'i>>, rule: Rule) -> Result<Node<'i>, String> {
@@ -509,7 +509,7 @@ fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> 
                 let constraints = parse_constraint_list_opt(&mut children, context)?;
                 ast::FieldDesc::Group { group_id, constraints }
             }
-            _ => return Err(format!("expected rule *_field, got {:?}", rule)),
+            _ => return Err(format!("expected rule *_field, got {rule:?}")),
         },
     })
 }
@@ -650,7 +650,7 @@ pub fn parse_inline(
     let root = PDLParser::parse(Rule::file, &source)
         .map_err(|e| {
             Diagnostic::error()
-                .with_message(format!("failed to parse input file '{}': {}", name, e))
+                .with_message(format!("failed to parse input file '{name}': {e}"))
         })?
         .next()
         .unwrap();
@@ -670,7 +670,7 @@ pub fn parse_file(
     name: &str,
 ) -> Result<ast::File, Diagnostic<ast::FileId>> {
     let source = std::fs::read_to_string(name).map_err(|e| {
-        Diagnostic::error().with_message(format!("failed to read input file '{}': {}", name, e))
+        Diagnostic::error().with_message(format!("failed to read input file '{name}': {e}"))
     })?;
     parse_inline(sources, name, source)
 }
@@ -738,7 +738,7 @@ mod test {
             "#
             .to_owned(),
         );
-        println!("{:?}", result);
+        println!("{result:?}");
         assert!(result.is_ok());
     }
 }

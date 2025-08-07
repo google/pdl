@@ -74,15 +74,15 @@ mod convert {
         // Payload contains too many bytes.
         assert!(matches!(
             Child2::try_from(Parent { a: 2, payload: vec![42, 2, 3, 4] }),
-            Err(DecodeError::TrailingBytes { .. })
+            Err(DecodeError::TrailingBytes)
         ));
         assert!(matches!(
             GrandChild1::try_from(Parent { a: 1, payload: vec![42, 0, 1, 2] }),
-            Err(DecodeError::TrailingBytes { .. })
+            Err(DecodeError::TrailingBytes)
         ));
         assert!(matches!(
             GrandChild1::try_from(Child1 { x: 42, payload: vec![0, 1, 2] }),
-            Err(DecodeError::TrailingBytes { .. })
+            Err(DecodeError::TrailingBytes)
         ));
 
         // Payload contains too few bytes.

@@ -152,7 +152,7 @@ impl<'a> FieldSerializer<'a> {
                 let (optional_field_id, set_value) = &optional_field_ids[0];
                 let optional_field_id = optional_field_id.to_ident();
                 let cond_value_present =
-                    syn::parse_str::<syn::LitInt>(&format!("{}", set_value)).unwrap();
+                    syn::parse_str::<syn::LitInt>(&format!("{set_value}")).unwrap();
                 let cond_value_absent =
                     syn::parse_str::<syn::LitInt>(&format!("{}", 1 - set_value)).unwrap();
                 self.chunk.push(BitField {
