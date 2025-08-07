@@ -74,45 +74,6 @@ pub struct ByteAligner<S: Symbol> {
     chunks: Vec<Chunk<S>>,
 }
 
-struct Chunker<'a> {
-    allowed_chunk_widths: &'a Vec<usize>,
-    remaining_width: usize,
-    symbol_offset: usize,
-}
-
-impl<'a> Chunker<'a> {
-    fn new(symbol_width: usize, allowed_chunk_widths: &'a Vec<usize>) -> Self {
-        Self {
-            allowed_chunk_widths: allowed_chunk_widths,
-            remaining_width: symbol_width,
-            symbol_offset: 0,
-        }
-    }
-}
-
-impl Iterator for Chunker<'_> {
-    type Item = Partial;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.remaining_width == 0 {
-            None
-        } else {
-            for chunk_width in self.allowed_chunk_widths.iter() {
-                if *chunk_width <= self.remaining_width {
-                    let partial = Partial { width: *chunk_width, offset: self.symbol_offset };
-                    self.symbol_offset += chunk_width;
-                    self.remaining_width -= chunk_width;
-                    return Some(partial);
-                }
-            }
-            let partial = Partial { width: self.remaining_width, offset: self.symbol_offset };
-            self.symbol_offset += self.remaining_width;
-            self.remaining_width = 0;
-            Some(partial)
-        }
-    }
-}
-
 impl<S: Symbol> ByteAligner<S> {
     /// All elements of `allowed_chunk_widths` must satisfy `width % 8 == 0`, and `allowed_chunk_widths` **must**
     /// contain `8`.
@@ -246,11 +207,25 @@ impl<S: Symbol> ByteAligner<S> {
         if !self.is_aligned() {
             panic!("sized fields must start at a byte boundary")
         }
-        self.chunks.push(Chunk::SizedBytes {
-            symbol,
-            alignment: Vec::from_iter(Chunker::new(width, &self.allowed_chunk_widths)),
-            width,
-        });
+
+        let mut alignment = Vec::new();
+
+        let mut remaining_width = width;
+        while remaining_width != 0 {
+            for chunk_width in self.allowed_chunk_widths.iter() {
+                if remaining_width >= *chunk_width {
+                    let offset = alignment
+                        .last()
+                        .map(|Partial { width, offset }| offset + width)
+                        .unwrap_or(0);
+
+                    alignment.push(Partial { width: *chunk_width, offset });
+                    remaining_width -= *chunk_width;
+                }
+            }
+        }
+
+        self.chunks.push(Chunk::SizedBytes { symbol, alignment, width });
     }
 
     pub fn add_bytes(&mut self, symbol: S) {

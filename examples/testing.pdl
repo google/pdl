@@ -1,10 +1,12 @@
 little_endian_packets
 
 packet Parent {
-    _body_,
-    a: 16,
+    a: 5,
+    _size_(_payload_): 3,
+    _payload_,
 }
 
-packet Child : Parent {
-    b: 8,
+packet Child : Parent ( a = 1 ) {
+    _size_(arr): 8,
+    arr: 16[]
 }

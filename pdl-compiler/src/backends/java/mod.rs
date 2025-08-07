@@ -92,6 +92,8 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
                 let parent_def = PacketDef::from_fields(fields, &classes, &heirarchy);
                 let child_name =
                     has_payload(fields).then(|| ClassHeirarchy::fallback_child_name(&parent_name));
+                let width_field_width =
+                    parent_def.width_fields.get("payload").map(WidthField::width);
 
                 if let Some(parent_id) = parent_id {
                     let grandparent = classes
@@ -118,14 +120,16 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
                 );
 
                 if let Some(child_name) = child_name {
+                    let child = Class::new_fallback_child(&parent_name, width_field_width);
+
                     heirarchy.add_child(
                         String::from(parent_name.clone()),
                         child_name.clone(),
                         HashMap::new(),
-                        &vec![Field::Payload { is_member: true }],
+                        child.fields().unwrap(),
                     );
 
-                    classes.insert(child_name, Class::new_fallback_child(&parent_name));
+                    classes.insert(child_name, child);
                 }
             }
             // If this is a child packet, set its parent to the appropriate abstract class.
@@ -180,14 +184,6 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
         }
     }
 
-    // dbg!(&classes);
-    // dbg!(&heirarchy);
-    // dbg!(classes
-    //     .values()
-    //     .filter_map(|class| heirarchy
-    //         .width(class.name())
-    //         .map(|width| (String::from(class.name()), width)))
-    //     .collect::<Vec<(String, usize)>>());
     (classes, heirarchy)
 }
 
@@ -251,14 +247,14 @@ impl Class {
         }
     }
 
-    fn new_fallback_child(parent_name: &str) -> Self {
+    fn new_fallback_child(parent_name: &str, width_field_width: Option<usize>) -> Self {
         Class::Packet {
             name: ClassHeirarchy::fallback_child_name(parent_name),
             def: PacketDef {
-                members: vec![Field::Payload { is_member: true }],
+                members: vec![Field::Payload { is_member: true, width_field_width }],
                 alignment: {
                     let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
-                    aligner.add_bytes(Field::Payload { is_member: true });
+                    aligner.add_bytes(Field::Payload { is_member: true, width_field_width });
                     aligner.align().unwrap()
                 },
                 width_fields: HashMap::new(),
@@ -278,6 +274,13 @@ impl Class {
         match self {
             Class::Enum { width, .. } => Some(*width),
             _ => None,
+        }
+    }
+
+    pub fn fields(&self) -> Option<&Vec<Field>> {
+        match self {
+            Class::Packet { def, .. } | Class::AbstractPacket { def, .. } => Some(&def.members),
+            Class::Enum { .. } => None,
         }
     }
 }
@@ -319,7 +322,13 @@ impl PacketDef {
                     aligner.add_bitfield(member, *width);
                 }
                 ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
-                    let member = Field::Payload { is_member: false };
+                    let member = Field::Payload {
+                        is_member: false,
+                        width_field_width: width_fields
+                            .get("payload")
+                            .map(|field| field.width())
+                            .or(staged_size_fields.get("payload").copied()),
+                    };
                     members.push(member.clone());
                     aligner.add_bytes(member);
                     if let Some(width) = staged_size_fields.remove("payload") {
@@ -507,6 +516,15 @@ pub enum WidthField {
     Size { field_width: usize, elem_width: Option<usize> },
     Count { field_width: usize },
 }
+impl WidthField {
+    fn width(&self) -> usize {
+        match self {
+            WidthField::Size { field_width, .. } | WidthField::Count { field_width } => {
+                *field_width
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Field {
@@ -514,7 +532,7 @@ pub enum Field {
     Reserved { width: usize },
     EnumRef { name: String, ty: String, width: usize },
     StructRef { name: String, ty: String },
-    Payload { is_member: bool },
+    Payload { is_member: bool, width_field_width: Option<usize> },
     ArrayElem { val: Box<Field>, count: Option<usize> },
 }
 
@@ -547,7 +565,7 @@ impl Field {
 
     pub fn is_member(&self) -> bool {
         match self {
-            Field::Integral { is_member, .. } | Field::Payload { is_member } => *is_member,
+            Field::Integral { is_member, .. } | Field::Payload { is_member, .. } => *is_member,
             Field::Reserved { .. } => false,
             _ => true,
         }

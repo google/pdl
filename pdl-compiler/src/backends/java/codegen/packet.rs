@@ -51,7 +51,10 @@ pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java>
                     if ($(&parent.name).fromBytes(buf) instanceof $name self) {
                         return self;
                     } else {
-                        throw new IllegalArgumentException("Provided bytes decode to a different subpacket of " + $(quoted(&parent.name)));
+                        throw new IllegalArgumentException(
+                            "Provided bytes decode to a different subpacket of " +
+                            $(quoted(&parent.name))
+                        );
                     }
                 }
 
@@ -103,14 +106,14 @@ pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java>
                         + $(match member.width().or_else(|| ctx.heirarchy.width(member.name())) {
                             Some(width) => $(quoted(format!("{}[{}]=", member.name(), width))),
                             None => $(quoted(format!("{}=", member.name())))
-                        }) + $(member.stringify(&def.width_fields)) + "\n"
+                        }) + $(member.stringify(&def.width_fields)) + ", "
                     }) + "}"
                 ))
 
                 $(if parent.is_some() {
-                    return super.toString($(quoted("{\n")) $members_str, fieldWidth());
+                    return super.toString($(quoted("{ ")) $members_str, fieldWidth());
                 } else {
-                    return $(quoted(format!("{}{{\n", name))) $members_str;
+                    return $(quoted(format!("{}{{ ", name))) $members_str;
                 })
             }
 
@@ -134,7 +137,9 @@ pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java>
 
                 public $name build() { return new $name(this); }
 
-                $(setter_defs(&def.members, &quote!(Builder), &HashMap::new(), &def.width_fields))
+                $(setter_defs(
+                    &def.members, &quote!(Builder),
+                    &HashMap::new(), &def.width_fields, &ctx.heirarchy))
             }
         }
     }
@@ -221,14 +226,14 @@ pub fn gen_abstract_packet(
                                     $(member.stringify(&def.width_fields))
                                 })
                             }
-                        })  + "\n"
+                        })  + ", "
                     }) + "}"
                 ))
 
                 $(if parent.is_some() {
-                    return super.toString($(quoted("{\n")) $members_str, fieldWidth());
+                    return super.toString($(quoted("{ ")) $members_str, fieldWidth());
                 } else {
-                    return $(quoted(format!("{}{{\n", name))) $members_str;
+                    return $(quoted(format!("{}{{ ", name))) $members_str;
                 })
             }
 
@@ -254,7 +259,7 @@ pub fn gen_abstract_packet(
             }
 
             protected abstract static class UnconstrainedBuilder<B extends Builder<B>> extends Builder<B> {
-                $(setter_defs(&def.members, &quote!(B), &HashMap::new(), &def.width_fields))
+                $(setter_defs(&def.members, &quote!(B), &HashMap::new(), &def.width_fields, &ctx.heirarchy))
             }
 
             $(for child in children.iter() {
@@ -270,7 +275,8 @@ pub fn gen_abstract_packet(
                             })
                         }
 
-                        $(setter_defs(&def.members, &quote!(B), &child.constraints, &def.width_fields))
+                        $(setter_defs(&def.members, &quote!(B),
+                            &child.constraints, &def.width_fields, &ctx.heirarchy))
                     }
                 })
             })
@@ -306,51 +312,82 @@ fn setter_defs(
     builder_type: &Tokens<Java>,
     constraints: &HashMap<String, Constraint>,
     width_fields: &HashMap<String, WidthField>,
+    heirarchy: &ClassHeirarchy,
 ) -> Tokens<Java> {
     quote! {
-        $(for member in members.iter().filter(|member| member.is_member()) {
-            $(if !constraints.contains_key(member.name()) {
-                public $builder_type set$(member.name().to_upper_camel_case())(
-                    $(member.ty()) $(member.name())
-                ) {
-                    $(match member {
-                        Field::Integral { width, ty, .. } => {
-                            $(let t = ExprTree::new())
-                            if ($(t.compare_width(t.symbol(member.name(), *ty), *width)) > 0) {
-                                throw new IllegalArgumentException(
-                                    "Value " +
-                                    $(member.stringify(width_fields)) +
-                                    $(quoted(format!(
-                                        " is too wide for field '{}' with width {}", member.name(), width)))
-                                );
+        $(for member in members.iter()
+        .filter(|member| member.is_member() && !constraints.contains_key(member.name())) {
+            public $builder_type set$(member.name().to_upper_camel_case())(
+                $(member.ty()) $(member.name())
+            ) {
+                $(match member {
+                    Field::Integral { width, ty, .. } => {
+                        $(let t = ExprTree::new())
+                        if ($(t.compare_width(t.symbol(member.name(), *ty), *width)) > 0) {
+                            throw new IllegalArgumentException(
+                                "Value " +
+                                $(member.stringify(width_fields)) +
+                                $(quoted(format!(
+                                    " is too wide for field '{}' with width {}",
+                                    member.name(),
+                                    width
+                                )))
+                            );
+                        }
+                    }
+                    Field::Payload { width_field_width: Some(width), .. } => {
+                        $(assert_array_fits_width_field(
+                            quote!($(member.name()).length),
+                            *width,
+                            member.stringify(width_fields)
+                        ))
+                    }
+                    Field::ArrayElem { .. } => {
+                        $(match width_fields.get(member.name()) {
+                            Some(WidthField::Count { field_width }) => {
+                                $(assert_array_fits_width_field(
+                                    quote!($(member.name()).length),
+                                    *field_width,
+                                    member.stringify(width_fields)
+                                ))
                             }
-                        }
-                        Field::Payload { .. } => {
-                            $(if let Some(WidthField::Size { field_width, .. }) = width_fields.get("payload") {
-                                $(let t = ExprTree::new())
-                                if (
-                                    $(t.compare_width(
-                                        t.symbol(quote!($(member.name()).length), Integral::Int),
-                                        *field_width
-                                    )) > 0
-                                ) {
-                                    throw new IllegalArgumentException(
-                                        "Payload " +
-                                        $(member.stringify(width_fields)) +
-                                        $(quoted(format!(
-                                            " is too wide for its _size_ field with width {}", field_width)))
-                                    );
-                                }
-                            })
-                        }
-                        _ =>, // No special checks for other members.
-                    })
+                            Some(WidthField::Size { field_width, .. }) => {
+                                $(assert_array_fits_width_field(
+                                    member.width_expr(heirarchy),
+                                    *field_width,
+                                    member.stringify(width_fields)
+                                ))
+                            }
+                            _ =>,
+                        })
+                    }
+                    _ =>, // No special checks for other members.
+                })
 
-                    this.$(member.name()) = $(member.name());
-                    return self();
-                }
-            })
+                this.$(member.name()) = $(member.name());
+                return self();
+            }
         })
+    }
+}
+
+fn assert_array_fits_width_field(
+    arr_width_expr: Tokens<Java>,
+    width_field_width: usize,
+    stringified_arr: Tokens<Java>,
+) -> Tokens<Java> {
+    let t = ExprTree::new();
+    let compare_width = t.compare_width(t.symbol(arr_width_expr, Integral::Int), width_field_width);
+
+    quote! {
+        if ($compare_width > 0) {
+            throw new IllegalArgumentException(
+                "Value " + $stringified_arr + $(quoted(format!(
+                    " is too wide for its _size_ or _count_ field with width {}",
+                    width_field_width
+                )))
+            );
+        }
     }
 }
 
@@ -567,7 +604,6 @@ fn decoder(
                         for (int i = 0; i < $(arr_name)Count; i++) {
                             $arr_name[i] = $(val.ty()).fromBytes(buf);
                         }
-                        // TODO: this will break with declare_locally
                         $(assign(member.ty(), arr_name, quote!($arr_name)))
                     ))
                 } else {
