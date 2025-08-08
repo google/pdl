@@ -7,8 +7,6 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration Checksum \
 --exclude-declaration ScalarGroup \
 --exclude-declaration EnumGroup \
---exclude-declaration Packet_FixedScalar_Field \
---exclude-declaration Packet_FixedEnum_Field \
 --exclude-declaration Packet_Body_Field_VariableSize \
 --exclude-declaration Packet_Body_Field_UnknownSize \
 --exclude-declaration Packet_Body_Field_UnknownSize_Terminal \
@@ -29,10 +27,6 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration Packet_Optional_Struct_Field \
 --exclude-declaration AliasedChild_A \
 --exclude-declaration AliasedChild_B \
---exclude-declaration Struct_FixedScalar_Field_ \
---exclude-declaration Struct_FixedScalar_Field \
---exclude-declaration Struct_FixedEnum_Field_ \
---exclude-declaration Struct_FixedEnum_Field \
 --exclude-declaration Struct_ScalarGroup_Field_ \
 --exclude-declaration Struct_ScalarGroup_Field \
 --exclude-declaration Struct_EnumGroup_Field_ \

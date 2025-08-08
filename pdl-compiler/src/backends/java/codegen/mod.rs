@@ -124,9 +124,11 @@ impl Field {
                     $(if let Some(modifier) = modifier => + "(+" + $modifier + ")")
                 )
             }
+            Field::Integral { fixed_val: Some(val), .. } => quote!($(*val)),
             Field::Integral { name, width: 1, .. } => quote!(($name ? 1 : 0)),
             Field::Integral { name, ty, .. } => ty.stringify(name),
             Field::Reserved { .. } => quote!("..."),
+            Field::EnumRef { ty, fixed_tag: Some(tag), .. } => quote!($ty.$tag),
             Field::EnumRef { name, .. } => quote!($name.toString()),
             Field::StructRef { name, .. } => quote!($name.toString()),
             Field::Payload { .. } => quote!($(&*import::ARRAYS).toString(payload)),
@@ -183,6 +185,14 @@ impl Field {
         }
     }
 
+    pub fn fixed_val(&self) -> Option<Tokens<Java>> {
+        match self {
+            Field::Integral { fixed_val: Some(val), .. } => Some(quote!($(*val))),
+            Field::EnumRef { ty, fixed_tag: Some(tag), .. } => Some(quote!($ty.$tag)),
+            _ => None,
+        }
+    }
+
     pub fn decode_from_num(
         &self,
         expr: impl FormatInto<Java>,
@@ -218,8 +228,12 @@ impl Field {
         let width = self.width().expect("cannot encode field with dynamic width into num");
         let ty = self.integral_ty().unwrap();
 
-        if self.is_reserved() {
+        if let Field::Integral { fixed_val: Some(val), .. } = self {
+            t.num(*val)
+        } else if self.is_reserved() {
             t.num(0)
+        } else if let Field::EnumRef { ty: class, fixed_tag: Some(tag), .. } = self {
+            t.symbol(quote!($class.$tag.to$(ty.capitalized())()), ty)
         } else if let Field::EnumRef { .. } = self {
             t.symbol(quote!($expr.to$(ty.capitalized())()), ty)
         } else if let Some(array_name) =

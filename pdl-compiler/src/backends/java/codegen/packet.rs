@@ -295,8 +295,10 @@ fn member_defs(
 ) -> Tokens<Java> {
     quote! {
         $(for member in members.iter().filter(|member| member.is_member()) {
-            protected $(if are_final => final) $(member.ty()) $(member.name())
-                $(if let Some(constraint) = constraints.get(member.name()) => = $constraint);
+            $(let is_final = are_final || constraints.contains_key(member.name()))
+            protected $(if is_final => final) $(member.ty()) $(member.name())
+                $(if let Some(constraint) = constraints.get(member.name()) => = $constraint)
+                $(if let Some(fixed_val) = member.fixed_val() => = $fixed_val);
         })
     }
 }
@@ -319,8 +321,9 @@ fn setter_defs(
     heirarchy: &ClassHeirarchy,
 ) -> Tokens<Java> {
     quote! {
-        $(for member in members.iter()
-        .filter(|member| member.is_member() && !constraints.contains_key(member.name())) {
+        $(for member in members.iter().filter(
+            |member| member.is_member() && !constraints.contains_key(member.name())
+        ) {
             public $builder_type set$(member.name().to_upper_camel_case())(
                 $(member.ty()) $(member.name())
             ) {
@@ -493,7 +496,7 @@ fn encoder(
 fn decoder(
     name: &str,
     def: &PacketDef,
-    assign: fn(Tokens<Java>, &str, Tokens<Java>) -> Tokens<Java>,
+    assign: fn(&Field, &Tokens<Java>) -> Tokens<Java>,
     ctx: &Context,
 ) -> Tokens<Java> {
     let mut tokens = Tokens::new();
@@ -525,9 +528,8 @@ fn decoder(
                             // We have all partials of the value and can write the decoder for it
                             if !field.symbol.is_reserved() {
                                 tokens.extend(assign(
-                                    field.symbol.ty(),
-                                    field.symbol.name(),
-                                    field.symbol.decode_from_num(
+                                    &field.symbol,
+                                    &field.symbol.decode_from_num(
                                         t.gen_expr(t.or_all(mem::take(&mut partials))),
                                         &def.width_fields,
                                     ),
@@ -538,9 +540,8 @@ fn decoder(
                     } else {
                         if !field.symbol.is_reserved() {
                             tokens.extend(assign(
-                                field.symbol.ty(),
-                                field.symbol.name(),
-                                field.symbol.decode_from_num(
+                                &field.symbol,
+                                &field.symbol.decode_from_num(
                                     t.gen_expr(t.cast(
                                         t.mask(
                                             t.rshift(
@@ -585,7 +586,7 @@ fn decoder(
                     for (int i = 0; i < $(name)Count; i++) {
                         $(name)[i] = $(val.decode_from_num(t.gen_expr(root), &def.width_fields));
                     }
-                    $(assign(member.ty(), name, quote!($(name))))
+                    $(assign(member, &quote!($(name))))
                 ))
             }
             Chunk::UnsizedBytes(member @ Field::ArrayElem { val, count }) => {
@@ -599,7 +600,7 @@ fn decoder(
                         for (int i = 0; i < $(arr_name)Count; i++) {
                             $arr_name[i] = $(val.ty()).fromBytes(buf);
                         }
-                        $(assign(member.ty(), arr_name, quote!($arr_name)))
+                        $(assign(member, &quote!($arr_name)))
                     ))
                 } else {
                     tokens.extend(quote!(
@@ -610,16 +611,15 @@ fn decoder(
                             $(arr_name)List.add(elem);
                             $(arr_name)Size -= elem.width();
                         }
-                        $(assign(member.ty(), arr_name, quote!($(arr_name)List.toArray(new $(val.ty())[0]))))
+                        $(assign(member, &quote!($(arr_name)List.toArray(new $(val.ty())[0]))))
                     ));
                 }
             }
             Chunk::UnsizedBytes(member @ Field::Payload { .. }) => {
                 if def.width_fields.contains_key("payload") {
                     tokens.extend(assign(
-                        member.ty(),
-                        member.name(),
-                        quote!(buf.slice(buf.position(), payloadSize).order($(ctx.endianness))),
+                        member,
+                        &quote!(buf.slice(buf.position(), payloadSize).order($(ctx.endianness))),
                     ));
                 } else if let Some(width_without_payload) =
                     ctx.heirarchy.field_width_without_dyn_field(name, member.name())
@@ -630,18 +630,13 @@ fn decoder(
                         t.num(width_without_payload / 8),
                     );
                     tokens.extend(assign(
-                            member.ty(),
-                            member.name(),
-                            quote!(buf.slice(buf.position(), $(t.gen_expr(root))).order($(ctx.endianness)))
+                            member,
+                            &quote!(buf.slice(buf.position(), $(t.gen_expr(root))).order($(ctx.endianness)))
                         ));
                 } else {
                     // Assume payload is the last field in the packet (this should really be enforced by the parser)
                     // and consume all remaining bytes in the buffer.
-                    tokens.extend(assign(
-                        member.ty(),
-                        member.name(),
-                        quote!(buf.slice().order($(ctx.endianness))),
-                    ));
+                    tokens.extend(assign(member, &quote!(buf.slice().order($(ctx.endianness)))));
                 }
                 tokens.extend(quote!(buf.position(buf.position() + payload.limit());));
             }
@@ -651,7 +646,7 @@ fn decoder(
                 // Its decoder will consume all remaining bytes in the buffer.
                 tokens.extend(quote!(
                     $ty $var_name = $ty.fromBytes(buf.slice().order($(ctx.endianness)));
-                    $(assign(member.ty(), member.name(), quote!($var_name)))
+                    $(assign(member, &quote!($var_name)))
                     buf.position(buf.position() + $var_name.width());
                 ));
             }
@@ -668,30 +663,58 @@ fn decoder(
 mod assignment {
     use super::*;
 
-    pub fn build(ty: Tokens<Java>, name: &str, value: Tokens<Java>) -> Tokens<Java> {
-        if name.ends_with("Size") || name.ends_with("Count") {
-            // Don't need to set size/count fields in builder.
-            declare_locally(ty, name, value)
-        } else if name == "payload" {
-            quote!(
+    pub fn build(field: &Field, value: &Tokens<Java>) -> Tokens<Java> {
+        match field {
+            _ if field.is_width() => declare_locally(field, value),
+            Field::Payload { .. } => quote!(
                 $(&*import::BB) payload = $value;
                 byte[] payloadBytes = new byte[payload.remaining()];
                 payload.get(payloadBytes);
                 builder.setPayload(payloadBytes);
-            )
-        } else {
-            quote!(builder.set$(name.to_upper_camel_case())($value);)
+            ),
+            Field::Integral { ty, fixed_val: Some(fixed_val), .. } => {
+                enforce_integral_fixed(*ty, value, *fixed_val)
+            }
+            Field::EnumRef { ty, fixed_tag: Some(fixed_tag), .. } => {
+                enforce_enum_fixed(ty, value, fixed_tag)
+            }
+            _ => quote!(builder.set$(field.name().to_upper_camel_case())($value);),
         }
     }
 
-    pub fn declare_locally(ty: Tokens<Java>, name: &str, value: Tokens<Java>) -> Tokens<Java> {
-        if name == "payload" {
-            quote!($(&*import::BB) payload = $value;)
-        } else if ty.to_string().unwrap().ends_with("[]") {
-            quote!()
-        } else {
-            quote!($ty $name = $value;)
+    pub fn declare_locally(field: &Field, value: &Tokens<Java>) -> Tokens<Java> {
+        match field {
+            Field::Payload { .. } => quote!($(&*import::BB) payload = $value;),
+            Field::ArrayElem { .. } => quote!(),
+            Field::Integral { ty, fixed_val: Some(fixed_val), .. } => {
+                enforce_integral_fixed(*ty, value, *fixed_val)
+            }
+            Field::EnumRef { ty, fixed_tag: Some(fixed_tag), .. } => {
+                enforce_enum_fixed(ty, value, fixed_tag)
+            }
+            _ => quote!($(field.ty()) $(field.name()) = $value;),
         }
+    }
+
+    fn enforce_integral_fixed(ty: Integral, val: &Tokens<Java>, fixed_val: usize) -> Tokens<Java> {
+        let t = ExprTree::new();
+        quote!(
+            if ($(t.compare(t.symbol(val, ty), t.num(fixed_val))) != 0) {
+                throw new IllegalArgumentException(
+                    "Value " + $val + " invalid for field fixed to " + $fixed_val
+                );
+            }
+        )
+    }
+
+    fn enforce_enum_fixed(ty: &str, val: &Tokens<Java>, fixed_tag: &str) -> Tokens<Java> {
+        quote!(
+            if (!$val.equals($ty.$fixed_tag)) {
+                throw new IllegalArgumentException(
+                    "Value " + $val + " invalid for field fixed to " + $ty.$fixed_tag
+                );
+            }
+        )
     }
 }
 

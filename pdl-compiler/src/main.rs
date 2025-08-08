@@ -80,9 +80,8 @@ struct Opt {
     custom_field: Vec<String>,
 
     #[argh(option)]
-    /// directory where generated files should go.
-    /// If omitted, the generated code will be printed to stdout when supported
-    /// by the provided output format.
+    /// directory where generated files should go. This only works when 'output_format' is 'java'.
+    /// If omitted, the generated code will be printed to stdout.
     output_dir: Option<String>,
 
     #[argh(option)]

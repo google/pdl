@@ -323,10 +323,37 @@ impl PacketDef {
                         ty: if *width == 1 { Integral::Int } else { Integral::fitting(*width) },
                         width: *width,
                         is_member: true,
+                        fixed_val: None,
                     };
 
                     members.push(member.clone());
                     aligner.add_bitfield(member, *width);
+                }
+                ast::FieldDesc::FixedScalar { width, value } => {
+                    let member = Field::Integral {
+                        name: String::from("_fixed_"),
+                        ty: if *width == 1 { Integral::Int } else { Integral::fitting(*width) },
+                        width: *width,
+                        is_member: false,
+                        fixed_val: Some(*value),
+                    };
+
+                    members.push(member.clone());
+                    aligner.add_bitfield(member, *width);
+                }
+                ast::FieldDesc::FixedEnum { enum_id, tag_id } => {
+                    let ty = Class::name_from_id(enum_id);
+                    let width = classes.get(&ty).unwrap().width().unwrap();
+
+                    let member = Field::EnumRef {
+                        name: String::from("_fixed_"),
+                        ty,
+                        width,
+                        fixed_tag: Some(tag_id.to_upper_camel_case()),
+                    };
+
+                    members.push(member.clone());
+                    aligner.add_bitfield(member, width);
                 }
                 ast::FieldDesc::Reserved { width } => {
                     let member = Field::Reserved { width: *width };
@@ -373,6 +400,7 @@ impl PacketDef {
                         ty: Integral::Int,
                         width: *width,
                         is_member: false,
+                        fixed_val: None,
                     };
                     members.push(member.clone());
                     aligner.add_bitfield(member, *width);
@@ -392,6 +420,7 @@ impl PacketDef {
                         ty: Integral::Int,
                         width: *width,
                         is_member: false,
+                        fixed_val: None,
                     };
                     members.push(member.clone());
                     aligner.add_bitfield(member, *width);
@@ -408,6 +437,7 @@ impl PacketDef {
                                 name: id.to_lower_camel_case(),
                                 ty: class.name().into(),
                                 width: *width,
+                                fixed_tag: None,
                             };
 
                             members.push(member.clone());
@@ -432,6 +462,7 @@ impl PacketDef {
                                     ty: Integral::fitting(*width),
                                     width: *width,
                                     is_member: true,
+                                    fixed_val: None,
                                 }),
                                 count: *count,
                             };
@@ -448,6 +479,7 @@ impl PacketDef {
                                             name: id.to_lower_camel_case(),
                                             ty: class.name().into(),
                                             width: *width,
+                                            fixed_tag: None,
                                         }),
                                         count: *count,
                                     };
@@ -572,9 +604,9 @@ impl WidthField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Field {
-    Integral { name: String, ty: Integral, width: usize, is_member: bool },
+    Integral { name: String, ty: Integral, width: usize, is_member: bool, fixed_val: Option<usize> },
     Reserved { width: usize },
-    EnumRef { name: String, ty: String, width: usize },
+    EnumRef { name: String, ty: String, width: usize, fixed_tag: Option<String> },
     StructRef { name: String, ty: String },
     Payload { is_member: bool, width_field_width: Option<usize>, size_modifier: Option<usize> },
     ArrayElem { val: Box<Field>, count: Option<usize> },
@@ -621,6 +653,7 @@ impl Field {
         match self {
             Field::Integral { is_member, .. } | Field::Payload { is_member, .. } => *is_member,
             Field::Reserved { .. } => false,
+            _ if self.is_fixed() => false,
             _ => true,
         }
     }
@@ -631,6 +664,13 @@ impl Field {
 
     pub fn is_width(&self) -> bool {
         self.name().ends_with("Size") || self.name().ends_with("Count")
+    }
+
+    pub fn is_fixed(&self) -> bool {
+        matches!(
+            self,
+            Field::Integral { fixed_val: Some(_), .. } | Field::EnumRef { fixed_tag: Some(_), .. }
+        )
     }
 }
 
