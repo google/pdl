@@ -15,22 +15,9 @@
 //! Generate Rust unit tests for canonical test vectors.
 
 use quote::{format_ident, quote};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde::Serialize;
 
-#[derive(Debug, Deserialize)]
-struct Packet {
-    #[serde(rename = "packet")]
-    name: String,
-    tests: Vec<TestVector>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TestVector {
-    packed: String,
-    unpacked: Value,
-    packet: Option<String>,
-}
+use crate::backends::common::test::Packet;
 
 /// Convert a string of hexadecimal characters into a Rust vector of
 /// bytes.

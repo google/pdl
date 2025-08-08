@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.83.0  # This is the Rust version used in Android.
+          - 1.83.0 # This is the Rust version used in Android.
           - stable
         os:
           - ubuntu-latest
@@ -36,7 +36,7 @@ jobs:
         run: rustup component add rustfmt
 
       - name: Rust tests
-        run: cargo test
+        run: cargo test --features "java"
 
   documentation:
     name: Documentation
@@ -51,7 +51,7 @@ jobs:
       - name: Build documentation
         env:
           RUSTDOCFLAGS: --deny rustdoc::broken_intra_doc_links
-        run: cargo doc --no-deps
+        run: cargo doc --all-features --no-deps
 
   clippy:
     name: Clippy
@@ -64,7 +64,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Clippy
-        run: cargo clippy --no-deps
+        run: cargo clippy --all-features --no-deps
 
   test:
     name: Canonical Tests
@@ -86,7 +86,7 @@ jobs:
           python3 -m pip install typing_extensions
 
       - name: Install pdlc
-        run: cargo install --path pdl-compiler/
+        run: cargo install --all-features --path pdl-compiler/
 
       - name: Run Rust generator tests
         run: pdl-compiler/tests/run_rust_generator_tests.sh
@@ -99,6 +99,9 @@ jobs:
 
       - name: Run Python generator tests
         run: pdl-compiler/tests/run_python_generator_tests.sh
+
+      - name: Run Java generator tests
+        run: pdl-compiler/tests/run_java_generator_tests.sh
 
       - name: Compile Rust generated files
         run: pdl-compiler/tests/compile_rust_generated_files.sh
