@@ -9,7 +9,6 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration EnumGroup \
 --exclude-declaration Packet_FixedScalar_Field \
 --exclude-declaration Packet_FixedEnum_Field \
---exclude-declaration Packet_Payload_Field_SizeModifier \
 --exclude-declaration Packet_Body_Field_VariableSize \
 --exclude-declaration Packet_Body_Field_UnknownSize \
 --exclude-declaration Packet_Body_Field_UnknownSize_Terminal \
@@ -19,7 +18,6 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration Packet_Checksum_Field_FromEnd \
 --exclude-declaration Packet_Custom_Field_ConstantSize \
 --exclude-declaration Packet_Custom_Field_VariableSize \
---exclude-declaration Packet_Array_Field_UnsizedElement_SizeModifier \
 --exclude-declaration Packet_Array_Field_SizedElement_VariableSize_Padded \
 --exclude-declaration Packet_Array_Field_UnsizedElement_VariableCount_Padded \
 --exclude-declaration Packet_Array_Field_VariableElementSize_ConstantSize \
@@ -47,8 +45,6 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration Struct_Custom_Field_ConstantSize \
 --exclude-declaration Struct_Custom_Field_VariableSize_ \
 --exclude-declaration Struct_Custom_Field_VariableSize \
---exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier_ \
---exclude-declaration Struct_Array_Field_UnsizedElement_SizeModifier \
 --exclude-declaration Struct_Array_Field_SizedElement_VariableSize_Padded_ \
 --exclude-declaration Struct_Array_Field_SizedElement_VariableSize_Padded \
 --exclude-declaration Struct_Array_Field_UnsizedElement_VariableCount_Padded_ \

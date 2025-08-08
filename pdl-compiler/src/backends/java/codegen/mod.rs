@@ -41,7 +41,7 @@ pub mod expr;
 mod packet;
 
 use crate::backends::java::{
-    codegen::expr::{cast_symbol, ExprTree},
+    codegen::expr::{cast_symbol, ExprId, ExprTree},
     inheritance::{ClassHeirarchy, Constraint},
     Context, Field, WidthField,
 };
@@ -97,20 +97,32 @@ impl Field {
     pub fn stringify(&self, width_fields: &HashMap<String, WidthField>) -> Tokens<Java> {
         match self {
             Field::Integral { name, ty, .. } if name.ends_with("Size") => {
-                let (array_name, _, elem_width) = self.get_size_field_info(width_fields).unwrap();
-                let expr = if let Some(elem_width) = elem_width {
+                let array_name = name.strip_suffix("Size").unwrap();
+                if let Some(WidthField::Size { elem_width: Some(elem_width), modifier, .. }) =
+                    width_fields.get(array_name)
+                {
                     let t = ExprTree::new();
-                    t.gen_expr(t.mul(
-                        t.symbol(quote!($array_name.length), Integral::Int),
-                        t.num(elem_width),
-                    ))
+                    quote!(
+                        $(ty.stringify(t.gen_expr(
+                            t.mul(
+                                t.symbol(quote!($array_name.length), Integral::Int),
+                                t.num(*elem_width),
+                            )
+                        )))
+                        $(if let Some(modifier) = modifier => + "(+" + $(*modifier) + ")")
+                    )
                 } else {
-                    sum_array_elem_widths(array_name)
-                };
-                ty.stringify(expr)
+                    ty.stringify(sum_array_elem_widths(array_name))
+                }
             }
             Field::Integral { name, ty, .. } if name.ends_with("Count") => {
-                ty.stringify(quote!($(name.strip_suffix("Count").unwrap()).length))
+                let modifier =
+                    width_fields.get(name.strip_suffix("Count").unwrap()).unwrap().modifier();
+
+                quote!(
+                    $(ty.stringify(quote!($(name.strip_suffix("Count").unwrap()).length)))
+                    $(if let Some(modifier) = modifier => + "(+" + $modifier + ")")
+                )
             }
             Field::Integral { name, width: 1, .. } => quote!(($name ? 1 : 0)),
             Field::Integral { name, ty, .. } => ty.stringify(name),
@@ -171,86 +183,90 @@ impl Field {
         }
     }
 
-    pub fn try_decode_from_num(&self, expr: impl FormatInto<Java>) -> Result<Tokens<Java>, String> {
-        match self {
-            Field::Integral { width: 1, .. } => Ok(quote!($expr != 0)),
-            Field::Integral { .. } => Ok(quote!($expr)),
-            Field::EnumRef { ty, width, .. } => {
-                Ok(quote!($ty.from$(Integral::fitting(*width).capitalized())($expr)))
-            }
-            _ => Err(format!(
-                "failed to decode field from num: {}",
-                quote!($expr).to_string().unwrap()
-            )),
-        }
-    }
-
-    pub fn try_encode_to_num(
+    pub fn decode_from_num(
         &self,
         expr: impl FormatInto<Java>,
         width_fields: &HashMap<String, WidthField>,
-    ) -> Result<Tokens<Java>, String> {
-        let width = self.width().ok_or("cannot encode field with dynamic width into num")?;
+    ) -> Tokens<Java> {
+        match self {
+            Field::Integral { name, ty, .. } if self.is_width() => {
+                let arr_name = name
+                    .strip_suffix("Size")
+                    .unwrap_or_else(|| name.strip_suffix("Count").unwrap());
 
-        Ok(if let Field::EnumRef { width, .. } = self {
-            quote!($expr.to$(Integral::fitting(*width).capitalized())())
-        } else if let Some((array_name, _, elem_width)) = self.get_size_field_info(width_fields) {
-            let t = ExprTree::new();
-            if let Some(elem_width) = elem_width {
-                t.gen_expr(
-                    t.cast(
+                let t = ExprTree::new();
+                t.gen_expr(t.sub(
+                    t.symbol(quote!($expr), *ty),
+                    t.num(width_fields.get(arr_name).unwrap().modifier().unwrap_or(0)),
+                ))
+            }
+            Field::Integral { width: 1, .. } => quote!($expr != 0),
+            Field::Integral { .. } => quote!($expr),
+            Field::EnumRef { ty, width, .. } => {
+                quote!($ty.from$(Integral::fitting(*width).capitalized())($expr))
+            }
+            _ => panic!("failed to decode field from num: {}", quote!($expr).to_string().unwrap()),
+        }
+    }
+
+    pub fn encode_to_num(
+        &self,
+        t: &ExprTree,
+        expr: impl FormatInto<Java>,
+        width_fields: &HashMap<String, WidthField>,
+    ) -> ExprId {
+        let width = self.width().expect("cannot encode field with dynamic width into num");
+        let ty = self.integral_ty().unwrap();
+
+        if self.is_reserved() {
+            t.num(0)
+        } else if let Field::EnumRef { .. } = self {
+            t.symbol(quote!($expr.to$(ty.capitalized())()), ty)
+        } else if let Some(array_name) =
+            self.name().strip_suffix("Size").or_else(|| self.name().strip_suffix("Count"))
+        {
+            match width_fields.get(array_name) {
+                Some(WidthField::Size { elem_width: Some(elem_width), modifier, .. }) => t.cast(
+                    t.add(
                         t.mul(
                             t.symbol(
-                                quote!($(if array_name == "payload" { payload.limit() } else { $array_name.length })),
+                                quote!(
+                                    $(if array_name == "payload" {
+                                        payload.limit()
+                                    } else {
+                                        $array_name.length
+                                    })
+                                ),
                                 Integral::Int,
                             ),
                             t.num(elem_width / 8),
                         ),
-                        Integral::fitting(width),
+                        t.num(modifier.unwrap_or(0)),
                     ),
-                )
-            } else {
-                t.gen_expr(t.cast(
-                    t.symbol(sum_array_elem_widths(array_name), Integral::Int),
                     Integral::fitting(width),
-                ))
+                ),
+                Some(WidthField::Size { elem_width: None, modifier, .. }) => t.cast(
+                    t.add(
+                        t.symbol(sum_array_elem_widths(array_name), Integral::Int),
+                        t.num(modifier.unwrap_or(0)),
+                    ),
+                    Integral::fitting(width),
+                ),
+                Some(WidthField::Count { modifier, .. }) => t.cast(
+                    t.add(
+                        t.symbol(quote!($array_name.length), Integral::Int),
+                        t.num(modifier.unwrap_or(0)),
+                    ),
+                    Integral::fitting(width),
+                ),
+                _ => {
+                    panic!("Bitfields ending in 'size' or 'count' are not supported. Use _size_ or _count_ instead.")
+                }
             }
-        } else if let Some((array_name, _)) = self.get_count_field_info(width_fields) {
-            cast_symbol(quote!($array_name.length), Integral::Int, Integral::fitting(width))
         } else if let Field::Integral { width: 1, .. } = self {
-            quote!(($expr ? 1 : 0))
+            t.symbol(quote!(($expr ? 1 : 0)), Integral::Int)
         } else {
-            quote!($expr)
-        })
-    }
-
-    fn get_size_field_info(
-        &self,
-        width_fields: &HashMap<String, WidthField>,
-    ) -> Option<(&str, usize, Option<usize>)> {
-        if let Some((array_name, WidthField::Size { field_width, elem_width })) =
-            self.name().strip_suffix("Size").and_then(|array_name| {
-                width_fields.get(array_name).map(|width_field| (array_name, width_field))
-            })
-        {
-            Some((array_name, *field_width, *elem_width))
-        } else {
-            None
-        }
-    }
-
-    fn get_count_field_info(
-        &self,
-        width_fields: &HashMap<String, WidthField>,
-    ) -> Option<(&str, usize)> {
-        if let Some((array_name, WidthField::Count { field_width })) =
-            self.name().strip_suffix("Count").and_then(|array_name| {
-                width_fields.get(array_name).map(|width_field| (array_name, width_field))
-            })
-        {
-            Some((array_name, *field_width))
-        } else {
-            None
+            t.symbol(quote!($expr), ty)
         }
     }
 }

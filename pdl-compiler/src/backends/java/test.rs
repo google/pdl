@@ -329,7 +329,6 @@ fn get_decl<'a>(id: &'a str, decls: &'a HashMap<String, Decl>) -> &'a Decl {
 fn get_field<'a>(id: &'a str, field_id: &'a str, decls: &'a HashMap<String, Decl>) -> &'a Field {
     let decl = get_decl(id, decls);
     let field = json_id_to_field(field_id, decl.fields());
-    // dbg!(decl, id, field_id, field);
 
     if let Some(field) = field {
         field

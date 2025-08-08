@@ -1,9 +1,6 @@
 big_endian_packets
 
-struct TechnologySet {
-    uwb: 1,
-    ble_cs: 1,
-    wifi_nan_rtt: 1,
-    ble_rssi: 1,
-    _reserved_: 12,
+packet SizeModifier {
+    _size_(arr): 8,
+    arr: 16[+4],
 }

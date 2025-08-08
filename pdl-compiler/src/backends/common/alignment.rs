@@ -51,7 +51,12 @@ pub enum Chunk<S: Symbol> {
     /// A chunk comprised of bitpacked fields.
     Bitpack { fields: Vec<Field<S>>, width: usize },
     /// A chunk whose width is a whole multiple of 8 bits.
-    SizedBytes { symbol: S, alignment: Vec<Partial>, width: usize },
+    SizedBytes {
+        symbol: S,
+        alignment: Vec<Partial>,
+        #[allow(dead_code)]
+        width: usize,
+    },
     /// A chunk whose width is an unspecified whole multiple of 8 bits.
     UnsizedBytes(S),
 }
@@ -96,7 +101,6 @@ impl<S: Symbol> ByteAligner<S> {
     pub fn align(mut self) -> Result<Alignment<S>, &'static str> {
         match self.chunks.last() {
             Some(Chunk::Bitpack { width, .. }) if *width % 8 != 0 => {
-                dbg!(self);
                 Err("Provided fields could not be aligned to the allowed chunk widths")
             }
             None => Err("No fields provided"),

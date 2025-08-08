@@ -81,7 +81,7 @@ fn gen_mask_val(width: usize) -> usize {
 /// - Prunes basic no-op expressions, ie, shift/and/mul by literal 0, apply mask to value with
 ///   width equal to its type, etc.
 ///
-#[derive(Debug)]
+#[derive(Debug, Default)]
 /// **API contract**: At least one argument to all binary operators must be a non-literal (that is,
 ///  not a `num(..)`).
 pub struct ExprTree(RefCell<Vec<ExprNode>>);

@@ -214,6 +214,10 @@ pub fn gen_abstract_packet(
                                 $(quoted(format!("{}[{}]=", member.name(), width))) +
                                     $(if member.name() == "payloadSize" {
                                         Integer.toHexString(payloadSize)
+                                        $(if let Some(modifier) =
+                                            def.width_fields.get("payload").unwrap().modifier() {
+                                                + "(+" + $modifier + ")"
+                                        })
                                     } else {
                                         $(member.stringify(&def.width_fields))
                                     } )
@@ -335,27 +339,30 @@ fn setter_defs(
                             );
                         }
                     }
-                    Field::Payload { width_field_width: Some(width), .. } => {
+                    Field::Payload { width_field_width: Some(width), size_modifier, .. } => {
                         $(assert_array_fits_width_field(
                             quote!($(member.name()).length),
+                            member.stringify(width_fields),
                             *width,
-                            member.stringify(width_fields)
+                            *size_modifier,
                         ))
                     }
                     Field::ArrayElem { .. } => {
                         $(match width_fields.get(member.name()) {
-                            Some(WidthField::Count { field_width }) => {
+                            Some(WidthField::Count { field_width, modifier }) => {
                                 $(assert_array_fits_width_field(
                                     quote!($(member.name()).length),
+                                    member.stringify(width_fields),
                                     *field_width,
-                                    member.stringify(width_fields)
+                                    *modifier,
                                 ))
                             }
-                            Some(WidthField::Size { field_width, .. }) => {
+                            Some(WidthField::Size { field_width, modifier, .. }) => {
                                 $(assert_array_fits_width_field(
                                     member.width_expr(heirarchy),
+                                    member.stringify(width_fields),
                                     *field_width,
-                                    member.stringify(width_fields)
+                                    *modifier,
                                 ))
                             }
                             _ =>,
@@ -373,11 +380,19 @@ fn setter_defs(
 
 fn assert_array_fits_width_field(
     arr_width_expr: Tokens<Java>,
-    width_field_width: usize,
     stringified_arr: Tokens<Java>,
+    width_field_width: usize,
+    width_field_modifier: Option<usize>,
 ) -> Tokens<Java> {
     let t = ExprTree::new();
-    let compare_width = t.compare_width(t.symbol(arr_width_expr, Integral::Int), width_field_width);
+    let compare_width = t.compare_width(
+        if let Some(modifier) = width_field_modifier {
+            t.add(t.symbol(arr_width_expr, Integral::Int), t.num(modifier))
+        } else {
+            t.symbol(arr_width_expr, Integral::Int)
+        },
+        width_field_width,
+    );
 
     quote! {
         if ($compare_width > 0) {
@@ -415,23 +430,14 @@ fn encoder(
                             .iter()
                             .map(|field| {
                                 t.lshift(
-                                    if field.symbol.is_reserved() {
-                                        t.num(0)
-                                    } else {
-                                        t.rshift(
-                                            t.symbol(
-                                                field
-                                                    .symbol
-                                                    .try_encode_to_num(
-                                                        field.symbol.name(),
-                                                        width_fields,
-                                                    )
-                                                    .unwrap(),
-                                                field.symbol.integral_ty().unwrap(),
-                                            ),
-                                            t.num(field.symbol_offset),
-                                        )
-                                    },
+                                    t.rshift(
+                                        field.symbol.encode_to_num(
+                                            &t,
+                                            field.symbol.name(),
+                                            width_fields,
+                                        ),
+                                        t.num(field.symbol_offset),
+                                    ),
                                     t.num(field.chunk_offset),
                                 )
                             })
@@ -443,9 +449,7 @@ fn encoder(
                 tokens.extend(quote!(buf.$(chunk_type.encoder())($(t.gen_expr(root)));));
             }
             Chunk::SizedBytes {
-                symbol: member @ Field::ArrayElem { val, .. },
-                alignment,
-                width,
+                symbol: member @ Field::ArrayElem { val, .. }, alignment, ..
             } => {
                 tokens.extend(quote!(
                     for (int i = 0; i < $(member.name()).length; i++) {
@@ -454,12 +458,7 @@ fn encoder(
                             $(let t = ExprTree::new())
                             $(let root = t.cast(
                                 t.rshift(
-                                    t.symbol(
-                                        val.try_encode_to_num(
-                                            quote!($(member.name())[i]), width_fields
-                                        ).unwrap(),
-                                        Integral::fitting(*width),
-                                    ),
+                                    val.encode_to_num(&t, quote!($(member.name())[i]), width_fields),
                                     t.num(partial.offset),
                                 ),
                                 partial_ty,
@@ -528,12 +527,10 @@ fn decoder(
                                 tokens.extend(assign(
                                     field.symbol.ty(),
                                     field.symbol.name(),
-                                    field
-                                        .symbol
-                                        .try_decode_from_num(
-                                            t.gen_expr(t.or_all(mem::take(&mut partials))),
-                                        )
-                                        .unwrap(),
+                                    field.symbol.decode_from_num(
+                                        t.gen_expr(t.or_all(mem::take(&mut partials))),
+                                        &def.width_fields,
+                                    ),
                                 ));
                             }
                             t.clear();
@@ -543,9 +540,8 @@ fn decoder(
                             tokens.extend(assign(
                                 field.symbol.ty(),
                                 field.symbol.name(),
-                                field
-                                    .symbol
-                                    .try_decode_from_num(t.gen_expr(t.cast(
+                                field.symbol.decode_from_num(
+                                    t.gen_expr(t.cast(
                                         t.mask(
                                             t.rshift(
                                                 t.symbol(chunk_name, chunk_type),
@@ -554,8 +550,9 @@ fn decoder(
                                             field.width,
                                         ),
                                         field_type,
-                                    )))
-                                    .unwrap(),
+                                    )),
+                                    &def.width_fields,
+                                ),
                             ));
                         }
                         t.clear();
@@ -586,7 +583,7 @@ fn decoder(
                     $(declare_array_count(val, *count, &def.width_fields, &ctx.heirarchy).unwrap())
                     $(member.ty()) $(name) = new $(val.ty())[$(name)Count];
                     for (int i = 0; i < $(name)Count; i++) {
-                        $(name)[i] = $(val.try_decode_from_num(t.gen_expr(root)).unwrap());
+                        $(name)[i] = $(val.decode_from_num(t.gen_expr(root), &def.width_fields));
                     }
                     $(assign(member.ty(), name, quote!($(name))))
                 ))

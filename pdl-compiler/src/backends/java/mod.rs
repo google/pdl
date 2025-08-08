@@ -23,7 +23,7 @@ use std::{
     cmp,
     collections::HashMap,
     fs::{self, OpenOptions},
-    iter,
+    iter, mem,
     path::{Path, PathBuf},
 };
 
@@ -92,8 +92,12 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
                 let parent_def = PacketDef::from_fields(fields, &classes, &heirarchy);
                 let child_name =
                     has_payload(fields).then(|| ClassHeirarchy::fallback_child_name(&parent_name));
-                let width_field_width =
-                    parent_def.width_fields.get("payload").map(WidthField::width);
+
+                let (width_field_width, size_modifier) = parent_def
+                    .width_fields
+                    .get("payload")
+                    .map(|width_field| (Some(width_field.width()), width_field.modifier()))
+                    .unwrap_or((None, None));
 
                 if let Some(parent_id) = parent_id {
                     let grandparent = classes
@@ -120,7 +124,8 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
                 );
 
                 if let Some(child_name) = child_name {
-                    let child = Class::new_fallback_child(&parent_name, width_field_width);
+                    let child =
+                        Class::new_fallback_child(&parent_name, width_field_width, size_modifier);
 
                     heirarchy.add_child(
                         parent_name.clone(),
@@ -247,14 +252,22 @@ impl Class {
         }
     }
 
-    fn new_fallback_child(parent_name: &str, width_field_width: Option<usize>) -> Self {
+    fn new_fallback_child(
+        parent_name: &str,
+        width_field_width: Option<usize>,
+        size_modifier: Option<usize>,
+    ) -> Self {
         Class::Packet {
             name: ClassHeirarchy::fallback_child_name(parent_name),
             def: PacketDef {
-                members: vec![Field::Payload { is_member: true, width_field_width }],
+                members: vec![Field::Payload { is_member: true, width_field_width, size_modifier }],
                 alignment: {
                     let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
-                    aligner.add_bytes(Field::Payload { is_member: true, width_field_width });
+                    aligner.add_bytes(Field::Payload {
+                        is_member: true,
+                        width_field_width,
+                        size_modifier,
+                    });
                     aligner.align().unwrap()
                 },
                 width_fields: HashMap::new(),
@@ -301,7 +314,6 @@ impl PacketDef {
         let mut members: Vec<Field> = Vec::new();
         let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
         let mut width_fields: HashMap<String, WidthField> = HashMap::new();
-        let mut staged_size_fields: HashMap<String, usize> = HashMap::new();
 
         for field in fields.iter() {
             match &field.desc {
@@ -321,20 +333,32 @@ impl PacketDef {
                     members.push(member.clone());
                     aligner.add_bitfield(member, *width);
                 }
-                ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+                ast::FieldDesc::Body => {
                     let member = Field::Payload {
                         is_member: false,
-                        width_field_width: width_fields
-                            .get("payload")
-                            .map(|field| field.width())
-                            .or(staged_size_fields.get("payload").copied()),
+                        width_field_width: width_fields.get("payload").map(WidthField::width),
+                        size_modifier: width_fields.get("payload").and_then(WidthField::modifier),
                     };
                     members.push(member.clone());
                     aligner.add_bytes(member);
-                    if let Some(width) = staged_size_fields.remove("payload") {
-                        width_fields.insert(
-                            String::from("payload"),
-                            WidthField::Size { field_width: width, elem_width: Some(8) },
+                    if let Some(width_field) = width_fields.get_mut("payload") {
+                        width_field.update_with_array_info(Some(8), None)
+                    }
+                }
+                ast::FieldDesc::Payload { size_modifier } => {
+                    let member = Field::Payload {
+                        is_member: false,
+                        width_field_width: width_fields.get("payload").map(WidthField::width),
+                        size_modifier: width_fields.get("payload").and_then(WidthField::modifier),
+                    };
+                    members.push(member.clone());
+                    aligner.add_bytes(member);
+                    if let Some(width_field) = width_fields.get_mut("payload") {
+                        width_field.update_with_array_info(
+                            Some(8),
+                            size_modifier.as_ref().map(|modifier| {
+                                modifier.parse::<usize>().expect("failed to parse size modifier")
+                            }),
                         );
                     }
                 }
@@ -352,7 +376,10 @@ impl PacketDef {
                     };
                     members.push(member.clone());
                     aligner.add_bitfield(member, *width);
-                    staged_size_fields.insert(field_name, *width);
+                    width_fields.insert(
+                        field_name,
+                        WidthField::Size { field_width: *width, elem_width: None, modifier: None },
+                    );
                 }
                 ast::FieldDesc::Count { field_id, width } => {
                     let field_name = if field_id == "body" {
@@ -368,7 +395,10 @@ impl PacketDef {
                     };
                     members.push(member.clone());
                     aligner.add_bitfield(member, *width);
-                    width_fields.insert(field_name, WidthField::Count { field_width: *width });
+                    width_fields.insert(
+                        field_name,
+                        WidthField::Count { field_width: *width, modifier: None },
+                    );
                 }
                 ast::FieldDesc::Typedef { id, type_id } => {
                     let class = classes.get(&Class::name_from_id(type_id)).unwrap();
@@ -393,7 +423,7 @@ impl PacketDef {
                         }
                     }
                 }
-                ast::FieldDesc::Array { id, width, type_id, size: count, .. } => {
+                ast::FieldDesc::Array { id, width, type_id, size: count, size_modifier } => {
                     let (member, elem_width) = match (width, type_id) {
                         (Some(width), None) => {
                             let val = Field::ArrayElem {
@@ -440,11 +470,13 @@ impl PacketDef {
                         _ => panic!("invalid array field"),
                     };
 
-                    if let Some(size_field_width) = staged_size_fields.remove(member.name()) {
-                        width_fields.insert(
-                            String::from(member.name()),
-                            WidthField::Size { field_width: size_field_width, elem_width },
-                        );
+                    if let Some(width_field) = width_fields.get_mut(member.name()) {
+                        width_field.update_with_array_info(
+                            elem_width,
+                            size_modifier.as_ref().map(|modifier| {
+                                modifier.parse::<usize>().expect("failed to parse size modifier")
+                            }),
+                        )
                     }
                     members.push(member);
                 }
@@ -501,15 +533,39 @@ impl ast::Constraint {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WidthField {
-    Size { field_width: usize, elem_width: Option<usize> },
-    Count { field_width: usize },
+    Size { field_width: usize, elem_width: Option<usize>, modifier: Option<usize> },
+    Count { field_width: usize, modifier: Option<usize> },
 }
 impl WidthField {
+    fn update_with_array_info(&mut self, elem_width: Option<usize>, modifier: Option<usize>) {
+        match self {
+            WidthField::Size { elem_width: ew, modifier: m, .. } => {
+                let _ = mem::replace(ew, elem_width);
+                let _ = mem::replace(m, modifier);
+                if m.is_some_and(|modifier| modifier == 0) {
+                    m.take();
+                }
+            }
+            WidthField::Count { modifier: m, .. } => {
+                let _ = mem::replace(m, modifier);
+                if m.is_some_and(|modifier| modifier == 0) {
+                    m.take();
+                }
+            }
+        }
+    }
+
     fn width(&self) -> usize {
         match self {
-            WidthField::Size { field_width, .. } | WidthField::Count { field_width } => {
+            WidthField::Size { field_width, .. } | WidthField::Count { field_width, .. } => {
                 *field_width
             }
+        }
+    }
+
+    fn modifier(&self) -> Option<usize> {
+        match self {
+            WidthField::Size { modifier, .. } | WidthField::Count { modifier, .. } => *modifier,
         }
     }
 }
@@ -520,7 +576,7 @@ pub enum Field {
     Reserved { width: usize },
     EnumRef { name: String, ty: String, width: usize },
     StructRef { name: String, ty: String },
-    Payload { is_member: bool, width_field_width: Option<usize> },
+    Payload { is_member: bool, width_field_width: Option<usize>, size_modifier: Option<usize> },
     ArrayElem { val: Box<Field>, count: Option<usize> },
 }
 
@@ -571,6 +627,10 @@ impl Field {
 
     pub fn is_reserved(&self) -> bool {
         matches!(self, Self::Reserved { .. })
+    }
+
+    pub fn is_width(&self) -> bool {
+        self.name().ends_with("Size") || self.name().ends_with("Count")
     }
 }
 
