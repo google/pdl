@@ -21,7 +21,7 @@ For example, `cargo run --features "java" -- --output-format java examples/testi
 
 ## Packets
 
-Packets come with a builder, with the type of each field being the smallest Java integral type that fits the declared field width, or `boolean` if the field is 1 bit wide. Packet classes have a static `void fromBytes(byte[])` and an instance `byte[] toBytes()`. They override `hashCode`, `equals`, and `toString`.
+Packets come with a builder, with the type of each field being the smallest Java integral type that fits the declared field width, or `boolean` if the field is 1 bit wide. Packet classes have a static `void fromBytes(byte[])` and an instance `byte[] toBytes()`. Packet classes override `hashCode`, `equals`, and `toString` as expected.
 
 ```
 packet MyPacket {
@@ -36,7 +36,7 @@ MyPacket packet2 = MyPacket.fromBytes(new byte[] {1, 0, 2});
 assert packet1.equals(packet2);
 ```
 
-Packet inheritence maps to Java inheritence. Each parent generates an abstract class with a static `<PARENT_NAME> fromBytes(byte[])` that constructs an instance of one of its children. Packets with a `_payload_` generate a concrete "fallback" child (`Unknown<PARENT_NAME>`) with a raw `byte[] payload` member. An instance of the fallback child is constructed if a concrete child can't be determined based on constraint values or child size. Packets with a `_body_` throw an exception instead of constructing a fallback.
+Packet inheritance maps to Java inheritance. Each parent generates an abstract class with a static `<PARENT_NAME> fromBytes(byte[])` that constructs an instance of one of its children. Packets with a `_payload_` generate a concrete "fallback" child (`Unknown<PARENT_NAME>`) with a raw `byte[] payload` member. An instance of the fallback child is constructed if a concrete child can't be determined based on constraint values or child size. Packets with a `_body_` throw an exception instead of constructing a fallback.
 
 ```
 packet Parent {
@@ -63,7 +63,7 @@ UnknownParent packet2 = new UnknownParent.Builder().setA((byte) 1).setPayload(ne
 
 ## Enums
 
-Enums also map to a Java inheritence heirarchy. Each enum generates an abstract class with a static `void from<T>(<T>)` and instance `<T> to<T>()` where `<T>` is the smallest integral Java type that fits the enum's width. The enum has inner subclasses for each tag. Single-valued tags have singletons that shadow their class definitions while range and default tags have a constructor. Enum classes override `hashCode`, `equals`, and `toString` as expected.
+Enums and their tags also map to a Java class hierarchy. Each enum generates an abstract class with a static `<ENUM_NAME> from<T>(<T>)` and instance `<T> to<T>()` where `<T>` is the smallest integral Java type that fits the enum's width. The enum has an inner subclass for each tag. Single-valued tags have singletons that shadow their class definitions while range and default tags have a constructor. Enum classes override `hashCode`, `equals`, and `toString` as expected.
 
 ```
 enum MyEnum : 7 {
