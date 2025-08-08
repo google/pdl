@@ -1,0 +1,167 @@
+// Adapted from https://source.android.com/docs/core/connect/ranging-oob-spec
+
+big_endian_packets
+
+// Common definitions.
+
+enum MessageId: 8 {
+    CAPABILITIES_REQUEST = 0x0,
+    CAPABILITIES_RESPONSE = 0x1,
+    CONFIGURATION_REQUEST = 0x2,
+    CONFIGURATION_RESPONSE = 0x3,
+    STOP_REQUEST = 0x4,
+    STOP_RESPONSE = 0x5,
+    RESERVED = ..,
+}
+
+enum Technology: 8 {
+    UWB = 0x0,
+    BLE_CS = 0x1,
+    WIFI_NAN_RTT = 0x2,
+    BLE_RSSI = 0x3,
+    RESERVED = ..,
+}
+
+struct TechnologySet {
+    uwb: 1,
+    ble_cs: 1,
+    wifi_nan_rtt: 1,
+    ble_rssi: 1,
+    _reserved_: 12,
+}
+
+packet OobMessage {
+    // Version.
+    _fixed_ = 1: 8,
+    id: MessageId,
+    _payload_,
+}
+
+// Technology-specific capabilities.
+
+struct Capabilities {
+    technology: Technology,
+    _size_(_payload_): 8,
+    _payload_: [+2],
+}
+
+struct UwbCapabilities: Capabilities(technology = UWB) {
+    address: 16,
+    channels: 32,
+    preamble_indexes: 32,
+    config_ids: 32,
+    min_interval: 16,
+    min_slot_duration: 8,
+    roles: 8,
+}
+
+struct BleCsCapabilities: Capabilities(technology = BLE_CS) {
+    security_levels: 8,
+    address: 48,
+}
+
+enum WifiBandwidth: 8 {
+    TWENTY = 0x0,
+    FORTY = 0x1,
+    EIGHTY = 0x2,
+    ONE_SIXTY = 0x3,
+    EIGHTY_PLUS_EIGHTY = 0x4,
+    THREE_TWENTY = 0x05,
+    RESERVED = ..,
+}
+
+
+struct WifiNanRttCapabilities: Capabilities(technology = WIFI_NAN_RTT) {
+    features: 8,
+    periodic: 8,
+    bandwidth: WifiBandwidth,
+    num_rx_chains: 8,
+}
+
+struct BleRssiCapabilities: Capabilities(technology = BLE_RSSI) {
+    address: 48,
+}
+
+// Technology-specific configuration.
+
+struct Configuration {
+    technology: Technology,
+    _size_(_payload_): 8,
+    _payload_: [+2],
+}
+
+enum UwbDeviceRole: 8 {
+    INITIATOR = 0x1,
+    RESPONDER = 0x2,
+}
+
+enum UwbDeviceMode: 8 {
+    CONTROLLER = 0x1,
+    CONTROLEE = 0x2,
+}
+
+struct UwbConfiguration: Configuration(technology = UWB) {
+    address: 16,
+    session_id: 32,
+    config_id: 8,
+    channel: 8,
+    preamble_index: 8,
+    interval: 16,
+    slot_duration: 8,
+    _size_(session_key): 8,
+    session_key: 8[],
+    country_code: 16,
+    device_role: UwbDeviceRole,
+    device_mode: UwbDeviceMode,
+}
+
+struct BleCsConfiguration: Configuration(technology = BLE_CS) {
+    security_level: 8,
+    address: 48,
+}
+
+enum WifiDeviceRole: 8 {
+    RESPONDER = 0x0,
+    INITIATOR = 0x1,
+}
+
+struct WifiNanRttConfiguration: Configuration(technology = WIFI_NAN_RTT) {
+    _size_(service_name): 8,
+    service_name: 8[],
+    device_role: WifiDeviceRole,
+    use_periodic: 1,
+    _reserved_: 7,
+}
+
+struct BleRssiConfiguration: Configuration(technology = BLE_RSSI) {
+    address: 48,
+}
+
+// Protocol-level packets.
+
+packet CapabilitiesRequest: OobMessage(id = CAPABILITIES_REQUEST) {
+    requested_technologies: TechnologySet,
+}
+
+packet CapabilitiesResponse: OobMessage(id = CAPABILITIES_RESPONSE) {
+    supported_technologies: TechnologySet,
+    capabilities: Capabilities[],
+}
+
+packet ConfigurationRequest: OobMessage(id = CONFIGURATION_REQUEST) {
+    technologies_to_configure: TechnologySet,
+    technologies_to_start: TechnologySet,
+    configs: Configuration[],
+}
+
+packet ConfigurationResponse: OobMessage(id = CONFIGURATION_RESPONSE) {
+    configured_technologies: TechnologySet,
+}
+
+packet StopRequest: OobMessage(id = STOP_REQUEST) {
+    technologies_to_stop: TechnologySet,
+}
+
+packet StopResponse: OobMessage(id = STOP_RESPONSE) {
+    stopped_technologies: TechnologySet,
+}
