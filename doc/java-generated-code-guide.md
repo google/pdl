@@ -8,7 +8,7 @@ Java codegen is gated by the `java` feature.
 cargo run --features "java" -- --output-format java <IN> --output-dir <OUT> --java-package <PACKAGE>
 ```
 
-For example, `cargo run --features "java" -- --output-format java examples/testing.pdl --output-dir ./target --java-package a.b.testing` will generate Java code for the declarations in `examples/testing.pdl` as `./target/testing/a/b/*.java`. Each of these files will declare `package a.b.testing;`.
+For example, `cargo run --features "java" -- --output-format java examples/testing.pdl --output-dir ./target --java-package a.b` will generate Java code as `./target/a/b/*.java`. Each of these files will declare `package a.b;`.
 
 ## Unsupported Features
 
@@ -57,7 +57,8 @@ switch (Parent.fromBytes(bytes)) {
 
 ```java
 Child packet1 = new Child.Builder().setB((short) 1).build();
-UnknownParent packet2 = new UnknownParent.Builder().setA((byte) 1).setPayload(new byte[] {2, 3}).build();
+UnknownParent packet2 = new UnknownParent.Builder().setA((byte) 2).setPayload(new byte[] {3, 4}).build();
+assert (packet1 instanceof Parent) && (packet2 instanceof Parent);
 ```
 
 ## Enums
