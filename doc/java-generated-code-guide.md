@@ -12,6 +12,7 @@ For example, `cargo run --features "java" -- --output-format java examples/testi
 
 ## Unsupported Features
 
+- Optional fields
 - Checksum declarations
 - Custom fields
 - Test declarations
