@@ -43,9 +43,9 @@ cargo run --all-features --bin pdlc -- \
     --exclude-declaration Packet_Array_Field_VariableElementSize_UnknownSize \
     > "$OUT_DIR/canonical_test/src/le_backend.rs"
 cargo run --all-features --bin pdlc -- \
-    tests/canonical/le_test_vectors.json \
+    "tests/canonical/le_test_file.pdl" \
+    --test-file tests/canonical/le_test_vectors.json \
     --output-format rust_legacy \
-    --tests \
     >> "$OUT_DIR/canonical_test/src/le_backend.rs"
 cargo run --all-features --bin pdlc -- \
     "$OUT_DIR/be_test_file.pdl" \
@@ -70,9 +70,9 @@ cargo run --all-features --bin pdlc -- \
     --exclude-declaration Packet_Array_Field_VariableElementSize_UnknownSize \
     > "$OUT_DIR/canonical_test/src/be_backend.rs"
 cargo run --all-features --bin pdlc -- \
-    tests/canonical/be_test_vectors.json \
+    "$OUT_DIR/be_test_file.pdl" \
+    --test-file tests/canonical/be_test_vectors.json \
     --output-format rust_legacy \
-    --tests \
     >> "$OUT_DIR/canonical_test/src/be_backend.rs"
 
 cat <<EOT > "$OUT_DIR/canonical_test/src/lib.rs"

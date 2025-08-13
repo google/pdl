@@ -8,13 +8,14 @@ Java codegen is gated by the `java` feature.
 cargo run --features "java" -- --output-format java <IN> --output-dir <OUT> --java-package <PACKAGE>
 ```
 
-For example, `cargo run --features "java" -- --output-format java examples/testing.pdl --output-dir ./target --java-package a.b` will generate Java code as `./target/a/b/*.java`. Each of these files will declare `package a.b;`.
+For example, `cargo run --features "java" -- --output-format java protocol.pdl --output-dir ./target --java-package a.b` will generate Java code as `./target/a/b/*.java`. Each of these files will declare `package a.b;`.
 
 ## Unsupported Features
 
 - Optional fields
-- Checksum declarations
+- _element_size_ fields
 - Custom fields
+- Checksum declarations
 - Test declarations
 - Constraints on >1st order ancestors
 

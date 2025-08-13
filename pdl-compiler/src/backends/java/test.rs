@@ -40,7 +40,7 @@ use crate::{
 };
 
 pub fn generate_tests(
-    input_file: &str,
+    test_file: &str,
     output_dir: &Path,
     package: String,
     pdl_file_under_test: &str,
@@ -59,10 +59,10 @@ pub fn generate_tests(
             .flat_map(|decl| decl.id().map(String::from).map(|id| (id, decl)))
             .collect();
 
-    JavaTest(get_test_cases(input_file, exclude_packets)?).write_to_fs(
+    JavaTest(get_test_cases(test_file, exclude_packets)?).write_to_fs(
         &output_file,
         &package,
-        input_file,
+        test_file,
         decls,
     )
 }

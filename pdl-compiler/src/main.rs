@@ -24,9 +24,9 @@ use pdl_compiler::{analyzer, ast, backends, parser};
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum OutputFormat {
+    Java,
     JSON,
     Rust,
-    Java,
     RustLegacy,
 }
 
@@ -59,12 +59,13 @@ struct Opt {
     /// The input file is the source PDL file.
     output_format: OutputFormat,
 
-    #[argh(switch)]
-    /// generate tests for the selected output format.
+    #[argh(option)]
+    /// generate tests for the selected output format from the provided file.
+    /// This file must point to a JSON formatted file with a list of test vectors.
+    /// When this option is provided, the input file must point to the source PDL file
+    /// from which the vectors were generated.
     /// Valid for the output formats "rust", "java", "rust_legacy".
-    /// The input file must point to a JSON formatterd file with the list of
-    /// test vectors.
-    tests: bool,
+    test_file: Option<String>,
 
     #[argh(positional)]
     /// input file.
@@ -87,12 +88,6 @@ struct Opt {
     #[argh(option)]
     /// java package to contain the generated classes.
     java_package: Option<String>,
-
-    #[argh(option)]
-    /// file containing the PDL declarations under test. This must be provded when the 'test' flag
-    /// is set and 'output_format' is 'java' to retreive type information for the packets under
-    /// test.
-    pdl_file_under_test: Option<String>,
 }
 
 /// Remove declarations listed in the input filter.
@@ -178,14 +173,14 @@ fn generate_backend(opt: &Opt) -> Result<(), String> {
     }
 }
 
-fn generate_tests(opt: &Opt) -> Result<(), String> {
+fn generate_tests(opt: &Opt, test_file: &str) -> Result<(), String> {
     match opt.output_format {
         OutputFormat::Rust => {
-            println!("{}", backends::rust::test::generate_tests(&opt.input_file)?);
+            println!("{}", backends::rust::test::generate_tests(test_file)?);
             Ok(())
         }
         OutputFormat::RustLegacy => {
-            println!("{}", backends::rust_legacy::test::generate_tests(&opt.input_file)?);
+            println!("{}", backends::rust_legacy::test::generate_tests(test_file)?);
             Ok(())
         }
         #[cfg(feature = "java")]
@@ -198,16 +193,12 @@ fn generate_tests(opt: &Opt) -> Result<(), String> {
                 .java_package
                 .as_ref()
                 .ok_or("'--java-package' is required for '--output-format java'")?;
-            let pdl_file_under_test = opt
-                .pdl_file_under_test
-                .as_ref()
-                .ok_or("'--pdl-file-under-test' is requred for when generating tests with '--output-format java'")?;
 
             backends::java::test::generate_tests(
-                &opt.input_file,
+                test_file,
                 Path::new(output_dir),
                 package.clone(),
-                pdl_file_under_test,
+                &opt.input_file,
                 &opt.exclude_declaration,
             )
         }
@@ -226,8 +217,8 @@ fn main() -> Result<(), String> {
         return Ok(());
     }
 
-    if opt.tests {
-        generate_tests(&opt)
+    if let Some(test_file) = opt.test_file.as_ref() {
+        generate_tests(&opt, test_file)
     } else {
         generate_backend(&opt)
     }

@@ -64,12 +64,11 @@ cargo run --all-features --bin pdlc -- \
   $EXCLUDE_DECLS
 
 cargo run --all-features --bin pdlc -- \
-  tests/canonical/le_test_vectors.json \
+  "tests/canonical/le_test_file.pdl" \
   --output-format java \
-  --tests \
+  --test-file "tests/canonical/le_test_vectors.json" \
   --output-dir "$OUT_DIR/java" \
   --java-package "test.little_endian" \
-  --pdl-file-under-test "tests/canonical/le_test_file.pdl" \
   $EXCLUDE_DECLS
 
 # Big Endian Codegen
@@ -82,12 +81,11 @@ cargo run --all-features --bin pdlc -- \
   $EXCLUDE_DECLS
 
 cargo run --all-features --bin pdlc -- \
-  tests/canonical/be_test_vectors.json \
+  "$OUT_DIR/be_test_file.pdl" \
   --output-format java \
-  --tests \
+  --test-file "tests/canonical/be_test_vectors.json" \
   --output-dir "$OUT_DIR/java" \
   --java-package "test.big_endian" \
-  --pdl-file-under-test "$OUT_DIR/be_test_file.pdl" \
   $EXCLUDE_DECLS
 
 # Compile and Execute
