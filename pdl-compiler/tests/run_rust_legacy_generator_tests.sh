@@ -14,7 +14,7 @@ sed -e 's/little_endian_packets/big_endian_packets/' \
 
 mkdir -p "$OUT_DIR/canonical_test/src"
 
-cargo run --bin pdlc -- \
+cargo run --all-features --bin pdlc -- \
     tests/canonical/le_test_file.pdl \
     --output-format rust_legacy \
     --exclude-declaration UnsizedCustomField \
@@ -42,12 +42,12 @@ cargo run --bin pdlc -- \
     --exclude-declaration Packet_Array_Field_VariableElementSize_VariableCount \
     --exclude-declaration Packet_Array_Field_VariableElementSize_UnknownSize \
     > "$OUT_DIR/canonical_test/src/le_backend.rs"
-cargo run --bin pdlc -- \
-    tests/canonical/le_test_vectors.json \
+cargo run --all-features --bin pdlc -- \
+    "tests/canonical/le_test_file.pdl" \
+    --test-file tests/canonical/le_test_vectors.json \
     --output-format rust_legacy \
-    --tests \
     >> "$OUT_DIR/canonical_test/src/le_backend.rs"
-cargo run --bin pdlc -- \
+cargo run --all-features --bin pdlc -- \
     "$OUT_DIR/be_test_file.pdl" \
     --output-format rust_legacy \
     --exclude-declaration UnsizedCustomField \
@@ -69,10 +69,10 @@ cargo run --bin pdlc -- \
     --exclude-declaration Packet_Array_Field_VariableElementSize_VariableCount \
     --exclude-declaration Packet_Array_Field_VariableElementSize_UnknownSize \
     > "$OUT_DIR/canonical_test/src/be_backend.rs"
-cargo run --bin pdlc -- \
-    tests/canonical/be_test_vectors.json \
+cargo run --all-features --bin pdlc -- \
+    "$OUT_DIR/be_test_file.pdl" \
+    --test-file tests/canonical/be_test_vectors.json \
     --output-format rust_legacy \
-    --tests \
     >> "$OUT_DIR/canonical_test/src/be_backend.rs"
 
 cat <<EOT > "$OUT_DIR/canonical_test/src/lib.rs"

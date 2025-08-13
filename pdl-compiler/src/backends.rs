@@ -14,6 +14,10 @@
 
 //! Compiler backends.
 
+#[cfg(feature = "java")]
+pub mod java;
 pub mod json;
 pub mod rust;
 pub mod rust_legacy;
+
+mod common;
