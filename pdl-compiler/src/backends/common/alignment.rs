@@ -18,46 +18,76 @@ use std::{
     ops::{Deref, DerefMut, Range},
 };
 
+/// A language-specific representation of the value of a PDL field.
 pub trait Symbol: Clone + Debug + Eq {}
 
 impl<S> Symbol for S where S: Clone + Debug + Eq {}
 
 /// A field that contains a partial or complete value. May not be byte aligned.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Field<S: Symbol> {
     /// Offset into the chunk where this field starts.
     pub chunk_offset: usize,
-    /// Language-specific symbol (variable, function call, etc.) which holds the value to encode.
+    /// Symbol that holds the value to encode.
     pub symbol: S,
-    /// Width of the encodable value in bits.
+    /// Width of the value to encode in bits.
+    /// If the value is partial, this is the width of the portion to encode.
     pub width: usize,
-    /// Offset into the symbol at which the encodable value starts.
+    /// Offset into the symbol at which the partial value to encode starts.
     pub symbol_offset: usize,
     /// Whether this field contains a partial value.
     pub is_partial: bool,
 }
 
 /// A field that contains a partial value.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Partial {
     pub width: usize,
     pub offset: usize,
 }
 
-/// A byte-aligned chunk.
-/// Because a chunk is byte aligned, it should be easy to encode/decode in your language.
-#[derive(Debug, Clone)]
+/// A chunk of bytes with a client-specified width. Each chunk maps to a language-specific representation of a PDL field's value.
+/// Chunks should be easy to en/decode in your language.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Chunk<S: Symbol> {
-    /// A chunk comprised of bitpacked fields.
+    /// A sequence of *field*s, where each *field* maps to a contiguous slice of a (or a complete) field defined within the PDL.
+    /// This is used to align PDL fields that may not be byte divisible, such as scalars and enums.
+    ///
+    /// For example, assuming `allowed_chunk_widths` := {8, 16, 32, 64}:
+    /// ```pdl
+    /// packet MyPacket {
+    ///     a: 56,
+    /// }
+    /// ```
+    /// Will align to the following:
+    ///
+    /// | Chunk | Fields      | Width |
+    /// |-------|-------------|-------|
+    /// | 0     | a\[0..32\]  | 32    |
+    /// | 1     | a\[32..48\] | 16    |
+    /// | 2     | a\[48..56\] | 8     |
+    ///
+    /// Sometimes, a chunk will contain multiple fields. For example:
+    /// ```pdl
+    /// packet MyPacket {
+    ///     a: 1,
+    ///     b: 7,
+    /// }
+    /// ```
+    /// Aligns to:
+    ///
+    /// |Chunk | Fields               | Width |
+    /// |------|----------------------|-------|
+    /// |0     | a\[0..1\], b\[0..7\] | 8     |
     Bitpack { fields: Vec<Field<S>>, width: usize },
-    /// A chunk whose width is a whole multiple of 8 bits.
+    /// A sequence of bytes with known size (specified in bits). This is useful for aligning PDL arrays whose size is known at compile time.
     SizedBytes {
         symbol: S,
         alignment: Vec<Partial>,
         #[allow(dead_code)]
         width: usize,
     },
-    /// A chunk whose width is an unspecified whole multiple of 8 bits.
+    /// A sequence of bytes with unknown size. This is useful for aligning PDL fields whose size is not known at compile time.
     UnsizedBytes(S),
 }
 
@@ -70,8 +100,10 @@ impl<S: Symbol> Chunk<S> {
     }
 }
 
-/// A data structure that packs a set of fields, which may not be byte-aligned, into a sequence of byte algined chunks.
-/// This is useful for generating encoding/decoding code in your language.
+/// Packs PDL fields of various sizes, which may not be byte-divisible, into a sequence of chunks.
+/// A chunk is a group of bytes that can be easily en/decoded in your language. The widths of these groups are configurable via `allowed_chunk_widths`.
+///
+/// For example, many languages offer a (de)serialization library that can easily en/decode fields of size 8, 16, 32, 64. These will be your `allowed_chunk_widths`.
 #[derive(Debug, Clone)]
 pub struct ByteAligner<S: Symbol> {
     /// Sorted in descending order.
@@ -96,8 +128,8 @@ impl<S: Symbol> ByteAligner<S> {
 
     /// Get the generated chunks.
     ///
-    /// Each `Chunk` within the vec begins and ends at a byte boundary, so the returned data structure
-    /// represents a straightforward way to encode and decode the fields in your language.
+    /// Each chunk within the vec will be sized according to the `allowed_chunk_widths`,
+    /// so the returned data structure should represent a straightforward way to en/decode the fields in your language.
     pub fn align(mut self) -> Result<Alignment<S>, &'static str> {
         match self.chunks.last() {
             Some(Chunk::Bitpack { width, .. }) if *width % 8 != 0 => {
@@ -111,6 +143,8 @@ impl<S: Symbol> ByteAligner<S> {
         }
     }
 
+    /// Add a PDL field to the alignment. The `symbol` is a language-specific construct that represents the field's value.
+    /// This field can have any width.
     pub fn add_bitfield(&mut self, symbol: S, width: usize) {
         match self.chunks.last_mut() {
             Some(Chunk::Bitpack { fields, width: chunk_width }) if *chunk_width % 8 != 0 => {
@@ -128,7 +162,7 @@ impl<S: Symbol> ByteAligner<S> {
                 *chunk_width += width;
             }
             _ => {
-                // Add field to new chunk
+                // Add field to a new chunk.
                 self.repack_last_chunk();
                 self.chunks.push(Chunk::Bitpack {
                     fields: vec![Field {
@@ -144,24 +178,25 @@ impl<S: Symbol> ByteAligner<S> {
         }
     }
 
+    /// If the last chunk does not have an `allowed_chunk_width`, split it into several that do.
     fn repack_last_chunk(&mut self) {
         if let Some(Chunk::Bitpack { width, .. }) = self.chunks.last() {
             if !self.allowed_chunk_widths.contains(width) {
                 let (old_fields, old_chunk_width) =
                     self.chunks.pop().unwrap().get_bitpack().unwrap();
 
-                let mut cur_width = 0;
-                while cur_width != old_chunk_width {
+                let mut repacked_width = 0;
+                while repacked_width != old_chunk_width {
                     for chunk_width in self.allowed_chunk_widths.iter() {
-                        if *chunk_width <= (old_chunk_width - cur_width) {
+                        if *chunk_width <= (old_chunk_width - repacked_width) {
                             self.chunks.push(Chunk::Bitpack {
-                                fields: Self::rechunk_to_range(
+                                fields: Self::slice_fields(
                                     &old_fields,
-                                    cur_width..(cur_width + *chunk_width),
+                                    repacked_width..(repacked_width + *chunk_width),
                                 ),
                                 width: *chunk_width,
                             });
-                            cur_width += *chunk_width
+                            repacked_width += *chunk_width
                         }
                     }
                 }
@@ -169,48 +204,64 @@ impl<S: Symbol> ByteAligner<S> {
         }
     }
 
-    fn rechunk_to_range(fields: &Vec<Field<S>>, range: Range<usize>) -> Vec<Field<S>> {
-        let mut in_range = Vec::new();
+    /// Extract out all fields that lie within the specified range, splitting them when necessary.
+    fn slice_fields(fields: &Vec<Field<S>>, range: Range<usize>) -> Vec<Field<S>> {
+        let mut in_range = Vec::<Field<S>>::new();
 
+        let mut chunk_offset = 0;
         for field in fields {
             let field_range = field.chunk_offset..(field.chunk_offset + field.width);
 
             if range.contains(&field_range.start) && range.contains(&(field_range.end - 1)) {
-                in_range.push(field.clone());
-            } else if field_range.contains(&range.start) && field_range.contains(&(range.end - 1)) {
+                // The field lies entirely within the specified range.
                 in_range.push(Field {
-                    chunk_offset: range.start,
+                    chunk_offset,
+                    symbol: field.symbol.clone(),
+                    width: field.width,
+                    symbol_offset: field.symbol_offset,
+                    is_partial: field.is_partial,
+                });
+            } else if field_range.contains(&range.start) && field_range.contains(&(range.end - 1)) {
+                // The specified range lies entirely within the field.
+                in_range.push(Field {
+                    chunk_offset,
                     symbol: field.symbol.clone(),
                     width: range.end - range.start,
                     symbol_offset: range.start - field_range.start,
                     is_partial: true,
                 });
             } else if range.contains(&field_range.start) {
+                // The field starts within the specified range, but ends outside of it.
                 in_range.push(Field {
-                    chunk_offset: field_range.start,
+                    chunk_offset,
                     symbol: field.symbol.clone(),
                     width: range.end - field_range.start,
                     symbol_offset: 0,
                     is_partial: true,
                 });
             } else if range.contains(&(field_range.end - 1)) {
+                // The field starts outside the specified range and ends inside it.
                 in_range.push(Field {
-                    chunk_offset: range.start,
+                    chunk_offset,
                     symbol: field.symbol.clone(),
                     width: field_range.end - range.start,
                     symbol_offset: range.start - field_range.start,
                     is_partial: true,
                 });
             }
+            chunk_offset += in_range.last().map(|field| field.width).unwrap_or(0);
         }
 
         in_range
     }
 
+    /// Add a PDL field to the alignment. The `symbol` is a language-specific construct that represents the field's value.
+    /// This field's width must satisfy `width % 8 == 0`.
     pub fn add_sized_bytes(&mut self, symbol: S, width: usize) {
-        if !self.is_aligned() {
-            panic!("sized fields must start at a byte boundary")
+        if width % 8 != 0 {
+            panic!("width must be byte-divisible")
         }
+        self.repack_last_chunk();
 
         let mut alignment = Vec::new();
 
@@ -232,21 +283,20 @@ impl<S: Symbol> ByteAligner<S> {
         self.chunks.push(Chunk::SizedBytes { symbol, alignment, width });
     }
 
+    /// Add a PDL field to the alignment. The `symbol` is a language-specific construct that represents the field's value.
+    /// This field's width does not need to be known at compile-time, although it must be byte-divisible.
     pub fn add_bytes(&mut self, symbol: S) {
-        if !self.is_aligned() {
-            panic!("Bytes must start a byte boundary")
-        }
-
+        self.repack_last_chunk();
         self.chunks.push(Chunk::UnsizedBytes(symbol));
-    }
-
-    fn is_aligned(&self) -> bool {
-        self.chunks.last().is_none_or(
-            |chunk| !matches!(chunk, Chunk::Bitpack { width, .. } if !self.allowed_chunk_widths.contains(width)))
     }
 }
 
-#[derive(Debug, Clone)]
+/// An alignment for a sequence of PDL fields, generated from a [`ByteAligner`].
+/// To generate (de)serialization code from an `Alignment`, you must iterate over it and handle the 3 different Chunk variants:
+/// 1) [`Chunk::Bitpack`]
+/// 2) [`Chunk::SizedBytes`]
+/// 3) [`Chunk::UnsizedBytes`]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Alignment<S: Symbol>(Vec<Chunk<S>>);
 
 impl<S: Symbol> Deref for Alignment<S> {
@@ -259,5 +309,278 @@ impl<S: Symbol> Deref for Alignment<S> {
 impl<S: Symbol> DerefMut for Alignment<S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pack_multiple_fields_into_one_chunk() {
+        let mut a = ByteAligner::<&'static str>::new(&[8, 64]);
+        a.add_bitfield("a", 13);
+        a.add_bitfield("b", 51);
+
+        assert_eq!(
+            a.align().unwrap(),
+            Alignment(vec![Chunk::Bitpack {
+                fields: vec![
+                    Field {
+                        chunk_offset: 0,
+                        symbol: "a",
+                        width: 13,
+                        symbol_offset: 0,
+                        is_partial: false
+                    },
+                    Field {
+                        chunk_offset: 13,
+                        symbol: "b",
+                        width: 51,
+                        symbol_offset: 0,
+                        is_partial: false
+                    }
+                ],
+                width: 64
+            }])
+        )
+    }
+
+    #[test]
+    fn pack_multiple_fields_into_multiple_chunks() {
+        let mut a = ByteAligner::<&'static str>::new(&[8, 16]);
+        a.add_bitfield("a", 1);
+        a.add_bitfield("b", 15);
+        a.add_bitfield("c", 3);
+        a.add_bitfield("d", 5);
+
+        assert_eq!(
+            a.align().unwrap(),
+            Alignment(vec![
+                Chunk::Bitpack {
+                    fields: vec![
+                        Field {
+                            chunk_offset: 0,
+                            symbol: "a",
+                            width: 1,
+                            symbol_offset: 0,
+                            is_partial: false
+                        },
+                        Field {
+                            chunk_offset: 1,
+                            symbol: "b",
+                            width: 15,
+                            symbol_offset: 0,
+                            is_partial: false
+                        }
+                    ],
+                    width: 16
+                },
+                Chunk::Bitpack {
+                    fields: vec![
+                        Field {
+                            chunk_offset: 0,
+                            symbol: "c",
+                            width: 3,
+                            symbol_offset: 0,
+                            is_partial: false
+                        },
+                        Field {
+                            chunk_offset: 3,
+                            symbol: "d",
+                            width: 5,
+                            symbol_offset: 0,
+                            is_partial: false
+                        }
+                    ],
+                    width: 8
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn split_single_field_into_multiple_chunks() {
+        let mut a = ByteAligner::<&'static str>::new(&[8, 16, 32]);
+        a.add_bitfield("a", 56);
+
+        assert_eq!(
+            a.align().unwrap(),
+            Alignment(vec![
+                Chunk::Bitpack {
+                    fields: vec![Field {
+                        chunk_offset: 0,
+                        symbol: "a",
+                        width: 32,
+                        symbol_offset: 0,
+                        is_partial: true
+                    }],
+                    width: 32
+                },
+                Chunk::Bitpack {
+                    fields: vec![Field {
+                        chunk_offset: 0,
+                        symbol: "a",
+                        width: 16,
+                        symbol_offset: 32,
+                        is_partial: true
+                    }],
+                    width: 16
+                },
+                Chunk::Bitpack {
+                    fields: vec![Field {
+                        chunk_offset: 0,
+                        symbol: "a",
+                        width: 8,
+                        symbol_offset: 48,
+                        is_partial: true
+                    }],
+                    width: 8
+                }
+            ])
+        )
+    }
+
+    #[test]
+    fn split_multiple_fields_into_multiple_chunks() {
+        let mut a = ByteAligner::<&'static str>::new(&[8, 16, 32, 64]);
+        a.add_bitfield("a", 9);
+        a.add_bitfield("b", 1);
+        a.add_bitfield("c", 21);
+        a.add_bitfield("d", 9);
+
+        assert_eq!(
+            a.align().unwrap(),
+            Alignment(vec![
+                Chunk::Bitpack {
+                    fields: vec![
+                        Field {
+                            chunk_offset: 0,
+                            symbol: "a",
+                            width: 9,
+                            symbol_offset: 0,
+                            is_partial: false
+                        },
+                        Field {
+                            chunk_offset: 9,
+                            symbol: "b",
+                            width: 1,
+                            symbol_offset: 0,
+                            is_partial: false
+                        },
+                        Field {
+                            chunk_offset: 10,
+                            symbol: "c",
+                            width: 21,
+                            symbol_offset: 0,
+                            is_partial: false
+                        },
+                        Field {
+                            chunk_offset: 31,
+                            symbol: "d",
+                            width: 1,
+                            symbol_offset: 0,
+                            is_partial: true
+                        }
+                    ],
+                    width: 32
+                },
+                Chunk::Bitpack {
+                    fields: vec![Field {
+                        chunk_offset: 0,
+                        symbol: "d",
+                        width: 8,
+                        symbol_offset: 1,
+                        is_partial: true
+                    }],
+                    width: 8
+                }
+            ])
+        )
+    }
+
+    #[test]
+    fn split_sized_bytes_into_multiple_partials() {
+        let mut a = ByteAligner::<&'static str>::new(&[8, 16, 32, 64]);
+        a.add_sized_bytes("a", 56);
+
+        assert_eq!(
+            a.align().unwrap(),
+            Alignment(vec![Chunk::SizedBytes {
+                symbol: "a",
+                alignment: vec![
+                    Partial { width: 32, offset: 0 },
+                    Partial { width: 16, offset: 32 },
+                    Partial { width: 8, offset: 48 },
+                ],
+                width: 56
+            }])
+        )
+    }
+
+    #[test]
+    fn bitfields_separated_by_dynamic_bytes() {
+        let mut a = ByteAligner::<&'static str>::new(&[8, 16, 32, 64]);
+        a.add_bitfield("a", 24);
+        a.add_bytes("b");
+        a.add_bitfield("c", 9);
+        a.add_bitfield("d", 7);
+
+        assert_eq!(
+            a.align().unwrap(),
+            Alignment(vec![
+                Chunk::Bitpack {
+                    fields: vec![Field {
+                        chunk_offset: 0,
+                        symbol: "a",
+                        width: 16,
+                        symbol_offset: 0,
+                        is_partial: true
+                    }],
+                    width: 16
+                },
+                Chunk::Bitpack {
+                    fields: vec![Field {
+                        chunk_offset: 0,
+                        symbol: "a",
+                        width: 8,
+                        symbol_offset: 16,
+                        is_partial: true
+                    }],
+                    width: 8
+                },
+                Chunk::UnsizedBytes("b"),
+                Chunk::Bitpack {
+                    fields: vec![
+                        Field {
+                            chunk_offset: 0,
+                            symbol: "c",
+                            width: 9,
+                            symbol_offset: 0,
+                            is_partial: false
+                        },
+                        Field {
+                            chunk_offset: 9,
+                            symbol: "d",
+                            width: 7,
+                            symbol_offset: 0,
+                            is_partial: false
+                        }
+                    ],
+                    width: 16
+                },
+            ])
+        )
+    }
+
+    #[test]
+    #[should_panic]
+    fn unalignable_fields() {
+        let mut a = ByteAligner::<&'static str>::new(&[8, 16, 32, 64]);
+        a.add_bitfield("a", 63);
+        a.add_bitfield("b", 2);
+        a.add_bitfield("c", 7);
+
+        a.align().unwrap();
     }
 }
