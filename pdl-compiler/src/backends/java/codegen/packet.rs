@@ -517,10 +517,7 @@ fn decoder(
 
                     if field.is_partial {
                         partials.push(t.lshift(
-                            t.mask(
-                                t.cast(t.symbol(chunk_name, chunk_type), field_type),
-                                field.width,
-                            ),
+                            t.mask(t.symbol(chunk_name, chunk_type), field.width),
                             t.num(field.symbol_offset),
                         ));
 
@@ -530,7 +527,9 @@ fn decoder(
                                 tokens.extend(assign(
                                     &field.symbol,
                                     &field.symbol.decode_from_num(
-                                        t.gen_expr(t.or_all(mem::take(&mut partials))),
+                                        t.gen_expr(
+                                            t.cast(t.or_all(mem::take(&mut partials)), field_type),
+                                        ),
                                         &def.width_fields,
                                     ),
                                 ));
