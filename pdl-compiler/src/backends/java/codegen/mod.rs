@@ -193,7 +193,7 @@ impl Field {
         }
     }
 
-    pub fn decode_from_num(
+    pub fn from_num(
         &self,
         expr: impl FormatInto<Java>,
         width_fields: &HashMap<String, WidthField>,
@@ -219,7 +219,7 @@ impl Field {
         }
     }
 
-    pub fn encode_to_num(
+    pub fn to_num(
         &self,
         t: &ExprTree,
         expr: impl FormatInto<Java>,
@@ -285,27 +285,39 @@ impl Field {
     }
 }
 
+impl EndiannessValue {
+    /// Width in bits. Must be byte-divisible and <= 64
+    fn encode_bytes(&self, buf: Tokens<Java>, width: usize, val: Tokens<Java>) -> Tokens<Java> {
+        match width {
+            8 => quote!($buf.put($val)),
+            16 => quote!($buf.putShort($val)),
+            24 => quote!(Utils.put24($buf, $val)),
+            32 => quote!($buf.putInt($val)),
+            40 => quote!(Utils.put40($buf, $val)),
+            48 => quote!(Utils.put48($buf, $val)),
+            56 => quote!(Utils.put56($buf, $val)),
+            64 => quote!($buf.putLong($val)),
+            _ => panic!("can't encode value of width {width}"),
+        }
+    }
+
+    // Width in bits. Must be byte-divisible and <= 64
+    fn decode_bytes(&self, buf: Tokens<Java>, width: usize) -> Tokens<Java> {
+        match width {
+            8 => quote!($buf.get()),
+            16 => quote!($buf.getShort()),
+            24 => quote!(Utils.get24($buf)),
+            32 => quote!($buf.getInt()),
+            40 => quote!(Utils.get40($buf)),
+            48 => quote!(Utils.get48($buf)),
+            56 => quote!(Utils.get56($buf)),
+            64 => quote!($buf.getLong()),
+            _ => panic!("can't decode value of width {width}"),
+        }
+    }
+}
+
 impl Integral {
-    fn encoder(&self) -> impl FormatInto<Java> + '_ {
-        match self {
-            Integral::Byte => "put",
-            Integral::Short => "putShort",
-            Integral::Int => "putInt",
-            Integral::Long => "putLong",
-        }
-    }
-
-    fn decode_from(&self, buf: Tokens<Java>) -> Tokens<Java> {
-        quote! {
-            $(match self {
-                Integral::Byte => $buf.get(),
-                Integral::Short => $buf.getShort(),
-                Integral::Int => $buf.getInt(),
-                Integral::Long => $buf.getLong(),
-            })
-        }
-    }
-
     fn stringify(&self, expr: impl FormatInto<Java>) -> Tokens<Java> {
         let stringable_ty = self.limit_to_int();
         quote!("0x" + $(stringable_ty.boxed()).toHexString(

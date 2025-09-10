@@ -12,17 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, mem};
+use std::collections::HashMap;
 
 use genco::{self, prelude::Java, quote, tokens::quoted, Tokens};
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 
-use crate::backends::{
-    common::alignment::Alignment,
-    java::{
-        codegen::expr::ExprId,
-        inheritance::{ClassHeirarchy, Constraint, InheritanceNode},
-        Context, Field, WidthField,
+use crate::{
+    ast::EndiannessValue,
+    backends::{
+        common::alignment::Alignment,
+        java::{
+            codegen::expr::ExprId,
+            inheritance::{ClassHeirarchy, Constraint, InheritanceNode},
+            Context, Field, WidthField,
+        },
     },
 };
 
@@ -79,7 +82,7 @@ pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java>
                         .allocate(fieldWidth())
                         .order($endianness);
 
-                    $(encoder(&def.alignment, &def.width_fields))
+                    $(encoder(&def.alignment, &def.width_fields, endianness))
                     return super.toBytes(buf);
                 }
             } else {
@@ -88,7 +91,7 @@ pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java>
                         .allocate(fieldWidth())
                         .order($endianness);
 
-                    $(encoder(&def.alignment, &def.width_fields))
+                    $(encoder(&def.alignment, &def.width_fields, endianness))
                     return buf.array();
                 }
             })
@@ -195,7 +198,7 @@ pub fn gen_abstract_packet(
                     .allocate(fieldWidth() + payload.limit())
                     .order($endianness);
 
-                $(encoder(&def.alignment, &def.width_fields))
+                $(encoder(&def.alignment, &def.width_fields, endianness))
                 return buf.array();
             }
 
@@ -419,13 +422,12 @@ fn builder_assigns(members: &[Field]) -> Tokens<Java> {
 fn encoder(
     alignment: &Alignment<Field>,
     width_fields: &HashMap<String, WidthField>,
+    endianness: EndiannessValue,
 ) -> Tokens<Java> {
-    let mut tokens = Tokens::new();
-
-    for chunk in alignment.iter() {
-        match chunk {
+    alignment
+        .iter()
+        .flat_map(|chunk| match chunk {
             Chunk::Bitpack { fields, width } => {
-                let chunk_type = Integral::fitting(*width);
                 let t = ExprTree::new();
                 let root = t.cast(
                     t.or_all(
@@ -433,64 +435,41 @@ fn encoder(
                             .iter()
                             .map(|field| {
                                 t.lshift(
-                                    t.rshift(
-                                        field.symbol.encode_to_num(
-                                            &t,
-                                            field.symbol.name(),
-                                            width_fields,
-                                        ),
-                                        t.num(field.symbol_offset),
-                                    ),
-                                    t.num(field.chunk_offset),
+                                    field.symbol.to_num(&t, field.symbol.name(), width_fields),
+                                    t.num(field.offset),
                                 )
                             })
                             .collect(),
                     ),
-                    chunk_type,
+                    Integral::fitting(*width),
                 );
 
-                tokens.extend(quote!(buf.$(chunk_type.encoder())($(t.gen_expr(root)));));
+                quote!($(endianness.encode_bytes(quote!(buf), *width, t.gen_expr(root)));)
             }
-            Chunk::SizedBytes {
-                symbol: member @ Field::ArrayElem { val, .. }, alignment, ..
-            } => {
-                tokens.extend(quote!(
+            Chunk::Bytes { symbol: member @ Field::ArrayElem { val, .. }, width } => {
+                let t = ExprTree::new();
+                let root = val.to_num(&t, quote!($(member.name())[i]), width_fields);
+                quote!(
                     for (int i = 0; i < $(member.name()).length; i++) {
-                        $(for partial in alignment.iter() {
-                            $(let partial_ty = Integral::fitting(partial.width))
-                            $(let t = ExprTree::new())
-                            $(let root = t.cast(
-                                t.rshift(
-                                    val.encode_to_num(&t, quote!($(member.name())[i]), width_fields),
-                                    t.num(partial.offset),
-                                ),
-                                partial_ty,
-                            ))
-
-                            buf.$(partial_ty.encoder())($(t.gen_expr(root)));
-                        })
+                        $(endianness.encode_bytes(quote!(buf), *width, t.gen_expr(root)));
                     }
-                ));
+                )
             }
-            Chunk::UnsizedBytes(Field::Payload { .. }) => tokens.extend(quote!(buf.put(payload);)),
-            Chunk::UnsizedBytes(member @ Field::ArrayElem { .. }) => {
-                tokens.extend(quote!(
+            Chunk::DynBytes(Field::Payload { .. }) => quote!(buf.put(payload);),
+            Chunk::DynBytes(member @ Field::ArrayElem { .. }) => {
+                quote!(
                     for (int i = 0; i < $(member.name()).length; i++) {
                         buf.put($(member.name())[i].toBytes());
                     }
-                ));
+                )
             }
-            Chunk::UnsizedBytes(member) => {
-                tokens.extend(quote!(buf.put($(member.name()).toBytes());))
-            }
+            Chunk::DynBytes(member) => quote!(buf.put($(member.name()).toBytes());),
             other => {
                 dbg!(other);
                 unreachable!();
             }
-        }
-    }
-
-    tokens
+        })
+        .collect::<Tokens<Java>>()
 }
 
 fn decoder(
@@ -501,94 +480,46 @@ fn decoder(
 ) -> Tokens<Java> {
     let mut tokens = Tokens::new();
 
-    let t = ExprTree::new();
-    let mut partials = Vec::new();
     for (i, chunk) in def.alignment.iter().enumerate() {
         match chunk {
             Chunk::Bitpack { fields, width } => {
                 let chunk_name = &quote!(chunk$i);
                 let chunk_type = Integral::fitting(*width);
                 tokens.extend(
-                    quote!($chunk_type $chunk_name = $(chunk_type.decode_from(quote!(buf)));),
+                    quote!($chunk_type $chunk_name = $(ctx.endianness.decode_bytes(quote!(buf), *width));)
                 );
 
-                for field in fields.iter() {
-                    let field_type = field.symbol.integral_ty().unwrap();
+                for field in fields.iter().filter(|field| !field.symbol.is_reserved()) {
+                    let t = ExprTree::new();
 
-                    if field.is_partial {
-                        partials.push(t.lshift(
-                            t.mask(t.symbol(chunk_name, chunk_type), field.width),
-                            t.num(field.symbol_offset),
-                        ));
-
-                        if field.symbol_offset + field.width == field.symbol.width().unwrap() {
-                            // We have all partials of the value and can write the decoder for it
-                            if !field.symbol.is_reserved() {
-                                tokens.extend(assign(
-                                    &field.symbol,
-                                    &field.symbol.decode_from_num(
-                                        t.gen_expr(
-                                            t.cast(t.or_all(mem::take(&mut partials)), field_type),
-                                        ),
-                                        &def.width_fields,
-                                    ),
-                                ));
-                            }
-                            t.clear();
-                        }
-                    } else {
-                        if !field.symbol.is_reserved() {
-                            tokens.extend(assign(
-                                &field.symbol,
-                                &field.symbol.decode_from_num(
-                                    t.gen_expr(t.cast(
-                                        t.mask(
-                                            t.rshift(
-                                                t.symbol(chunk_name, chunk_type),
-                                                t.num(field.chunk_offset),
-                                            ),
-                                            field.width,
-                                        ),
-                                        field_type,
-                                    )),
-                                    &def.width_fields,
-                                ),
-                            ));
-                        }
-                        t.clear();
-                    }
+                    tokens.extend(assign(
+                        &field.symbol,
+                        &field.symbol.from_num(
+                            t.gen_expr(t.mask(
+                                t.symbol(chunk_name, chunk_type),
+                                field.offset,
+                                field.width,
+                            )),
+                            &def.width_fields,
+                        ),
+                    ));
                 }
             }
-            Chunk::SizedBytes {
-                symbol: member @ Field::ArrayElem { val, count },
-                alignment,
-                ..
-            } => {
+            Chunk::Bytes { symbol: member @ Field::ArrayElem { val, count }, width } => {
                 let name = member.name();
-                let t = ExprTree::new();
-                let root = t.or_all(
-                    alignment
-                        .iter()
-                        .map(|partial| {
-                            let ty = Integral::fitting(partial.width);
-                            t.lshift(
-                                t.symbol(ty.decode_from(quote!(buf)), ty),
-                                t.num(partial.offset),
-                            )
-                        })
-                        .collect(),
-                );
-
                 tokens.extend(quote!(
                     $(declare_array_count(val, *count, &def.width_fields, &ctx.heirarchy).unwrap())
                     $(member.ty()) $(name) = new $(val.ty())[$(name)Count];
                     for (int i = 0; i < $(name)Count; i++) {
-                        $(name)[i] = $(val.decode_from_num(t.gen_expr(root), &def.width_fields));
+                        $(name)[i] = $(val.from_num(
+                            ctx.endianness.decode_bytes(quote!(buf), *width),
+                            &def.width_fields
+                        ));
                     }
                     $(assign(member, &quote!($(name))))
                 ))
             }
-            Chunk::UnsizedBytes(member @ Field::ArrayElem { val, count }) => {
+            Chunk::DynBytes(member @ Field::ArrayElem { val, count }) => {
                 let arr_name = member.name();
                 if let Some(count_decl) =
                     declare_array_count(val, *count, &def.width_fields, &ctx.heirarchy)
@@ -614,7 +545,7 @@ fn decoder(
                     ));
                 }
             }
-            Chunk::UnsizedBytes(member @ Field::Payload { .. }) => {
+            Chunk::DynBytes(member @ Field::Payload { .. }) => {
                 if def.width_fields.contains_key("payload") {
                     tokens.extend(assign(
                         member,
@@ -629,9 +560,9 @@ fn decoder(
                         t.num(width_without_payload / 8),
                     );
                     tokens.extend(assign(
-                            member,
-                            &quote!(buf.slice(buf.position(), $(t.gen_expr(root))).order($(ctx.endianness)))
-                        ));
+                        member,
+                        &quote!(buf.slice(buf.position(), $(t.gen_expr(root))).order($(ctx.endianness)))
+                    ));
                 } else {
                     // Assume payload is the last field in the packet (this should really be enforced by the parser)
                     // and consume all remaining bytes in the buffer.
@@ -639,7 +570,7 @@ fn decoder(
                 }
                 tokens.extend(quote!(buf.position(buf.position() + payload.limit());));
             }
-            Chunk::UnsizedBytes(member @ Field::StructRef { name, ty, .. }) => {
+            Chunk::DynBytes(member @ Field::StructRef { name, ty, .. }) => {
                 let var_name = &name.to_lower_camel_case();
                 // Assume struct is the last field in the packet (this should really be enforced by the parser) and decode it.
                 // Its decoder will consume all remaining bytes in the buffer.

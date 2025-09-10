@@ -223,11 +223,12 @@ impl ExprTree {
         }
     }
 
-    pub fn mask(&self, expr: ExprId, width: usize) -> ExprId {
+    pub fn mask(&self, expr: ExprId, offset: usize, width: usize) -> ExprId {
+        let expr = self.paren(self.rshift(expr, self.num(offset)));
         if self.leaf_ty(expr).is_some_and(|ty| ty.width() == width) {
             expr
         } else {
-            self.paren(self.and(expr, self.hex_num(gen_mask_val(width))))
+            self.cast(self.and(expr, self.hex_num(gen_mask_val(width))), Integral::fitting(width))
         }
     }
 

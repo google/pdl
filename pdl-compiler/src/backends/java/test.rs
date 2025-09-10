@@ -34,7 +34,7 @@ use crate::{
     ast::{self, Decl, DeclDesc, Field, FieldDesc},
     backends::{
         common::test::{Packet, TestVector},
-        java::codegen::expr::literal,
+        java::{codegen::expr::literal, preamble::Utils},
     },
     parser,
 };
@@ -49,21 +49,26 @@ pub fn generate_tests(
     let mut dir = PathBuf::from(output_dir);
     dir.extend(package.split("."));
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let output_file = dir.join("PdlTests").with_extension("java");
 
-    let decls: HashMap<String, Decl> =
-        parser::parse_file(&mut ast::SourceDatabase::new(), pdl_file_under_test)
-            .expect("failed to parse pdl file under test. Please verify that the file compiles.")
+    let pdl_file = parser::parse_file(&mut ast::SourceDatabase::new(), pdl_file_under_test)
+        .expect("failed to parse pdl file under test. Please verify that the file compiles.");
+
+    Utils.write_to_fs(
+        &dir.join("Utils").with_extension("java"),
+        &package,
+        test_file,
+        pdl_file.endianness.value,
+    )?;
+
+    JavaTest(get_test_cases(test_file, exclude_packets)?).write_to_fs(
+        &dir.join("PdlTests").with_extension("java"),
+        &package,
+        test_file,
+        pdl_file
             .declarations
             .into_iter()
             .flat_map(|decl| decl.id().map(String::from).map(|id| (id, decl)))
-            .collect();
-
-    JavaTest(get_test_cases(test_file, exclude_packets)?).write_to_fs(
-        &output_file,
-        &package,
-        test_file,
-        decls,
+            .collect(),
     )
 }
 

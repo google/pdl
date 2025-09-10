@@ -31,7 +31,10 @@ use crate::{
     ast::{self, EndiannessValue, Tag, TagOther, TagRange, TagValue},
     backends::{
         common::alignment::{ByteAligner, Chunk},
-        java::inheritance::{ClassHeirarchy, Constraint},
+        java::{
+            inheritance::{ClassHeirarchy, Constraint},
+            preamble::Utils,
+        },
     },
 };
 
@@ -50,6 +53,7 @@ pub mod import {
 
 mod codegen;
 mod inheritance;
+mod preamble;
 
 pub fn generate(
     sources: &ast::SourceDatabase,
@@ -58,20 +62,23 @@ pub fn generate(
     output_dir: &Path,
     package: &str,
 ) -> Result<(), String> {
+    let source = sources.get(file.file).expect("could not read source").name();
     let mut dir = PathBuf::from(output_dir);
     dir.extend(package.split("."));
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    Utils.write_to_fs(
+        &dir.join("Utils").with_extension("java"),
+        package,
+        source,
+        file.endianness.value,
+    )?;
 
     let (classes, heirarchy) = generate_classes(file);
     let context = Context { endianness: file.endianness.value, heirarchy };
 
     for (name, class) in classes.into_iter() {
-        class.write_to_fs(
-            &dir.join(name).with_extension("java"),
-            package,
-            sources.get(file.file).expect("could not read source").name(),
-            &context,
-        )?;
+        class.write_to_fs(&dir.join(name).with_extension("java"), package, source, &context)?;
     }
 
     Ok(())
@@ -262,8 +269,8 @@ impl Class {
             def: PacketDef {
                 members: vec![Field::Payload { is_member: true, width_field_width, size_modifier }],
                 alignment: {
-                    let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
-                    aligner.add_bytes(Field::Payload {
+                    let mut aligner = ByteAligner::new();
+                    aligner.add_dyn_bytes(Field::Payload {
                         is_member: true,
                         width_field_width,
                         size_modifier,
@@ -312,7 +319,7 @@ impl PacketDef {
         heirarchy: &ClassHeirarchy,
     ) -> Self {
         let mut members: Vec<Field> = Vec::new();
-        let mut aligner = ByteAligner::new(&[8, 16, 32, 64]);
+        let mut aligner = ByteAligner::new();
         let mut width_fields: HashMap<String, WidthField> = HashMap::new();
 
         for field in fields.iter() {
@@ -367,7 +374,7 @@ impl PacketDef {
                         size_modifier: width_fields.get("payload").and_then(WidthField::modifier),
                     };
                     members.push(member.clone());
-                    aligner.add_bytes(member);
+                    aligner.add_dyn_bytes(member);
                     if let Some(width_field) = width_fields.get_mut("payload") {
                         width_field.update_with_array_info(Some(8), None)
                     }
@@ -379,7 +386,7 @@ impl PacketDef {
                         size_modifier: width_fields.get("payload").and_then(WidthField::modifier),
                     };
                     members.push(member.clone());
-                    aligner.add_bytes(member);
+                    aligner.add_dyn_bytes(member);
                     if let Some(width_field) = width_fields.get_mut("payload") {
                         width_field.update_with_array_info(
                             Some(8),
@@ -449,7 +456,7 @@ impl PacketDef {
                                 ty: class.name().into(),
                             };
                             members.push(member.clone());
-                            aligner.add_bytes(member);
+                            aligner.add_dyn_bytes(member);
                         }
                     }
                 }
@@ -466,7 +473,7 @@ impl PacketDef {
                                 }),
                                 count: *count,
                             };
-                            aligner.add_sized_bytes(val.clone(), *width);
+                            aligner.add_bytes(val.clone(), *width);
 
                             (val, Some(*width))
                         }
@@ -483,7 +490,7 @@ impl PacketDef {
                                         }),
                                         count: *count,
                                     };
-                                    aligner.add_sized_bytes(val.clone(), *width);
+                                    aligner.add_bytes(val.clone(), *width);
                                     val
                                 } else {
                                     let val = Field::ArrayElem {
@@ -493,7 +500,7 @@ impl PacketDef {
                                         }),
                                         count: *count,
                                     };
-                                    aligner.add_bytes(val.clone());
+                                    aligner.add_dyn_bytes(val.clone());
                                     val
                                 },
                                 class.width().or_else(|| heirarchy.width(class.name())),
