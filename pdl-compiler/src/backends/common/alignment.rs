@@ -14,6 +14,7 @@
 
 use std::{
     fmt::Debug,
+    mem,
     ops::{Deref, DerefMut},
 };
 
@@ -61,7 +62,11 @@ pub enum Chunk<S: Symbol> {
 /// Packs symbols of various sizes, which may not be byte-aligned, into a sequence of byte-aligned chunks.
 #[derive(Debug, Clone)]
 pub struct ByteAligner<S: Symbol> {
-    staged_chunk: Option<(Vec<Field<S>>, usize)>,
+    /// Staged fields, waiting to be packed into a chunk.
+    staged_fields: Vec<Field<S>>,
+    /// Size of the staged fields.
+    staged_width: usize,
+    /// Committed chunks.
     chunks: Vec<Chunk<S>>,
 }
 
@@ -69,7 +74,7 @@ impl<S: Symbol> ByteAligner<S> {
     pub const MAX_CHUNK_WIDTH: usize = 64;
 
     pub fn new() -> Self {
-        Self { staged_chunk: None, chunks: vec![] }
+        Self { staged_fields: vec![], staged_width: 0, chunks: vec![] }
     }
 
     /// Get the generated chunks.
@@ -86,14 +91,10 @@ impl<S: Symbol> ByteAligner<S> {
     /// Add a [`Symbol`] to the alignment.
     /// This symbol can have any width <= [`Self::MAX_CHUNK_WIDTH`].
     pub fn add_bitfield(&mut self, symbol: S, width: usize) {
-        if let Some((fields, chunk_offset)) = self.staged_chunk.as_mut() {
-            fields.push(Field { offset: *chunk_offset, symbol, width });
-            *chunk_offset += width;
-            if *chunk_offset > Self::MAX_CHUNK_WIDTH {
-                panic!("total field width grew beyond max chunk width of {} before aligning to a byte boundary", Self::MAX_CHUNK_WIDTH)
-            }
-        } else {
-            self.staged_chunk = Some((vec![Field { offset: 0, symbol, width }], width))
+        self.staged_fields.push(Field { offset: self.staged_width, symbol, width });
+        self.staged_width += width;
+        if self.staged_width > Self::MAX_CHUNK_WIDTH {
+            panic!("total field width grew beyond max chunk width of {} before aligning to a byte boundary", Self::MAX_CHUNK_WIDTH)
         }
         self.try_commit_staged_chunk();
     }
@@ -105,7 +106,7 @@ impl<S: Symbol> ByteAligner<S> {
             panic!("sized bytes must start at a byte boundary")
         }
         if width % 8 != 0 {
-            panic!("width must be byte-aligned")
+            panic!("width must be byte-divisible")
         }
         if width > Self::MAX_CHUNK_WIDTH {
             panic!("width can't be larger than max chunk width of {}", Self::MAX_CHUNK_WIDTH)
@@ -124,16 +125,15 @@ impl<S: Symbol> ByteAligner<S> {
     }
 
     fn is_aligned(&self) -> bool {
-        self.staged_chunk.is_none()
+        self.staged_fields.is_empty()
     }
 
-    fn try_commit_staged_chunk(&mut self) -> bool {
-        if self.staged_chunk.as_ref().is_some_and(|(_, width)| width % 8 == 0) {
-            let (fields, width) = self.staged_chunk.take().unwrap();
-            self.chunks.push(Chunk::Bitpack { fields, width });
-            true
-        } else {
-            false
+    fn try_commit_staged_chunk(&mut self) {
+        if self.staged_width != 0 && self.staged_width % 8 == 0 {
+            self.chunks.push(Chunk::Bitpack {
+                fields: mem::take(&mut self.staged_fields),
+                width: mem::take(&mut self.staged_width),
+            });
         }
     }
 }
