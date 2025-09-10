@@ -17,29 +17,27 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-/// A language-specific representation of the value of a PDL field.
+/// A target-language-specific representation of a PDL field.
 pub trait Symbol: Clone + Debug + Eq {}
 
 impl<S> Symbol for S where S: Clone + Debug + Eq {}
 
-/// A field that contains a partial or complete value. May not be byte aligned.
+/// A PDL field that may not be byte aligned.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field<S: Symbol> {
-    /// Symbol that holds the value to encode.
+    /// A symbol that represents a PDL field in your target language.
     pub symbol: S,
+    /// Width of the symbol in bits.
+    pub width: usize,
     /// Offset into the chunk where this field starts.
     pub offset: usize,
-    /// Width of the value to encode in bits.
-    /// If the value is partial, this is the width of the portion to encode.
-    pub width: usize,
 }
 
-/// A chunk of bytes with a client-specified width. Each chunk maps to a language-specific representation of a PDL field's value.
-/// Chunks should be easy to en/decode in your language.
+/// A byte-aligned grouping of one or more symbols.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Chunk<S: Symbol> {
-    /// A sequence of fields as defined within the PDL.
-    /// This is used to align PDL fields that may not be byte divisible, such as scalars and enums.
+    /// A sequence of one or more symbols packed into a byte-aligned group.
+    /// This is used to align symbols that may not be byte aligned, such as scalars and enums.
     ///
     /// For example,
     /// ```pdl
@@ -50,9 +48,9 @@ pub enum Chunk<S: Symbol> {
     /// ```
     /// Aligns to:
     ///
-    /// |Chunk | Fields               | Width |
-    /// |------|----------------------|-------|
-    /// |0     | a\[0..1\], b\[0..7\] | 8     |
+    /// | Fields               | Width |
+    /// |----------------------|-------|
+    /// | a\[0..1\], b\[0..7\] | 8     |
     Bitpack { fields: Vec<Field<S>>, width: usize },
     /// A sequence of bytes with known size (specified in bits). This is useful for aligning PDL arrays whose size is known at compile time.
     Bytes { symbol: S, width: usize },
@@ -60,8 +58,7 @@ pub enum Chunk<S: Symbol> {
     DynBytes(S),
 }
 
-/// Packs PDL fields of various sizes, which may not be byte-divisible, into a sequence of chunks.
-/// A chunk is a byte-divisible grouping of multiple PDL fields.
+/// Packs symbols of various sizes, which may not be byte-aligned, into a sequence of byte-aligned chunks.
 #[derive(Debug, Clone)]
 pub struct ByteAligner<S: Symbol> {
     staged_chunk: Option<(Vec<Field<S>>, usize)>,
@@ -69,7 +66,7 @@ pub struct ByteAligner<S: Symbol> {
 }
 
 impl<S: Symbol> ByteAligner<S> {
-    const MAX_CHUNK_WIDTH: usize = 64;
+    pub const MAX_CHUNK_WIDTH: usize = 64;
 
     pub fn new() -> Self {
         Self { staged_chunk: None, chunks: vec![] }
@@ -77,7 +74,7 @@ impl<S: Symbol> ByteAligner<S> {
 
     /// Get the generated chunks.
     ///
-    /// Each chunk within the vec will be byte-divisible.
+    /// Each chunk within the Alignment will be byte-aligned.
     pub fn align(self) -> Result<Alignment<S>, &'static str> {
         if self.is_aligned() {
             Ok(Alignment(self.chunks))
@@ -86,8 +83,8 @@ impl<S: Symbol> ByteAligner<S> {
         }
     }
 
-    /// Add a PDL field to the alignment. The `symbol` is a language-specific construct that represents the field's value.
-    /// This field can have any width <= [`Self::MAX_CHUNK_WIDTH`].
+    /// Add a [`Symbol`] to the alignment.
+    /// This symbol can have any width <= [`Self::MAX_CHUNK_WIDTH`].
     pub fn add_bitfield(&mut self, symbol: S, width: usize) {
         if let Some((fields, chunk_offset)) = self.staged_chunk.as_mut() {
             fields.push(Field { offset: *chunk_offset, symbol, width });
@@ -101,14 +98,14 @@ impl<S: Symbol> ByteAligner<S> {
         self.try_commit_staged_chunk();
     }
 
-    /// Add a PDL field to the alignment. The `symbol` is a language-specific construct that represents the field's value.
-    /// This field's width must satisfy `width % 8 == 0`.
+    /// Add a [`Symbol`] to the alignment.
+    /// This symbol's width must satisfy `width % 8 == 0`.
     pub fn add_bytes(&mut self, symbol: S, width: usize) {
         if !self.is_aligned() {
             panic!("sized bytes must start at a byte boundary")
         }
         if width % 8 != 0 {
-            panic!("width must be byte-divisible")
+            panic!("width must be byte-aligned")
         }
         if width > Self::MAX_CHUNK_WIDTH {
             panic!("width can't be larger than max chunk width of {}", Self::MAX_CHUNK_WIDTH)
@@ -117,8 +114,8 @@ impl<S: Symbol> ByteAligner<S> {
         self.chunks.push(Chunk::Bytes { symbol, width });
     }
 
-    /// Add a PDL field to the alignment. The `symbol` is a language-specific construct that represents the field's value.
-    /// This field's width does not need to be known at compile-time, although it must be byte-divisible.
+    /// Add a [`Symbol`] to the alignment.
+    /// This symbol's width does not need to be exactly known at compile-time, although it must be known to be byte-divisible.
     pub fn add_dyn_bytes(&mut self, symbol: S) {
         if !self.is_aligned() {
             panic!("dynamic bytes must start at a byte boundary")
@@ -142,7 +139,7 @@ impl<S: Symbol> ByteAligner<S> {
 }
 
 /// An alignment for a sequence of PDL fields, generated from a [`ByteAligner`].
-/// To generate (de)serialization code from an `Alignment`, you must iterate over it and handle the 3 different Chunk variants:
+/// To generate (de)serialization code from an [`Alignment`], you must iterate over it and handle the 3 different [`Chunk`] variants:
 /// 1) [`Chunk::Bitpack`]
 /// 2) [`Chunk::Bytes`]
 /// 3) [`Chunk::DynBytes`]
@@ -174,7 +171,7 @@ mod tests {
         assert_eq!(
             a.align().unwrap(),
             Alignment(vec![Chunk::Bitpack {
-                fields: vec![Field { symbol: "a", offset: 0, width: 56 }],
+                fields: vec![Field { symbol: "a", width: 56, offset: 0 }],
                 width: 56
             }])
         )
@@ -192,10 +189,10 @@ mod tests {
             a.align().unwrap(),
             Alignment(vec![Chunk::Bitpack {
                 fields: vec![
-                    Field { symbol: "a", offset: 0, width: 9 },
-                    Field { symbol: "b", offset: 9, width: 1 },
-                    Field { symbol: "c", offset: 10, width: 21 },
-                    Field { symbol: "d", offset: 31, width: 9 }
+                    Field { symbol: "a", width: 9, offset: 0 },
+                    Field { symbol: "b", width: 1, offset: 9 },
+                    Field { symbol: "c", width: 21, offset: 10 },
+                    Field { symbol: "d", width: 9, offset: 31 }
                 ],
                 width: 40
             },])
@@ -212,8 +209,8 @@ mod tests {
             a.align().unwrap(),
             Alignment(vec![Chunk::Bitpack {
                 fields: vec![
-                    Field { symbol: "a", offset: 0, width: 13 },
-                    Field { symbol: "b", offset: 13, width: 51 }
+                    Field { symbol: "a", width: 13, offset: 0 },
+                    Field { symbol: "b", width: 51, offset: 13 }
                 ],
                 width: 64
             }])
@@ -233,15 +230,15 @@ mod tests {
             Alignment(vec![
                 Chunk::Bitpack {
                     fields: vec![
-                        Field { offset: 0, symbol: "a", width: 1 },
-                        Field { offset: 1, symbol: "b", width: 15 },
+                        Field { symbol: "a", width: 1, offset: 0 },
+                        Field { symbol: "b", width: 15, offset: 1 },
                     ],
                     width: 16
                 },
                 Chunk::Bitpack {
                     fields: vec![
-                        Field { offset: 0, symbol: "c", width: 3 },
-                        Field { offset: 3, symbol: "d", width: 5 }
+                        Field { symbol: "c", width: 3, offset: 0 },
+                        Field { symbol: "d", width: 5, offset: 3 }
                     ],
                     width: 8
                 }
@@ -261,14 +258,14 @@ mod tests {
             a.align().unwrap(),
             Alignment(vec![
                 Chunk::Bitpack {
-                    fields: vec![Field { symbol: "a", offset: 0, width: 24 },],
+                    fields: vec![Field { symbol: "a", width: 24, offset: 0 },],
                     width: 24
                 },
                 Chunk::DynBytes("b"),
                 Chunk::Bitpack {
                     fields: vec![
-                        Field { symbol: "c", offset: 0, width: 9 },
-                        Field { symbol: "d", offset: 9, width: 7 }
+                        Field { symbol: "c", width: 9, offset: 0 },
+                        Field { symbol: "d", width: 7, offset: 9 }
                     ],
                     width: 16
                 },
