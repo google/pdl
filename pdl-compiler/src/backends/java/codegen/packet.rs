@@ -353,6 +353,19 @@ fn setter_defs(
                             *size_modifier,
                         ))
                     }
+                    Field::ArrayElem { count: Some(count), .. } => {
+                        if ($(member.name()).length != $(*count)) {
+                            throw new IllegalArgumentException(
+                                "Array " +
+                                $(member.stringify(width_fields)) +
+                                $(quoted(format!(
+                                    " is too long for field '{}' with length {}",
+                                    member.name(),
+                                    count
+                                )))
+                            );
+                        }
+                    }
                     Field::ArrayElem { .. } => {
                         $(match width_fields.get(member.name()) {
                             Some(WidthField::Count { field_width, modifier }) => {

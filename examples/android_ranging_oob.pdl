@@ -46,7 +46,7 @@ struct Capabilities {
 }
 
 struct UwbCapabilities: Capabilities(technology = UWB) {
-    address: 16,
+    address: 8[2],
     channels: 32,
     preamble_indexes: 32,
     config_ids: 32,
@@ -57,7 +57,7 @@ struct UwbCapabilities: Capabilities(technology = UWB) {
 
 struct BleCsCapabilities: Capabilities(technology = BLE_CS) {
     security_levels: 8,
-    address: 48,
+    address: 8[6],
 }
 
 enum WifiBandwidth: 8 {
@@ -79,7 +79,7 @@ struct WifiNanRttCapabilities: Capabilities(technology = WIFI_NAN_RTT) {
 }
 
 struct BleRssiCapabilities: Capabilities(technology = BLE_RSSI) {
-    address: 48,
+    address: 8[6],
 }
 
 // Technology-specific configuration.
@@ -101,7 +101,7 @@ enum UwbDeviceMode: 8 {
 }
 
 struct UwbConfiguration: Configuration(technology = UWB) {
-    address: 16,
+    address: 8[2],
     session_id: 32,
     config_id: 8,
     channel: 8,
@@ -110,14 +110,14 @@ struct UwbConfiguration: Configuration(technology = UWB) {
     slot_duration: 8,
     _size_(session_key): 8,
     session_key: 8[],
-    country_code: 16,
+    country_code: 8[2],
     device_role: UwbDeviceRole,
     device_mode: UwbDeviceMode,
 }
 
 struct BleCsConfiguration: Configuration(technology = BLE_CS) {
     security_level: 8,
-    address: 48,
+    address: 8[6],
 }
 
 enum WifiDeviceRole: 8 {
@@ -134,7 +134,7 @@ struct WifiNanRttConfiguration: Configuration(technology = WIFI_NAN_RTT) {
 }
 
 struct BleRssiConfiguration: Configuration(technology = BLE_RSSI) {
-    address: 48,
+    address: 8[6],
 }
 
 // Protocol-level packets.
