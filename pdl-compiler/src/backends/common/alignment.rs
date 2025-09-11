@@ -64,7 +64,7 @@ pub enum Chunk<S: Symbol> {
 pub struct ByteAligner<S: Symbol> {
     /// Staged fields, waiting to be packed into a chunk.
     staged_fields: Vec<Field<S>>,
-    /// Size of the staged fields.
+    /// Size of the staged fields in bits.
     staged_width: usize,
     /// Committed chunks.
     chunks: Vec<Chunk<S>>,
@@ -131,8 +131,8 @@ impl<S: Symbol> ByteAligner<S> {
     fn try_commit_staged_chunk(&mut self) {
         if self.staged_width != 0 && self.staged_width % 8 == 0 {
             self.chunks.push(Chunk::Bitpack {
-                fields: mem::take(&mut self.staged_fields),
-                width: mem::take(&mut self.staged_width),
+                fields: self.staged_fields.drain(..).collect(),
+                width: mem::replace(&mut self.staged_width, 0),
             });
         }
     }
