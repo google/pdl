@@ -31,8 +31,7 @@ struct TechnologySet {
 }
 
 packet OobMessage {
-    // Version.
-    _fixed_ = 1: 8,
+    /* version */ _fixed_ = 1: 8,
     id: MessageId,
     _payload_,
 }

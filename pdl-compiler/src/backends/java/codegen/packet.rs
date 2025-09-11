@@ -789,8 +789,8 @@ fn build_child_fitting_constraints(
         } else {
             tokens.extend(quote!({
                 throw new IllegalArgumentException(
-                    $(quoted(format!("Provided bytes do not decode into any child of {name}")));
-                )
+                    $(quoted(format!("Provided bytes do not decode into any child of {name}")))
+                );
             }));
         }
     }
