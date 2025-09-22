@@ -1,16 +1,21 @@
 // Adapted from https://source.android.com/docs/core/connect/ranging-oob-spec
 
-big_endian_packets
+little_endian_packets
 
 // Common definitions.
+
+enum Version: 8 {
+    CURRENT = 1,
+    FUTURE = ..,
+}
 
 enum MessageId: 8 {
     CAPABILITIES_REQUEST = 0x0,
     CAPABILITIES_RESPONSE = 0x1,
     CONFIGURATION_REQUEST = 0x2,
     CONFIGURATION_RESPONSE = 0x3,
-    STOP_REQUEST = 0x4,
-    STOP_RESPONSE = 0x5,
+    STOP_REQUEST = 0x6,
+    STOP_RESPONSE = 0x7,
     RESERVED = ..,
 }
 
@@ -19,6 +24,10 @@ enum Technology: 8 {
     BLE_CS = 0x1,
     WIFI_NAN_RTT = 0x2,
     BLE_RSSI = 0x3,
+    // Version 2
+    WIFI_STA_RTT = 0x4,
+    // Version 3
+    WIFI_AP_RTT = 0x5,
     RESERVED = ..,
 }
 
@@ -27,11 +36,15 @@ struct TechnologySet {
     ble_cs: 1,
     wifi_nan_rtt: 1,
     ble_rssi: 1,
-    _reserved_: 12,
+    // Version 2
+    wifi_sta_rtt: 1,
+    // Version 3
+    wifi_ap_rtt: 1,
+    _reserved_: 10,
 }
 
 packet OobMessage {
-    /* version */ _fixed_ = 1: 8,
+    version: Version,
     id: MessageId,
     _payload_,
 }
@@ -59,26 +72,71 @@ struct BleCsCapabilities: Capabilities(technology = BLE_CS) {
     address: 8[6],
 }
 
+enum WifiBand: 8 {
+    UNDEFINED = 0x0,
+    GHZ_2 = 0x1,
+    GHZ_5 = 0x2,
+    GHZ_6 = 0x4,
+}
+
 enum WifiBandwidth: 8 {
-    TWENTY = 0x0,
-    FORTY = 0x1,
-    EIGHTY = 0x2,
-    ONE_SIXTY = 0x3,
-    EIGHTY_PLUS_EIGHTY = 0x4,
-    THREE_TWENTY = 0x05,
+    MHZ_20 = 0x0,
+    MHZ_40 = 0x1,
+    MHZ_80 = 0x2,
+    MHZ_160 = 0x3,
+    MHZ_80_PLUS_80 = 0x4,
+    MHZ_320 = 0x5,
     RESERVED = ..,
 }
 
+enum WiFiSecurityMethod: 8 {
+    NONE = 0x0,
+    MAC = 0x1,
+    PHY = 0x2,
+}
 
-struct WifiNanRttCapabilities: Capabilities(technology = WIFI_NAN_RTT) {
-    features: 8,
-    periodic: 8,
+struct WifiBandInfo {
+    band: WifiBand,
     bandwidth: WifiBandwidth,
     num_rx_chains: 8,
 }
 
+struct WifiNanRttCapabilitiesV1: Capabilities(technology = WIFI_NAN_RTT) {
+    features: 8,
+    periodic: 1,
+    _reserved_: 7,
+    bandwidth: WifiBandwidth,
+    num_rx_chains: 8,
+}
+
+// Version 2
+struct WifiNanRttCapabilitiesV2: Capabilities(technology = WIFI_NAN_RTT) {
+    features: 8,
+    periodic: 1,
+    _reserved_: 23,
+    _count_(band_info): 8,
+    security_method: WiFiSecurityMethod,
+    band_info: WifiBandInfo[]
+}
+
 struct BleRssiCapabilities: Capabilities(technology = BLE_RSSI) {
     address: 8[6],
+}
+
+// Version 2
+struct WifiStaRttCapabilities: Capabilities(technology = WIFI_STA_RTT) {
+    features: 8,
+    _count_(band_info): 8,
+    security_method: WiFiSecurityMethod,
+    band_info: WifiBandInfo[]
+}
+
+// Version 3
+struct WifiApRttCapabilities: Capabilities(technology = WIFI_AP_RTT) {
+    features: 8,
+    _count_(band_info): 8,
+    security_method: WiFiSecurityMethod,
+    band_info: WifiBandInfo[]
 }
 
 // Technology-specific configuration.
@@ -124,16 +182,47 @@ enum WifiDeviceRole: 8 {
     INITIATOR = 0x1,
 }
 
-struct WifiNanRttConfiguration: Configuration(technology = WIFI_NAN_RTT) {
+struct WifiNanRttConfigurationV1: Configuration(technology = WIFI_NAN_RTT) {
     _size_(service_name): 8,
     service_name: 8[],
     device_role: WifiDeviceRole,
-    use_periodic: 1,
+    periodic: 1,
     _reserved_: 7,
+}
+
+// Version 2
+struct WifiNanRttConfigurationV2: Configuration(technology = WIFI_NAN_RTT) {
+    _size_(service_name): 8,
+    service_name: 8[],
+    device_role: WifiDeviceRole,
+    periodic: 1,
+    _reserved_: 7,
+    format_and_bandwidth: 8,
+    cfreq0: 8,
+    cfreq1: 8,
 }
 
 struct BleRssiConfiguration: Configuration(technology = BLE_RSSI) {
     address: 8[6],
+}
+
+// Version 2
+struct WifiStaRttConfiguration: Configuration(technology = WIFI_STA_RTT) {
+    frequency: 16,
+    format_and_bandwidth: 8,
+    cfreq0: 8,
+    cfreq1: 8,
+    security_method: WiFiSecurityMethod,
+}
+
+// Version 3
+struct WifiApRttConfiguration: Configuration(technology = WIFI_AP_RTT) {
+    frequency: 16,
+    bssid: 8[6],
+    format_and_bandwidth: 8,
+    cfreq0: 8,
+    cfreq1: 8,
+    security_method: WiFiSecurityMethod,
 }
 
 // Protocol-level packets.
