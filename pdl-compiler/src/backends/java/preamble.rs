@@ -40,7 +40,13 @@ impl Utils {
                 Self::gen_offsets(endianness, width)
                     .into_iter()
                     .map(|offset| {
-                        t.rshift(t.symbol(quote!(buf.get()), Integral::Byte), t.num(offset))
+                        t.rshift(
+                            t.cast(
+                                t.symbol(quote!(buf.get()), Integral::Byte),
+                                Integral::fitting(width),
+                            ),
+                            t.num(offset),
+                        )
                     })
                     .collect(),
             ),
