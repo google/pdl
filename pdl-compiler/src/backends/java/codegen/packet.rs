@@ -768,15 +768,7 @@ fn build_child_fitting_constraints(
         tokens.extend(quote!(
             Builder<?> builder;
             $(for child in children {
-                if (
-                    $(for member in members.iter() {
-                        $(if let Some(value) = child.constraints.get(member.name()) {
-                            $(member.equals(member.constraint(value)))
-                        })
-                    })
-                    $(if !child.constraints.is_empty() && child.field_width().is_some() => &&)
-                    $(if let Some(width) = child.field_width() => payload.limit() == $(width / 8))
-                ) {
+                if ($(fits_childs_constraints(members, child))) {
                     builder = $(&child.name).fromPayload(payload);
                 } else$[' ']
             })
@@ -800,6 +792,27 @@ fn build_child_fitting_constraints(
             builder.$(member.name()) = $(member.name());
         })
     });
+
+    tokens
+}
+
+fn fits_childs_constraints(members: &[Field], child: &InheritanceNode) -> Tokens<Java> {
+    let mut tokens = Tokens::new();
+
+    let constraints = members
+        .iter()
+        .flat_map(|member| child.constraints.get(member.name()).map(|value| (member, value)));
+
+    tokens.append(quote!(
+        $(for (member, value) in constraints join ( && ) {
+            $(member.equals(member.constraint(value)))
+        })
+    ));
+
+    tokens.append(quote!(
+        $(if !child.constraints.is_empty() && child.field_width().is_some() => &&)
+        $(if let Some(width) = child.field_width() => payload.limit() == $(width / 8))
+    ));
 
     tokens
 }

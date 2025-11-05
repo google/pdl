@@ -5,7 +5,8 @@ little_endian_packets
 // Common definitions.
 
 enum Version: 8 {
-    CURRENT = 1,
+    V1 = 1,
+    CURRENT = 2,
     FUTURE = ..,
 }
 
@@ -24,9 +25,9 @@ enum Technology: 8 {
     BLE_CS = 0x1,
     WIFI_NAN_RTT = 0x2,
     BLE_RSSI = 0x3,
-    // Version 2
+    // Version 3(In-Development)
     WIFI_STA_RTT = 0x4,
-    // Version 3
+    // Version 4(In-Development)
     WIFI_AP_RTT = 0x5,
     RESERVED = ..,
 }
@@ -36,11 +37,27 @@ struct TechnologySet {
     ble_cs: 1,
     wifi_nan_rtt: 1,
     ble_rssi: 1,
-    // Version 2
+    // Version 3(In-Development)
     wifi_sta_rtt: 1,
-    // Version 3
+    // Version 4(In-Development)
     wifi_ap_rtt: 1,
     _reserved_: 10,
+}
+
+enum TechnologyTransitioning: 8 {
+    NOT_SUPPORTED = 0x0,
+    MAKE_BEFORE_BREAK = 0x1,
+    RESERVED = ..,
+}
+
+enum DeviceType: 16 {
+    UNKNOWN = 0x0,
+    PHONE = 0x1,
+    TABLET = 0x2,
+    TAG = 0x3,
+    WEARABLE = 0x4,
+    HEARABLE = 0x5,
+    RESERVED = ..,
 }
 
 packet OobMessage {
@@ -109,8 +126,8 @@ struct WifiNanRttCapabilitiesV1: Capabilities(technology = WIFI_NAN_RTT) {
     num_rx_chains: 8,
 }
 
-// Version 2
-struct WifiNanRttCapabilitiesV2: Capabilities(technology = WIFI_NAN_RTT) {
+// Version 3(In-Development)
+struct WifiNanRttCapabilitiesV3: Capabilities(technology = WIFI_NAN_RTT) {
     features: 8,
     periodic: 1,
     _reserved_: 23,
@@ -123,7 +140,7 @@ struct BleRssiCapabilities: Capabilities(technology = BLE_RSSI) {
     address: 8[6],
 }
 
-// Version 2
+// Version 3(In-Development)
 struct WifiStaRttCapabilities: Capabilities(technology = WIFI_STA_RTT) {
     features: 8,
     _count_(band_info): 8,
@@ -131,7 +148,7 @@ struct WifiStaRttCapabilities: Capabilities(technology = WIFI_STA_RTT) {
     band_info: WifiBandInfo[]
 }
 
-// Version 3
+// Version 4(In-Development)
 struct WifiApRttCapabilities: Capabilities(technology = WIFI_AP_RTT) {
     features: 8,
     _count_(band_info): 8,
@@ -190,8 +207,8 @@ struct WifiNanRttConfigurationV1: Configuration(technology = WIFI_NAN_RTT) {
     _reserved_: 7,
 }
 
-// Version 2
-struct WifiNanRttConfigurationV2: Configuration(technology = WIFI_NAN_RTT) {
+// Version 3(In-Development)
+struct WifiNanRttConfigurationV3: Configuration(technology = WIFI_NAN_RTT) {
     _size_(service_name): 8,
     service_name: 8[],
     device_role: WifiDeviceRole,
@@ -206,7 +223,7 @@ struct BleRssiConfiguration: Configuration(technology = BLE_RSSI) {
     address: 8[6],
 }
 
-// Version 2
+// Version 3(In-Development)
 struct WifiStaRttConfiguration: Configuration(technology = WIFI_STA_RTT) {
     frequency: 16,
     format_and_bandwidth: 8,
@@ -215,7 +232,7 @@ struct WifiStaRttConfiguration: Configuration(technology = WIFI_STA_RTT) {
     security_method: WiFiSecurityMethod,
 }
 
-// Version 3
+// Version 4(In-Development)
 struct WifiApRttConfiguration: Configuration(technology = WIFI_AP_RTT) {
     frequency: 16,
     bssid: 8[6],
@@ -231,9 +248,17 @@ packet CapabilitiesRequest: OobMessage(id = CAPABILITIES_REQUEST) {
     requested_technologies: TechnologySet,
 }
 
-packet CapabilitiesResponse: OobMessage(id = CAPABILITIES_RESPONSE) {
+packet CapabilitiesResponseV1: OobMessage(version = V1, id = CAPABILITIES_RESPONSE) {
     supported_technologies: TechnologySet,
     capabilities: Capabilities[],
+}
+
+// Version 2
+packet CapabilitiesResponseV2: OobMessage(id = CAPABILITIES_RESPONSE) {
+    supported_technologies: TechnologySet,
+    capabilities: Capabilities[],
+    supported_transitioning : TechnologyTransitioning,
+    device_type: DeviceType,
 }
 
 packet ConfigurationRequest: OobMessage(id = CONFIGURATION_REQUEST) {
