@@ -200,7 +200,7 @@ impl MultiValueTag for TagOther {
     fn static_factory(&self, super_name: &str, ty: Integral) -> Tokens<Java> {
         quote! {
             public static $(self.name()) $(self.name())($ty value) {
-                $super_name tag = $super_name.fromByte(value);
+                $super_name tag = $super_name.from$(ty.capitalized())(value);
                 if (!(tag instanceof $(self.name()) self)) {
                     throw new IllegalArgumentException(
                         "Value " + $(ty.stringify(quote!(value))) +
