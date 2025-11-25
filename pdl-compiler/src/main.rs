@@ -167,7 +167,7 @@ fn generate_backend(opt: &Opt) -> Result<(), String> {
         Err(err) => {
             let writer = termcolor::StandardStream::stderr(termcolor::ColorChoice::Always);
             let config = term::Config::default();
-            term::emit(&mut writer.lock(), &config, &sources, &err).expect("Could not print error");
+            term::emit_to_write_style(&mut writer.lock(), &config, &sources, &err).expect("Could not print error");
             Err(String::from("Error while parsing input"))
         }
     }

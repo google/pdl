@@ -34,7 +34,7 @@ fn pdl_proc_macro(path: syn::LitStr, input: syn::ItemMod) -> TokenStream {
         Ok(file) => file,
         Err(err) => {
             let mut buffer = termcolor::Buffer::no_color();
-            term::emit(&mut buffer, &term::Config::default(), &sources, &err)
+            term::emit_to_write_style(&mut buffer, &term::Config::default(), &sources, &err)
                 .expect("could not emit parser diagnostics");
             return syn::Error::new(path.span(), String::from_utf8(buffer.into_inner()).unwrap())
                 .to_compile_error();
@@ -81,7 +81,7 @@ fn pdl_inline_proc_macro(code: syn::LitStr, input: syn::ItemMod) -> TokenStream 
         Ok(file) => file,
         Err(err) => {
             let mut buffer = termcolor::Buffer::no_color();
-            term::emit(&mut buffer, &term::Config::default(), &sources, &err)
+            term::emit_to_write_style(&mut buffer, &term::Config::default(), &sources, &err)
                 .expect("could not emit parser diagnostics");
             return syn::Error::new(code.span(), String::from_utf8(buffer.into_inner()).unwrap())
                 .to_compile_error();

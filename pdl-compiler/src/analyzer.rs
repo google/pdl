@@ -17,6 +17,7 @@ use codespan_reporting::files;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor;
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::ast::*;
 
@@ -87,6 +88,7 @@ impl Size {
 
 /// List of unique errors reported as analyzer diagnostics.
 #[repr(u16)]
+#[derive(Copy, Clone)]
 pub enum ErrorCode {
     DuplicateDeclIdentifier = 1,
     RecursiveDecl = 2,
@@ -142,9 +144,15 @@ pub enum ErrorCode {
     InvalidPacketSize = 53,
 }
 
+impl fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "E{}", *self as u16)
+    }
+}
+
 impl From<ErrorCode> for String {
     fn from(code: ErrorCode) -> Self {
-        format!("E{}", code as u16)
+        format!("{}", code)
     }
 }
 
@@ -198,7 +206,7 @@ impl Diagnostics {
     ) -> Result<(), files::Error> {
         let config = term::Config::default();
         for d in self.diagnostics.iter() {
-            term::emit(writer, &config, sources, d)?;
+            term::emit_to_write_style(writer, &config, sources, d)?;
         }
         Ok(())
     }
