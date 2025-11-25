@@ -26,7 +26,7 @@ default = ["serde"]
 java = ["genco", "once_cell"]
 
 [dependencies]
-codespan-reporting = "0.11.1"
+codespan-reporting = "0.13.1"
 heck = "0.4.1"
 pest = "2.7.6"
 pest_derive = "2.7.6"

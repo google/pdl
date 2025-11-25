@@ -23,7 +23,7 @@ name = "pdl_derive"
 proc-macro = true
 
 [dependencies]
-codespan-reporting = "0.11.1"
+codespan-reporting = "0.13.1"
 pdl-compiler = {path = "../pdl-compiler", version = "0.4.2"}
 proc-macro2 = "1.0.66"
 quote = "1.0.33"
