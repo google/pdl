@@ -60,6 +60,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Install 1.83.0 Rust
+        run: |
+          rustup default 1.83.0
+          rustup component add clippy
+
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
 
