@@ -174,8 +174,8 @@ fn constraint_value(
             let type_id = fields
                 .iter()
                 .filter_map(|f| match &f.desc {
-                    ast::FieldDesc::Typedef { id, type_id } if id == &constraint.id => {
-                        Some(type_id.to_ident())
+                    ast::FieldDesc::Enum { id, enum_id, .. } if id == &constraint.id => {
+                        Some(enum_id.to_ident())
                     }
                     _ => None,
                 })
@@ -213,8 +213,9 @@ fn constraint_value_str(fields: &[&'_ ast::Field], constraint: &ast::Constraint)
 fn implements_copy(scope: &analyzer::Scope<'_>, field: &ast::Field) -> bool {
     match &field.desc {
         ast::FieldDesc::Scalar { .. } => true,
+        ast::FieldDesc::Enum { .. } => true,
         ast::FieldDesc::Typedef { type_id, .. } => match &scope.typedef[type_id].desc {
-            ast::DeclDesc::Enum { .. } | ast::DeclDesc::CustomField { .. } => true,
+            ast::DeclDesc::CustomField { .. } => true,
             ast::DeclDesc::Struct { .. } => false,
             desc => unreachable!("unexpected declaration: {desc:?}"),
         },
