@@ -1129,7 +1129,6 @@ fn generate_custom_field_decl(
     let id = id.to_ident();
     let backing_type = types::Integer::new(width);
     let backing_type_str = proc_macro2::Literal::string(&format!("u{}", backing_type.width));
-    let max_value = mask_bits(width, &format!("u{}", backing_type.width));
     let size = proc_macro2::Literal::usize_unsuffixed(width / 8);
 
     let read_value = types::get_uint(endianness, width, &format_ident!("buf"));
@@ -1200,6 +1199,7 @@ fn generate_custom_field_decl(
             }
         }
     } else {
+        let max_value = mask_bits(width, &format!("u{}", backing_type.width));
         quote! {
             #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
             #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1666,12 +1666,14 @@ mod tests {
     test_pdl!(
         packet_decl_custom_field,
         r#"
-          custom_field Bar1 : 24 "exact"
-          custom_field Bar2 : 32 "truncated"
+          custom_field Bar1 : 24 "truncated"
+          custom_field Bar2 : 32 "exact"
+          custom_field Bar3 : 64 "maximum width"
 
           packet Foo {
             a: Bar1,
             b: Bar2,
+            c: Bar3,
           }
         "#
     );
