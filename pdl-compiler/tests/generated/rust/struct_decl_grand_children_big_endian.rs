@@ -24,10 +24,11 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
     }
 }
 #[repr(u64)]
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u16", into = "u16"))]
 pub enum Enum16 {
+    #[default]
     A = 0x1,
     B = 0x2,
 }
@@ -74,7 +75,7 @@ impl From<Enum16> for u64 {
         u16::from(value) as Self
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Parent {
     pub foo: Enum16,
@@ -82,10 +83,11 @@ pub struct Parent {
     pub baz: Enum16,
     pub payload: Vec<u8>,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParentChild {
     Child(Child),
+    #[default]
     None,
 }
 impl Parent {
@@ -198,7 +200,7 @@ impl Packet for Parent {
         Ok((Self { payload, foo, bar, baz }, buf))
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Child {
     pub quux: Enum16,
@@ -237,10 +239,11 @@ impl TryFrom<Parent> for Child {
         (&parent).try_into()
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ChildChild {
     GrandChild(GrandChild),
+    #[default]
     None,
 }
 impl Child {
@@ -339,7 +342,7 @@ impl Packet for Child {
         Ok((packet, trailing_bytes))
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GrandChild {
     pub baz: Enum16,
@@ -400,10 +403,11 @@ impl TryFrom<Parent> for GrandChild {
         (&packet).try_into()
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GrandChildChild {
     GrandGrandChild(GrandGrandChild),
+    #[default]
     None,
 }
 impl GrandChild {
@@ -489,7 +493,7 @@ impl Packet for GrandChild {
         Ok((packet, trailing_bytes))
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GrandGrandChild {
     pub payload: Vec<u8>,
