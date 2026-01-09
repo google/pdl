@@ -509,10 +509,11 @@ fn generate_root_packet_decl(
     let child_struct = (!children_decl.is_empty()).then(|| {
         let children_ids = children_decl.iter().map(|decl| decl.id().unwrap().to_ident());
         quote! {
-            #[derive(Debug, Clone, PartialEq, Eq)]
+            #[derive(Default, Debug, Clone, PartialEq, Eq)]
             #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
             pub enum #child_name {
                 #( #children_ids(#children_ids), )*
+                #[default]
                 None,
             }
         }
@@ -525,7 +526,7 @@ fn generate_root_packet_decl(
         .then(|| generate_specialize_impl(scope, schema, decl, id, &data_fields).unwrap());
 
     quote! {
-        #[derive(Debug, Clone, PartialEq, Eq)]
+        #[derive(Default, Debug, Clone, PartialEq, Eq)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub struct #name {
             #( pub #data_field_ids: #data_field_types, )*
@@ -849,10 +850,11 @@ fn generate_derived_packet_decl(
     let child_struct = (!children_decl.is_empty()).then(|| {
         let children_ids = children_decl.iter().map(|decl| decl.id().unwrap().to_ident());
         quote! {
-            #[derive(Debug, Clone, PartialEq, Eq)]
+            #[derive(Default, Debug, Clone, PartialEq, Eq)]
             #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
             pub enum #child_name {
                 #( #children_ids(#children_ids), )*
+                #[default]
                 None,
             }
         }
@@ -865,7 +867,7 @@ fn generate_derived_packet_decl(
         .then(|| generate_specialize_impl(scope, schema, decl, id, &data_fields).unwrap());
 
     quote! {
-        #[derive(Debug, Clone, PartialEq, Eq)]
+        #[derive(Default, Debug, Clone, PartialEq, Eq)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub struct #name {
             #( pub #data_field_ids: #data_field_types, )*
@@ -1078,10 +1080,12 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
 
     quote! {
         #repr_u64
-        #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+        #[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         #[cfg_attr(feature = "serde", serde(try_from = #backing_type_str, into = #backing_type_str))]
         pub enum #name {
+            // No specific value => use the first one as default
+            #[default]
             #(#variants,)*
         }
 
@@ -1185,7 +1189,7 @@ fn generate_custom_field_decl(
 
     if backing_type.width == width {
         quote! {
-            #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+            #[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
             #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
             #[cfg_attr(feature = "serde", serde(from = #backing_type_str, into = #backing_type_str))]
             pub struct #id(#backing_type);
@@ -1201,7 +1205,7 @@ fn generate_custom_field_decl(
     } else {
         let max_value = mask_bits(width, &format!("u{}", backing_type.width));
         quote! {
-            #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+            #[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
             #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
             #[cfg_attr(feature = "serde", serde(try_from = #backing_type_str, into = #backing_type_str))]
             pub struct #id(#backing_type);

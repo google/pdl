@@ -24,10 +24,11 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
     }
 }
 #[repr(u64)]
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u16", into = "u16"))]
 pub enum Enum16 {
+    #[default]
     A = 0x1,
     B = 0x2,
 }
@@ -74,18 +75,19 @@ impl From<Enum16> for u64 {
         u16::from(value) as Self
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     pub a: u8,
     pub b: Enum16,
     pub payload: Vec<u8>,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FooChild {
     Bar(Bar),
     Baz(Baz),
+    #[default]
     None,
 }
 impl Foo {
@@ -170,7 +172,7 @@ impl Packet for Foo {
         Ok((Self { payload, a, b }, buf))
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bar {
     pub x: u8,
@@ -270,7 +272,7 @@ impl Packet for Bar {
         Ok((packet, trailing_bytes))
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Baz {
     pub y: u16,
