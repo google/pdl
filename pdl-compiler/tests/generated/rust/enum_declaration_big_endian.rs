@@ -24,10 +24,11 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
     }
 }
 #[repr(u64)]
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum IncompleteTruncatedClosed {
+    #[default]
     A = 0x0,
     B = 0x1,
 }
@@ -89,10 +90,11 @@ impl From<IncompleteTruncatedClosed> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum IncompleteTruncatedOpen {
+    #[default]
     A,
     B,
     Unknown(Private<u8>),
@@ -157,10 +159,11 @@ impl From<IncompleteTruncatedOpen> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum IncompleteTruncatedClosedWithRange {
+    #[default]
     A,
     X,
     Y,
@@ -228,10 +231,11 @@ impl From<IncompleteTruncatedClosedWithRange> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum IncompleteTruncatedOpenWithRange {
+    #[default]
     A,
     X,
     Y,
@@ -303,10 +307,11 @@ impl From<IncompleteTruncatedOpenWithRange> for u64 {
     }
 }
 #[repr(u64)]
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum CompleteTruncated {
+    #[default]
     A = 0x0,
     B = 0x1,
     C = 0x2,
@@ -386,10 +391,11 @@ impl From<CompleteTruncated> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum CompleteTruncatedWithRange {
+    #[default]
     A,
     X,
     Y,
@@ -457,10 +463,11 @@ impl From<CompleteTruncatedWithRange> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum CompleteWithRange {
+    #[default]
     A,
     B,
     C(Private<u8>),

@@ -23,7 +23,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
         T::fmt(&self.0, f)
     }
 }
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u32", into = "u32"))]
 pub struct Bar1(u32);
@@ -62,7 +62,7 @@ impl TryFrom<u32> for Bar1 {
         if value > 0xff_ffff { Err(value) } else { Ok(Bar1(value)) }
     }
 }
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(from = "u32", into = "u32"))]
 pub struct Bar2(u32);
@@ -100,7 +100,7 @@ impl From<u32> for Bar2 {
         Bar2(value)
     }
 }
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(from = "u64", into = "u64"))]
 pub struct Bar3(u64);
@@ -138,7 +138,7 @@ impl From<u64> for Bar3 {
         Bar3(value)
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     pub a: Bar1,

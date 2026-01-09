@@ -23,7 +23,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
         T::fmt(&self.0, f)
     }
 }
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(from = "u32", into = "u32"))]
 pub struct ExactSize(u32);
@@ -61,7 +61,7 @@ impl From<u32> for ExactSize {
         ExactSize(value)
     }
 }
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u32", into = "u32"))]
 pub struct TruncatedSize(u32);
