@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::backends::java::Field;
 
@@ -27,7 +27,7 @@ pub struct InheritanceNode {
     pub name: String,
     pub parent: Option<String>,
     pub children: Vec<String>,
-    pub constraints: HashMap<String, Constraint>,
+    pub constraints: BTreeMap<String, Constraint>,
     pub static_field_width: usize,
     pub dyn_fields: HashSet<String>,
 }
@@ -64,7 +64,7 @@ impl ClassHeirarchy {
                 name,
                 parent: None,
                 children: Vec::new(),
-                constraints: HashMap::new(),
+                constraints: BTreeMap::new(),
                 static_field_width,
                 dyn_fields: non_static_members,
             },
@@ -75,7 +75,7 @@ impl ClassHeirarchy {
         &mut self,
         parent_name: String,
         child_name: String,
-        constraints: HashMap<String, Constraint>,
+        constraints: BTreeMap<String, Constraint>,
         fields: &Vec<Field>,
     ) {
         self.0
