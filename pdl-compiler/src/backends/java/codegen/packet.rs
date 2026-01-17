@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use genco::{self, prelude::Java, quote, tokens::quoted, Tokens};
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
@@ -142,7 +142,7 @@ pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java>
 
                 $(setter_defs(
                     &def.members, &quote!(Builder),
-                    &HashMap::new(), &def.width_fields, &ctx.heirarchy))
+                    &BTreeMap::new(), &def.width_fields, &ctx.heirarchy))
             }
         }
     }
@@ -266,7 +266,7 @@ pub fn gen_abstract_packet(
             }
 
             protected abstract static class UnconstrainedBuilder<B extends Builder<B>> extends Builder<B> {
-                $(setter_defs(&def.members, &quote!(B), &HashMap::new(), &def.width_fields, &ctx.heirarchy))
+                $(setter_defs(&def.members, &quote!(B), &BTreeMap::new(), &def.width_fields, &ctx.heirarchy))
             }
 
             $(for child in children.iter() {
@@ -319,7 +319,7 @@ fn getter_defs(members: &[Field]) -> Tokens<Java> {
 fn setter_defs(
     members: &[Field],
     builder_type: &Tokens<Java>,
-    constraints: &HashMap<String, Constraint>,
+    constraints: &BTreeMap<String, Constraint>,
     width_fields: &HashMap<String, WidthField>,
     heirarchy: &ClassHeirarchy,
 ) -> Tokens<Java> {

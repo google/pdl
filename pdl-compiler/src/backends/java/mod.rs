@@ -21,6 +21,7 @@ use genco::{
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 use std::{
     cmp,
+    collections::BTreeMap,
     collections::HashMap,
     fs::{self, OpenOptions},
     iter, mem,
@@ -137,7 +138,7 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
                     heirarchy.add_child(
                         parent_name.clone(),
                         child_name.clone(),
-                        HashMap::new(),
+                        BTreeMap::new(),
                         child.fields().unwrap(),
                     );
 
