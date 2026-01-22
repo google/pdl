@@ -24,10 +24,11 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
     }
 }
 #[repr(u64)]
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum Enum7 {
+    #[default]
     A = 0x1,
     B = 0x2,
 }
@@ -90,10 +91,11 @@ impl From<Enum7> for u64 {
     }
 }
 #[repr(u64)]
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u16", into = "u16"))]
 pub enum Enum9 {
+    #[default]
     A = 0x1,
     B = 0x2,
 }
@@ -145,7 +147,7 @@ impl From<Enum9> for u64 {
         u16::from(value) as Self
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     pub x: Enum7,

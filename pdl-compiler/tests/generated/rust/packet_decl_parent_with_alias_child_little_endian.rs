@@ -24,10 +24,11 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
     }
 }
 #[repr(u64)]
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum Enum8 {
+    #[default]
     A = 0x0,
     B = 0x1,
     C = 0x2,
@@ -87,17 +88,18 @@ impl From<Enum8> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Parent {
     pub v: Enum8,
     pub payload: Vec<u8>,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParentChild {
     AliasChild(AliasChild),
     NormalChild(NormalChild),
+    #[default]
     None,
 }
 impl Parent {
@@ -146,7 +148,7 @@ impl Packet for Parent {
         Ok((Self { payload, v }, buf))
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AliasChild {
     pub v: Enum8,
@@ -178,11 +180,12 @@ impl TryFrom<Parent> for AliasChild {
         (&parent).try_into()
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AliasChildChild {
     NormalGrandChild1(NormalGrandChild1),
     NormalGrandChild2(NormalGrandChild2),
+    #[default]
     None,
 }
 impl AliasChild {
@@ -231,7 +234,7 @@ impl Packet for AliasChild {
         Ok((packet, trailing_bytes))
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NormalChild {}
 impl TryFrom<&NormalChild> for Parent {
@@ -295,7 +298,7 @@ impl Packet for NormalChild {
         Ok((packet, trailing_bytes))
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NormalGrandChild1 {}
 impl TryFrom<&NormalGrandChild1> for AliasChild {
@@ -383,7 +386,7 @@ impl Packet for NormalGrandChild1 {
         Ok((packet, trailing_bytes))
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NormalGrandChild2 {
     pub payload: Vec<u8>,
