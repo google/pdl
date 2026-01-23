@@ -60,7 +60,7 @@ pub enum Chunk<S: Symbol> {
 }
 
 /// Packs symbols of various sizes, which may not be byte-aligned, into a sequence of byte-aligned chunks.
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct ByteAligner<S: Symbol> {
     /// Staged fields, waiting to be packed into a chunk.
     staged_fields: Vec<Field<S>>,

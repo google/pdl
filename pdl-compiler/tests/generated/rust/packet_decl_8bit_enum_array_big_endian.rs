@@ -24,13 +24,17 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
     }
 }
 #[repr(u64)]
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum Foo {
-    #[default]
     FooBar = 0x1,
     Baz = 0x2,
+}
+impl Default for Foo {
+    fn default() -> Foo {
+        Foo::FooBar
+    }
 }
 impl TryFrom<u8> for Foo {
     type Error = u8;
@@ -85,7 +89,7 @@ impl From<Foo> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bar {
     pub x: [Foo; 3],
@@ -93,6 +97,13 @@ pub struct Bar {
 impl Bar {
     pub fn x(&self) -> &[Foo; 3] {
         &self.x
+    }
+}
+impl Default for Bar {
+    fn default() -> Bar {
+        Bar {
+            x: std::array::from_fn(|_| Default::default()),
+        }
     }
 }
 impl Packet for Bar {
