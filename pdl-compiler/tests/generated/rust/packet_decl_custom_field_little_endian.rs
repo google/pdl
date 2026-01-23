@@ -138,7 +138,7 @@ impl From<u64> for Bar3 {
         Bar3(value)
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     pub a: Bar1,
@@ -154,6 +154,15 @@ impl Foo {
     }
     pub fn c(&self) -> Bar3 {
         self.c
+    }
+}
+impl Default for Foo {
+    fn default() -> Foo {
+        Foo {
+            a: Default::default(),
+            b: Default::default(),
+            c: Default::default(),
+        }
     }
 }
 impl Packet for Foo {

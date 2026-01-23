@@ -23,7 +23,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
         T::fmt(&self.0, f)
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     pub inner: Vec<u8>,
@@ -31,6 +31,11 @@ pub struct Foo {
 impl Foo {
     pub fn inner(&self) -> &Vec<u8> {
         &self.inner
+    }
+}
+impl Default for Foo {
+    fn default() -> Foo {
+        Foo { inner: vec![] }
     }
 }
 impl Packet for Foo {
@@ -51,7 +56,7 @@ impl Packet for Foo {
         Ok((Self { inner }, buf))
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bar {
     pub x: Vec<Foo>,
@@ -59,6 +64,11 @@ pub struct Bar {
 impl Bar {
     pub fn x(&self) -> &Vec<Foo> {
         &self.x
+    }
+}
+impl Default for Bar {
+    fn default() -> Bar {
+        Bar { x: vec![] }
     }
 }
 impl Packet for Bar {

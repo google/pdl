@@ -24,12 +24,16 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
     }
 }
 #[repr(u64)]
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum Enum8 {
-    #[default]
     A = 0x0,
+}
+impl Default for Enum8 {
+    fn default() -> Enum8 {
+        Enum8::A
+    }
 }
 impl TryFrom<u8> for Enum8 {
     type Error = u8;
@@ -82,7 +86,7 @@ impl From<Enum8> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Parent {
     pub v: Enum8,
@@ -105,6 +109,11 @@ impl Parent {
     }
     pub fn v(&self) -> Enum8 {
         self.v
+    }
+}
+impl Default for Parent {
+    fn default() -> Parent {
+        Parent { v: Default::default() }
     }
 }
 impl Packet for Parent {
@@ -133,7 +142,7 @@ impl Packet for Parent {
         Ok((Self { v }, buf))
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Child {}
 impl From<&Child> for Parent {
@@ -175,6 +184,11 @@ impl Child {
     }
     pub fn v(&self) -> Enum8 {
         Enum8::A
+    }
+}
+impl Default for Child {
+    fn default() -> Child {
+        Child {}
     }
 }
 impl Packet for Child {

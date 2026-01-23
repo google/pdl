@@ -20,4 +20,4 @@ pub mod json;
 pub mod rust;
 pub mod rust_legacy;
 
-mod common;
+pub mod common;

@@ -23,7 +23,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
         T::fmt(&self.0, f)
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Test {
     pub payload: Vec<u8>,
@@ -31,6 +31,11 @@ pub struct Test {
 impl Test {
     pub fn payload(&self) -> &[u8] {
         &self.payload
+    }
+}
+impl Default for Test {
+    fn default() -> Test {
+        Test { payload: vec![] }
     }
 }
 impl Packet for Test {

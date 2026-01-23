@@ -23,7 +23,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
         T::fmt(&self.0, f)
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     pub a: u8,
@@ -39,6 +39,11 @@ impl Foo {
     }
     pub fn c(&self) -> u8 {
         self.c
+    }
+}
+impl Default for Foo {
+    fn default() -> Foo {
+        Foo { a: 0, b: 0, c: 0 }
     }
 }
 impl Packet for Foo {

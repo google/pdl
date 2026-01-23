@@ -23,10 +23,15 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
         T::fmt(&self.0, f)
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {}
 impl Foo {}
+impl Default for Foo {
+    fn default() -> Foo {
+        Foo {}
+    }
+}
 impl Packet for Foo {
     fn encoded_len(&self) -> usize {
         5

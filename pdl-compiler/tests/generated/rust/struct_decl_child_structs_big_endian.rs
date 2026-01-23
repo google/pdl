@@ -24,13 +24,17 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
     }
 }
 #[repr(u64)]
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u16", into = "u16"))]
 pub enum Enum16 {
-    #[default]
     A = 0x1,
     B = 0x2,
+}
+impl Default for Enum16 {
+    fn default() -> Enum16 {
+        Enum16::A
+    }
 }
 impl TryFrom<u16> for Enum16 {
     type Error = u16;
@@ -75,7 +79,7 @@ impl From<Enum16> for u64 {
         u16::from(value) as Self
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     pub a: u8,
@@ -108,6 +112,15 @@ impl Foo {
     }
     pub fn b(&self) -> Enum16 {
         self.b
+    }
+}
+impl Default for Foo {
+    fn default() -> Foo {
+        Foo {
+            a: 0,
+            b: Default::default(),
+            payload: vec![],
+        }
     }
 }
 impl Packet for Foo {
@@ -173,7 +186,7 @@ impl Packet for Foo {
         Ok((Self { payload, a, b }, buf))
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bar {
     pub x: u8,
@@ -248,6 +261,11 @@ impl Bar {
         100
     }
 }
+impl Default for Bar {
+    fn default() -> Bar {
+        Bar { x: 0, b: Default::default() }
+    }
+}
 impl Packet for Bar {
     fn encoded_len(&self) -> usize {
         5
@@ -273,7 +291,7 @@ impl Packet for Bar {
         Ok((packet, trailing_bytes))
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Baz {
     pub y: u16,
@@ -346,6 +364,11 @@ impl Baz {
     }
     pub fn b(&self) -> Enum16 {
         Enum16::B
+    }
+}
+impl Default for Baz {
+    fn default() -> Baz {
+        Baz { y: 0, a: 0 }
     }
 }
 impl Packet for Baz {
