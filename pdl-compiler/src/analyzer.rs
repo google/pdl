@@ -535,13 +535,17 @@ fn scalar_max(width: usize) -> usize {
 ///      - undeclared test identifier
 ///      - invalid test identifier
 ///      - recursive declaration
-fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<(), Diagnostics> {
+///
+/// Returns a copy of the file where the declarations have been
+/// reordered by topological sort to remove forward references.
+fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<File, Diagnostics> {
     enum Mark {
         Temporary,
         Permanent,
     }
     #[derive(Default)]
     struct Context<'d> {
+        history: Vec<Decl>,
         visited: HashMap<&'d str, Mark>,
     }
 
@@ -669,6 +673,7 @@ fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<(), Diagnostics>
         }
 
         // Done visiting current declaration.
+        context.history.push(decl.clone());
         context.visited.insert(decl_id, Mark::Permanent);
     }
 
@@ -677,10 +682,12 @@ fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<(), Diagnostics>
     let mut context = Default::default();
     for decl in &file.declarations {
         match &decl.desc {
-            DeclDesc::Checksum { .. } | DeclDesc::CustomField { .. } | DeclDesc::Enum { .. } => (),
-            DeclDesc::Packet { .. } | DeclDesc::Struct { .. } | DeclDesc::Group { .. } => {
-                bfs(decl, &mut context, scope, &mut diagnostics)
-            }
+            DeclDesc::Checksum { .. }
+            | DeclDesc::CustomField { .. }
+            | DeclDesc::Enum { .. }
+            | DeclDesc::Packet { .. }
+            | DeclDesc::Struct { .. }
+            | DeclDesc::Group { .. } => bfs(decl, &mut context, scope, &mut diagnostics),
             DeclDesc::Test { type_id, .. } => match scope.typedef.get(type_id) {
                 None => diagnostics.push(
                     Diagnostic::error()
@@ -701,7 +708,14 @@ fn check_decl_identifiers(file: &File, scope: &Scope) -> Result<(), Diagnostics>
         }
     }
 
-    diagnostics.err_or(())
+    diagnostics.err_or(File {
+        version: file.version.clone(),
+        file: file.file,
+        comments: file.comments.clone(),
+        endianness: file.endianness,
+        declarations: context.history,
+        max_key: file.max_key,
+    })
 }
 
 /// Check field identifiers.
@@ -1845,18 +1859,19 @@ fn desugar_flags(file: &mut File) {
 /// from the analysis.
 pub fn analyze(file: &File) -> Result<File, Diagnostics> {
     let scope = Scope::new(file)?;
-    check_decl_identifiers(file, &scope)?;
-    check_field_identifiers(file)?;
-    check_enum_declarations(file)?;
-    check_size_fields(file)?;
-    check_fixed_fields(file, &scope)?;
-    check_payload_fields(file)?;
-    check_array_fields(file)?;
-    check_padding_fields(file)?;
-    check_checksum_fields(file, &scope)?;
-    check_optional_fields(file)?;
-    check_group_constraints(file, &scope)?;
-    let mut file = inline_groups(file)?;
+    let file = check_decl_identifiers(file, &scope)?;
+    let scope = Scope::new(&file).unwrap();
+    check_field_identifiers(&file)?;
+    check_enum_declarations(&file)?;
+    check_size_fields(&file)?;
+    check_fixed_fields(&file, &scope)?;
+    check_payload_fields(&file)?;
+    check_array_fields(&file)?;
+    check_padding_fields(&file)?;
+    check_checksum_fields(&file, &scope)?;
+    check_optional_fields(&file)?;
+    check_group_constraints(&file, &scope)?;
+    let mut file = inline_groups(&file)?;
     desugar_flags(&mut file);
     let scope = Scope::new(&file)?;
     check_decl_constraints(&file, &scope)?;
@@ -3213,6 +3228,76 @@ mod test {
         little_endian_packets
         packet A {
             a : 12[],
+        }
+        "#
+        );
+    }
+
+    #[test]
+    fn test_decl_ordering() {
+        valid!(
+            r#"
+        little_endian_packets
+        packet A {
+            b: B,
+        }
+
+        enum B : 8 {
+            X = 0,
+            Y = 1,
+            Z = 127,
+        }
+        "#
+        );
+
+        valid!(
+            r#"
+        little_endian_packets
+        packet A {
+            b: B,
+        }
+
+        struct B {
+            a: 7,
+            b: 9,
+        }
+        "#
+        );
+
+        valid!(
+            r#"
+        little_endian_packets
+        packet A {
+            f: F,
+        }
+
+        custom_field F : 8 "f"
+        "#
+        );
+
+        valid!(
+            r#"
+        little_endian_packets
+        packet A {
+            G,
+        }
+
+        group G {
+            a: 8,
+        }
+        "#
+        );
+
+        valid!(
+            r#"
+        little_endian_packets
+        packet A : B {
+            b: 16,
+        }
+
+        packet B {
+            a: 8,
+            _payload_
         }
         "#
         );
