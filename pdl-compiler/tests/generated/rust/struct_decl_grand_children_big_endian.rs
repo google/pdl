@@ -24,13 +24,17 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
     }
 }
 #[repr(u64)]
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u16", into = "u16"))]
 pub enum Enum16 {
-    #[default]
     A = 0x1,
     B = 0x2,
+}
+impl Default for Enum16 {
+    fn default() -> Enum16 {
+        Enum16::A
+    }
 }
 impl TryFrom<u16> for Enum16 {
     type Error = u16;
@@ -75,7 +79,7 @@ impl From<Enum16> for u64 {
         u16::from(value) as Self
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Parent {
     pub foo: Enum16,
@@ -114,6 +118,16 @@ impl Parent {
     }
     pub fn baz(&self) -> Enum16 {
         self.baz
+    }
+}
+impl Default for Parent {
+    fn default() -> Parent {
+        Parent {
+            foo: Default::default(),
+            bar: Default::default(),
+            baz: Default::default(),
+            payload: vec![],
+        }
     }
 }
 impl Packet for Parent {
@@ -200,7 +214,7 @@ impl Packet for Parent {
         Ok((Self { payload, foo, bar, baz }, buf))
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Child {
     pub quux: Enum16,
@@ -316,6 +330,16 @@ impl Child {
         Enum16::A
     }
 }
+impl Default for Child {
+    fn default() -> Child {
+        Child {
+            quux: Default::default(),
+            bar: Default::default(),
+            baz: Default::default(),
+            payload: vec![],
+        }
+    }
+}
 impl Packet for Child {
     fn encoded_len(&self) -> usize {
         9 + self.payload.len()
@@ -342,7 +366,7 @@ impl Packet for Child {
         Ok((packet, trailing_bytes))
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GrandChild {
     pub baz: Enum16,
@@ -466,6 +490,14 @@ impl GrandChild {
         Enum16::A
     }
 }
+impl Default for GrandChild {
+    fn default() -> GrandChild {
+        GrandChild {
+            baz: Default::default(),
+            payload: vec![],
+        }
+    }
+}
 impl Packet for GrandChild {
     fn encoded_len(&self) -> usize {
         9 + self.payload.len()
@@ -493,7 +525,7 @@ impl Packet for GrandChild {
         Ok((packet, trailing_bytes))
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GrandGrandChild {
     pub payload: Vec<u8>,
@@ -613,6 +645,11 @@ impl GrandGrandChild {
     }
     pub fn baz(&self) -> Enum16 {
         Enum16::A
+    }
+}
+impl Default for GrandGrandChild {
+    fn default() -> GrandGrandChild {
+        GrandGrandChild { payload: vec![] }
     }
 }
 impl Packet for GrandGrandChild {

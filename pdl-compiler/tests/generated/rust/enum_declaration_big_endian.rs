@@ -24,13 +24,17 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
     }
 }
 #[repr(u64)]
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum IncompleteTruncatedClosed {
-    #[default]
     A = 0x0,
     B = 0x1,
+}
+impl Default for IncompleteTruncatedClosed {
+    fn default() -> IncompleteTruncatedClosed {
+        IncompleteTruncatedClosed::A
+    }
 }
 impl TryFrom<u8> for IncompleteTruncatedClosed {
     type Error = u8;
@@ -90,14 +94,18 @@ impl From<IncompleteTruncatedClosed> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum IncompleteTruncatedOpen {
-    #[default]
     A,
     B,
     Unknown(Private<u8>),
+}
+impl Default for IncompleteTruncatedOpen {
+    fn default() -> IncompleteTruncatedOpen {
+        IncompleteTruncatedOpen::A
+    }
 }
 impl TryFrom<u8> for IncompleteTruncatedOpen {
     type Error = u8;
@@ -159,15 +167,19 @@ impl From<IncompleteTruncatedOpen> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum IncompleteTruncatedClosedWithRange {
-    #[default]
     A,
     X,
     Y,
     B(Private<u8>),
+}
+impl Default for IncompleteTruncatedClosedWithRange {
+    fn default() -> IncompleteTruncatedClosedWithRange {
+        IncompleteTruncatedClosedWithRange::A
+    }
 }
 impl TryFrom<u8> for IncompleteTruncatedClosedWithRange {
     type Error = u8;
@@ -231,16 +243,20 @@ impl From<IncompleteTruncatedClosedWithRange> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum IncompleteTruncatedOpenWithRange {
-    #[default]
     A,
     X,
     Y,
     B(Private<u8>),
     Unknown(Private<u8>),
+}
+impl Default for IncompleteTruncatedOpenWithRange {
+    fn default() -> IncompleteTruncatedOpenWithRange {
+        IncompleteTruncatedOpenWithRange::A
+    }
 }
 impl TryFrom<u8> for IncompleteTruncatedOpenWithRange {
     type Error = u8;
@@ -307,11 +323,10 @@ impl From<IncompleteTruncatedOpenWithRange> for u64 {
     }
 }
 #[repr(u64)]
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum CompleteTruncated {
-    #[default]
     A = 0x0,
     B = 0x1,
     C = 0x2,
@@ -320,6 +335,11 @@ pub enum CompleteTruncated {
     F = 0x5,
     G = 0x6,
     H = 0x7,
+}
+impl Default for CompleteTruncated {
+    fn default() -> CompleteTruncated {
+        CompleteTruncated::A
+    }
 }
 impl TryFrom<u8> for CompleteTruncated {
     type Error = u8;
@@ -391,15 +411,19 @@ impl From<CompleteTruncated> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum CompleteTruncatedWithRange {
-    #[default]
     A,
     X,
     Y,
     B(Private<u8>),
+}
+impl Default for CompleteTruncatedWithRange {
+    fn default() -> CompleteTruncatedWithRange {
+        CompleteTruncatedWithRange::A
+    }
 }
 impl TryFrom<u8> for CompleteTruncatedWithRange {
     type Error = u8;
@@ -463,14 +487,18 @@ impl From<CompleteTruncatedWithRange> for u64 {
         u8::from(value) as Self
     }
 }
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum CompleteWithRange {
-    #[default]
     A,
     B,
     C(Private<u8>),
+}
+impl Default for CompleteWithRange {
+    fn default() -> CompleteWithRange {
+        CompleteWithRange::A
+    }
 }
 impl TryFrom<u8> for CompleteWithRange {
     type Error = u8;

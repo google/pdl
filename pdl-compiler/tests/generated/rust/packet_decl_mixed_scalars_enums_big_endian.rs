@@ -24,13 +24,17 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Private<T> {
     }
 }
 #[repr(u64)]
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
 pub enum Enum7 {
-    #[default]
     A = 0x1,
     B = 0x2,
+}
+impl Default for Enum7 {
+    fn default() -> Enum7 {
+        Enum7::A
+    }
 }
 impl TryFrom<u8> for Enum7 {
     type Error = u8;
@@ -91,13 +95,17 @@ impl From<Enum7> for u64 {
     }
 }
 #[repr(u64)]
-#[derive(Default, Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "u16", into = "u16"))]
 pub enum Enum9 {
-    #[default]
     A = 0x1,
     B = 0x2,
+}
+impl Default for Enum9 {
+    fn default() -> Enum9 {
+        Enum9::A
+    }
 }
 impl TryFrom<u16> for Enum9 {
     type Error = u16;
@@ -147,7 +155,7 @@ impl From<Enum9> for u64 {
         u16::from(value) as Self
     }
 }
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Foo {
     pub x: Enum7,
@@ -167,6 +175,16 @@ impl Foo {
     }
     pub fn w(&self) -> u8 {
         self.w
+    }
+}
+impl Default for Foo {
+    fn default() -> Foo {
+        Foo {
+            x: Default::default(),
+            y: 0,
+            z: Default::default(),
+            w: 0,
+        }
     }
 }
 impl Packet for Foo {

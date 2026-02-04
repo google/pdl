@@ -649,8 +649,7 @@ pub fn parse_inline(
 ) -> Result<ast::File, Diagnostic<ast::FileId>> {
     let root = PDLParser::parse(Rule::file, &source)
         .map_err(|e| {
-            Diagnostic::error()
-                .with_message(format!("failed to parse input file '{name}': {e}"))
+            Diagnostic::error().with_message(format!("failed to parse input file '{name}': {e}"))
         })?
         .next()
         .unwrap();

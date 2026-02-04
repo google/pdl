@@ -14,8 +14,6 @@
 
 //! PDL parser and analyzer.
 
-use std::path::Path;
-
 use argh::FromArgs;
 use codespan_reporting::term::{self, termcolor};
 
@@ -80,11 +78,13 @@ struct Opt {
     /// For the rust backend this is a path e.g. "module::CustomField" or "super::CustomField".
     custom_field: Vec<String>,
 
+    #[cfg(feature = "java")]
     #[argh(option)]
     /// directory where generated files should go. This only works when 'output_format' is 'java'.
     /// If omitted, the generated code will be printed to stdout.
     output_dir: Option<String>,
 
+    #[cfg(feature = "java")]
     #[argh(option)]
     /// java package to contain the generated classes.
     java_package: Option<String>,
@@ -149,7 +149,7 @@ fn generate_backend(opt: &Opt) -> Result<(), String> {
                         &sources,
                         &analyzed_file,
                         &opt.custom_field,
-                        Path::new(output_dir),
+                        std::path::Path::new(output_dir),
                         package,
                     )
                 }
@@ -167,7 +167,8 @@ fn generate_backend(opt: &Opt) -> Result<(), String> {
         Err(err) => {
             let writer = termcolor::StandardStream::stderr(termcolor::ColorChoice::Always);
             let config = term::Config::default();
-            term::emit_to_write_style(&mut writer.lock(), &config, &sources, &err).expect("Could not print error");
+            term::emit_to_write_style(&mut writer.lock(), &config, &sources, &err)
+                .expect("Could not print error");
             Err(String::from("Error while parsing input"))
         }
     }
@@ -196,7 +197,7 @@ fn generate_tests(opt: &Opt, test_file: &str) -> Result<(), String> {
 
             backends::java::test::generate_tests(
                 test_file,
-                Path::new(output_dir),
+                std::path::Path::new(output_dir),
                 package.clone(),
                 &opt.input_file,
                 &opt.exclude_declaration,
