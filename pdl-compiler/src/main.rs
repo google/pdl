@@ -24,6 +24,7 @@ use pdl_compiler::{analyzer, ast, backends, parser};
 enum OutputFormat {
     Java,
     JSON,
+    Python,
     Rust,
     RustLegacy,
 }
@@ -34,11 +35,12 @@ impl std::str::FromStr for OutputFormat {
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input.to_lowercase().as_str() {
             "json" => Ok(Self::JSON),
+            "python" => Ok(Self::Python),
             "rust" => Ok(Self::Rust),
             "java" => Ok(Self::Java),
             "rust_legacy" => Ok(Self::RustLegacy),
             _ => Err(format!(
-                "could not parse {input:?}, valid option are 'json', 'rust', 'rust_legacy'."
+                "could not parse {input:?}, valid option are 'json', 'python', 'rust', 'rust_legacy'."
             )),
         }
     }
@@ -75,7 +77,8 @@ struct Opt {
 
     #[argh(option)]
     /// custom_field import paths.
-    /// For the rust backend this is a path e.g. "module::CustomField" or "super::CustomField".
+    /// For the rust backend, declares a list of qualified paths like "module::CustomField".
+    /// For the python backend, declares a list of qualified paths like "module.CustomField".
     custom_field: Vec<String>,
 
     #[cfg(feature = "java")]
@@ -126,6 +129,18 @@ fn generate_backend(opt: &Opt, input_file: &str) -> Result<(), String> {
             match opt.output_format {
                 OutputFormat::JSON => {
                     println!("{}", backends::json::generate(&file).unwrap());
+                    Ok(())
+                }
+                OutputFormat::Python => {
+                    println!(
+                        "{}",
+                        backends::python::generate(
+                            &sources,
+                            &analyzed_file,
+                            opt.custom_field.first().map(String::as_str),
+                            &opt.exclude_declaration
+                        )
+                    );
                     Ok(())
                 }
                 OutputFormat::Rust => {

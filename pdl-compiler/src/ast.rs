@@ -464,6 +464,14 @@ impl Decl {
         })
     }
 
+    /// Return the reference to the array element size in a declaration, if present.
+    pub fn element_size(&self, id: &str) -> Option<&Field> {
+        self.fields().find(|field| match &field.desc {
+            FieldDesc::ElementSize { field_id, .. } => field_id == id,
+            _ => false,
+        })
+    }
+
     pub fn kind(&self) -> &str {
         match &self.desc {
             DeclDesc::Checksum { .. } => "checksum",

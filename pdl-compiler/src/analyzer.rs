@@ -35,6 +35,34 @@ pub enum Size {
     Unknown,
 }
 
+/// Represent the width of an array element.
+#[derive(Debug, Clone, Copy)]
+#[allow(unused)]
+pub enum ElementSize {
+    /// Static size in octets.
+    Static(usize),
+    /// Dynamic size in octets given by an element size field.
+    Dynamic,
+    /// The element size is unspecified and varies for each element
+    /// (e.g. TLV array).
+    Unknown,
+}
+
+/// Represent the dimension of an array field, i.e., the number of elements
+/// given via a static count, a count field, a size field, or unknown.
+#[derive(Debug, Clone, Copy)]
+#[allow(unused)]
+pub enum ArraySize {
+    /// The array has a fixed number of elements.
+    StaticCount(usize),
+    /// The number of elements in the array is given by a count field.
+    DynamicCount,
+    /// The size of the array in octets is given by a count field.
+    DynamicSize,
+    /// The array size is unspecified and varies based on remaining bytes
+    Unknown,
+}
+
 // TODO: use derive(Default) when UWB is using Rust 1.62.0.
 #[allow(clippy::derivable_impls)]
 impl Default for Size {
@@ -507,6 +535,37 @@ impl Schema {
 
     pub fn total_size(&self, key: DeclKey) -> Size {
         self.decl_size(key) + self.parent_size(key) + self.payload_size(key)
+    }
+}
+
+/// Compute the element size of an array field.
+pub fn element_size(scope: &Scope<'_>, schema: &Schema, decl: &Decl, field: &Field) -> ElementSize {
+    match &field.desc {
+        FieldDesc::Array { width: Some(width), .. } => ElementSize::Static(width / 8),
+        FieldDesc::Array { id, type_id: Some(type_id), .. } => {
+            let element_decl = scope.typedef.get(type_id).unwrap();
+            if let Some(width) = schema.total_size(element_decl.key).static_() {
+                ElementSize::Static(width / 8)
+            } else if decl.element_size(id).is_some() {
+                ElementSize::Dynamic
+            } else {
+                ElementSize::Unknown
+            }
+        }
+        _ => ElementSize::Unknown,
+    }
+}
+
+/// Compute the size of an array field.
+pub fn array_size(decl: &Decl, field: &Field) -> ArraySize {
+    match &field.desc {
+        FieldDesc::Array { size: Some(count), .. } => ArraySize::StaticCount(*count),
+        FieldDesc::Array { id, .. } => match decl.array_size(id) {
+            Some(Field { desc: FieldDesc::Count { .. }, .. }) => ArraySize::DynamicCount,
+            Some(Field { desc: FieldDesc::Size { .. }, .. }) => ArraySize::DynamicSize,
+            _ => ArraySize::Unknown,
+        },
+        _ => ArraySize::Unknown,
     }
 }
 
