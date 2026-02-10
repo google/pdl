@@ -4,40 +4,47 @@ Python Generated Code Guide
 Usage
 -----
 
-.. sourcecode:: bash
-
-    usage: generate_python_backend.py [-h] [--input INPUT] [--output OUTPUT] [--custom-type-location CUSTOM_TYPE_LOCATION]
-
-    options:
-      -h, --help            show this help message and exit
-      --input INPUT         Input PDL-JSON source
-      --output OUTPUT       Output Python file
-      --custom-type-location CUSTOM_TYPE_LOCATION
-                            Module of declaration of custom types
+The Python backend is integrated into the ``pdlc`` tool.
 
 Example invocation:
 
 .. sourcecode:: bash
 
-    cargo run my-protocol.pdl --output-format json | \
-        ./pdl-compiler/scripts/generate_python_backend.py > my-protocol.py
+    pdlc --output-format python my-protocol.pdl > my-protocol.py
+
+If your PDL file uses custom types or checksums, you must provide the module
+where they are defined using the ``--custom-field`` option:
+
+.. sourcecode:: bash
+
+    pdlc --output-format python --custom-field my_protocol.custom_types my-protocol.pdl > my-protocol.py
 
 Language bindings
 -----------------
 
-The generator produces a pure python implementation of the parser and serializer
+The generator produces a pure Python implementation of the parser and serializer
 for the selected grammar, using only builtin features of the Python language.
-The generated constructs are all type annotated and _should_ pass the type
-validation.
+The generated constructs are all type annotated and pass ``ruff`` validation.
 
 All packets inherit either from their parent declaration or at the root
-a blanket `Packet` class implementation.
+a blanket ``Packet`` class implementation.
 
 .. sourcecode:: python
 
     @dataclass
     class Packet:
         payload: Optional[bytes] = field(repr=False, default_factory=bytes, compare=False)
+
+        @classmethod
+        def parse_all(cls, span: bytes) -> 'Packet':
+            ...
+
+        @property
+        def size(self) -> int:
+            return 0
+
+        def show(self, prefix: str = '') -> None:
+            ...
 
 Enum declarations
 ^^^^^^^^^^^^^^^^^
@@ -50,13 +57,13 @@ Enum declarations
 |         B = 2..3,                     |         C = 4                                                 |
 |         C = 4,                        |                                                               |
 |         OTHER = ..,                   |         @staticmethod                                         |
-|     }                                 |         def from_int(v: int) -> typing.Union[TestEnum, int]:  |
+|     }                                 |         def from_int(v: int) -> Union[int, 'TestEnum']:       |
 |                                       |             pass                                              |
 +---------------------------------------+---------------------------------------------------------------+
 
 .. note::
     Python enums are closed by construction, default cases in enum declarations are ignored.
-    The static method `from_int` provides validation for enum tag ranges.
+    The static method ``from_int`` provides validation for enum tag ranges.
 
 Packet declarations
 ^^^^^^^^^^^^^^^^^^^
@@ -65,15 +72,19 @@ Packet declarations
 | ::                                    | .. sourcecode:: python                                        |
 |                                       |                                                               |
 |     packet TestPacket {               |     @dataclass                                                |
-|         a: 8,                         |     packet TestPacket(Packet):                                |
+|         a: 8,                         |     class TestPacket(Packet):                                 |
 |         b: TestEnum,                  |         a: int = field(kw_only=True, default=0)               |
 |     }                                 |         b: TestEnum = field(kw_only=True, default=TestEnum.A) |
+|                                       |                                                               |
+|                                       |         def __post_init__(self) -> None:                      |
+|                                       |             pass                                              |
 |                                       |                                                               |
 |                                       |         @staticmethod                                         |
 |                                       |         def parse(span: bytes) -> Tuple['TestPacket', bytes]: |
 |                                       |             pass                                              |
 |                                       |                                                               |
-|                                       |         def serialize(self, payload: bytes = None) -> bytes:  |
+|                                       |         def serialize(self, payload: Optional[bytes] = None)  |
+|                                       |                 -> bytes:                                     |
 |                                       |             pass                                              |
 |                                       |                                                               |
 |                                       |         @property                                             |
