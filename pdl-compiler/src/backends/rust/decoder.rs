@@ -140,7 +140,7 @@ impl<'a> FieldParser<'a> {
     fn add_bit_field(&mut self, field: &'a ast::Field) {
         self.chunk.push(BitField { shift: self.shift, field });
         self.shift += self.schema.field_size(field.key).static_().unwrap();
-        if self.shift % 8 != 0 {
+        if !self.shift.is_multiple_of(8) {
             return;
         }
 

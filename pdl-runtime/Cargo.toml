@@ -1,7 +1,8 @@
 [package]
 name = "pdl-runtime"
 version = "0.4.4"
-edition = "2021"
+edition = "2024"
+rust-version = "1.87"
 description = "PDL's runtime library"
 repository = "https://github.com/google/pdl/"
 license = "Apache-2.0"

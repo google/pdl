@@ -471,7 +471,7 @@ impl Encoder {
         }
 
         self.bit_shift += width;
-        if self.bit_shift % 8 == 0 {
+        if self.bit_shift.is_multiple_of(8) {
             self.pack_bit_fields()
         }
     }

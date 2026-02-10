@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.83.0 # This is the Rust version used in Android.
+          - 1.87.0 # This is the Rust version used in Android.
           - stable
         os:
           - ubuntu-latest
@@ -60,9 +60,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install 1.83.0 Rust
+      - name: Install 1.87.0 Rust
         run: |
-          rustup default 1.83.0
+          rustup default 1.87.0
           rustup component add clippy
 
       - name: Setup Rust cache

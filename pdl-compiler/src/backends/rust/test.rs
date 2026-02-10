@@ -24,7 +24,7 @@ use crate::backends::common::test::Packet;
 ///
 /// The string `"80038302"` becomes `vec![0x80, 0x03, 0x83, 0x02]`.
 fn hexadecimal_to_vec(hex: &str) -> proc_macro2::TokenStream {
-    assert!(hex.len() % 2 == 0, "Expects an even number of hex digits");
+    assert!(hex.len().is_multiple_of(2), "Expects an even number of hex digits");
     let bytes = hex.as_bytes().chunks_exact(2).map(|chunk| {
         let number = format!("0x{}", std::str::from_utf8(chunk).unwrap());
         syn::parse_str::<syn::LitInt>(&number).unwrap()
