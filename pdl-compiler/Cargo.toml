@@ -1,7 +1,8 @@
 [package]
 name = "pdl-compiler"
 version = "0.4.4"
-edition = "2021"
+edition = "2024"
+rust-version = "1.87"
 description = "Parser and serializer generator for protocol binary packets"
 repository = "https://github.com/google/pdl/"
 license = "Apache-2.0"

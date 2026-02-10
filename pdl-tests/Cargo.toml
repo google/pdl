@@ -2,7 +2,7 @@
 name = "pdl-tests"
 version = "0.0.0"
 publish = false
-edition = "2021"
+edition = "2024"
 description = "PDL Rust generated code tests"
 
 [features]

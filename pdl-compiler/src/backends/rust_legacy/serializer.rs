@@ -321,7 +321,7 @@ impl<'a> FieldSerializer<'a> {
         }
 
         self.shift += width;
-        if self.shift % 8 == 0 {
+        if self.shift.is_multiple_of(8) {
             self.pack_bit_fields()
         }
     }
