@@ -130,6 +130,7 @@ impl Packet for Foo {
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         buf.put_u8(self.a());
         buf.put_u16(u16::from(self.b()));
+        #[allow(unused_comparisons)]
         if self.payload.len() > 0xff {
             return Err(EncodeError::SizeOverflow {
                 packet: "Foo",
@@ -273,6 +274,7 @@ impl Packet for Bar {
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         buf.put_u8(self.a());
         buf.put_u16(u16::from(self.b()));
+        #[allow(unused_comparisons)]
         if 1 > 0xff {
             return Err(EncodeError::SizeOverflow {
                 packet: "Foo",
@@ -378,6 +380,7 @@ impl Packet for Baz {
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         buf.put_u8(self.a());
         buf.put_u16(u16::from(self.b()));
+        #[allow(unused_comparisons)]
         if 2 > 0xff {
             return Err(EncodeError::SizeOverflow {
                 packet: "Foo",

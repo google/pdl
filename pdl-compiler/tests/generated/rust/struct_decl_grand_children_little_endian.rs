@@ -138,6 +138,7 @@ impl Packet for Parent {
         buf.put_u16_le(u16::from(self.foo()));
         buf.put_u16_le(u16::from(self.bar()));
         buf.put_u16_le(u16::from(self.baz()));
+        #[allow(unused_comparisons)]
         if self.payload.len() > 0xff {
             return Err(EncodeError::SizeOverflow {
                 packet: "Parent",
@@ -348,6 +349,7 @@ impl Packet for Child {
         buf.put_u16_le(u16::from(self.foo()));
         buf.put_u16_le(u16::from(self.bar()));
         buf.put_u16_le(u16::from(self.baz()));
+        #[allow(unused_comparisons)]
         if 2 + self.payload.len() > 0xff {
             return Err(EncodeError::SizeOverflow {
                 packet: "Parent",
@@ -506,6 +508,7 @@ impl Packet for GrandChild {
         buf.put_u16_le(u16::from(self.foo()));
         buf.put_u16_le(u16::from(self.bar()));
         buf.put_u16_le(u16::from(self.baz()));
+        #[allow(unused_comparisons)]
         if 2 + self.payload.len() > 0xff {
             return Err(EncodeError::SizeOverflow {
                 packet: "Parent",
@@ -660,6 +663,7 @@ impl Packet for GrandGrandChild {
         buf.put_u16_le(u16::from(self.foo()));
         buf.put_u16_le(u16::from(self.bar()));
         buf.put_u16_le(u16::from(self.baz()));
+        #[allow(unused_comparisons)]
         if 2 + self.payload.len() > 0xff {
             return Err(EncodeError::SizeOverflow {
                 packet: "Parent",

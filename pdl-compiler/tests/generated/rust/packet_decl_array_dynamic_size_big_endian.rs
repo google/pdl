@@ -47,6 +47,7 @@ impl Packet for Foo {
         1 + (self.x.len() * 3)
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        #[allow(unused_comparisons)]
         if (self.x.len() * 3) > 0x1f {
             return Err(EncodeError::SizeOverflow {
                 packet: "Foo",
