@@ -52,6 +52,7 @@ impl Packet for Foo {
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         buf.put_u8(self.a());
+        #[allow(unused_comparisons)]
         if self.payload.len() > 0xff {
             return Err(EncodeError::SizeOverflow {
                 packet: "Foo",

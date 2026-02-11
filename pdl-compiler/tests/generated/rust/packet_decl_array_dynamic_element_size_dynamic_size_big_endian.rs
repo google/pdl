@@ -77,6 +77,7 @@ impl Packet for Bar {
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         let x_size = self.x.iter().map(Packet::encoded_len).sum::<usize>();
+        #[allow(unused_comparisons)]
         if x_size > 0xf {
             return Err(EncodeError::SizeOverflow {
                 packet: "Bar",

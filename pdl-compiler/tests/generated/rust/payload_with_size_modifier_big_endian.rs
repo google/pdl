@@ -43,6 +43,7 @@ impl Packet for Test {
         1 + self.payload.len()
     }
     fn encode(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
+        #[allow(unused_comparisons)]
         if (self.payload.len() + 1) > 0xff {
             return Err(EncodeError::SizeOverflow {
                 packet: "Test",

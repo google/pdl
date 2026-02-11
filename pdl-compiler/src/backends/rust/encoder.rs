@@ -389,7 +389,10 @@ impl Encoder {
                     _ => panic!("Unexpected size field: {field:?}"),
                 };
 
+                // TODO: this check is generated with an allow() directive since the size might
+                // be constant. It should be removed when always true.
                 self.tokens.extend(quote! {
+                    #[allow(unused_comparisons)]
                     if #array_size > #max_value {
                         return Err(EncodeError::SizeOverflow {
                             packet: #packet_name,
