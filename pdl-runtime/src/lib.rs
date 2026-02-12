@@ -17,7 +17,7 @@
 use bytes::{BufMut, Bytes, BytesMut};
 
 /// Type of parsing errors.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum DecodeError {
     #[error("packet parsing failed")]
     InvalidPacketError,
@@ -54,7 +54,7 @@ pub enum DecodeError {
 }
 
 /// Type of serialization errors.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum EncodeError {
     #[error("the size of {packet}::{field} ({size}) is outside the range of valid values 0..{maximum_size}")]
     SizeOverflow { packet: &'static str, field: &'static str, size: usize, maximum_size: usize },
