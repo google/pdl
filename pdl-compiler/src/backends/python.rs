@@ -28,7 +28,7 @@ fn indent(s: &str, level: usize) -> String {
 /// Width can be arbitrarily large.
 fn mask(width: usize) -> String {
     let mut mask = "0x".to_string();
-    if width % 4 != 0 {
+    if !width.is_multiple_of(4) {
         mask += &format!("{:x}", (1 << (width % 4)) - 1);
     }
     for _ in 0..width / 4 {
@@ -714,7 +714,7 @@ impl<'a> FieldParser<'a> {
         self.shift += width;
 
         // Wait for more fields if not on a byte boundary.
-        if self.shift % 8 != 0 {
+        if !self.shift.is_multiple_of(8) {
             return;
         }
 
@@ -1441,7 +1441,7 @@ impl<'a> FieldSerializer<'a> {
         };
 
         self.shift += width;
-        if self.shift % 8 == 0 {
+        if self.shift.is_multiple_of(8) {
             self.pack_bit_fields();
         }
     }
@@ -1613,6 +1613,6 @@ mod test {
                 "Packet_Array_Field_VariableElementSize_UnknownSize".to_string(),
             ],
         );
-        assert_snapshot_eq(&format!("tests/generated/python/le_backend.py"), &actual_code);
+        assert_snapshot_eq("tests/generated/python/le_backend.py", &actual_code);
     }
 }
