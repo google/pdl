@@ -83,7 +83,8 @@ def generate_packet_parser_test(parser_test_suite: str, packet: ast.PacketDeclar
                 checks.append(f"ASSERT_TRUE(!{get_field(decl, var, id)}.has_value());")
 
             elif isinstance(field, ast.TypedefField) and field.cond and value is not None:
-                checks.append(f"{field.type_id} const& {field_var} = {get_field(decl, var, id)}.value();")
+                checks.append(f"auto opt_{field_var} = {get_field(decl, var, id)};")
+                checks.append(f"{field.type_id} const& {field_var} = opt_{field_var}.value();")
                 checks.extend(check_members(field.type, field_var, value))
 
             elif isinstance(field, ast.TypedefField):

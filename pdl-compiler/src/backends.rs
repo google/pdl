@@ -14,6 +14,7 @@
 
 //! Compiler backends.
 
+pub mod cxx;
 #[cfg(feature = "java")]
 pub mod java;
 pub mod json;
