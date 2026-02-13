@@ -1954,7 +1954,7 @@ mod test {
             let mut db = ast::SourceDatabase::new();
             let file = parse_inline(&mut db, "stdin", $text.to_owned()).expect("parsing failure");
             let result = analyzer::analyze(&file);
-            assert!(matches!(result, Err(_)));
+            assert!(result.is_err());
             let diagnostics = result.err().unwrap();
             let mut buffer = termcolor::Buffer::no_color();
             let _ = diagnostics.emit(&db, &mut buffer);
