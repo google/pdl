@@ -22,6 +22,7 @@ use pdl_compiler::{analyzer, ast, backends, parser};
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum OutputFormat {
+    Cxx,
     Java,
     JSON,
     Python,
@@ -33,6 +34,7 @@ impl std::str::FromStr for OutputFormat {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input.to_lowercase().as_str() {
+            "cxx" => Ok(Self::Cxx),
             "json" => Ok(Self::JSON),
             "python" => Ok(Self::Python),
             "rust" => Ok(Self::Rust),
@@ -41,7 +43,7 @@ impl std::str::FromStr for OutputFormat {
                 Err("'rust_legacy' is now deprecated. Use 'rust' format instead.".to_string())
             }
             _ => Err(format!(
-                "could not parse {input:?}, valid option are 'json', 'python', 'rust'."
+                "could not parse {input:?}, valid option are 'cxx', 'json', 'python', 'rust'."
             )),
         }
     }
@@ -98,6 +100,18 @@ struct Opt {
     #[argh(option)]
     /// java package to contain the generated classes.
     java_package: Option<String>,
+
+    #[argh(option)]
+    /// generated module namespace. Valid for the output format "cxx".
+    namespace: Option<String>,
+
+    #[argh(option)]
+    /// added include directives. Valid for the output format "cxx".
+    include_header: Vec<String>,
+
+    #[argh(option)]
+    /// added using namespace statements. Valid for the output format "cxx".
+    using_namespace: Vec<String>,
 }
 
 /// Remove declarations listed in the input filter.
@@ -149,6 +163,20 @@ fn generate_backend(opt: &Opt, input_file: &str) -> Result<(), String> {
             match opt.output_format {
                 OutputFormat::JSON => {
                     println!("{}", backends::json::generate(&file).unwrap());
+                    Ok(())
+                }
+                OutputFormat::Cxx => {
+                    println!(
+                        "{}",
+                        backends::cxx::generate(
+                            &sources,
+                            &analyzed_file,
+                            opt.namespace.as_deref(),
+                            &opt.include_header,
+                            &opt.using_namespace,
+                            &opt.exclude_declaration,
+                        )
+                    );
                     Ok(())
                 }
                 OutputFormat::Python => {
