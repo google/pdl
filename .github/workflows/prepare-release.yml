@@ -1,0 +1,15 @@
+name: Prepare Release PR
+
+on:
+  push:
+    branches:
+      - 'release-*'
+
+jobs:
+  prepare-release:
+    uses: mgeisler/rust-release-gh-action/.github/workflows/prepare-release.yml@main
+    with:
+      name: "Martin Geisler"
+      email: "mgeisler@google.com"
+      changelog-file: "CHANGELOG.md"
+      changelog-heading-level: "##"
