@@ -563,6 +563,7 @@ fn generate_root_packet_decl(
     quote! {
         #[derive(Debug, Clone, PartialEq, Eq)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+        #[cfg_attr(feature = "python", pyo3::pyclass(get_all, set_all))]
         pub struct #name {
             #( pub #data_field_ids: #data_field_types, )*
             #payload_field
