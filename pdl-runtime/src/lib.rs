@@ -81,7 +81,7 @@ pub enum EncodeError {
 }
 
 /// Trait implemented for all toplevel packet declarations.
-pub trait Packet: Sized {
+pub trait Packet: Sized + Clone {
     /// Try parsing an instance of Self from the input slice.
     /// On success, returns the parsed object and the remaining unparsed slice.
     /// On failure, returns an error with the reason for the parsing failure.
@@ -125,5 +125,114 @@ pub trait Packet: Sized {
         let mut buf = BytesMut::with_capacity(self.encoded_len());
         self.encode(&mut buf)?;
         Ok(buf.freeze())
+    }
+}
+
+/// Representation of arrays in pdl packets and structures.
+/// `Array<T>` implements `Iterator<Item = T>` to enable iterating
+/// over elements.
+#[derive(Clone, PartialEq, Eq)]
+pub enum Array<'a, T> {
+    /// Lazy array created when parsing a packet with a reference to the
+    /// original slice. The first element is the precomputed number of items
+    /// in the array.
+    Lazy(usize, &'a [u8]),
+    /// Borrowed array representation used when building a packet
+    /// with the array slice.
+    Borrowed(&'a [T]),
+    /// Owned array representation used when building a packet
+    /// with the array value.
+    Owned(Box<[T]>),
+}
+
+/// Iterator for `Array` elements.
+pub enum ArrayIter<'a, T> {
+    Lazy(&'a [u8]),
+    Borrowed(std::slice::Iter<'a, T>),
+}
+
+/// Type of items returned iterating over `Array` elements.
+pub enum ArrayItem<'a, T> {
+    Owned(T),
+    Borrowed(&'a T),
+}
+
+impl<T> Array<'_, T> {
+    /// Create a lazy array from the raw data bytes.
+    pub fn lazy(len: usize, slice: &[u8]) -> Array<'_, T> {
+        Array::Lazy(len, slice)
+    }
+
+    /// Iterate over the elements of the array.
+    pub fn iter(&self) -> ArrayIter<'_, T> {
+        match self {
+            Array::Lazy(_, slice) => ArrayIter::Lazy(slice),
+            Array::Borrowed(slice) => ArrayIter::Borrowed(slice.iter()),
+            Array::Owned(vec) => ArrayIter::Borrowed(vec.iter()),
+        }
+    }
+
+    /// Return the number of elements in the array.
+    /// This is *not* the length in bytes of the serialized array.
+    pub fn len(&self) -> usize {
+        match self {
+            Array::Lazy(len, _) => *len,
+            Array::Borrowed(slice) => slice.len(),
+            Array::Owned(vec) => vec.len(),
+        }
+    }
+}
+
+impl<'a, T: Packet> Iterator for ArrayIter<'a, T> {
+    type Item = ArrayItem<'a, T>;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            ArrayIter::Lazy(ref mut slice) => match T::decode(*slice) {
+                Ok((item, remainder)) => {
+                    *slice = remainder;
+                    Some(ArrayItem::Owned(item))
+                }
+                Err(_) => None,
+            },
+            ArrayIter::Borrowed(it) => it.next().map(ArrayItem::Borrowed),
+        }
+    }
+}
+
+impl<'a, T> From<&'a [T]> for Array<'a, T> {
+    fn from(slice: &'a [T]) -> Array<'a, T> {
+        Array::Borrowed(slice)
+    }
+}
+
+impl<T> From<Box<[T]>> for Array<'static, T> {
+    fn from(vec: Box<[T]>) -> Array<'static, T> {
+        Array::Owned(vec)
+    }
+}
+
+impl<T> From<Vec<T>> for Array<'static, T> {
+    fn from(vec: Vec<T>) -> Array<'static, T> {
+        Array::Owned(vec.into())
+    }
+}
+
+impl<'a> std::ops::Deref for Array<'a, u8> {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Array::Lazy(_, slice) | Array::Borrowed(slice) => slice,
+            Array::Owned(vec) => &vec,
+        }
+    }
+}
+
+impl<'a, T> std::ops::Deref for ArrayItem<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            ArrayItem::Borrowed(item) => item,
+            ArrayItem::Owned(item) => &item,
+        }
     }
 }
