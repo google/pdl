@@ -96,9 +96,6 @@ jobs:
       - name: Run Rust generator tests
         run: pdl-compiler/tests/run_rust_generator_tests.sh
 
-      - name: Run legacy Rust generator tests
-        run: pdl-compiler/tests/run_rust_legacy_generator_tests.sh
-
       - name: Run CXX generator tests
         run: pdl-compiler/tests/run_cxx_generator_tests.sh
 
@@ -110,6 +107,3 @@ jobs:
 
       - name: Compile Rust generated files
         run: pdl-compiler/tests/compile_rust_generated_files.sh
-
-      - name: Compile legacy Rust generated files
-        run: pdl-compiler/tests/compile_rust_legacy_generated_files.sh
