@@ -26,7 +26,6 @@ enum OutputFormat {
     JSON,
     Python,
     Rust,
-    RustLegacy,
 }
 
 impl std::str::FromStr for OutputFormat {
@@ -38,9 +37,9 @@ impl std::str::FromStr for OutputFormat {
             "python" => Ok(Self::Python),
             "rust" => Ok(Self::Rust),
             "java" => Ok(Self::Java),
-            "rust_legacy" => Ok(Self::RustLegacy),
+            "rust_legacy" => Err("'rust_legacy' is now deprecated. Use 'rust' format instead.".to_string()),
             _ => Err(format!(
-                "could not parse {input:?}, valid option are 'json', 'python', 'rust', 'rust_legacy'."
+                "could not parse {input:?}, valid option are 'json', 'python', 'rust'."
             )),
         }
     }
@@ -54,7 +53,7 @@ struct Opt {
     version: bool,
 
     #[argh(option, default = "OutputFormat::JSON")]
-    /// generate output in this format ("json", "rust", "java", "rust_legacy",).
+    /// generate output in this format ("json", "rust", "java", "python").
     /// The output will be printed on stdout in all cases.
     /// The input file is the source PDL file.
     output_format: OutputFormat,
@@ -64,7 +63,7 @@ struct Opt {
     /// This file must point to a JSON formatted file with a list of test vectors.
     /// When this option is provided, the input file must point to the source PDL file
     /// from which the vectors were generated.
-    /// Valid for the output formats "rust", "java", "rust_legacy".
+    /// Valid for the output formats "rust", "java".
     test_file: Option<String>,
 
     #[argh(positional)]
@@ -172,10 +171,6 @@ fn generate_backend(opt: &Opt, input_file: &str) -> Result<(), String> {
                 OutputFormat::Java => {
                     Err(String::from("For Java support, please recompile with the 'java' feature"))
                 }
-                OutputFormat::RustLegacy => {
-                    println!("{}", backends::rust_legacy::generate(&sources, &analyzed_file));
-                    Ok(())
-                }
             }
         }
 
@@ -193,10 +188,6 @@ fn generate_tests(opt: &Opt, test_file: &str, _input_file: &str) -> Result<(), S
     match opt.output_format {
         OutputFormat::Rust => {
             println!("{}", backends::rust::test::generate_tests(test_file)?);
-            Ok(())
-        }
-        OutputFormat::RustLegacy => {
-            println!("{}", backends::rust_legacy::test::generate_tests(test_file)?);
             Ok(())
         }
         #[cfg(feature = "java")]
