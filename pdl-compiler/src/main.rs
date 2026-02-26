@@ -37,7 +37,9 @@ impl std::str::FromStr for OutputFormat {
             "python" => Ok(Self::Python),
             "rust" => Ok(Self::Rust),
             "java" => Ok(Self::Java),
-            "rust_legacy" => Err("'rust_legacy' is now deprecated. Use 'rust' format instead.".to_string()),
+            "rust_legacy" => {
+                Err("'rust_legacy' is now deprecated. Use 'rust' format instead.".to_string())
+            }
             _ => Err(format!(
                 "could not parse {input:?}, valid option are 'json', 'python', 'rust'."
             )),
@@ -75,6 +77,12 @@ struct Opt {
     exclude_declaration: Vec<String>,
 
     #[argh(option)]
+    /// select declarations to include in the generated output.
+    /// If both include and exclude declarations are specified then the include declaration
+    /// list is used.
+    include_declaration: Vec<String>,
+
+    #[argh(option)]
     /// custom_field import paths.
     /// For the rust backend, declares a list of qualified paths like "module::CustomField".
     /// For the python backend, declares a list of qualified paths like "module.CustomField".
@@ -93,13 +101,25 @@ struct Opt {
 }
 
 /// Remove declarations listed in the input filter.
-fn filter_declarations(file: ast::File, exclude_declarations: &[String]) -> ast::File {
+fn filter_declarations(
+    file: ast::File,
+    exclude_declarations: &[String],
+    include_declarations: &[String],
+) -> ast::File {
     ast::File {
         declarations: file
             .declarations
             .into_iter()
             .filter(|decl| {
-                decl.id().map(|id| !exclude_declarations.contains(&id.to_owned())).unwrap_or(true)
+                decl.id()
+                    .map(|id| {
+                        if include_declarations.is_empty() {
+                            !exclude_declarations.contains(&id.to_owned())
+                        } else {
+                            include_declarations.contains(&id.to_owned())
+                        }
+                    })
+                    .unwrap_or(true)
             })
             .collect(),
         ..file
@@ -110,7 +130,8 @@ fn generate_backend(opt: &Opt, input_file: &str) -> Result<(), String> {
     let mut sources = ast::SourceDatabase::new();
     match parser::parse_file(&mut sources, input_file) {
         Ok(file) => {
-            let file = filter_declarations(file, &opt.exclude_declaration);
+            let file =
+                filter_declarations(file, &opt.exclude_declaration, &opt.include_declaration);
             let analyzed_file = match analyzer::analyze(&file) {
                 Ok(file) => file,
                 Err(diagnostics) => {
