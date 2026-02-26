@@ -92,11 +92,7 @@ pub fn rust_type(field: &ast::Field) -> proc_macro2::TokenStream {
 /// Suffix for `Buf::get_*` and `BufMut::put_*` methods when reading a
 /// value with the given `width`.
 fn endianness_suffix(endianness: ast::EndiannessValue, width: usize) -> &'static str {
-    if width > 8 && endianness == ast::EndiannessValue::LittleEndian {
-        "_le"
-    } else {
-        ""
-    }
+    if width > 8 && endianness == ast::EndiannessValue::LittleEndian { "_le" } else { "" }
 }
 
 /// Parse an unsigned integer with the given `width`.

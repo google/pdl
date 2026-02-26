@@ -94,7 +94,10 @@ impl<S: Symbol> ByteAligner<S> {
         self.staged_fields.push(Field { offset: self.staged_width, symbol, width });
         self.staged_width += width;
         if self.staged_width > Self::MAX_CHUNK_WIDTH {
-            panic!("total field width grew beyond max chunk width of {} before aligning to a byte boundary", Self::MAX_CHUNK_WIDTH)
+            panic!(
+                "total field width grew beyond max chunk width of {} before aligning to a byte boundary",
+                Self::MAX_CHUNK_WIDTH
+            )
         }
         self.try_commit_staged_chunk();
     }

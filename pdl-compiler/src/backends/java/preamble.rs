@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use genco::{lang::Java, quote, Tokens};
+use genco::{Tokens, lang::Java, quote};
 
 use crate::{
     ast::EndiannessValue,
-    backends::java::{codegen::expr::ExprTree, import, Integral, JavaFile},
+    backends::java::{Integral, JavaFile, codegen::expr::ExprTree, import},
 };
 
 pub struct Utils;

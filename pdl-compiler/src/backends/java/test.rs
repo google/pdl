@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use genco::{
+    Tokens,
     lang::Java,
     prelude::{java, quote_fn},
     quote,
-    tokens::{quoted, FormatInto},
-    Tokens,
+    tokens::{FormatInto, quoted},
 };
 use heck::ToUpperCamelCase;
 use serde_json::{Map, Value};
@@ -29,7 +29,7 @@ use std::{
     str,
 };
 
-use super::{import, Class, Integral, JavaFile};
+use super::{Class, Integral, JavaFile, import};
 use crate::{
     ast::{self, Decl, DeclDesc, Field, FieldDesc},
     backends::{

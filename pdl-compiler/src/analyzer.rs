@@ -220,11 +220,7 @@ impl Diagnostics {
     }
 
     fn err_or<T>(self, value: T) -> Result<T, Diagnostics> {
-        if self.is_empty() {
-            Ok(value)
-        } else {
-            Err(self)
-        }
+        if self.is_empty() { Ok(value) } else { Err(self) }
     }
 
     pub fn emit(
@@ -268,11 +264,7 @@ impl<'d> Scope<'d> {
         }
 
         // Return failure if any diagnostic is raised.
-        if diagnostics.is_empty() {
-            Ok(scope)
-        } else {
-            Err(diagnostics)
-        }
+        if diagnostics.is_empty() { Ok(scope) } else { Err(diagnostics) }
     }
 
     /// Iterate over the child declarations of the selected declaration.
@@ -447,11 +439,7 @@ impl Schema {
                         }
                         _ => false,
                     });
-                    if has_payload_size {
-                        Size::Dynamic
-                    } else {
-                        Size::Unknown
-                    }
+                    if has_payload_size { Size::Dynamic } else { Size::Unknown }
                 }
                 FieldDesc::Typedef { type_id, .. }
                 | FieldDesc::FixedEnum { enum_id: type_id, .. }
@@ -478,11 +466,7 @@ impl Schema {
                         }
                         _ => false,
                     });
-                    if has_array_size {
-                        Size::Dynamic
-                    } else {
-                        Size::Unknown
-                    }
+                    if has_array_size { Size::Dynamic } else { Size::Unknown }
                 }
                 FieldDesc::Array { .. } => unreachable!(),
             };
@@ -576,11 +560,7 @@ fn bit_width(value: usize) -> usize {
 
 /// Return the maximum value for a scalar value.
 fn scalar_max(width: usize) -> usize {
-    if width >= usize::BITS as usize {
-        usize::MAX
-    } else {
-        (1 << width) - 1
-    }
+    if width >= usize::BITS as usize { usize::MAX } else { (1 << width) - 1 }
 }
 
 /// Check declaration identifiers.
@@ -1650,7 +1630,7 @@ fn check_optional_fields(file: &File) -> Result<(), Diagnostics> {
                                     )),
                                 ])
                                 .with_notes(vec![
-                                    "note: expected scalar field identifier".to_owned()
+                                    "note: expected scalar field identifier".to_owned(),
                                 ]),
                         ),
                     Some(Field { loc, .. }) => diagnostics.push(
@@ -3410,8 +3390,8 @@ mod test {
         );
     }
 
-    use analyzer::Size;
     use Size::*;
+    use analyzer::Size;
 
     #[derive(Debug, PartialEq, Eq)]
     struct Annotations {

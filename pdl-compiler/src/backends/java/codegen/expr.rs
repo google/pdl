@@ -14,7 +14,7 @@
 
 use std::{cell::RefCell, cmp::max};
 
-use genco::{lang::Java, quote, quote_in, tokens::FormatInto, Tokens};
+use genco::{Tokens, lang::Java, quote, quote_in, tokens::FormatInto};
 
 use crate::backends::java::Integral;
 
@@ -140,11 +140,7 @@ impl ExprTree {
     }
 
     pub fn sub(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
-        if self.is_literal(rhs, 0) {
-            lhs
-        } else {
-            self.op(lhs, BinOp::Sub, rhs)
-        }
+        if self.is_literal(rhs, 0) { lhs } else { self.op(lhs, BinOp::Sub, rhs) }
     }
 
     pub fn mul(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
@@ -158,11 +154,7 @@ impl ExprTree {
     }
 
     pub fn div(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
-        if self.is_literal(rhs, 1) {
-            lhs
-        } else {
-            self.op(lhs, BinOp::Divide, rhs)
-        }
+        if self.is_literal(rhs, 1) { lhs } else { self.op(lhs, BinOp::Divide, rhs) }
     }
 
     pub fn lshift(&self, lhs: ExprId, rhs: ExprId) -> ExprId {
