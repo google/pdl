@@ -351,7 +351,7 @@ fn generate_specialize_impl(
                 case.id.clone(),
             ) {
                 Some(id) if id != case.id => {
-                    return Err(format!("{} and {} cannot be disambiguated", id, case.id))
+                    return Err(format!("{} and {} cannot be disambiguated", id, case.id));
                 }
                 _ => (),
             }
@@ -997,11 +997,7 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
         ranges.first().unwrap().0 == 0
             && ranges.last().unwrap().1 == max
             && ranges.windows(2).all(|window| {
-                if let [left, right] = window {
-                    left.1 == right.0 - 1
-                } else {
-                    false
-                }
+                if let [left, right] = window { left.1 == right.0 - 1 } else { false }
             })
     }
 
@@ -1012,11 +1008,7 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
 
     // Return the maximum value for the scalar type.
     fn scalar_max(width: usize) -> usize {
-        if width >= usize::BITS as usize {
-            usize::MAX
-        } else {
-            (1 << width) - 1
-        }
+        if width >= usize::BITS as usize { usize::MAX } else { (1 << width) - 1 }
     }
 
     // Format an enum tag identifier to rust upper caml case.

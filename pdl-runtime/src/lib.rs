@@ -56,7 +56,9 @@ pub enum DecodeError {
 /// Type of serialization errors.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum EncodeError {
-    #[error("the size of {packet}::{field} ({size}) is outside the range of valid values 0..{maximum_size}")]
+    #[error(
+        "the size of {packet}::{field} ({size}) is outside the range of valid values 0..{maximum_size}"
+    )]
     SizeOverflow { packet: &'static str, field: &'static str, size: usize, maximum_size: usize },
     #[error(
         "the count of {packet}::{field} ({count}) is outside the range of valid values 0..{maximum_count}"
@@ -100,11 +102,7 @@ pub trait Packet: Sized {
     /// Returns an error if unparsed bytes remain at the end of the input slice.
     fn decode_full(buf: &[u8]) -> Result<Self, DecodeError> {
         let (packet, remaining) = Self::decode(buf)?;
-        if remaining.is_empty() {
-            Ok(packet)
-        } else {
-            Err(DecodeError::TrailingBytes)
-        }
+        if remaining.is_empty() { Ok(packet) } else { Err(DecodeError::TrailingBytes) }
     }
 
     /// Return the length of the encoded packet.

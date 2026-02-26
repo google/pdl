@@ -14,14 +14,14 @@
 
 use std::iter;
 
-use genco::{lang::Java, quote, tokens::quoted, Tokens};
+use genco::{Tokens, lang::Java, quote, tokens::quoted};
 use heck::ToUpperCamelCase;
 
 use crate::{
     ast::{Tag, TagOther, TagRange, TagValue},
     backends::java::{
-        codegen::expr::{cast_symbol, literal, ExprTree},
         Integral,
+        codegen::expr::{ExprTree, cast_symbol, literal},
     },
 };
 

@@ -14,11 +14,10 @@
 
 use core::panic;
 use genco::{
-    self,
-    prelude::{java, Java},
+    self, Tokens,
+    prelude::{Java, java},
     quote, quote_in,
     tokens::FormatInto,
-    Tokens,
 };
 use std::collections::HashMap;
 
@@ -41,12 +40,12 @@ pub mod expr;
 mod packet;
 
 use crate::backends::java::{
-    codegen::expr::{cast_symbol, ExprId, ExprTree},
-    inheritance::{ClassHeirarchy, Constraint},
     Context, Field, WidthField,
+    codegen::expr::{ExprId, ExprTree, cast_symbol},
+    inheritance::{ClassHeirarchy, Constraint},
 };
 
-use super::{import, Chunk, Class, EndiannessValue, Integral, JavaFile, PacketDef};
+use super::{Chunk, Class, EndiannessValue, Integral, JavaFile, PacketDef, import};
 
 impl JavaFile<&Context> for Class {
     fn generate(self, context: &Context) -> Tokens<Java> {
@@ -274,7 +273,9 @@ impl Field {
                     Integral::fitting(width),
                 ),
                 _ => {
-                    panic!("Bitfields ending in 'size' or 'count' are not supported. Use _size_ or _count_ instead.")
+                    panic!(
+                        "Bitfields ending in 'size' or 'count' are not supported. Use _size_ or _count_ instead."
+                    )
                 }
             }
         } else if let Field::Integral { width: 1, .. } = self {

@@ -14,7 +14,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use genco::{self, prelude::Java, quote, tokens::quoted, Tokens};
+use genco::{self, Tokens, prelude::Java, quote, tokens::quoted};
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 
 use crate::{
@@ -22,14 +22,14 @@ use crate::{
     backends::{
         common::alignment::Alignment,
         java::{
+            Context, Field, WidthField,
             codegen::expr::ExprId,
             inheritance::{ClassHeirarchy, Constraint, InheritanceNode},
-            Context, Field, WidthField,
         },
     },
 };
 
-use super::{expr::ExprTree, import, Chunk, Integral, PacketDef};
+use super::{Chunk, Integral, PacketDef, expr::ExprTree, import};
 
 pub fn gen_packet(name: &String, def: &PacketDef, ctx: &Context) -> Tokens<Java> {
     let endianness = ctx.endianness;

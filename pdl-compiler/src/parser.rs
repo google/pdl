@@ -488,7 +488,7 @@ fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> 
                             Rule::integer,
                             Rule::size_modifier,
                             n.as_rule()
-                        ))
+                        ));
                     }
                     None => (None, None),
                 };
@@ -718,15 +718,17 @@ mod test {
         // Validate that the parser rejects inputs where whitespaces
         // are not applied between alphabetical keywords and identifiers.
         let mut db = ast::SourceDatabase::new();
-        assert!(parse_inline(
-            &mut db,
-            "test",
-            r#"
+        assert!(
+            parse_inline(
+                &mut db,
+                "test",
+                r#"
             little_endian_packetsstructx{foo:8}
             "#
-            .to_owned()
-        )
-        .is_err());
+                .to_owned()
+            )
+            .is_err()
+        );
 
         let result = parse_inline(
             &mut db,

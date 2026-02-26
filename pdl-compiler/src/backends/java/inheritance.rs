@@ -34,11 +34,7 @@ pub struct InheritanceNode {
 
 impl InheritanceNode {
     pub fn field_width(&self) -> Option<usize> {
-        if self.dyn_fields.is_empty() {
-            Some(self.static_field_width)
-        } else {
-            None
-        }
+        if self.dyn_fields.is_empty() { Some(self.static_field_width) } else { None }
     }
 }
 

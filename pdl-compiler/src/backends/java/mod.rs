@@ -13,10 +13,9 @@
 // limitations under the License.
 
 use genco::{
-    self,
-    prelude::{java, Java},
+    self, Tokens,
+    prelude::{Java, java},
     tokens::FormatInto,
-    Tokens,
 };
 use heck::{self, ToLowerCamelCase, ToUpperCamelCase};
 use std::{
