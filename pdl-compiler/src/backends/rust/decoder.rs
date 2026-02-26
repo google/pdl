@@ -99,28 +99,28 @@ impl<'a> FieldParser<'a> {
                     let #id = (#cond_id == #cond_value).then(|| #value);
                 }
             }
-            ast::FieldDesc::Typedef { id, type_id } => match &self.scope.typedef[type_id].desc {
-                ast::DeclDesc::Enum { width, .. } => {
-                    let name = id;
-                    let type_name = type_id;
-                    let id = id.to_ident();
-                    let type_id = type_id.to_ident();
-                    let decl_id = &self.packet_name;
-                    let value = types::get_uint(self.endianness, *width, self.span);
-                    quote! {
-                        let #id = (#cond_id == #cond_value)
-                            .then(||
-                                #type_id::try_from(#value).map_err(|unknown_val| {
-                                    DecodeError::InvalidEnumValueError {
-                                        obj: #decl_id,
-                                        field: #name,
-                                        value: unknown_val as u64,
-                                        type_: #type_name,
-                                    }
-                                }))
-                            .transpose()?;
-                    }
+            ast::FieldDesc::Enum { id, enum_id, width } => {
+                let name = id;
+                let type_name = enum_id;
+                let id = id.to_ident();
+                let type_id = enum_id.to_ident();
+                let decl_id = &self.packet_name;
+                let value = types::get_uint(self.endianness, *width, self.span);
+                quote! {
+                    let #id = (#cond_id == #cond_value)
+                        .then(||
+                            #type_id::try_from(#value).map_err(|unknown_val| {
+                                DecodeError::InvalidEnumValueError {
+                                    obj: #decl_id,
+                                    field: #name,
+                                    value: unknown_val as u64,
+                                    type_: #type_name,
+                                }
+                            }))
+                        .transpose()?;
                 }
+            }
+            ast::FieldDesc::Typedef { id, type_id } => match &self.scope.typedef[type_id].desc {
                 ast::DeclDesc::Struct { .. } => {
                     let id = id.to_ident();
                     let type_id = type_id.to_ident();
@@ -226,12 +226,12 @@ impl<'a> FieldParser<'a> {
                         }
                     }
                 }
-                ast::FieldDesc::Typedef { id, type_id } => {
+                ast::FieldDesc::Enum { id, enum_id, .. } => {
                     let field_name = id;
-                    let type_name = type_id;
+                    let type_name = enum_id;
                     let packet_name = &self.packet_name;
                     let id = id.to_ident();
-                    let type_id = type_id.to_ident();
+                    let type_id = enum_id.to_ident();
                     quote! {
                         let #id = #type_id::try_from(#v).map_err(|unknown_val| DecodeError::InvalidEnumValueError {
                             obj: #packet_name,

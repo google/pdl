@@ -141,10 +141,13 @@ pub enum FieldDesc {
     },
     #[serde(rename = "scalar_field")]
     Scalar { id: String, width: usize },
+    /// Special case of Typedef for enum types.
+    #[serde(rename = "enum_field")]
+    Enum { id: String, width: usize, enum_id: String },
     /// Special case of Scalar for fields used as condition for
     /// optional fields. The width is always 1.
     #[serde(rename = "flag_field")]
-    Flag { id: String, optional_field_ids: Vec<(String, usize)> },
+    Flag { id: String, optional_field_ids: Vec<String>, set_value: usize },
     #[serde(rename = "typedef_field")]
     Typedef { id: String, type_id: String },
     #[serde(rename = "group_field")]
@@ -509,6 +512,7 @@ impl Field {
             | FieldDesc::Group { .. } => None,
             FieldDesc::Array { id, .. }
             | FieldDesc::Scalar { id, .. }
+            | FieldDesc::Enum { id, .. }
             | FieldDesc::Flag { id, .. }
             | FieldDesc::Typedef { id, .. } => Some(id),
         }
@@ -528,6 +532,7 @@ impl Field {
             FieldDesc::Group { .. } => "group",
             FieldDesc::Array { .. } => "array",
             FieldDesc::Scalar { .. } => "scalar",
+            FieldDesc::Enum { .. } => "enum",
             FieldDesc::Flag { .. } => "scalar",
             FieldDesc::Typedef { .. } => "typedef",
         }
