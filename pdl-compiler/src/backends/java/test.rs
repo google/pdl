@@ -80,7 +80,17 @@ fn get_test_cases(file: &str, exclude_packets: &[String]) -> Result<Vec<Packet>,
 
     packets.retain(|p| !exclude_packets.contains(&p.name));
     for packet in packets.iter_mut() {
-        packet.tests.retain(|t| !t.packet.as_ref().is_some_and(|p| exclude_packets.contains(p)));
+        packet.tests.retain(|t| {
+            // Skip excluded packets.
+            if t.packet.as_ref().is_some_and(|p| exclude_packets.contains(p)) {
+                return false;
+            }
+            // Skip invalid vectors (no unpacked data) — not yet supported in Java.
+            if t.unpacked.is_none() {
+                return false;
+            }
+            true
+        });
     }
 
     Ok(packets)
@@ -137,7 +147,7 @@ impl TestVector {
             static void testEncode$test_id() {
                 $(Class::name_from_id(maybe_child)) packet = $(build_packet_from_fields(
                     self.packet.as_ref().unwrap_or(id),
-                    self.unpacked.as_object().unwrap(),
+                    self.unpacked.as_ref().unwrap().as_object().unwrap(),
                     decls
                 ));
                 byte[] encodedPacket = packet.toBytes();
@@ -155,7 +165,7 @@ impl TestVector {
     ) -> impl FormatInto<Java> + 'a {
         let packet_name = format!(
             "{}{}",
-            if self.unpacked.as_object().unwrap().contains_key("payload") { "Unknown" } else { "" },
+            if self.unpacked.as_ref().unwrap().as_object().unwrap().contains_key("payload") { "Unknown" } else { "" },
             self.packet
                 .as_ref()
                 .map(|child_id| Class::name_from_id(child_id))
@@ -163,7 +173,7 @@ impl TestVector {
         );
 
         quote_fn! {
-            $(java::block_comment(iter::once(format!("{}", &self.unpacked))))$['\n']
+            $(java::block_comment(iter::once(format!("{}", self.unpacked.as_ref().unwrap()))))$['\n']
             static void testDecode$test_id() {
                 $(&packet_name) decodedPacket = $(&packet_name).fromBytes($(hex_to_array(&self.packed)));
                 $(self.gen_asserts_for_fields(id, decls))
@@ -176,7 +186,7 @@ impl TestVector {
         id: &'a String,
         decls: &'a HashMap<String, Decl>,
     ) -> impl FormatInto<Java> + 'a {
-        let fields = self.unpacked.as_object().unwrap();
+        let fields = self.unpacked.as_ref().unwrap().as_object().unwrap();
         let maybe_child = self.packet.as_ref().unwrap_or(id);
 
         quote_fn! {
