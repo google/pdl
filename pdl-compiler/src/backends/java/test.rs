@@ -96,13 +96,6 @@ fn get_test_cases(file: &str, exclude_packets: &[String]) -> Result<Vec<Packet>,
             if t.packet.as_ref().is_some_and(|p| exclude_packets.contains(p)) {
                 return false;
             }
-            // Skip TrailingBytes vectors — Java's fromBytes() silently ignores
-            // extra trailing bytes.
-            // Skip InvalidArraySize vectors — Java's fromBytes() does not
-            // validate that the array size evenly divides the element size.
-            if matches!(t.expected_error.as_deref(), Some("TrailingBytes" | "InvalidArraySize")) {
-                return false;
-            }
             true
         });
     }
