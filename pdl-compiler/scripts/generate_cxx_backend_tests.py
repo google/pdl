@@ -149,24 +149,42 @@ def generate_packet_parser_test(parser_test_suite: str, packet: ast.PacketDeclar
         child_packet_id = test.get('packet', packet.id)
         child_packet = packet.file.packet_scope[child_packet_id]
 
-        generated_tests.append(
-            dedent("""\
+        if 'expected_error' in test:
+            generated_tests.append(
+                dedent("""\
 
-            TEST_F({parser_test_suite}, {packet_id}_Case{test_nr}) {{
-                pdl::packet::slice input(std::shared_ptr<std::vector<uint8_t>>(new std::vector<uint8_t> {{
-                    {input_bytes}
-                }}));
-                {child_packet_id}View packet = {parse_packet};
-                ASSERT_TRUE(packet.IsValid());
-                {checks}
-            }}
-            """).format(parser_test_suite=parser_test_suite,
-                        packet_id=packet.id,
-                        child_packet_id=child_packet_id,
-                        test_nr=test_nr,
-                        input_bytes=indent(input_bytes(test['packed']), 2),
-                        parse_packet=parse_packet(child_packet),
-                        checks=indent(check_members(packet, 'packet', test['unpacked']), 1)))
+                TEST_F({parser_test_suite}, {packet_id}_Invalid_Case{test_nr}) {{
+                    pdl::packet::slice input(std::shared_ptr<std::vector<uint8_t>>(new std::vector<uint8_t> {{
+                        {input_bytes}
+                    }}));
+                    {child_packet_id}View packet = {parse_packet};
+                    ASSERT_FALSE(packet.IsValid());
+                }}
+                """).format(parser_test_suite=parser_test_suite,
+                            packet_id=packet.id,
+                            child_packet_id=child_packet_id,
+                            test_nr=test_nr,
+                            input_bytes=indent(input_bytes(test['packed']), 2),
+                            parse_packet=parse_packet(child_packet)))
+        else:
+            generated_tests.append(
+                dedent("""\
+
+                TEST_F({parser_test_suite}, {packet_id}_Case{test_nr}) {{
+                    pdl::packet::slice input(std::shared_ptr<std::vector<uint8_t>>(new std::vector<uint8_t> {{
+                        {input_bytes}
+                    }}));
+                    {child_packet_id}View packet = {parse_packet};
+                    ASSERT_TRUE(packet.IsValid());
+                    {checks}
+                }}
+                """).format(parser_test_suite=parser_test_suite,
+                            packet_id=packet.id,
+                            child_packet_id=child_packet_id,
+                            test_nr=test_nr,
+                            input_bytes=indent(input_bytes(test['packed']), 2),
+                            parse_packet=parse_packet(child_packet),
+                            checks=indent(check_members(packet, 'packet', test['unpacked']), 1)))
 
     return ''.join(generated_tests)
 
@@ -285,6 +303,9 @@ def generate_packet_serializer_test(serializer_test_suite: str, packet: ast.Pack
 
     generated_tests = []
     for (test_nr, test) in enumerate(tests):
+        if 'expected_error' in test:
+            continue
+
         child_packet_id = test.get('packet', packet.id)
         child_packet = packet.file.packet_scope[child_packet_id]
 

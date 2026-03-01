@@ -134,7 +134,15 @@ class FieldParser:
                 self.unchecked_append_("    return false;")
                 self.unchecked_append_("}")
             elif isinstance(field, ast.TypedefField):
-                self.unchecked_append_(f"{field.id}_ = {field.type_id}({v});")
+                if isinstance(field.type, ast.EnumDeclaration) and not core.is_open_enum(field.type):
+                    temp_var = f"raw_{field.id}"
+                    self.unchecked_append_(f"auto {temp_var} = {v};")
+                    self.unchecked_append_(f"if (!IsValid{field.type_id}({temp_var})) {{")
+                    self.unchecked_append_(f"    return false;")
+                    self.unchecked_append_(f"}}")
+                    self.unchecked_append_(f"{field.id}_ = {field.type_id}({temp_var});")
+                else:
+                    self.unchecked_append_(f"{field.id}_ = {field.type_id}({v});")
             elif isinstance(field, ast.SizeField):
                 self.unchecked_append_(f"{field.field_id}_size = {v};")
             elif isinstance(field, ast.CountField):
@@ -186,21 +194,42 @@ class FieldParser:
 
         elif isinstance(field, ast.TypedefField) and isinstance(field.type, ast.EnumDeclaration):
             backing_type = get_cxx_scalar_type(field.type.width)
-            self.append_(dedent("""
-            if ({cond_id} == {cond_value}) {{
-                if (span.size() < {size}) {{
-                    return false;
+            is_closed = not core.is_open_enum(field.type)
+            if is_closed:
+                self.append_(dedent("""
+                if ({cond_id} == {cond_value}) {{
+                    if (span.size() < {size}) {{
+                        return false;
+                    }}
+                    auto raw_{field_id} = span.read_{byteorder}<{backing_type}, {size}>();
+                    if (!IsValid{type_id}(raw_{field_id})) {{
+                        return false;
+                    }}
+                    {field_id}_ = std::make_optional({type_id}(raw_{field_id}));
                 }}
-                {field_id}_ = std::make_optional({type_id}(
-                    span.read_{byteorder}<{backing_type}, {size}>()));
-            }}
-            """.format(size=int(field.type.width / 8),
-                       backing_type=backing_type,
-                       type_id=field.type_id,
-                       field_id=field.id,
-                       cond_id=field.cond.id,
-                       cond_value=field.cond.value,
-                       byteorder=self.byteorder)))
+                """.format(size=int(field.type.width / 8),
+                           backing_type=backing_type,
+                           type_id=field.type_id,
+                           field_id=field.id,
+                           cond_id=field.cond.id,
+                           cond_value=field.cond.value,
+                           byteorder=self.byteorder)))
+            else:
+                self.append_(dedent("""
+                if ({cond_id} == {cond_value}) {{
+                    if (span.size() < {size}) {{
+                        return false;
+                    }}
+                    {field_id}_ = std::make_optional({type_id}(
+                        span.read_{byteorder}<{backing_type}, {size}>()));
+                }}
+                """.format(size=int(field.type.width / 8),
+                           backing_type=backing_type,
+                           type_id=field.type_id,
+                           field_id=field.id,
+                           cond_id=field.cond.id,
+                           cond_value=field.cond.value,
+                           byteorder=self.byteorder)))
 
         elif isinstance(field, ast.TypedefField):
             self.append_(dedent("""
@@ -264,6 +293,10 @@ class FieldParser:
         # The array size is known in bytes.
         if size is not None:
             self.check_size_(size)
+            if element_width is not None:
+                self.append_(f"if ({size} % {element_width} != 0) {{")
+                self.append_(f"    return false;")
+                self.append_(f"}}")
             self.append_(f"{field.id}_ = span.subrange(0, {size});")
             self.append_(f"span.skip({size});")
 
@@ -286,6 +319,10 @@ class FieldParser:
         # full remaining space. TODO support having fixed sized fields
         # following the array.
         else:
+            if element_width is not None:
+                self.append_(f"if (span.size() % {element_width} != 0) {{")
+                self.append_(f"    return false;")
+                self.append_(f"}}")
             self.append_(f"{field.id}_ = span;")
             self.append_("span.clear();")
 
@@ -353,8 +390,12 @@ class FieldParser:
             element_size = int(field.type.width / 8)
             backing_type = get_cxx_scalar_type(field.type.width)
             self.append_(f"for (size_t n = 0; n < {field.size}; n++) {{")
-            self.append_(
-                f"    {field.id}_[n] = {element_type}(span.read_{self.byteorder}<{backing_type}, {element_size}>());")
+            self.append_(f"    auto raw_value = span.read_{self.byteorder}<{backing_type}, {element_size}>();")
+            if not core.is_open_enum(field.type):
+                self.append_(f"    if (!IsValid{element_type}(raw_value)) {{")
+                self.append_(f"        return false;")
+                self.append_(f"    }}")
+            self.append_(f"    {field.id}_[n] = {element_type}(raw_value);")
             self.append_("}")
 
         # The array count is known statically, elements have variable size.
@@ -385,9 +426,12 @@ class FieldParser:
                 self.append_(f"    if (temp_span.size() < {element_size}) {{")
                 self.append_(f"        return false;")
                 self.append_("    }")
-                self.append_(
-                    f"    {field.id}_.push_back({element_type}(temp_span.read_{self.byteorder}<{backing_type}, {element_size}>()));"
-                )
+                self.append_(f"    auto raw_value = temp_span.read_{self.byteorder}<{backing_type}, {element_size}>();")
+                if not core.is_open_enum(field.type):
+                    self.append_(f"    if (!IsValid{element_type}(raw_value)) {{")
+                    self.append_(f"        return false;")
+                    self.append_(f"    }}")
+                self.append_(f"    {field.id}_.push_back({element_type}(raw_value));")
             else:
                 self.append_(f"    {element_type} element;")
                 self.append_(f"    if (!{element_type}::Parse(temp_span, &element)) {{")
@@ -426,9 +470,12 @@ class FieldParser:
             self.append_(f"    if (span.size() < {element_size}) {{")
             self.append_(f"        return false;")
             self.append_("    }")
-            self.append_(
-                f"    {field.id}_.push_back({element_type}(span.read_{self.byteorder}<{backing_type}, {element_size}>()));"
-            )
+            self.append_(f"    auto raw_value = span.read_{self.byteorder}<{backing_type}, {element_size}>();")
+            if not core.is_open_enum(field.type):
+                self.append_(f"    if (!IsValid{element_type}(raw_value)) {{")
+                self.append_(f"        return false;")
+                self.append_(f"    }}")
+            self.append_(f"    {field.id}_.push_back({element_type}(raw_value));")
             self.append_("}")
         else:
             self.append_(f"while (span.size() > 0) {{")
@@ -850,6 +897,49 @@ def generate_enum_to_text(decl: ast.EnumDeclaration) -> str:
             }}
         }}
         """).format(enum_name=enum_name, tag_cases=indent(tag_cases, 2))
+
+
+def generate_enum_is_valid(decl: ast.EnumDeclaration) -> str:
+    """Generate the validation function for enum values."""
+
+    if core.is_open_enum(decl):
+        return ''
+
+    enum_name = decl.id
+    backing_type = get_cxx_scalar_type(decl.width)
+
+    has_ranges = any(t.range is not None for t in decl.tags)
+
+    if has_ranges:
+        conditions = []
+        for t in decl.tags:
+            if t.range is not None:
+                conditions.append(f"(value >= {hex(t.range[0])} && value <= {hex(t.range[1])})")
+            elif t.value is not None:
+                conditions.append(f"value == {hex(t.value)}")
+        condition = " ||\n        ".join(conditions)
+        return dedent("""\
+
+            inline bool IsValid{enum_name}({backing_type} value) {{
+                return {condition};
+            }}
+            """).format(enum_name=enum_name, backing_type=backing_type, condition=condition)
+    else:
+        tag_cases = []
+        for t in decl.tags:
+            if t.value is not None:
+                tag_cases.append(f"case {hex(t.value)}:")
+        return dedent("""\
+
+            inline bool IsValid{enum_name}({backing_type} value) {{
+                switch (value) {{
+                    {tag_cases}
+                        return true;
+                    default:
+                        return false;
+                }}
+            }}
+            """).format(enum_name=enum_name, backing_type=backing_type, tag_cases=indent(tag_cases, 2))
 
 
 def generate_packet_view_field_members(decl: ast.Declaration) -> List[str]:
@@ -1286,6 +1376,9 @@ def generate_packet_view_field_parsers(packet: ast.PacketDeclaration) -> str:
             parser.parse(f)
         parser.done()
         code.extend(parser.code)
+        code.append("if (span.size() > 0) {")
+        code.append("    return false;")
+        code.append("}")
 
     code.append("return true;")
     return '\n'.join(code)
@@ -1716,6 +1809,7 @@ def run(input: argparse.FileType, output: argparse.FileType, namespace: Optional
         if isinstance(d, ast.EnumDeclaration):
             output.write(generate_enum_declaration(d))
             output.write(generate_enum_to_text(d))
+            output.write(generate_enum_is_valid(d))
         elif isinstance(d, ast.PacketDeclaration):
             output.write(generate_packet_view(d))
             output.write(generate_packet_builder(d))
