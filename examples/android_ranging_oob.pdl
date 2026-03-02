@@ -6,7 +6,8 @@ little_endian_packets
 
 enum Version: 8 {
     V1 = 1,
-    CURRENT = 2,
+    V2 = 2,
+    CURRENT = 3,
     FUTURE = ..,
 }
 
@@ -17,7 +18,15 @@ enum MessageId: 8 {
     CONFIGURATION_RESPONSE = 0x3,
     STOP_REQUEST = 0x6,
     STOP_RESPONSE = 0x7,
+    MOTION_NOTIFICATION = 0x8,
     RESERVED = ..,
+}
+
+enum Motion: 8 {
+    NOT_DETECTED = 0x0,
+    SLIGHT = 0x1,
+    MODERATE = 0x2,
+    LARGE = 0x3,
 }
 
 enum Technology: 8 {
@@ -25,10 +34,8 @@ enum Technology: 8 {
     BLE_CS = 0x1,
     WIFI_NAN_RTT = 0x2,
     BLE_RSSI = 0x3,
-    // Version 3(In-Development)
-    WIFI_STA_RTT = 0x4,
     // Version 4(In-Development)
-    WIFI_AP_RTT = 0x5,
+    WIFI_PD = 0x5,
     RESERVED = ..,
 }
 
@@ -37,16 +44,21 @@ struct TechnologySet {
     ble_cs: 1,
     wifi_nan_rtt: 1,
     ble_rssi: 1,
-    // Version 3(In-Development)
-    wifi_sta_rtt: 1,
     // Version 4(In-Development)
-    wifi_ap_rtt: 1,
+    _reserved_: 1,
+    wifi_pd: 1,
     _reserved_: 10,
 }
 
 enum TechnologyTransitioning: 8 {
     NOT_SUPPORTED = 0x0,
     MAKE_BEFORE_BREAK = 0x1,
+    RESERVED = ..,
+}
+
+enum MotionIndicator: 8 {
+    NOT_SUPPORTED = 0x0,
+    SUPPORTED = 0x1,
     RESERVED = ..,
 }
 
@@ -118,7 +130,7 @@ struct WifiBandInfo {
     num_rx_chains: 8,
 }
 
-struct WifiNanRttCapabilitiesV1: Capabilities(technology = WIFI_NAN_RTT) {
+struct WifiNanRttCapabilities: Capabilities(technology = WIFI_NAN_RTT) {
     features: 8,
     periodic: 1,
     _reserved_: 7,
@@ -126,34 +138,8 @@ struct WifiNanRttCapabilitiesV1: Capabilities(technology = WIFI_NAN_RTT) {
     num_rx_chains: 8,
 }
 
-// Version 3(In-Development)
-struct WifiNanRttCapabilitiesV3: Capabilities(technology = WIFI_NAN_RTT) {
-    features: 8,
-    periodic: 1,
-    _reserved_: 23,
-    _count_(band_info): 8,
-    security_method: WiFiSecurityMethod,
-    band_info: WifiBandInfo[]
-}
-
 struct BleRssiCapabilities: Capabilities(technology = BLE_RSSI) {
     address: 8[6],
-}
-
-// Version 3(In-Development)
-struct WifiStaRttCapabilities: Capabilities(technology = WIFI_STA_RTT) {
-    features: 8,
-    _count_(band_info): 8,
-    security_method: WiFiSecurityMethod,
-    band_info: WifiBandInfo[]
-}
-
-// Version 4(In-Development)
-struct WifiApRttCapabilities: Capabilities(technology = WIFI_AP_RTT) {
-    features: 8,
-    _count_(band_info): 8,
-    security_method: WiFiSecurityMethod,
-    band_info: WifiBandInfo[]
 }
 
 // Technology-specific configuration.
@@ -199,47 +185,80 @@ enum WifiDeviceRole: 8 {
     INITIATOR = 0x1,
 }
 
-struct WifiNanRttConfigurationV1: Configuration(technology = WIFI_NAN_RTT) {
+struct WifiNanRttConfiguration: Configuration(technology = WIFI_NAN_RTT) {
     _size_(service_name): 8,
     service_name: 8[],
     device_role: WifiDeviceRole,
     periodic: 1,
     _reserved_: 7,
-}
-
-// Version 3(In-Development)
-struct WifiNanRttConfigurationV3: Configuration(technology = WIFI_NAN_RTT) {
-    _size_(service_name): 8,
-    service_name: 8[],
-    device_role: WifiDeviceRole,
-    periodic: 1,
-    _reserved_: 7,
-    format_and_bandwidth: 8,
-    cfreq0: 8,
-    cfreq1: 8,
 }
 
 struct BleRssiConfiguration: Configuration(technology = BLE_RSSI) {
     address: 8[6],
 }
 
-// Version 3(In-Development)
-struct WifiStaRttConfiguration: Configuration(technology = WIFI_STA_RTT) {
-    frequency: 16,
-    format_and_bandwidth: 8,
-    cfreq0: 8,
-    cfreq1: 8,
-    security_method: WiFiSecurityMethod,
+enum PasnMode: 8 {
+    UNAUTHENTICATED_MODE = 0x0,
+    AUTHENTICATED_MODE = 0x1,
 }
 
-// Version 4(In-Development)
-struct WifiApRttConfiguration: Configuration(technology = WIFI_AP_RTT) {
-    frequency: 16,
-    bssid: 8[6],
-    format_and_bandwidth: 8,
-    cfreq0: 8,
-    cfreq1: 8,
-    security_method: WiFiSecurityMethod,
+enum PreambleType: 8 {
+   LEGACY = 0x0,
+   PREAMBLE_HT = 0x1,
+   PREAMBLE_VHT = 0x2,
+   PREAMBLE_HE = 0x3,
+   PREAMBLE_EHT = 0x4,
+   RESERVED = ..,
+}
+
+struct DiscoveryChannels{
+    channel_1: 1,
+    channel_11: 1,
+    channel_36: 1,
+    channel_40: 1,
+    channel_44: 1,
+    channel_48: 1,
+    channel_153: 1,
+    channel_157: 1,
+    channel_161: 1,
+    channel_165: 1,
+    _reserved_: 6,
+}
+
+struct WifiPdCapabilities: Capabilities(technology = WIFI_PD) {
+    feature_11mc: 1,
+    feature_11az: 1,
+    _reserved_: 6,
+    unauthenticated_pasn_support: 1,
+    authenticated_pasn_support: 1,
+    _reserved_: 6,
+    address: 8[6],
+    min_interval_11mc: 16,
+    min_interval_11az: 16,
+    max_preamble: PreambleType,
+    max_channel_width: WifiBandwidth,
+    channels: DiscoveryChannels,
+}
+
+struct WifiPdConfiguration: Configuration(technology = WIFI_PD) {
+    feature: 8, // 11mc or 11az
+    peer_address: 8[6],
+    ranging_interval: 16,
+    preamble: PreambleType,
+    channel_width: WifiBandwidth,
+    channel: 8,
+    pasn_mode: PasnMode,
+    _body_
+}
+
+struct WifiPdAuthenticatedConfiguration: WifiPdConfiguration(pasn_mode = AUTHENTICATED_MODE ) {
+    device_ik: 8[16],
+    _size_(password): 8,
+    password: 8[],
+}
+
+struct WifiPdUnauthenticatedConfiguration: WifiPdConfiguration(pasn_mode = UNAUTHENTICATED_MODE ) {
+    empty: 8[] // Empty payload.
 }
 
 // Protocol-level packets.
@@ -261,10 +280,17 @@ packet CapabilitiesResponseV2: OobMessage(id = CAPABILITIES_RESPONSE) {
     device_type: DeviceType,
 }
 
-packet ConfigurationRequest: OobMessage(id = CONFIGURATION_REQUEST) {
+packet ConfigurationRequestV1: OobMessage(version=V1, id = CONFIGURATION_REQUEST) {
     technologies_to_configure: TechnologySet,
     technologies_to_start: TechnologySet,
     configs: Configuration[],
+}
+
+packet ConfigurationRequestV3: OobMessage(id = CONFIGURATION_REQUEST) {
+    technologies_to_configure: TechnologySet,
+    technologies_to_start: TechnologySet,
+    configs: Configuration[],
+    supported_motion : MotionIndicator,
 }
 
 packet ConfigurationResponse: OobMessage(id = CONFIGURATION_RESPONSE) {
@@ -277,4 +303,8 @@ packet StopRequest: OobMessage(id = STOP_REQUEST) {
 
 packet StopResponse: OobMessage(id = STOP_RESPONSE) {
     stopped_technologies: TechnologySet,
+}
+
+packet MotionNotification: OobMessage(id = MOTION_NOTIFICATION) {
+    motion: Motion,
 }
