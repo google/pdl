@@ -13,6 +13,7 @@ multiple target languages:
     - Rust
     - C++
     - Python
+    - Java
 
 Historically PDL was developed as part of the Android Bluetooth stack
 ([bluetooth_packetgen](https://cs.android.com/android/platform/superproject/+/master:packages/modules/Bluetooth/system/gd/packet/))
