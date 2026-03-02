@@ -200,7 +200,7 @@ impl TestVector {
 
     fn invalid_decoder_test<'a>(
         &'a self,
-        id: &'a String,
+        id: &'a str,
         test_id: usize,
     ) -> impl FormatInto<Java> + 'a {
         let packet_name = self
