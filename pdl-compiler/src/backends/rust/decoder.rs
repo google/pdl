@@ -111,7 +111,7 @@ impl<'a> FieldParser<'a> {
                         let #id = (#cond_id == #cond_value)
                             .then(||
                                 #type_id::try_from(#value).map_err(|unknown_val| {
-                                    DecodeError::InvalidEnumValueError {
+                                    DecodeError::EnumValueError {
                                         obj: #decl_id,
                                         field: #name,
                                         value: unknown_val as u64,
@@ -207,7 +207,7 @@ impl<'a> FieldParser<'a> {
                     quote! {
                         let fixed_value = #v;
                         if fixed_value != #value_type::from(#enum_id::#tag_id)  {
-                            return Err(DecodeError::InvalidFixedValue {
+                            return Err(DecodeError::FixedValueError {
                                 expected: #value_type::from(#enum_id::#tag_id) as u64,
                                 actual: fixed_value as u64,
                             });
@@ -219,7 +219,7 @@ impl<'a> FieldParser<'a> {
                     quote! {
                         let fixed_value = #v;
                         if fixed_value != #value {
-                            return Err(DecodeError::InvalidFixedValue {
+                            return Err(DecodeError::FixedValueError {
                                 expected: #value,
                                 actual: fixed_value as u64,
                             });
@@ -233,7 +233,7 @@ impl<'a> FieldParser<'a> {
                     let id = id.to_ident();
                     let type_id = type_id.to_ident();
                     quote! {
-                        let #id = #type_id::try_from(#v).map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+                        let #id = #type_id::try_from(#v).map_err(|unknown_val| DecodeError::EnumValueError {
                             obj: #packet_name,
                             field: #field_name,
                             value: unknown_val as u64,
@@ -327,7 +327,7 @@ impl<'a> FieldParser<'a> {
         let packet_name = &self.packet_name;
         self.tokens.extend(quote! {
             if #span.remaining() < #wanted {
-                return Err(DecodeError::InvalidLengthError {
+                return Err(DecodeError::LengthError {
                     obj: #packet_name,
                     wanted: #wanted,
                     got: #span.remaining(),
@@ -438,7 +438,7 @@ impl<'a> FieldParser<'a> {
                     }
                     let #id = #id
                         .try_into()
-                        .map_err(|_| DecodeError::InvalidPacketError)?;
+                        .map_err(|_| DecodeError::UnwrapError)?;
                 });
             }
             (ElementWidth::Unknown, ArrayShape::CountField(count_field)) => {
@@ -483,7 +483,7 @@ impl<'a> FieldParser<'a> {
                     }
                     let #id = #id
                         .try_into()
-                        .map_err(|_| DecodeError::InvalidPacketError)?;
+                        .map_err(|_| DecodeError::UnwrapError)?;
                 });
             }
             (ElementWidth::Static(element_width), ArrayShape::CountField(count_field)) => {
@@ -512,7 +512,7 @@ impl<'a> FieldParser<'a> {
                     let element_width = proc_macro2::Literal::usize_unsuffixed(element_width);
                     self.tokens.extend(quote! {
                         if #array_size % #element_width != 0 {
-                            return Err(DecodeError::InvalidArraySize {
+                            return Err(DecodeError::ArraySizeError {
                                 array: #array_size,
                                 element: #element_width,
                             });
@@ -565,7 +565,7 @@ impl<'a> FieldParser<'a> {
                     #span = &#span[#array_size..];
                     let #id = #id
                         .try_into()
-                        .map_err(|_| DecodeError::InvalidPacketError)?;
+                        .map_err(|_| DecodeError::UnwrapError)?;
                 });
             }
             (ElementWidth::Dynamic(element_size_field), ArrayShape::CountField(count_field)) => {
@@ -606,7 +606,7 @@ impl<'a> FieldParser<'a> {
                 };
                 self.tokens.extend(quote! {
                     if #array_size % #element_size_field != 0 {
-                        return Err(DecodeError::InvalidArraySize {
+                        return Err(DecodeError::ArraySizeError {
                             array: #array_size,
                             element: #element_size_field,
                         });
@@ -706,7 +706,7 @@ impl<'a> FieldParser<'a> {
                 // size.
                 self.tokens.extend(quote! {
                     if #size_field < #size_modifier {
-                        return Err(DecodeError::InvalidLengthError {
+                        return Err(DecodeError::LengthError {
                             obj: #packet_name,
                             wanted: #size_modifier,
                             got: #size_field,
@@ -772,7 +772,7 @@ impl<'a> FieldParser<'a> {
             let type_id = id.to_ident();
             let packet_name = &self.packet_name;
             return quote! {
-                #type_id::try_from(#get_uint).map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+                #type_id::try_from(#get_uint).map_err(|unknown_val| DecodeError::EnumValueError {
                     obj: #packet_name,
                     field: "", // TODO(mgeisler): fill out or remove
                     value: unknown_val as u64,

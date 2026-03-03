@@ -99,14 +99,14 @@ impl Packet for Bar {
     }
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.remaining() < 3 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Bar",
                 wanted: 3,
                 got: buf.remaining(),
             });
         }
         let x = Foo::try_from(buf.get_uint(3) as u32)
-            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+            .map_err(|unknown_val| DecodeError::EnumValueError {
                 obj: "Bar",
                 field: "x",
                 value: unknown_val as u64,

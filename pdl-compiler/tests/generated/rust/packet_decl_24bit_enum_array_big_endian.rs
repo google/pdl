@@ -103,7 +103,7 @@ impl Packet for Bar {
     }
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.remaining() < 5 * 3 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Bar",
                 wanted: 5 * 3,
                 got: buf.remaining(),
@@ -113,7 +113,7 @@ impl Packet for Bar {
         for _ in 0..5 {
             x.push(
                 Foo::try_from(buf.get_uint(3) as u32)
-                    .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+                    .map_err(|unknown_val| DecodeError::EnumValueError {
                         obj: "Bar",
                         field: "",
                         value: unknown_val as u64,
@@ -121,7 +121,7 @@ impl Packet for Bar {
                     })?,
             )
         }
-        let x = x.try_into().map_err(|_| DecodeError::InvalidPacketError)?;
+        let x = x.try_into().map_err(|_| DecodeError::UnwrapError)?;
         Ok((Self { x }, buf))
     }
 }

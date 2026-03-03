@@ -50,7 +50,7 @@ impl Packet for Foo {
     }
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.remaining() < 7 * 8 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Foo",
                 wanted: 7 * 8,
                 got: buf.remaining(),
@@ -60,7 +60,7 @@ impl Packet for Foo {
         for _ in 0..7 {
             x.push(Ok::<_, DecodeError>(buf.get_u64_le())?)
         }
-        let x = x.try_into().map_err(|_| DecodeError::InvalidPacketError)?;
+        let x = x.try_into().map_err(|_| DecodeError::UnwrapError)?;
         Ok((Self { x }, buf))
     }
 }

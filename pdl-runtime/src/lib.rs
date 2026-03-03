@@ -19,36 +19,28 @@ use bytes::{BufMut, Bytes, BytesMut};
 /// Type of parsing errors.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum DecodeError {
-    #[error("packet parsing failed")]
-    InvalidPacketError,
-    #[error("{field} was {value:x}, which is not known")]
-    ConstraintOutOfBounds { field: &'static str, value: u64 },
+    /// This error case is generated in places where an unwrap call would be used.
+    /// All occurences in the generated code actually correspond to unreachable
+    /// statements, but this error is generated instead to keep the code unwrap free.
+    #[error("unwrap error")]
+    UnwrapError,
     #[error("Got {actual:x}, expected {expected:x}")]
-    InvalidFixedValue { expected: u64, actual: u64 },
+    FixedValueError { expected: u64, actual: u64 },
     #[error("when parsing {obj} needed length of {wanted} but got {got}")]
-    InvalidLengthError { obj: &'static str, wanted: usize, got: usize },
+    LengthError { obj: &'static str, wanted: usize, got: usize },
     #[error("array size ({array} bytes) is not a multiple of the element size ({element} bytes)")]
-    InvalidArraySize { array: usize, element: usize },
-    #[error("Due to size restrictions a struct could not be parsed.")]
-    ImpossibleStructError,
+    ArraySizeError { array: usize, element: usize },
     #[error("when parsing field {obj}.{field}, {value} is not a valid {type_} value")]
-    InvalidEnumValueError {
-        obj: &'static str,
-        field: &'static str,
-        value: u64,
-        type_: &'static str,
-    },
+    EnumValueError { obj: &'static str, field: &'static str, value: u64, type_: &'static str },
     #[error("invalid field {packet}::{field} value, {expected} != {actual}")]
-    InvalidFieldValue {
+    ConstraintValueError {
         packet: &'static str,
         field: &'static str,
         expected: &'static str,
         actual: String,
     },
-    #[error("expected child {expected}, got {actual}")]
-    InvalidChildError { expected: &'static str, actual: String },
     #[error("packet has trailing bytes")]
-    TrailingBytes,
+    TrailingBytesError,
     #[error("packet has trailing bytes inside {obj}.{field} array")]
     TrailingBytesInArray { obj: &'static str, field: &'static str },
 }
@@ -102,7 +94,7 @@ pub trait Packet: Sized {
     /// Returns an error if unparsed bytes remain at the end of the input slice.
     fn decode_full(buf: &[u8]) -> Result<Self, DecodeError> {
         let (packet, remaining) = Self::decode(buf)?;
-        if remaining.is_empty() { Ok(packet) } else { Err(DecodeError::TrailingBytes) }
+        if remaining.is_empty() { Ok(packet) } else { Err(DecodeError::TrailingBytesError) }
     }
 
     /// Return the length of the encoded packet.

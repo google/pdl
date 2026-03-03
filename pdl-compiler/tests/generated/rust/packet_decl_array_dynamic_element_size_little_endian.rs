@@ -118,7 +118,7 @@ impl Packet for Bar {
     }
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.remaining() < 1 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Bar",
                 wanted: 1,
                 got: buf.remaining(),
@@ -128,7 +128,7 @@ impl Packet for Bar {
         let x_element_size = (chunk & 0x1f) as usize;
         let padding = ((chunk >> 5) & 0x7);
         if buf.remaining() % x_element_size != 0 {
-            return Err(DecodeError::InvalidArraySize {
+            return Err(DecodeError::ArraySizeError {
                 array: buf.remaining(),
                 element: x_element_size,
             });

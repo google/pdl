@@ -153,49 +153,49 @@ impl Packet for Parent {
     }
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.remaining() < 2 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Parent",
                 wanted: 2,
                 got: buf.remaining(),
             });
         }
         let foo = Enum16::try_from(buf.get_u16())
-            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+            .map_err(|unknown_val| DecodeError::EnumValueError {
                 obj: "Parent",
                 field: "foo",
                 value: unknown_val as u64,
                 type_: "Enum16",
             })?;
         if buf.remaining() < 2 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Parent",
                 wanted: 2,
                 got: buf.remaining(),
             });
         }
         let bar = Enum16::try_from(buf.get_u16())
-            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+            .map_err(|unknown_val| DecodeError::EnumValueError {
                 obj: "Parent",
                 field: "bar",
                 value: unknown_val as u64,
                 type_: "Enum16",
             })?;
         if buf.remaining() < 2 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Parent",
                 wanted: 2,
                 got: buf.remaining(),
             });
         }
         let baz = Enum16::try_from(buf.get_u16())
-            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+            .map_err(|unknown_val| DecodeError::EnumValueError {
                 obj: "Parent",
                 field: "baz",
                 value: unknown_val as u64,
                 type_: "Enum16",
             })?;
         if buf.remaining() < 1 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Parent",
                 wanted: 1,
                 got: buf.remaining(),
@@ -203,7 +203,7 @@ impl Packet for Parent {
         }
         let payload_size = buf.get_u8() as usize;
         if buf.remaining() < payload_size {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Parent",
                 wanted: payload_size,
                 got: buf.remaining(),
@@ -275,7 +275,7 @@ impl Child {
     fn decode_partial(parent: &Parent) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
         if parent.foo() != Enum16::A {
-            return Err(DecodeError::InvalidFieldValue {
+            return Err(DecodeError::ConstraintValueError {
                 packet: "Child",
                 field: "foo",
                 expected: "Enum16::A",
@@ -283,14 +283,14 @@ impl Child {
             });
         }
         if buf.remaining() < 2 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Child",
                 wanted: 2,
                 got: buf.remaining(),
             });
         }
         let quux = Enum16::try_from(buf.get_u16())
-            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+            .map_err(|unknown_val| DecodeError::EnumValueError {
                 obj: "Child",
                 field: "quux",
                 value: unknown_val as u64,
@@ -307,7 +307,7 @@ impl Child {
                 baz: parent.baz,
             })
         } else {
-            Err(DecodeError::TrailingBytes)
+            Err(DecodeError::TrailingBytesError)
         }
     }
     pub fn encode_partial(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
@@ -448,7 +448,7 @@ impl GrandChild {
     fn decode_partial(parent: &Child) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
         if parent.bar() != Enum16::A {
-            return Err(DecodeError::InvalidFieldValue {
+            return Err(DecodeError::ConstraintValueError {
                 packet: "GrandChild",
                 field: "bar",
                 expected: "Enum16::A",
@@ -456,7 +456,7 @@ impl GrandChild {
             });
         }
         if parent.quux() != Enum16::A {
-            return Err(DecodeError::InvalidFieldValue {
+            return Err(DecodeError::ConstraintValueError {
                 packet: "GrandChild",
                 field: "quux",
                 expected: "Enum16::A",
@@ -469,7 +469,7 @@ impl GrandChild {
         if buf.is_empty() {
             Ok(Self { payload, baz: parent.baz })
         } else {
-            Err(DecodeError::TrailingBytes)
+            Err(DecodeError::TrailingBytesError)
         }
     }
     pub fn encode_partial(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
@@ -614,7 +614,7 @@ impl GrandGrandChild {
     fn decode_partial(parent: &GrandChild) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
         if parent.baz() != Enum16::A {
-            return Err(DecodeError::InvalidFieldValue {
+            return Err(DecodeError::ConstraintValueError {
                 packet: "GrandGrandChild",
                 field: "baz",
                 expected: "Enum16::A",
@@ -627,7 +627,7 @@ impl GrandGrandChild {
         if buf.is_empty() {
             Ok(Self { payload })
         } else {
-            Err(DecodeError::TrailingBytes)
+            Err(DecodeError::TrailingBytesError)
         }
     }
     pub fn encode_partial(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {

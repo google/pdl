@@ -57,7 +57,7 @@ impl Packet for Foo {
     }
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.remaining() < 8 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Foo",
                 wanted: 8,
                 got: buf.remaining(),
@@ -66,7 +66,7 @@ impl Packet for Foo {
         let chunk = buf.get_u64_le();
         let fixed_value = (chunk & 0x7f) as u8;
         if fixed_value != 7 {
-            return Err(DecodeError::InvalidFixedValue {
+            return Err(DecodeError::FixedValueError {
                 expected: 7,
                 actual: fixed_value as u64,
             });
