@@ -5381,15 +5381,15 @@
     "tests": [
       {
         "packed": "",
-        "expected_error": "InvalidLengthError"
+        "expected_error": "LengthError"
       },
       {
         "packed": "000000",
-        "expected_error": "InvalidLengthError"
+        "expected_error": "LengthError"
       },
       {
         "packed": "000000000000000000",
-        "expected_error": "TrailingBytes"
+        "expected_error": "TrailingBytesError"
       }
     ]
   },
@@ -5398,15 +5398,15 @@
     "tests": [
       {
         "packed": "0000000000000000",
-        "expected_error": "InvalidEnumValueError"
+        "expected_error": "EnumValueError"
       },
       {
         "packed": "0500000000000000",
-        "expected_error": "InvalidEnumValueError"
+        "expected_error": "EnumValueError"
       },
       {
         "packed": "7e00000000000000",
-        "expected_error": "InvalidEnumValueError"
+        "expected_error": "EnumValueError"
       }
     ]
   },
@@ -5415,11 +5415,11 @@
     "tests": [
       {
         "packed": "0000000000000000",
-        "expected_error": "InvalidFixedValue"
+        "expected_error": "FixedValueError"
       },
       {
         "packed": "0600000000000000",
-        "expected_error": "InvalidFixedValue"
+        "expected_error": "FixedValueError"
       }
     ]
   },
@@ -5428,11 +5428,11 @@
     "tests": [
       {
         "packed": "0200000000000000",
-        "expected_error": "InvalidFixedValue"
+        "expected_error": "FixedValueError"
       },
       {
         "packed": "0400000000000000",
-        "expected_error": "InvalidFixedValue"
+        "expected_error": "FixedValueError"
       }
     ]
   },
@@ -5441,11 +5441,11 @@
     "tests": [
       {
         "packed": "0102",
-        "expected_error": "InvalidLengthError"
+        "expected_error": "LengthError"
       },
       {
         "packed": "0102030405",
-        "expected_error": "TrailingBytes"
+        "expected_error": "TrailingBytesError"
       }
     ]
   },
@@ -5454,7 +5454,7 @@
     "tests": [
       {
         "packed": "03010203",
-        "expected_error": "InvalidArraySize"
+        "expected_error": "ArraySizeError"
       }
     ]
   },
@@ -5463,11 +5463,11 @@
     "tests": [
       {
         "packed": "02",
-        "expected_error": "InvalidEnumValueError"
+        "expected_error": "EnumValueError"
       },
       {
         "packed": "07",
-        "expected_error": "InvalidEnumValueError"
+        "expected_error": "EnumValueError"
       }
     ]
   }

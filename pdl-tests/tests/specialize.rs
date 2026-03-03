@@ -45,13 +45,13 @@ mod child_determined_by_constraint {
         // a valid child.
         let parent = Parent::decode_full(&[1, 2, 3]).unwrap();
         assert_eq!(parent.a, 1);
-        assert!(matches!(parent.specialize(), Err(DecodeError::TrailingBytes)));
+        assert!(matches!(parent.specialize(), Err(DecodeError::TrailingBytesError)));
 
         // Payload contains too few bytes; specialize fails to produce
         // a valid child.
         let parent = Parent::decode_full(&[1]).unwrap();
         assert_eq!(parent.a, 1);
-        assert!(matches!(parent.specialize(), Err(DecodeError::InvalidLengthError { .. })));
+        assert!(matches!(parent.specialize(), Err(DecodeError::LengthError { .. })));
     }
 
     #[test]
@@ -65,13 +65,13 @@ mod child_determined_by_constraint {
         // a valid child.
         let parent = Parent::decode_full(&[2, 2, 3, 4]).unwrap();
         assert_eq!(parent.a, 2);
-        assert!(matches!(parent.specialize(), Err(DecodeError::TrailingBytes)));
+        assert!(matches!(parent.specialize(), Err(DecodeError::TrailingBytesError)));
 
         // Payload contains too few bytes; specialize fails to produce
         // a valid child.
         let parent = Parent::decode_full(&[2, 0]).unwrap();
         assert_eq!(parent.a, 2);
-        assert!(matches!(parent.specialize(), Err(DecodeError::InvalidLengthError { .. })));
+        assert!(matches!(parent.specialize(), Err(DecodeError::LengthError { .. })));
     }
 
     #[test]
@@ -118,13 +118,13 @@ mod grandchild_determined_by_constraint {
         // a valid child.
         let child = Child::decode_full(&[1, 1, 2, 3]).unwrap();
         assert_eq!(child.b, 1);
-        assert!(matches!(child.specialize(), Err(DecodeError::TrailingBytes)));
+        assert!(matches!(child.specialize(), Err(DecodeError::TrailingBytesError)));
 
         // Payload contains too few bytes; specialize fails to produce
         // a valid child.
         let child = Child::decode_full(&[1, 1]).unwrap();
         assert_eq!(child.b, 1);
-        assert!(matches!(child.specialize(), Err(DecodeError::InvalidLengthError { .. })));
+        assert!(matches!(child.specialize(), Err(DecodeError::LengthError { .. })));
     }
 
     #[test]
@@ -138,13 +138,13 @@ mod grandchild_determined_by_constraint {
         // a valid child.
         let child = Child::decode_full(&[1, 2, 2, 3, 4]).unwrap();
         assert_eq!(child.b, 2);
-        assert!(matches!(child.specialize(), Err(DecodeError::TrailingBytes)));
+        assert!(matches!(child.specialize(), Err(DecodeError::TrailingBytesError)));
 
         // Payload contains too few bytes; specialize fails to produce
         // a valid child.
         let child = Child::decode_full(&[1, 2, 0]).unwrap();
         assert_eq!(child.b, 2);
-        assert!(matches!(child.specialize(), Err(DecodeError::InvalidLengthError { .. })));
+        assert!(matches!(child.specialize(), Err(DecodeError::LengthError { .. })));
     }
 
     #[test]
@@ -321,13 +321,13 @@ mod child_determined_by_child_constraint {
         // a valid child.
         let parent = Parent::decode_full(&[1, 2, 3, 4]).unwrap();
         assert_eq!(parent.a, 1);
-        assert!(matches!(parent.specialize(), Err(DecodeError::InvalidArraySize { .. })));
+        assert!(matches!(parent.specialize(), Err(DecodeError::ArraySizeError { .. })));
 
         // Payload contains too few bytes; specialize fails to produce
         // a valid child.
         let parent = Parent::decode_full(&[1, 2]).unwrap();
         assert_eq!(parent.a, 1);
-        assert!(matches!(parent.specialize(), Err(DecodeError::InvalidArraySize { .. })));
+        assert!(matches!(parent.specialize(), Err(DecodeError::ArraySizeError { .. })));
     }
 
     #[test]

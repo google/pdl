@@ -40,7 +40,7 @@ impl From<Bar1> for u32 {
 impl Packet for Bar1 {
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.len() < 3 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Bar1",
                 wanted: 3,
                 got: buf.len(),
@@ -79,7 +79,7 @@ impl From<Bar2> for u32 {
 impl Packet for Bar2 {
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.len() < 4 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Bar2",
                 wanted: 4,
                 got: buf.len(),
@@ -117,7 +117,7 @@ impl From<Bar3> for u64 {
 impl Packet for Bar3 {
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.len() < 8 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Bar3",
                 wanted: 8,
                 got: buf.len(),

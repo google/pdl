@@ -47,12 +47,12 @@ fn to_json<T: Serialize>(value: &T) -> syn::LitStr {
 
 /// Map an error variant name to a `matches!` pattern for `DecodeError`.
 ///
-/// Unit variants like `"TrailingBytes"` become `DecodeError::TrailingBytes`.
-/// Struct variants like `"InvalidLengthError"` become `DecodeError::InvalidLengthError { .. }`.
+/// Unit variants like `"TrailingBytesError"` become `DecodeError::TrailingBytesError`.
+/// Struct variants like `"LengthError"` become `DecodeError::LengthError { .. }`.
 fn error_variant_pattern(variant: &str) -> proc_macro2::TokenStream {
     let variant_ident = format_ident!("{}", variant);
     match variant {
-        "InvalidPacketError" | "ImpossibleStructError" | "TrailingBytes" => {
+        "UnwrapError" | "TrailingBytesError" => {
             quote! { DecodeError::#variant_ident }
         }
         _ => {
@@ -118,9 +118,9 @@ fn generate_unit_tests(input: &str, packet_names: &[&str]) -> Result<String, Str
                     &test_vector.packed
                 );
 
-                let object = unpacked.as_object().unwrap_or_else(|| {
-                    panic!("Expected test vector object, found: {unpacked}")
-                });
+                let object = unpacked
+                    .as_object()
+                    .unwrap_or_else(|| panic!("Expected test vector object, found: {unpacked}"));
                 let assertions = object.iter().map(|(key, value)| {
                     let getter = format_ident!("{key}");
                     let expected = format_ident!("expected_{key}");
