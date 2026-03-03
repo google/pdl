@@ -5374,5 +5374,101 @@
         }
       }
     ]
+  },
+
+  {
+    "packet": "Packet_Scalar_Field",
+    "tests": [
+      {
+        "packed": "",
+        "expected_error": "InvalidLengthError"
+      },
+      {
+        "packed": "000000",
+        "expected_error": "InvalidLengthError"
+      },
+      {
+        "packed": "000000000000000000",
+        "expected_error": "TrailingBytes"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Enum_Field",
+    "tests": [
+      {
+        "packed": "0000000000000000",
+        "expected_error": "InvalidEnumValueError"
+      },
+      {
+        "packed": "0500000000000000",
+        "expected_error": "InvalidEnumValueError"
+      },
+      {
+        "packed": "7e00000000000000",
+        "expected_error": "InvalidEnumValueError"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_FixedScalar_Field",
+    "tests": [
+      {
+        "packed": "0000000000000000",
+        "expected_error": "InvalidFixedValue"
+      },
+      {
+        "packed": "0600000000000000",
+        "expected_error": "InvalidFixedValue"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_FixedEnum_Field",
+    "tests": [
+      {
+        "packed": "0200000000000000",
+        "expected_error": "InvalidFixedValue"
+      },
+      {
+        "packed": "0400000000000000",
+        "expected_error": "InvalidFixedValue"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_ByteElement_ConstantSize",
+    "tests": [
+      {
+        "packed": "0102",
+        "expected_error": "InvalidLengthError"
+      },
+      {
+        "packed": "0102030405",
+        "expected_error": "TrailingBytes"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_ScalarElement_VariableSize",
+    "tests": [
+      {
+        "packed": "03010203",
+        "expected_error": "InvalidArraySize"
+      }
+    ]
+  },
+  {
+    "packet": "Enum_Incomplete_Truncated_Closed",
+    "tests": [
+      {
+        "packed": "02",
+        "expected_error": "InvalidEnumValueError"
+      },
+      {
+        "packed": "07",
+        "expected_error": "InvalidEnumValueError"
+      }
+    ]
   }
 ]

@@ -45,6 +45,22 @@ fn to_json<T: Serialize>(value: &T) -> syn::LitStr {
     syn::parse_str::<syn::LitStr>(&format!("r#\" {json} \"#")).unwrap()
 }
 
+/// Map an error variant name to a `matches!` pattern for `DecodeError`.
+///
+/// Unit variants like `"TrailingBytes"` become `DecodeError::TrailingBytes`.
+/// Struct variants like `"InvalidLengthError"` become `DecodeError::InvalidLengthError { .. }`.
+fn error_variant_pattern(variant: &str) -> proc_macro2::TokenStream {
+    let variant_ident = format_ident!("{}", variant);
+    match variant {
+        "InvalidPacketError" | "ImpossibleStructError" | "TrailingBytes" => {
+            quote! { DecodeError::#variant_ident }
+        }
+        _ => {
+            quote! { DecodeError::#variant_ident { .. } }
+        }
+    }
+}
+
 fn generate_unit_tests(input: &str, packet_names: &[&str]) -> Result<String, String> {
     eprintln!("Reading test vectors from {input}, will use {} packets", packet_names.len());
 
@@ -62,54 +78,85 @@ fn generate_unit_tests(input: &str, packet_names: &[&str]) -> Result<String, Str
             }
             eprintln!("Generating tests for packet {test_packet}");
 
-            let parse_test_name = format_ident!(
-                "test_parse_{}_vector_{}_0x{}",
-                test_packet,
-                i + 1,
-                &test_vector.packed
-            );
-            let serialize_test_name = format_ident!(
-                "test_serialize_{}_vector_{}_0x{}",
-                test_packet,
-                i + 1,
-                &test_vector.packed
-            );
             let packed = hexadecimal_to_vec(&test_vector.packed);
             let packet_name = format_ident!("{}", test_packet);
 
-            let object = test_vector.unpacked.as_object().unwrap_or_else(|| {
-                panic!("Expected test vector object, found: {}", test_vector.unpacked)
-            });
-            let assertions = object.iter().map(|(key, value)| {
-                let getter = format_ident!("{key}");
-                let expected = format_ident!("expected_{key}");
-                let json = to_json(&value);
-                quote! {
-                    let #expected: serde_json::Value = serde_json::from_str(#json)
-                        .expect("Could not create expected value from canonical JSON data");
-                    assert_eq!(json!(actual.#getter()), #expected);
-                }
-            });
+            if let Some(ref expected_error) = test_vector.expected_error {
+                // Invalid vector: assert that decode_full returns the expected error variant.
+                let parse_test_name = format_ident!(
+                    "test_parse_invalid_{}_vector_{}_0x{}",
+                    test_packet,
+                    i + 1,
+                    &test_vector.packed
+                );
+                let pattern = error_variant_pattern(expected_error);
+                tests.push(quote! {
+                    #[test]
+                    fn #parse_test_name() {
+                        let packed = #packed;
+                        let result = #packet_name::decode_full(&packed);
+                        assert!(
+                            matches!(result, Err(#pattern)),
+                            "expected Err({}) but got {:?}",
+                            stringify!(#pattern),
+                            result,
+                        );
+                    }
+                });
+            } else if let Some(ref unpacked) = test_vector.unpacked {
+                // Valid vector: existing logic.
+                let parse_test_name = format_ident!(
+                    "test_parse_{}_vector_{}_0x{}",
+                    test_packet,
+                    i + 1,
+                    &test_vector.packed
+                );
+                let serialize_test_name = format_ident!(
+                    "test_serialize_{}_vector_{}_0x{}",
+                    test_packet,
+                    i + 1,
+                    &test_vector.packed
+                );
 
-            let json = to_json(&object);
-            tests.push(quote! {
-                #[test]
-                fn #parse_test_name() {
-                    let packed = #packed;
-                    let actual = #packet_name::decode_full(&packed).unwrap();
-                    assert_eq!(actual.encoded_len(), packed.len());
-                    #(#assertions)*
-                }
+                let object = unpacked.as_object().unwrap_or_else(|| {
+                    panic!("Expected test vector object, found: {unpacked}")
+                });
+                let assertions = object.iter().map(|(key, value)| {
+                    let getter = format_ident!("{key}");
+                    let expected = format_ident!("expected_{key}");
+                    let json = to_json(&value);
+                    quote! {
+                        let #expected: serde_json::Value = serde_json::from_str(#json)
+                            .expect("Could not create expected value from canonical JSON data");
+                        assert_eq!(json!(actual.#getter()), #expected);
+                    }
+                });
 
-                #[test]
-                fn #serialize_test_name() {
-                    let packet: #packet_name = serde_json::from_str(#json)
-                        .expect("Could not create packet from canonical JSON data");
-                    let packed: Vec<u8> = #packed;
-                    assert_eq!(packet.encoded_len(), packed.len());
-                    assert_eq!(packet.encode_to_vec(), Ok(packed));
-                }
-            });
+                let json = to_json(&object);
+                tests.push(quote! {
+                    #[test]
+                    fn #parse_test_name() {
+                        let packed = #packed;
+                        let actual = #packet_name::decode_full(&packed).unwrap();
+                        assert_eq!(actual.encoded_len(), packed.len());
+                        #(#assertions)*
+                    }
+
+                    #[test]
+                    fn #serialize_test_name() {
+                        let packet: #packet_name = serde_json::from_str(#json)
+                            .expect("Could not create packet from canonical JSON data");
+                        let packed: Vec<u8> = #packed;
+                        assert_eq!(packet.encoded_len(), packed.len());
+                        assert_eq!(packet.encode_to_vec(), Ok(packed));
+                    }
+                });
+            } else {
+                panic!(
+                    "Test vector for {test_packet} (index {i}) has neither \
+                     'unpacked' nor 'expected_error'"
+                );
+            }
         }
     }
 
@@ -118,7 +165,7 @@ fn generate_unit_tests(input: &str, packet_names: &[&str]) -> Result<String, Str
         #[allow(warnings, missing_docs)]
         #[cfg(test)]
         mod test {
-            use pdl_runtime::Packet;
+            use pdl_runtime::{DecodeError, Packet};
             use serde_json::json;
             use super::*;
 

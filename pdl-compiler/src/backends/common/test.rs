@@ -11,6 +11,8 @@ pub struct Packet {
 #[derive(Debug, Deserialize)]
 pub struct TestVector {
     pub packed: String,
-    pub unpacked: Value,
+    #[serde(default)]
+    pub unpacked: Option<Value>,
     pub packet: Option<String>,
+    pub expected_error: Option<String>,
 }
