@@ -66,7 +66,7 @@ impl Packet for Foo {
     }
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.remaining() < 1 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Foo",
                 wanted: 1,
                 got: buf.remaining(),
@@ -74,7 +74,7 @@ impl Packet for Foo {
         }
         let x = buf.get_u8();
         if buf.remaining() < 2 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Foo",
                 wanted: 2,
                 got: buf.remaining(),
@@ -82,7 +82,7 @@ impl Packet for Foo {
         }
         let y = buf.get_u16();
         if buf.remaining() < 3 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Foo",
                 wanted: 3,
                 got: buf.remaining(),

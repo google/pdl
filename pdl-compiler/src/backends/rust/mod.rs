@@ -713,7 +713,7 @@ fn generate_derived_packet_decl(
         let value_str = constraint_value_str(&parent_data_fields, c);
         quote! {
             if parent.#field_id() != #value {
-                return Err(DecodeError::InvalidFieldValue {
+                return Err(DecodeError::ConstraintValueError {
                     packet: #packet_name,
                     field: #field_name,
                     expected: #value_str,
@@ -740,7 +740,7 @@ fn generate_derived_packet_decl(
                         #( #cloned_field_ids: parent.#cloned_field_ids.clone(), )*
                     })
                 } else {
-                    Err(DecodeError::TrailingBytes)
+                    Err(DecodeError::TrailingBytesError)
                 }
             }
         }
@@ -1240,7 +1240,7 @@ fn generate_custom_field_decl(
         impl Packet for #id {
             fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
                 if buf.len() < #size {
-                    return Err(DecodeError::InvalidLengthError {
+                    return Err(DecodeError::LengthError {
                         obj: #name,
                         wanted: #size,
                         got: buf.len(),

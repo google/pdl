@@ -48,7 +48,7 @@ impl Packet for Test {
     }
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.remaining() < 1 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Test",
                 wanted: 1,
                 got: buf.remaining(),

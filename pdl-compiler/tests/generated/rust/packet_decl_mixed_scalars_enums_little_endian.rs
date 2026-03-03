@@ -215,7 +215,7 @@ impl Packet for Foo {
     }
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.remaining() < 3 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Foo",
                 wanted: 3,
                 got: buf.remaining(),
@@ -223,7 +223,7 @@ impl Packet for Foo {
         }
         let chunk = buf.get_uint_le(3) as u32;
         let x = Enum7::try_from((chunk & 0x7f) as u8)
-            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+            .map_err(|unknown_val| DecodeError::EnumValueError {
                 obj: "Foo",
                 field: "x",
                 value: unknown_val as u64,
@@ -231,7 +231,7 @@ impl Packet for Foo {
             })?;
         let y = ((chunk >> 7) & 0x1f) as u8;
         let z = Enum9::try_from(((chunk >> 12) & 0x1ff) as u16)
-            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+            .map_err(|unknown_val| DecodeError::EnumValueError {
                 obj: "Foo",
                 field: "z",
                 value: unknown_val as u64,

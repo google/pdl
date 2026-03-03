@@ -851,8 +851,7 @@ fn declare_array_count(
             Some(WidthField::Size { elem_width: Some(elem_width), .. }) => {
                 let elem_bytes = *elem_width / 8;
                 let t = ExprTree::new();
-                let root =
-                    t.div(t.symbol(quote!($(name)Size), Integral::Int), t.num(elem_bytes));
+                let root = t.div(t.symbol(quote!($(name)Size), Integral::Int), t.num(elem_bytes));
                 Some(quote!(
                     if ($(name)Size % $elem_bytes != 0) {
                         throw new IllegalArgumentException("Array size is not aligned to element size");
@@ -875,10 +874,8 @@ fn declare_array_count(
                 {
                     let elem_bytes = elem_width / 8;
                     let t = ExprTree::new();
-                    let root = t.div(
-                        t.symbol(quote!(buf.remaining()), Integral::Int),
-                        t.num(elem_bytes),
-                    );
+                    let root =
+                        t.div(t.symbol(quote!(buf.remaining()), Integral::Int), t.num(elem_bytes));
                     Some(quote!(
                         if (buf.remaining() % $elem_bytes != 0) {
                             throw new IllegalArgumentException("Array size is not aligned to element size");
