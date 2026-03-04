@@ -109,7 +109,8 @@ class PacketParserTest(unittest.TestCase):
                 cls = getattr(le_backend, packet)
                 for test in tests:
                     if 'expected_error' in test:
-                        with self.assertRaises((Exception, ValueError)):
+                        exception_cls = getattr(le_backend, test['expected_error'])
+                        with self.assertRaises(exception_cls):
                             cls.parse_all(bytes.fromhex(test['packed']))
                     else:
                         result = cls.parse_all(bytes.fromhex(test['packed']))
