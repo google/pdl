@@ -31,6 +31,7 @@ Language specific instructions are provided for all supported backends:
 1. [Rust generated code guide](doc/rust-generated-code-guide.rst)
 1. [Python generated code guide](doc/python-generated-code-guide.rst)
 1. [C++ generated code guide](doc/cxx-generated-code-guide.rst)
+1. [Java generated code guide](doc/java-generated-code-guide.rst)
 
 ## Supported Features
 
