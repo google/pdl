@@ -21,7 +21,7 @@ For example, `cargo run --features "java" -- --output-format java protocol.pdl -
 
 ## Packets
 
-Packets come with a builder, with the type of each field being the smallest Java integral type that fits the declared field width, or `boolean` if the field is 1 bit wide. Packet classes have a static `void fromBytes(byte[])` and an instance `byte[] toBytes()`. Packet classes override `hashCode`, `equals`, and `toString` as expected.
+Packets come with a builder, with the type of each field being the smallest Java integral type that fits the declared field width, or `boolean` if the field is 1 bit wide. Packet classes have a static `<NAME> fromBytes(byte[])` and an instance `byte[] toBytes()`. Packet classes override `hashCode`, `equals`, and `toString` as expected.
 
 ```
 packet MyPacket {

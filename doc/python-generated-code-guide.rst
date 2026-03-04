@@ -94,7 +94,7 @@ Packet declarations
 | ::                                    | .. sourcecode:: python                                        |
 |                                       |                                                               |
 |     packet TestPacket: ParentPacket { |     @dataclass                                                |
-|         a: 8,                         |     packet TestPacket(ParentPacket):                          |
+|         a: 8,                         |     class TestPacket(ParentPacket):                           |
 |         b: TestEnum,                  |         a: int = field(kw_only=True, default=0)               |
 |     }                                 |         b: TestEnum = field(kw_only=True, default=TestEnum.A) |
 |                                       |                                                               |
