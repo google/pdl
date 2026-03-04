@@ -139,9 +139,9 @@ declaration (see the table below).
 +---------------------------------------+---------------------------------------------------------------+
 | ::                                    | .. sourcecode:: rust                                          |
 |                                       |                                                               |
-|     packet Parent {                   |     #[device(Debug, Clone, PartialEq, Eq)]                    |
+|     packet Parent {                   |     #[derive(Debug, Clone, PartialEq, Eq)]                    |
 |         a:8,                          |     struct TestPacket {                                       |
-|         _paylolad_,                   |         a: u8,                                                |
+|         _payload_,                    |         a: u8,                                                |
 |     }                                 |         b: TestEnum,                                          |
 |                                       |         payload: Vec<u8>,                                     |
 |     packet TestPacket : Parent {      |     }                                                         |
@@ -155,7 +155,7 @@ declaration (see the table below).
 |                                       |             -> Result<(), EncodeError> { .. }                 |
 |                                       |                                                               |
 |                                       |         pub fn decode_partial(parent: &Parent)                |
-|                                       |             -> Result<Self, DecoderError { .. }               |
+|                                       |             -> Result<Self, DecodeError> { .. }               |
 |                                       |     }                                                         |
 |                                       |                                                               |
 |                                       |     impl pdl_runtime::Packet for TestPacket { .. }            |
