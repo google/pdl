@@ -172,7 +172,7 @@ class PacketSerializerTest(unittest.TestCase):
                     cls = getattr(le_backend, test.get('packet', packet))
                     obj = create_object(cls, test['unpacked'])
                     result = obj.serialize()
-                    self.assertEqual(result, bytes.fromhex(test['packed']))
+                    self.assertEqual(list(result), list(bytes.fromhex(test['packed'])))
 
     def testBigEndian(self):
         with resources.files('tests.canonical').joinpath('be_test_vectors.json').open('r') as f:

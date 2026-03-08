@@ -195,7 +195,7 @@ class SizedStruct(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 @dataclass
@@ -231,7 +231,7 @@ class UnsizedStruct(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) + 1
 
 @dataclass
@@ -257,7 +257,7 @@ class UnknownSizeStruct(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array)
 
 @dataclass
@@ -323,7 +323,7 @@ class ScalarParent(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload) + 2
 
 @dataclass
@@ -374,7 +374,7 @@ class EnumParent(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload) + 3
 
 @dataclass
@@ -411,7 +411,7 @@ class EmptyParent(ScalarParent):
         return ScalarParent.serialize(self, payload = bytes(_span))
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload)
 
 @dataclass
@@ -447,7 +447,7 @@ class Packet_Scalar_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -481,7 +481,7 @@ class Packet_Enum_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -517,7 +517,7 @@ class Packet_Reserved_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -562,7 +562,7 @@ class Packet_Size_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.b) + 8
 
 @dataclass
@@ -606,7 +606,7 @@ class Packet_Count_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.b) + 8
 
 @dataclass
@@ -640,7 +640,7 @@ class Packet_FixedScalar_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -674,7 +674,7 @@ class Packet_FixedEnum_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -708,7 +708,7 @@ class Packet_Payload_Field_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload) + 1
 
 @dataclass
@@ -743,7 +743,7 @@ class Packet_Payload_Field_SizeModifier(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload) + 1
 
 @dataclass
@@ -777,7 +777,7 @@ class Packet_Payload_Field_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload) + 2
 
 @dataclass
@@ -809,7 +809,7 @@ class Packet_Payload_Field_UnknownSize_Terminal(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload) + 2
 
 @dataclass
@@ -843,7 +843,7 @@ class Packet_Body_Field_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload) + 1
 
 @dataclass
@@ -877,7 +877,7 @@ class Packet_Body_Field_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload) + 2
 
 @dataclass
@@ -909,7 +909,7 @@ class Packet_Body_Field_UnknownSize_Terminal(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload) + 2
 
 @dataclass
@@ -936,7 +936,7 @@ class Packet_ScalarGroup_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 2
 
 @dataclass
@@ -963,7 +963,7 @@ class Packet_EnumGroup_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 2
 
 @dataclass
@@ -1008,7 +1008,7 @@ class Packet_Checksum_Field_FromStart(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 5
 
 @dataclass
@@ -1061,7 +1061,7 @@ class Packet_Checksum_Field_FromEnd(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload) + 5
 
 @dataclass
@@ -1090,8 +1090,8 @@ class Packet_Struct_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.b.size + 1
+    def encoded_size(self) -> int:
+        return self.b.encoded_size + 1
 
 @dataclass
 class Packet_Custom_Field_ConstantSize(Packet):
@@ -1115,7 +1115,7 @@ class Packet_Custom_Field_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 @dataclass
@@ -1138,8 +1138,8 @@ class Packet_Custom_Field_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.a.size
+    def encoded_size(self) -> int:
+        return self.a.encoded_size
 
 @dataclass
 class Packet_Array_Field_ByteElement_ConstantSize(Packet):
@@ -1166,7 +1166,7 @@ class Packet_Array_Field_ByteElement_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 4
 
 @dataclass
@@ -1202,7 +1202,7 @@ class Packet_Array_Field_ByteElement_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) + 1
 
 @dataclass
@@ -1237,7 +1237,7 @@ class Packet_Array_Field_ByteElement_VariableCount(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) + 1
 
 @dataclass
@@ -1263,7 +1263,7 @@ class Packet_Array_Field_ByteElement_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array)
 
 @dataclass
@@ -1292,7 +1292,7 @@ class Packet_Array_Field_ScalarElement_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -1332,7 +1332,7 @@ class Packet_Array_Field_ScalarElement_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2 + 1
 
 @dataclass
@@ -1368,7 +1368,7 @@ class Packet_Array_Field_ScalarElement_VariableCount(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2 + 1
 
 @dataclass
@@ -1398,7 +1398,7 @@ class Packet_Array_Field_ScalarElement_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2
 
 @dataclass
@@ -1427,7 +1427,7 @@ class Packet_Array_Field_EnumElement_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -1467,7 +1467,7 @@ class Packet_Array_Field_EnumElement_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2 + 1
 
 @dataclass
@@ -1503,7 +1503,7 @@ class Packet_Array_Field_EnumElement_VariableCount(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2 + 1
 
 @dataclass
@@ -1533,7 +1533,7 @@ class Packet_Array_Field_EnumElement_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2
 
 @dataclass
@@ -1562,7 +1562,7 @@ class Packet_Array_Field_SizedElement_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 4
 
 @dataclass
@@ -1599,8 +1599,8 @@ class Packet_Array_Field_SizedElement_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array]) + 1
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array]) + 1
 
 @dataclass
 class Packet_Array_Field_SizedElement_VariableCount(Packet):
@@ -1635,8 +1635,8 @@ class Packet_Array_Field_SizedElement_VariableCount(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array]) + 1
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array]) + 1
 
 @dataclass
 class Packet_Array_Field_SizedElement_UnknownSize(Packet):
@@ -1662,8 +1662,8 @@ class Packet_Array_Field_SizedElement_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array])
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array])
 
 @dataclass
 class Packet_Array_Field_UnsizedElement_ConstantSize(Packet):
@@ -1689,8 +1689,8 @@ class Packet_Array_Field_UnsizedElement_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array])
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array])
 
 @dataclass
 class Packet_Array_Field_UnsizedElement_VariableSize(Packet):
@@ -1719,7 +1719,7 @@ class Packet_Array_Field_UnsizedElement_VariableSize(Packet):
 
     def serialize(self, payload: Optional[bytes] = None) -> bytes:
         _span = bytearray()
-        array_size = sum(elt.size for elt in self.array)
+        array_size = sum(elt.encoded_size for elt in self.array)
         if array_size > 0xf:
             raise ValueError("Invalid size value Packet_Array_Field_UnsizedElement_VariableSize::array: {array_size} > 0xf")
         _span.append((array_size << 0))
@@ -1728,8 +1728,8 @@ class Packet_Array_Field_UnsizedElement_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array]) + 1
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array]) + 1
 
 @dataclass
 class Packet_Array_Field_UnsizedElement_VariableCount(Packet):
@@ -1762,8 +1762,8 @@ class Packet_Array_Field_UnsizedElement_VariableCount(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array]) + 1
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array]) + 1
 
 @dataclass
 class Packet_Array_Field_UnsizedElement_UnknownSize(Packet):
@@ -1789,8 +1789,8 @@ class Packet_Array_Field_UnsizedElement_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array])
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array])
 
 @dataclass
 class Packet_Array_Field_UnsizedElement_SizeModifier(Packet):
@@ -1820,7 +1820,7 @@ class Packet_Array_Field_UnsizedElement_SizeModifier(Packet):
 
     def serialize(self, payload: Optional[bytes] = None) -> bytes:
         _span = bytearray()
-        array_size = +2 + sum(elt.size for elt in self.array)
+        array_size = +2 + sum(elt.encoded_size for elt in self.array)
         if array_size > 0xf:
             raise ValueError("Invalid size value Packet_Array_Field_UnsizedElement_SizeModifier::array: {array_size} > 0xf")
         _span.append((array_size << 0))
@@ -1829,8 +1829,8 @@ class Packet_Array_Field_UnsizedElement_SizeModifier(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array]) + 1
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array]) + 1
 
 @dataclass
 class Packet_Array_Field_SizedElement_VariableSize_Padded(Packet):
@@ -1876,7 +1876,7 @@ class Packet_Array_Field_SizedElement_VariableSize_Padded(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 17
 
 @dataclass
@@ -1917,7 +1917,7 @@ class Packet_Array_Field_UnsizedElement_VariableCount_Padded(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 17
 
 @dataclass
@@ -1962,7 +1962,7 @@ class Packet_Optional_Scalar_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1 + (
             (0 if self.a is None else 3) +
             (0 if self.b is None else 4)
@@ -2010,7 +2010,7 @@ class Packet_Optional_Enum_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1 + (
             (0 if self.a is None else 2) +
             (0 if self.b is None else 2)
@@ -2054,10 +2054,10 @@ class Packet_Optional_Struct_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1 + (
-            (0 if self.a is None else self.a.size) +
-            (0 if self.b is None else self.b.size)
+            (0 if self.a is None else self.a.encoded_size) +
+            (0 if self.b is None else self.b.encoded_size)
         )
 
 @dataclass
@@ -2085,7 +2085,7 @@ class ScalarChild_A(ScalarParent):
         return ScalarParent.serialize(self, payload = bytes(_span))
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 @dataclass
@@ -2114,7 +2114,7 @@ class ScalarChild_B(ScalarParent):
         return ScalarParent.serialize(self, payload = bytes(_span))
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 2
 
 @dataclass
@@ -2142,7 +2142,7 @@ class EnumChild_A(EnumParent):
         return EnumParent.serialize(self, payload = bytes(_span))
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 @dataclass
@@ -2171,7 +2171,7 @@ class EnumChild_B(EnumParent):
         return EnumParent.serialize(self, payload = bytes(_span))
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 2
 
 @dataclass
@@ -2199,7 +2199,7 @@ class AliasedChild_A(EmptyParent):
         return EmptyParent.serialize(self, payload = bytes(_span))
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 @dataclass
@@ -2228,7 +2228,7 @@ class AliasedChild_B(EmptyParent):
         return EmptyParent.serialize(self, payload = bytes(_span))
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 2
 
 @dataclass
@@ -2264,7 +2264,7 @@ class Struct_Scalar_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -2298,7 +2298,7 @@ class Struct_Enum_Field_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -2323,7 +2323,7 @@ class Struct_Enum_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -2359,7 +2359,7 @@ class Struct_Reserved_Field_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -2384,7 +2384,7 @@ class Struct_Reserved_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -2429,7 +2429,7 @@ class Struct_Size_Field_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.b) + 8
 
 @dataclass
@@ -2452,8 +2452,8 @@ class Struct_Size_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Count_Field_(Packet):
@@ -2496,7 +2496,7 @@ class Struct_Count_Field_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.b) + 8
 
 @dataclass
@@ -2519,8 +2519,8 @@ class Struct_Count_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_FixedScalar_Field_(Packet):
@@ -2553,7 +2553,7 @@ class Struct_FixedScalar_Field_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -2578,7 +2578,7 @@ class Struct_FixedScalar_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -2612,7 +2612,7 @@ class Struct_FixedEnum_Field_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -2637,7 +2637,7 @@ class Struct_FixedEnum_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -2664,7 +2664,7 @@ class Struct_ScalarGroup_Field_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 2
 
 @dataclass
@@ -2689,7 +2689,7 @@ class Struct_ScalarGroup_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 2
 
 @dataclass
@@ -2716,7 +2716,7 @@ class Struct_EnumGroup_Field_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 2
 
 @dataclass
@@ -2741,7 +2741,7 @@ class Struct_EnumGroup_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 2
 
 @dataclass
@@ -2786,7 +2786,7 @@ class Struct_Checksum_Field_FromStart_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 5
 
 @dataclass
@@ -2811,7 +2811,7 @@ class Struct_Checksum_Field_FromStart(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 5
 
 @dataclass
@@ -2864,7 +2864,7 @@ class Struct_Checksum_Field_FromEnd_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.payload) + 5
 
 @dataclass
@@ -2887,8 +2887,8 @@ class Struct_Checksum_Field_FromEnd(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Struct_Field(Packet):
@@ -2916,8 +2916,8 @@ class Struct_Struct_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.b.size + 1
+    def encoded_size(self) -> int:
+        return self.b.encoded_size + 1
 
 @dataclass
 class Struct_Custom_Field_ConstantSize_(Packet):
@@ -2941,7 +2941,7 @@ class Struct_Custom_Field_ConstantSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 @dataclass
@@ -2966,7 +2966,7 @@ class Struct_Custom_Field_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 @dataclass
@@ -2989,8 +2989,8 @@ class Struct_Custom_Field_VariableSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.a.size
+    def encoded_size(self) -> int:
+        return self.a.encoded_size
 
 @dataclass
 class Struct_Custom_Field_VariableSize(Packet):
@@ -3012,8 +3012,8 @@ class Struct_Custom_Field_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_ByteElement_ConstantSize_(Packet):
@@ -3040,7 +3040,7 @@ class Struct_Array_Field_ByteElement_ConstantSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 4
 
 @dataclass
@@ -3065,7 +3065,7 @@ class Struct_Array_Field_ByteElement_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 4
 
 @dataclass
@@ -3101,7 +3101,7 @@ class Struct_Array_Field_ByteElement_VariableSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) + 1
 
 @dataclass
@@ -3124,8 +3124,8 @@ class Struct_Array_Field_ByteElement_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_ByteElement_VariableCount_(Packet):
@@ -3159,7 +3159,7 @@ class Struct_Array_Field_ByteElement_VariableCount_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) + 1
 
 @dataclass
@@ -3182,8 +3182,8 @@ class Struct_Array_Field_ByteElement_VariableCount(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_ByteElement_UnknownSize_(Packet):
@@ -3208,7 +3208,7 @@ class Struct_Array_Field_ByteElement_UnknownSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array)
 
 @dataclass
@@ -3231,8 +3231,8 @@ class Struct_Array_Field_ByteElement_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_ScalarElement_ConstantSize_(Packet):
@@ -3260,7 +3260,7 @@ class Struct_Array_Field_ScalarElement_ConstantSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -3285,7 +3285,7 @@ class Struct_Array_Field_ScalarElement_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -3325,7 +3325,7 @@ class Struct_Array_Field_ScalarElement_VariableSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2 + 1
 
 @dataclass
@@ -3348,8 +3348,8 @@ class Struct_Array_Field_ScalarElement_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_ScalarElement_VariableCount_(Packet):
@@ -3384,7 +3384,7 @@ class Struct_Array_Field_ScalarElement_VariableCount_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2 + 1
 
 @dataclass
@@ -3407,8 +3407,8 @@ class Struct_Array_Field_ScalarElement_VariableCount(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_ScalarElement_UnknownSize_(Packet):
@@ -3437,7 +3437,7 @@ class Struct_Array_Field_ScalarElement_UnknownSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2
 
 @dataclass
@@ -3460,8 +3460,8 @@ class Struct_Array_Field_ScalarElement_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_EnumElement_ConstantSize_(Packet):
@@ -3489,7 +3489,7 @@ class Struct_Array_Field_EnumElement_ConstantSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -3514,7 +3514,7 @@ class Struct_Array_Field_EnumElement_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 8
 
 @dataclass
@@ -3554,7 +3554,7 @@ class Struct_Array_Field_EnumElement_VariableSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2 + 1
 
 @dataclass
@@ -3577,8 +3577,8 @@ class Struct_Array_Field_EnumElement_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_EnumElement_VariableCount_(Packet):
@@ -3613,7 +3613,7 @@ class Struct_Array_Field_EnumElement_VariableCount_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2 + 1
 
 @dataclass
@@ -3636,8 +3636,8 @@ class Struct_Array_Field_EnumElement_VariableCount(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_EnumElement_UnknownSize_(Packet):
@@ -3666,7 +3666,7 @@ class Struct_Array_Field_EnumElement_UnknownSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return len(self.array) * 2
 
 @dataclass
@@ -3689,8 +3689,8 @@ class Struct_Array_Field_EnumElement_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_SizedElement_ConstantSize_(Packet):
@@ -3718,7 +3718,7 @@ class Struct_Array_Field_SizedElement_ConstantSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 4
 
 @dataclass
@@ -3743,7 +3743,7 @@ class Struct_Array_Field_SizedElement_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 4
 
 @dataclass
@@ -3780,8 +3780,8 @@ class Struct_Array_Field_SizedElement_VariableSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array]) + 1
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array]) + 1
 
 @dataclass
 class Struct_Array_Field_SizedElement_VariableSize(Packet):
@@ -3803,8 +3803,8 @@ class Struct_Array_Field_SizedElement_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_SizedElement_VariableCount_(Packet):
@@ -3839,8 +3839,8 @@ class Struct_Array_Field_SizedElement_VariableCount_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array]) + 1
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array]) + 1
 
 @dataclass
 class Struct_Array_Field_SizedElement_VariableCount(Packet):
@@ -3862,8 +3862,8 @@ class Struct_Array_Field_SizedElement_VariableCount(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_SizedElement_UnknownSize_(Packet):
@@ -3889,8 +3889,8 @@ class Struct_Array_Field_SizedElement_UnknownSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array])
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array])
 
 @dataclass
 class Struct_Array_Field_SizedElement_UnknownSize(Packet):
@@ -3912,8 +3912,8 @@ class Struct_Array_Field_SizedElement_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_UnsizedElement_ConstantSize_(Packet):
@@ -3939,8 +3939,8 @@ class Struct_Array_Field_UnsizedElement_ConstantSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array])
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array])
 
 @dataclass
 class Struct_Array_Field_UnsizedElement_ConstantSize(Packet):
@@ -3962,8 +3962,8 @@ class Struct_Array_Field_UnsizedElement_ConstantSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_UnsizedElement_VariableSize_(Packet):
@@ -3992,7 +3992,7 @@ class Struct_Array_Field_UnsizedElement_VariableSize_(Packet):
 
     def serialize(self, payload: Optional[bytes] = None) -> bytes:
         _span = bytearray()
-        array_size = sum(elt.size for elt in self.array)
+        array_size = sum(elt.encoded_size for elt in self.array)
         if array_size > 0xf:
             raise ValueError("Invalid size value Struct_Array_Field_UnsizedElement_VariableSize_::array: {array_size} > 0xf")
         _span.append((array_size << 0))
@@ -4001,8 +4001,8 @@ class Struct_Array_Field_UnsizedElement_VariableSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array]) + 1
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array]) + 1
 
 @dataclass
 class Struct_Array_Field_UnsizedElement_VariableSize(Packet):
@@ -4024,8 +4024,8 @@ class Struct_Array_Field_UnsizedElement_VariableSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_UnsizedElement_VariableCount_(Packet):
@@ -4058,8 +4058,8 @@ class Struct_Array_Field_UnsizedElement_VariableCount_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array]) + 1
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array]) + 1
 
 @dataclass
 class Struct_Array_Field_UnsizedElement_VariableCount(Packet):
@@ -4081,8 +4081,8 @@ class Struct_Array_Field_UnsizedElement_VariableCount(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_UnsizedElement_UnknownSize_(Packet):
@@ -4108,8 +4108,8 @@ class Struct_Array_Field_UnsizedElement_UnknownSize_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array])
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array])
 
 @dataclass
 class Struct_Array_Field_UnsizedElement_UnknownSize(Packet):
@@ -4131,8 +4131,8 @@ class Struct_Array_Field_UnsizedElement_UnknownSize(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_UnsizedElement_SizeModifier_(Packet):
@@ -4162,7 +4162,7 @@ class Struct_Array_Field_UnsizedElement_SizeModifier_(Packet):
 
     def serialize(self, payload: Optional[bytes] = None) -> bytes:
         _span = bytearray()
-        array_size = +2 + sum(elt.size for elt in self.array)
+        array_size = +2 + sum(elt.encoded_size for elt in self.array)
         if array_size > 0xf:
             raise ValueError("Invalid size value Struct_Array_Field_UnsizedElement_SizeModifier_::array: {array_size} > 0xf")
         _span.append((array_size << 0))
@@ -4171,8 +4171,8 @@ class Struct_Array_Field_UnsizedElement_SizeModifier_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return sum([elt.size for elt in self.array]) + 1
+    def encoded_size(self) -> int:
+        return sum([elt.encoded_size for elt in self.array]) + 1
 
 @dataclass
 class Struct_Array_Field_UnsizedElement_SizeModifier(Packet):
@@ -4194,8 +4194,8 @@ class Struct_Array_Field_UnsizedElement_SizeModifier(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Array_Field_SizedElement_VariableSize_Padded_(Packet):
@@ -4241,7 +4241,7 @@ class Struct_Array_Field_SizedElement_VariableSize_Padded_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 17
 
 @dataclass
@@ -4266,7 +4266,7 @@ class Struct_Array_Field_SizedElement_VariableSize_Padded(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 17
 
 @dataclass
@@ -4307,7 +4307,7 @@ class Struct_Array_Field_UnsizedElement_VariableCount_Padded_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 17
 
 @dataclass
@@ -4332,7 +4332,7 @@ class Struct_Array_Field_UnsizedElement_VariableCount_Padded(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 17
 
 @dataclass
@@ -4377,7 +4377,7 @@ class Struct_Optional_Scalar_Field_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1 + (
             (0 if self.a is None else 3) +
             (0 if self.b is None else 4)
@@ -4403,8 +4403,8 @@ class Struct_Optional_Scalar_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Optional_Enum_Field_(Packet):
@@ -4448,7 +4448,7 @@ class Struct_Optional_Enum_Field_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1 + (
             (0 if self.a is None else 2) +
             (0 if self.b is None else 2)
@@ -4474,8 +4474,8 @@ class Struct_Optional_Enum_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 @dataclass
 class Struct_Optional_Struct_Field_(Packet):
@@ -4515,10 +4515,10 @@ class Struct_Optional_Struct_Field_(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1 + (
-            (0 if self.a is None else self.a.size) +
-            (0 if self.b is None else self.b.size)
+            (0 if self.a is None else self.a.encoded_size) +
+            (0 if self.b is None else self.b.encoded_size)
         )
 
 @dataclass
@@ -4541,8 +4541,8 @@ class Struct_Optional_Struct_Field(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
-        return self.s.size
+    def encoded_size(self) -> int:
+        return self.s.encoded_size
 
 class Enum_Incomplete_Truncated_Closed_(enum.IntEnum):
     A = 0x0
@@ -4577,7 +4577,7 @@ class Enum_Incomplete_Truncated_Closed(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 class Enum_Incomplete_Truncated_Open_(enum.IntEnum):
@@ -4613,7 +4613,7 @@ class Enum_Incomplete_Truncated_Open(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 class Enum_Incomplete_Truncated_Closed_WithRange_(enum.IntEnum):
@@ -4650,7 +4650,7 @@ class Enum_Incomplete_Truncated_Closed_WithRange(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 class Enum_Incomplete_Truncated_Open_WithRange_(enum.IntEnum):
@@ -4685,7 +4685,7 @@ class Enum_Incomplete_Truncated_Open_WithRange(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 class Enum_Complete_Truncated_(enum.IntEnum):
@@ -4727,7 +4727,7 @@ class Enum_Complete_Truncated(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 class Enum_Complete_Truncated_WithRange_(enum.IntEnum):
@@ -4764,7 +4764,7 @@ class Enum_Complete_Truncated_WithRange(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1
 
 class Enum_Complete_WithRange_(enum.IntEnum):
@@ -4802,5 +4802,5 @@ class Enum_Complete_WithRange(Packet):
         return bytes(_span)
 
     @property
-    def size(self) -> int:
+    def encoded_size(self) -> int:
         return 1

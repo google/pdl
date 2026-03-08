@@ -424,7 +424,7 @@ fn generate_packet_declaration<'a>(
     };
 
     let parser = generate_packet_parser(scope, schema, file, decl);
-    let size = generate_packet_size_property(scope, schema, decl);
+    let encoded_size = generate_packet_size_property(scope, schema, decl);
     let post_init = generate_packet_post_init(scope, decl);
 
     format!(
@@ -444,8 +444,8 @@ class {packet_name}({parent_name}):
 {serializer}
 
     @property
-    def size(self) -> int:
-{size}
+    def encoded_size(self) -> int:
+{encoded_size}
 "#,
         packet_name = id,
         parent_name = parent_name,
@@ -454,7 +454,7 @@ class {packet_name}({parent_name}):
         post_init = indent(&post_init.join("\n"), 2),
         parser = indent(&parser.join("\n"), 2),
         serializer = indent(&serializer.join("\n"), 2),
-        size = indent(&size.join("\n"), 2)
+        encoded_size = indent(&encoded_size.join("\n"), 2)
     )
 }
 
@@ -517,7 +517,7 @@ fn generate_packet_size_property<'a>(
                         }
                         _ => {
                             variable_width.push(format!(
-                                "(0 if self.{field_id} is None else self.{field_id}.size)",
+                                "(0 if self.{field_id} is None else self.{field_id}.encoded_size)",
                             ));
                         }
                     }
@@ -542,7 +542,7 @@ fn generate_packet_size_property<'a>(
                 variable_width.push("len(self.payload)".to_string());
             }
             ast::FieldDesc::Typedef { id: field_id, .. } => {
-                variable_width.push(format!("self.{}.size", field_id));
+                variable_width.push(format!("self.{}.encoded_size", field_id));
             }
             ast::FieldDesc::Array { id: field_id, width: Some(8), .. } => {
                 variable_width.push(format!("len(self.{field_id})"));
@@ -557,7 +557,7 @@ fn generate_packet_size_property<'a>(
                         variable_width.push(format!("len(self.{field_id}) * {}", width / 8));
                     }
                     _ => {
-                        variable_width.push(format!("sum([elt.size for elt in self.{field_id}])",));
+                        variable_width.push(format!("sum([elt.encoded_size for elt in self.{field_id}])",));
                     }
                 }
             }
@@ -1498,7 +1498,7 @@ impl<'a> FieldSerializer<'a> {
                                 format!("len(self.{field_id}) * {size}")
                             }
                             analyzer::ElementSize::Dynamic | analyzer::ElementSize::Unknown => {
-                                format!("sum(elt.size for elt in self.{field_id})")
+                                format!("sum(elt.encoded_size for elt in self.{field_id})")
                             }
                         };
                         let size_modifier = if let Some(size_modifier) = size_modifier {
