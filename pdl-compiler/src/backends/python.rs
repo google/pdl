@@ -266,8 +266,12 @@ pub fn generate(
             ast::DeclDesc::Enum { id, tags, width } => {
                 code.push_str(&generate_enum_declaration(id, tags, *width));
             }
+            ast::DeclDesc::Packet { parent_id: None, .. }
+            | ast::DeclDesc::Struct { parent_id: None, .. } => {
+                code.push_str(&generate_toplevel_packet_declaration(&scope, &schema, file, decl));
+            }
             ast::DeclDesc::Packet { .. } | ast::DeclDesc::Struct { .. } => {
-                code.push_str(&generate_packet_declaration(&scope, &schema, file, decl));
+                code.push_str(&generate_derived_packet_declaration(&scope, &schema, file, decl));
             }
             _ => {}
         }
@@ -320,109 +324,146 @@ class {enum_name}(enum.IntEnum):
     )
 }
 
-fn generate_packet_declaration<'a>(
+fn generate_packet_field_declarations<'a>(
+    scope: &'a analyzer::Scope<'a>,
+    decl: &ast::Decl,
+) -> Vec<String> {
+    let mut field_decls = Vec::new();
+    for field in decl.fields() {
+        if field.cond.is_some() {
+            match &field.desc {
+                ast::FieldDesc::Scalar { id, .. } => {
+                    field_decls
+                        .push(format!("{id}: Optional[int] = field(kw_only=True, default=None)"));
+                }
+                ast::FieldDesc::Typedef { id, type_id, .. } => {
+                    field_decls.push(format!(
+                        "{id}: Optional[{type_id}] = field(kw_only=True, default=None)",
+                    ));
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            match &field.desc {
+                ast::FieldDesc::Scalar { id, .. } => {
+                    field_decls.push(format!("{id}: int = field(kw_only=True, default=0)"));
+                }
+                ast::FieldDesc::Typedef { id, type_id, .. } => {
+                    let type_decl = scope.typedef.get(type_id.as_str()).unwrap();
+                    match &type_decl.desc {
+                        ast::DeclDesc::Enum { tags, .. } => {
+                            field_decls.push(match tags.first() {
+                                Some(ast::Tag::Range(t)) => {
+                                    format!(
+                                        "{id}: {type_id} = field(kw_only=True, default={})",
+                                        t.range.start())
+                                }
+                                Some(ast::Tag::Value(t)) => {
+                                    format!(
+                                        "{id}: {type_id} = field(kw_only=True, default={type_id}.{})",
+                                        t.id)
+                                }
+                                Some(_) => todo!(),
+                                None => unreachable!(),
+                            });
+                        }
+                        ast::DeclDesc::Checksum { .. } => {
+                            field_decls
+                                .push(format!("{id}: int = field(kw_only=True, default=0)",));
+                        }
+                        ast::DeclDesc::Struct { .. } | ast::DeclDesc::CustomField { .. } => {
+                            field_decls.push(format!(
+                                "{id}: {type_id} = field(kw_only=True, default_factory={type_id})",
+                            ));
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                ast::FieldDesc::Array { id, width: Some(8), .. } => {
+                    field_decls.push(format!(
+                        "{id}: bytearray = field(kw_only=True, default_factory=bytearray)",
+                    ));
+                }
+                ast::FieldDesc::Array { id, width: Some(_), .. } => {
+                    field_decls.push(format!(
+                        "{id}: List[int] = field(kw_only=True, default_factory=list)",
+                    ));
+                }
+                ast::FieldDesc::Array { id, width: None, type_id: Some(type_id), .. } => {
+                    field_decls.push(format!(
+                        "{id}: List[{type_id}] = field(kw_only=True, default_factory=list)",
+                    ));
+                }
+                // Handled via presence of optional fields
+                ast::FieldDesc::Flag { .. }
+                | ast::FieldDesc::Padding { .. }
+                | ast::FieldDesc::Reserved { .. }
+                | ast::FieldDesc::Checksum { .. }
+                | ast::FieldDesc::FixedScalar { .. }
+                | ast::FieldDesc::FixedEnum { .. }
+                | ast::FieldDesc::ElementSize { .. }
+                | ast::FieldDesc::Size { .. }
+                | ast::FieldDesc::Count { .. }
+                | ast::FieldDesc::Payload { .. }
+                | ast::FieldDesc::Body => (),
+                _ => unreachable!(),
+            }
+        }
+    }
+    field_decls
+}
+
+fn generate_toplevel_packet_declaration<'a>(
     scope: &'a analyzer::Scope<'a>,
     schema: &analyzer::Schema,
     file: &ast::File,
     decl: &ast::Decl,
 ) -> String {
-    let id = decl.id().unwrap();
+    let packet_name = decl.id().unwrap();
+    let field_decls = generate_packet_field_declarations(scope, decl);
+    let serializer = generate_toplevel_packet_serializer(scope, schema, file, decl);
+    let parser = generate_packet_parser(scope, schema, file, decl);
+    let encoded_size = generate_packet_size_property(scope, schema, decl);
+    let post_init = generate_packet_post_init(scope, decl);
 
-    let mut field_decls = Vec::new();
-    for field in decl.fields() {
-        if field.cond.is_some() {
-            match &field.desc {
-                ast::FieldDesc::Scalar { .. } => {
-                    field_decls.push(format!(
-                        "{}: Optional[int] = field(kw_only=True, default=None)",
-                        field.id().unwrap()
-                    ));
-                }
-                ast::FieldDesc::Typedef { type_id, .. } => {
-                    field_decls.push(format!(
-                        "{}: Optional[{}] = field(kw_only=True, default=None)",
-                        field.id().unwrap(),
-                        type_id
-                    ));
-                }
-                _ => {}
-            }
-        } else {
-            match &field.desc {
-                // Handled via presence of optional fields
-                ast::FieldDesc::Flag { .. } => (),
-                ast::FieldDesc::Scalar { id: field_id, .. } => {
-                    field_decls.push(format!("{}: int = field(kw_only=True, default=0)", field_id));
-                }
-                ast::FieldDesc::Typedef { id: field_id, type_id, .. } => {
-                    let type_decl = scope.typedef.get(type_id.as_str()).unwrap();
-                    match &type_decl.desc {
-                        ast::DeclDesc::Enum { tags, .. } => {
-                            if let Some(ast::Tag::Range(t)) = tags.first() {
-                                field_decls.push(format!(
-                                    "{}: {} = field(kw_only=True, default={})",
-                                    field_id,
-                                    type_id,
-                                    t.range.start()
-                                ));
-                            } else if let Some(ast::Tag::Value(t)) = tags.first() {
-                                field_decls.push(format!(
-                                    "{}: {} = field(kw_only=True, default={}.{})",
-                                    field_id, type_id, type_id, t.id
-                                ));
-                            }
-                        }
-                        ast::DeclDesc::Checksum { .. } => {
-                            field_decls.push(format!(
-                                "{}: int = field(kw_only=True, default=0)",
-                                field_id
-                            ));
-                        }
-                        ast::DeclDesc::Struct { .. } | ast::DeclDesc::CustomField { .. } => {
-                            field_decls.push(format!(
-                                "{}: {} = field(kw_only=True, default_factory={})",
-                                field_id, type_id, type_id
-                            ));
-                        }
-                        _ => {}
-                    }
-                }
-                ast::FieldDesc::Array { id: field_id, width: Some(8), .. } => {
-                    field_decls.push(format!(
-                        "{field_id}: bytearray = field(kw_only=True, default_factory=bytearray)",
-                    ));
-                }
-                ast::FieldDesc::Array { id: field_id, width: Some(_), .. } => {
-                    field_decls.push(format!(
-                        "{field_id}: List[int] = field(kw_only=True, default_factory=list)",
-                    ));
-                }
-                ast::FieldDesc::Array {
-                    id: field_id, width: None, type_id: Some(type_id), ..
-                } => {
-                    field_decls.push(format!(
-                        "{field_id}: List[{type_id}] = field(kw_only=True, default_factory=list)",
-                    ));
-                }
-                _ => {}
-            }
-        }
-    }
+    format!(
+        r#"
+@dataclass
+class {packet_name}(Packet):
+{field_decls}
 
-    let (parent_name, parent_fields, serializer) = if let Some(parent) = scope.get_parent(decl) {
-        (
-            parent.id().unwrap().to_string(),
-            "fields: dict, ".to_string(),
-            generate_derived_packet_serializer(scope, schema, file, decl),
-        )
-    } else {
-        (
-            "Packet".to_string(),
-            "".to_string(),
-            generate_toplevel_packet_serializer(scope, schema, file, decl),
-        )
-    };
+    def __post_init__(self) -> None:
+{post_init}
 
+    @staticmethod
+    def parse(span: bytes) -> Tuple['{packet_name}', bytes]:
+{parser}
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+{serializer}
+
+    @property
+    def encoded_size(self) -> int:
+{encoded_size}
+"#,
+        field_decls = indent(&field_decls.join("\n"), 1),
+        post_init = indent(&post_init.join("\n"), 2),
+        parser = indent(&parser.join("\n"), 2),
+        serializer = indent(&serializer.join("\n"), 2),
+        encoded_size = indent(&encoded_size.join("\n"), 2)
+    )
+}
+
+fn generate_derived_packet_declaration<'a>(
+    scope: &'a analyzer::Scope<'a>,
+    schema: &analyzer::Schema,
+    file: &ast::File,
+    decl: &ast::Decl,
+) -> String {
+    let packet_name = decl.id().unwrap();
+    let parent_name = decl.parent_id().unwrap();
+    let field_decls = generate_packet_field_declarations(scope, decl);
+    let serializer = generate_derived_packet_serializer(scope, schema, file, decl);
     let parser = generate_packet_parser(scope, schema, file, decl);
     let encoded_size = generate_packet_size_property(scope, schema, decl);
     let post_init = generate_packet_post_init(scope, decl);
@@ -437,7 +478,7 @@ class {packet_name}({parent_name}):
 {post_init}
 
     @staticmethod
-    def parse({parent_fields}span: bytes) -> Tuple['{packet_name}', bytes]:
+    def parse(fields: dict, span: bytes) -> Tuple['{packet_name}', bytes]:
 {parser}
 
     def serialize(self, payload: Optional[bytes] = None) -> bytes:
@@ -447,9 +488,6 @@ class {packet_name}({parent_name}):
     def encoded_size(self) -> int:
 {encoded_size}
 "#,
-        packet_name = id,
-        parent_name = parent_name,
-        parent_fields = parent_fields,
         field_decls = indent(&field_decls.join("\n"), 1),
         post_init = indent(&post_init.join("\n"), 2),
         parser = indent(&parser.join("\n"), 2),
