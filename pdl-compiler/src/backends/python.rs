@@ -713,27 +713,52 @@ fn generate_packet_parser<'a>(
 
     // Specialize to child packets.
     let children = get_specialized_children(file, decl);
-    let mut specialization = Vec::new();
-    for child in children {
-        let child_name = child.id().unwrap();
-        // Try parsing every child packet successively until one is
-        // successfully parsed. Return a parsing error if none is valid.
-        // Return parent packet if no child packet matches.
-        // TODO: order child packets by decreasing size in case no constraint
-        // is given for specialization.
-        specialization.push("try:".to_string());
-        specialization
-            .push(format!("    child, remainder = {child_name}.parse(fields.copy(), payload)"));
-        specialization.push("    if remainder:".to_string());
-        specialization
-            .push(format!(r#"        raise TrailingBytesError("{child_name}", len(remainder))"#));
-        specialization.push("    return child, span".to_string());
-        specialization.push("except Exception:".to_string());
-        specialization.push("    pass".to_string());
+    let mut specialization = CodeBlock::default();
+
+    // Try parsing every child packet successively until one is
+    // successfully parsed. Return a parsing error if none is valid.
+    // Return parent packet if no child packet matches.
+    // TODO: order child packets by decreasing size in case no constraint
+    // is given for specialization.
+    match &children.as_slice() {
+        [] => (),
+        [child] => {
+            let child_name = child.id().unwrap();
+            specialization.append(format!(
+                r#"
+try:
+    child, remainder = {child_name}.parse(fields, payload)
+    if remainder:
+        raise TrailingBytesError("{child_name}", len(remainder))
+    return child, span
+except DecodeError:
+    pass
+                        "#
+            ));
+        }
+        _ => {
+            let children_classes = children
+                .iter()
+                .map(|child| child.id().unwrap())
+                .collect::<Vec<_>>()
+                .join(",\n            ");
+            specialization.append(format!(
+                r#"
+for cls in [{children_classes}]:
+    try:
+        child, remainder = cls.parse(fields, payload)
+        if remainder:
+            raise TrailingBytesError(cls.__name__, len(remainder))
+        return child, span
+    except DecodeError:
+        pass
+                        "#
+            ));
+        }
     }
 
     code.extend(parser.code.lines);
-    code.extend(specialization);
+    code.extend(specialization.lines);
     code.push(format!("return {}(**fields), span", decl.id().unwrap()));
     code
 }

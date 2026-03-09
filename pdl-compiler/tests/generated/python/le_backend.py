@@ -280,34 +280,17 @@ class ScalarParent(Packet):
         payload = span[:_payload__size]
         span = span[_payload__size:]
         fields['payload'] = payload
-        try:
-            child, remainder = AliasedChild_A.parse(fields.copy(), payload)
-            if remainder:
-                raise TrailingBytesError("AliasedChild_A", len(remainder))
-            return child, span
-        except Exception:
-            pass
-        try:
-            child, remainder = AliasedChild_B.parse(fields.copy(), payload)
-            if remainder:
-                raise TrailingBytesError("AliasedChild_B", len(remainder))
-            return child, span
-        except Exception:
-            pass
-        try:
-            child, remainder = ScalarChild_A.parse(fields.copy(), payload)
-            if remainder:
-                raise TrailingBytesError("ScalarChild_A", len(remainder))
-            return child, span
-        except Exception:
-            pass
-        try:
-            child, remainder = ScalarChild_B.parse(fields.copy(), payload)
-            if remainder:
-                raise TrailingBytesError("ScalarChild_B", len(remainder))
-            return child, span
-        except Exception:
-            pass
+        for cls in [AliasedChild_A,
+                    AliasedChild_B,
+                    ScalarChild_A,
+                    ScalarChild_B]:
+            try:
+                child, remainder = cls.parse(fields, payload)
+                if remainder:
+                    raise TrailingBytesError(cls.__name__, len(remainder))
+                return child, span
+            except DecodeError:
+                pass
         return ScalarParent(**fields), span
 
     def serialize(self, payload: Optional[bytes] = None) -> bytes:
@@ -347,20 +330,15 @@ class EnumParent(Packet):
         payload = span[:_payload__size]
         span = span[_payload__size:]
         fields['payload'] = payload
-        try:
-            child, remainder = EnumChild_A.parse(fields.copy(), payload)
-            if remainder:
-                raise TrailingBytesError("EnumChild_A", len(remainder))
-            return child, span
-        except Exception:
-            pass
-        try:
-            child, remainder = EnumChild_B.parse(fields.copy(), payload)
-            if remainder:
-                raise TrailingBytesError("EnumChild_B", len(remainder))
-            return child, span
-        except Exception:
-            pass
+        for cls in [EnumChild_A,
+                    EnumChild_B]:
+            try:
+                child, remainder = cls.parse(fields, payload)
+                if remainder:
+                    raise TrailingBytesError(cls.__name__, len(remainder))
+                return child, span
+            except DecodeError:
+                pass
         return EnumParent(**fields), span
 
     def serialize(self, payload: Optional[bytes] = None) -> bytes:
@@ -389,20 +367,15 @@ class EmptyParent(ScalarParent):
         payload = span
         span = bytes([])
         fields['payload'] = payload
-        try:
-            child, remainder = AliasedChild_A.parse(fields.copy(), payload)
-            if remainder:
-                raise TrailingBytesError("AliasedChild_A", len(remainder))
-            return child, span
-        except Exception:
-            pass
-        try:
-            child, remainder = AliasedChild_B.parse(fields.copy(), payload)
-            if remainder:
-                raise TrailingBytesError("AliasedChild_B", len(remainder))
-            return child, span
-        except Exception:
-            pass
+        for cls in [AliasedChild_A,
+                    AliasedChild_B]:
+            try:
+                child, remainder = cls.parse(fields, payload)
+                if remainder:
+                    raise TrailingBytesError(cls.__name__, len(remainder))
+                return child, span
+            except DecodeError:
+                pass
         return EmptyParent(**fields), span
 
     def serialize(self, payload: Optional[bytes] = None) -> bytes:
