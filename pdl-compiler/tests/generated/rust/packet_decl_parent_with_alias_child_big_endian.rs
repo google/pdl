@@ -142,14 +142,14 @@ impl Packet for Parent {
     }
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.remaining() < 1 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Parent",
                 wanted: 1,
                 got: buf.remaining(),
             });
         }
         let v = Enum8::try_from(buf.get_u8())
-            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+            .map_err(|unknown_val| DecodeError::EnumValueError {
                 obj: "Parent",
                 field: "v",
                 value: unknown_val as u64,
@@ -217,7 +217,7 @@ impl AliasChild {
         if buf.is_empty() {
             Ok(Self { payload, v: parent.v })
         } else {
-            Err(DecodeError::TrailingBytes)
+            Err(DecodeError::TrailingBytesError)
         }
     }
     pub fn encode_partial(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
@@ -287,14 +287,14 @@ impl NormalChild {
     fn decode_partial(parent: &Parent) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
         if parent.v() != Enum8::A {
-            return Err(DecodeError::InvalidFieldValue {
+            return Err(DecodeError::ConstraintValueError {
                 packet: "NormalChild",
                 field: "v",
                 expected: "Enum8::A",
                 actual: format!("{:?}", parent.v()),
             });
         }
-        if buf.is_empty() { Ok(Self {}) } else { Err(DecodeError::TrailingBytes) }
+        if buf.is_empty() { Ok(Self {}) } else { Err(DecodeError::TrailingBytesError) }
     }
     pub fn encode_partial(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         Ok(())
@@ -380,14 +380,14 @@ impl NormalGrandChild1 {
     fn decode_partial(parent: &AliasChild) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
         if parent.v() != Enum8::B {
-            return Err(DecodeError::InvalidFieldValue {
+            return Err(DecodeError::ConstraintValueError {
                 packet: "NormalGrandChild1",
                 field: "v",
                 expected: "Enum8::B",
                 actual: format!("{:?}", parent.v()),
             });
         }
-        if buf.is_empty() { Ok(Self {}) } else { Err(DecodeError::TrailingBytes) }
+        if buf.is_empty() { Ok(Self {}) } else { Err(DecodeError::TrailingBytesError) }
     }
     pub fn encode_partial(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {
         Ok(())
@@ -475,7 +475,7 @@ impl NormalGrandChild2 {
     fn decode_partial(parent: &AliasChild) -> Result<Self, DecodeError> {
         let mut buf: &[u8] = &parent.payload;
         if parent.v() != Enum8::C {
-            return Err(DecodeError::InvalidFieldValue {
+            return Err(DecodeError::ConstraintValueError {
                 packet: "NormalGrandChild2",
                 field: "v",
                 expected: "Enum8::C",
@@ -487,7 +487,7 @@ impl NormalGrandChild2 {
         if buf.is_empty() {
             Ok(Self { payload })
         } else {
-            Err(DecodeError::TrailingBytes)
+            Err(DecodeError::TrailingBytesError)
         }
     }
     pub fn encode_partial(&self, buf: &mut impl BufMut) -> Result<(), EncodeError> {

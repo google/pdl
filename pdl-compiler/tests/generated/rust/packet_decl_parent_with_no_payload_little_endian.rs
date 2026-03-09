@@ -126,14 +126,14 @@ impl Packet for Parent {
     }
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.remaining() < 1 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "Parent",
                 wanted: 1,
                 got: buf.remaining(),
             });
         }
         let v = Enum8::try_from(buf.get_u8())
-            .map_err(|unknown_val| DecodeError::InvalidEnumValueError {
+            .map_err(|unknown_val| DecodeError::EnumValueError {
                 obj: "Parent",
                 field: "v",
                 value: unknown_val as u64,
@@ -170,7 +170,7 @@ impl TryFrom<Parent> for Child {
 impl Child {
     fn decode_partial(parent: &Parent) -> Result<Self, DecodeError> {
         if parent.v() != Enum8::A {
-            return Err(DecodeError::InvalidFieldValue {
+            return Err(DecodeError::ConstraintValueError {
                 packet: "Child",
                 field: "v",
                 expected: "Enum8::A",

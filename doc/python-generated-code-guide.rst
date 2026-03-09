@@ -144,3 +144,24 @@ generated during serialization.
 |     c: TestStruct if c_c = 1,         |     c: Optional[TestStruct] = field(kw_only=True,             |
 |                                       |                                     default=None)             |
 +---------------------------------------+---------------------------------------------------------------+
+
+Runtime error reporting
+-----------------------
+
+Decoding and encoding errors are reported with ``DecodeError`` and ``EncodeError`` exception
+variants. The following is an exhaustive list of error conditions and the reported exception.
+
+Decoding errors
+^^^^^^^^^^^^^^^
+
+* ``DecodeError`` Parent class for all decoding exceptions.
+* ``EnumValueError`` The decoded value for an enum field does not match any of the declared enum tags or tag ranges.
+* ``FixedValueError`` The decoded value for a fixed scalar or enum field does not match the expected value.
+* ``ConstraintValueError`` The decoded value for a scalar or enum field does not match the constraint value.
+* ``LengthError`` Field decoding triggers an overflow on the input bytes.
+* ``ArraySizeError`` The decoded size of an array is not a multiple of the known element size.
+* ``TrailingBytesError`` Input bytes remain after decoding the entire packet.
+
+Encoding errors
+^^^^^^^^^^^^^^^
+

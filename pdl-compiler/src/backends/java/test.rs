@@ -182,7 +182,11 @@ impl TestVector {
     ) -> impl FormatInto<Java> + 'a {
         let packet_name = format!(
             "{}{}",
-            if self.unpacked.as_ref().unwrap().as_object().unwrap().contains_key("payload") { "Unknown" } else { "" },
+            if self.unpacked.as_ref().unwrap().as_object().unwrap().contains_key("payload") {
+                "Unknown"
+            } else {
+                ""
+            },
             self.packet
                 .as_ref()
                 .map(|child_id| Class::name_from_id(child_id))

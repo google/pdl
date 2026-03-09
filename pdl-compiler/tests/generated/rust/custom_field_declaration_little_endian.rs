@@ -40,7 +40,7 @@ impl From<ExactSize> for u32 {
 impl Packet for ExactSize {
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.len() < 4 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "ExactSize",
                 wanted: 4,
                 got: buf.len(),
@@ -78,7 +78,7 @@ impl From<TruncatedSize> for u32 {
 impl Packet for TruncatedSize {
     fn decode(mut buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         if buf.len() < 3 {
-            return Err(DecodeError::InvalidLengthError {
+            return Err(DecodeError::LengthError {
                 obj: "TruncatedSize",
                 wanted: 3,
                 got: buf.len(),

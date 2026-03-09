@@ -16,6 +16,22 @@
 
 use crate::{analyzer, ast};
 
+#[derive(Default)]
+struct CodeBlock {
+    pub lines: Vec<String>,
+}
+
+impl CodeBlock {
+    fn append(&mut self, code: String) {
+        let code = code.trim_start_matches('\n');
+        self.lines.extend(code.trim_end().lines().map(String::from));
+    }
+
+    fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
+}
+
 fn indent(s: &str, level: usize) -> String {
     let prefix = "    ".repeat(level);
     s.lines()
@@ -43,6 +59,61 @@ from typing import Optional, List, Tuple, Union
 import enum
 import inspect
 
+
+class DecodeError(Exception):
+    pass
+
+
+class EnumValueError(DecodeError):
+    def __init__(self, packet_name: str, field_name: str, enum_name: str, value: int):
+        self.packet_name = packet_name
+        self.field_name = field_name
+        self.enum_name = enum_name
+        self.value = value
+        super().__init__(f"invalid {packet_name}.{field_name} value: {value} is not a valid {enum_name} value")
+
+
+class FixedValueError(DecodeError):
+    def __init__(self, packet_name: str, expected_value: int, actual_value: int):
+        self.packet_name = packet_name
+        self.expected_value = expected_value
+        self.actual_value = actual_value
+        super().__init__(f"invalid {packet_name} fixed value: expected {expected_value}, got {actual_value}")
+
+
+class ConstraintValueError(DecodeError):
+    def __init__(self, packet_name: str, field_name: int, expected_value: int, actual_value: int):
+        self.packet_name = packet_name
+        self.field_name = field_name
+        self.expected_value = expected_value
+        self.actual_value = actual_value
+        super().__init__(f"invalid {packet_name}.{field_name} value: expected {expected_value}, got {actual_value}")
+
+
+class LengthError(DecodeError):
+    def __init__(self, packet_name: str, expected_size: int, actual_size: int):
+        self.packet_name = packet_name
+        self.expected_size = expected_size
+        self.actual_size = actual_size
+        super().__init__(f"invalid {packet_name} input size: expected {expected_size}, got {actual_size}")
+
+
+class ArraySizeError(DecodeError):
+    def __init__(self, packet_name: str, field_name: int, array_size: int, element_size: int):
+        self.packet_name = packet_name
+        self.field_name = field_name
+        self.array_size = array_size
+        self.element_size = element_size
+        super().__init__(f"invalid {packet_name}.{field_name} size: {array_size} is not a multiple of the element size {element_size}")
+
+
+class TrailingBytesError(DecodeError):
+    def __init__(self, packet_name: str, trailing_size: int):
+        self.packet_name = packet_name
+        self.trailing_size = trailing_size
+        super().__init__(f"unexpected {packet_name} parsing remainder of size {trailing_size}")
+
+
 @dataclass
 class Packet:
     payload: Optional[bytes] = field(repr=False, default_factory=bytes, compare=False)
@@ -51,7 +122,7 @@ class Packet:
     def parse_all(cls, span: bytes) -> 'Packet':
         packet, remain = getattr(cls, 'parse')(span)
         if len(remain) > 0:
-            raise Exception('Unexpected parsing remainder')
+            raise TrailingBytesError(cls.__name__, len(remain))
         return packet
 
     @property
@@ -195,8 +266,12 @@ pub fn generate(
             ast::DeclDesc::Enum { id, tags, width } => {
                 code.push_str(&generate_enum_declaration(id, tags, *width));
             }
+            ast::DeclDesc::Packet { parent_id: None, .. }
+            | ast::DeclDesc::Struct { parent_id: None, .. } => {
+                code.push_str(&generate_toplevel_packet_declaration(&scope, &schema, file, decl));
+            }
             ast::DeclDesc::Packet { .. } | ast::DeclDesc::Struct { .. } => {
-                code.push_str(&generate_packet_declaration(&scope, &schema, file, decl));
+                code.push_str(&generate_derived_packet_declaration(&scope, &schema, file, decl));
             }
             _ => {}
         }
@@ -228,7 +303,7 @@ fn generate_enum_declaration(id: &str, tags: &[ast::Tag], _width: usize) -> Stri
                 unknown_handler.push("    return v".to_string());
             }
         }
-        unknown_handler.push("raise ValueError('Invalid enum value')".to_string());
+        unknown_handler.push(format!(r#"raise EnumValueError("", "", "{id}", v)"#));
     }
 
     format!(
@@ -249,111 +324,148 @@ class {enum_name}(enum.IntEnum):
     )
 }
 
-fn generate_packet_declaration<'a>(
+fn generate_packet_field_declarations<'a>(
+    scope: &'a analyzer::Scope<'a>,
+    decl: &ast::Decl,
+) -> Vec<String> {
+    let mut field_decls = Vec::new();
+    for field in decl.fields() {
+        if field.cond.is_some() {
+            match &field.desc {
+                ast::FieldDesc::Scalar { id, .. } => {
+                    field_decls
+                        .push(format!("{id}: Optional[int] = field(kw_only=True, default=None)"));
+                }
+                ast::FieldDesc::Typedef { id, type_id, .. } => {
+                    field_decls.push(format!(
+                        "{id}: Optional[{type_id}] = field(kw_only=True, default=None)",
+                    ));
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            match &field.desc {
+                ast::FieldDesc::Scalar { id, .. } => {
+                    field_decls.push(format!("{id}: int = field(kw_only=True, default=0)"));
+                }
+                ast::FieldDesc::Typedef { id, type_id, .. } => {
+                    let type_decl = scope.typedef.get(type_id.as_str()).unwrap();
+                    match &type_decl.desc {
+                        ast::DeclDesc::Enum { tags, .. } => {
+                            field_decls.push(match tags.first() {
+                                Some(ast::Tag::Range(t)) => {
+                                    format!(
+                                        "{id}: {type_id} = field(kw_only=True, default={})",
+                                        t.range.start())
+                                }
+                                Some(ast::Tag::Value(t)) => {
+                                    format!(
+                                        "{id}: {type_id} = field(kw_only=True, default={type_id}.{})",
+                                        t.id)
+                                }
+                                Some(_) => todo!(),
+                                None => unreachable!(),
+                            });
+                        }
+                        ast::DeclDesc::Checksum { .. } => {
+                            field_decls
+                                .push(format!("{id}: int = field(kw_only=True, default=0)",));
+                        }
+                        ast::DeclDesc::Struct { .. } | ast::DeclDesc::CustomField { .. } => {
+                            field_decls.push(format!(
+                                "{id}: {type_id} = field(kw_only=True, default_factory={type_id})",
+                            ));
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                ast::FieldDesc::Array { id, width: Some(8), .. } => {
+                    field_decls.push(format!(
+                        "{id}: bytearray = field(kw_only=True, default_factory=bytearray)",
+                    ));
+                }
+                ast::FieldDesc::Array { id, width: Some(_), .. } => {
+                    field_decls.push(format!(
+                        "{id}: List[int] = field(kw_only=True, default_factory=list)",
+                    ));
+                }
+                ast::FieldDesc::Array { id, width: None, type_id: Some(type_id), .. } => {
+                    field_decls.push(format!(
+                        "{id}: List[{type_id}] = field(kw_only=True, default_factory=list)",
+                    ));
+                }
+                // Handled via presence of optional fields
+                ast::FieldDesc::Flag { .. }
+                | ast::FieldDesc::Padding { .. }
+                | ast::FieldDesc::Reserved { .. }
+                | ast::FieldDesc::Checksum { .. }
+                | ast::FieldDesc::FixedScalar { .. }
+                | ast::FieldDesc::FixedEnum { .. }
+                | ast::FieldDesc::ElementSize { .. }
+                | ast::FieldDesc::Size { .. }
+                | ast::FieldDesc::Count { .. }
+                | ast::FieldDesc::Payload { .. }
+                | ast::FieldDesc::Body => (),
+                _ => unreachable!(),
+            }
+        }
+    }
+    field_decls
+}
+
+fn generate_toplevel_packet_declaration<'a>(
     scope: &'a analyzer::Scope<'a>,
     schema: &analyzer::Schema,
     file: &ast::File,
     decl: &ast::Decl,
 ) -> String {
-    let id = decl.id().unwrap();
-
-    let mut field_decls = Vec::new();
-    for field in decl.fields() {
-        if field.cond.is_some() {
-            match &field.desc {
-                ast::FieldDesc::Scalar { .. } => {
-                    field_decls.push(format!(
-                        "{}: Optional[int] = field(kw_only=True, default=None)",
-                        field.id().unwrap()
-                    ));
-                }
-                ast::FieldDesc::Typedef { type_id, .. } => {
-                    field_decls.push(format!(
-                        "{}: Optional[{}] = field(kw_only=True, default=None)",
-                        field.id().unwrap(),
-                        type_id
-                    ));
-                }
-                _ => {}
-            }
-        } else {
-            match &field.desc {
-                // Handled via presence of optional fields
-                ast::FieldDesc::Flag { .. } => (),
-                ast::FieldDesc::Scalar { id: field_id, .. } => {
-                    field_decls.push(format!("{}: int = field(kw_only=True, default=0)", field_id));
-                }
-                ast::FieldDesc::Typedef { id: field_id, type_id, .. } => {
-                    let type_decl = scope.typedef.get(type_id.as_str()).unwrap();
-                    match &type_decl.desc {
-                        ast::DeclDesc::Enum { tags, .. } => {
-                            if let Some(ast::Tag::Range(t)) = tags.first() {
-                                field_decls.push(format!(
-                                    "{}: {} = field(kw_only=True, default={})",
-                                    field_id,
-                                    type_id,
-                                    t.range.start()
-                                ));
-                            } else if let Some(ast::Tag::Value(t)) = tags.first() {
-                                field_decls.push(format!(
-                                    "{}: {} = field(kw_only=True, default={}.{})",
-                                    field_id, type_id, type_id, t.id
-                                ));
-                            }
-                        }
-                        ast::DeclDesc::Checksum { .. } => {
-                            field_decls.push(format!(
-                                "{}: int = field(kw_only=True, default=0)",
-                                field_id
-                            ));
-                        }
-                        ast::DeclDesc::Struct { .. } | ast::DeclDesc::CustomField { .. } => {
-                            field_decls.push(format!(
-                                "{}: {} = field(kw_only=True, default_factory={})",
-                                field_id, type_id, type_id
-                            ));
-                        }
-                        _ => {}
-                    }
-                }
-                ast::FieldDesc::Array { id: field_id, width: Some(8), .. } => {
-                    field_decls.push(format!(
-                        "{field_id}: bytearray = field(kw_only=True, default_factory=bytearray)",
-                    ));
-                }
-                ast::FieldDesc::Array { id: field_id, width: Some(_), .. } => {
-                    field_decls.push(format!(
-                        "{field_id}: List[int] = field(kw_only=True, default_factory=list)",
-                    ));
-                }
-                ast::FieldDesc::Array {
-                    id: field_id, width: None, type_id: Some(type_id), ..
-                } => {
-                    field_decls.push(format!(
-                        "{field_id}: List[{type_id}] = field(kw_only=True, default_factory=list)",
-                    ));
-                }
-                _ => {}
-            }
-        }
-    }
-
-    let (parent_name, parent_fields, serializer) = if let Some(parent) = scope.get_parent(decl) {
-        (
-            parent.id().unwrap().to_string(),
-            "fields: dict, ".to_string(),
-            generate_derived_packet_serializer(scope, schema, file, decl),
-        )
-    } else {
-        (
-            "Packet".to_string(),
-            "".to_string(),
-            generate_toplevel_packet_serializer(scope, schema, file, decl),
-        )
-    };
-
+    let packet_name = decl.id().unwrap();
+    let field_decls = generate_packet_field_declarations(scope, decl);
+    let serializer = generate_toplevel_packet_serializer(scope, schema, file, decl);
     let parser = generate_packet_parser(scope, schema, file, decl);
-    let size = generate_packet_size_property(scope, schema, decl);
+    let encoded_size = generate_packet_size_property(scope, schema, decl);
+    let post_init = generate_packet_post_init(scope, decl);
+
+    format!(
+        r#"
+@dataclass
+class {packet_name}(Packet):
+{field_decls}
+
+    def __post_init__(self) -> None:
+{post_init}
+
+    @staticmethod
+    def parse(span: bytes) -> Tuple['{packet_name}', bytes]:
+{parser}
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+{serializer}
+
+    @property
+    def encoded_size(self) -> int:
+{encoded_size}
+"#,
+        field_decls = indent(&field_decls.join("\n"), 1),
+        post_init = indent(&post_init.join("\n"), 2),
+        parser = indent(&parser.join("\n"), 2),
+        serializer = indent(&serializer.join("\n"), 2),
+        encoded_size = indent(&encoded_size.join("\n"), 2)
+    )
+}
+
+fn generate_derived_packet_declaration<'a>(
+    scope: &'a analyzer::Scope<'a>,
+    schema: &analyzer::Schema,
+    file: &ast::File,
+    decl: &ast::Decl,
+) -> String {
+    let packet_name = decl.id().unwrap();
+    let parent_name = decl.parent_id().unwrap();
+    let field_decls = generate_packet_field_declarations(scope, decl);
+    let serializer = generate_derived_packet_serializer(scope, schema, file, decl);
+    let parser = generate_packet_parser(scope, schema, file, decl);
+    let encoded_size = generate_packet_size_property(scope, schema, decl);
     let post_init = generate_packet_post_init(scope, decl);
 
     format!(
@@ -366,24 +478,21 @@ class {packet_name}({parent_name}):
 {post_init}
 
     @staticmethod
-    def parse({parent_fields}span: bytes) -> Tuple['{packet_name}', bytes]:
+    def parse(fields: dict, span: bytes) -> Tuple['{packet_name}', bytes]:
 {parser}
 
     def serialize(self, payload: Optional[bytes] = None) -> bytes:
 {serializer}
 
     @property
-    def size(self) -> int:
-{size}
+    def encoded_size(self) -> int:
+{encoded_size}
 "#,
-        packet_name = id,
-        parent_name = parent_name,
-        parent_fields = parent_fields,
         field_decls = indent(&field_decls.join("\n"), 1),
         post_init = indent(&post_init.join("\n"), 2),
         parser = indent(&parser.join("\n"), 2),
         serializer = indent(&serializer.join("\n"), 2),
-        size = indent(&size.join("\n"), 2)
+        encoded_size = indent(&encoded_size.join("\n"), 2)
     )
 }
 
@@ -446,7 +555,7 @@ fn generate_packet_size_property<'a>(
                         }
                         _ => {
                             variable_width.push(format!(
-                                "(0 if self.{field_id} is None else self.{field_id}.size)",
+                                "(0 if self.{field_id} is None else self.{field_id}.encoded_size)",
                             ));
                         }
                     }
@@ -471,7 +580,7 @@ fn generate_packet_size_property<'a>(
                 variable_width.push("len(self.payload)".to_string());
             }
             ast::FieldDesc::Typedef { id: field_id, .. } => {
-                variable_width.push(format!("self.{}.size", field_id));
+                variable_width.push(format!("self.{}.encoded_size", field_id));
             }
             ast::FieldDesc::Array { id: field_id, width: Some(8), .. } => {
                 variable_width.push(format!("len(self.{field_id})"));
@@ -486,7 +595,7 @@ fn generate_packet_size_property<'a>(
                         variable_width.push(format!("len(self.{field_id}) * {}", width / 8));
                     }
                     _ => {
-                        variable_width.push(format!("sum([elt.size for elt in self.{field_id}])",));
+                        variable_width.push(format!("sum([elt.encoded_size for elt in self.{field_id}])",));
                     }
                 }
             }
@@ -570,27 +679,29 @@ fn generate_packet_parser<'a>(
     file: &ast::File,
     decl: &ast::Decl,
 ) -> Vec<String> {
-    let mut validation = Vec::new();
-    let mut conds = Vec::new();
+    let mut code = if scope.get_parent(decl).is_none() {
+        vec!["fields = {'payload': None}".to_string()]
+    } else {
+        vec![]
+    };
+
+    let packet_name = decl.id().unwrap();
 
     for c in scope.iter_constraints(decl) {
         match c {
             ast::Constraint { id, value: Some(v), .. } => {
-                conds.push(format!("fields['{id}'] != {v}"));
+                code.push(format!("if fields['{id}'] != {v}:"));
+                code.push(format!(r#"    raise ConstraintValueError("{packet_name}", "{id}", {v}, fields['{id}'])"#));
             }
             ast::Constraint { id, tag_id: Some(tag_id), .. } => {
                 let field = scope.iter_fields(decl).find(|f| f.id() == Some(&c.id)).unwrap();
                 if let ast::FieldDesc::Typedef { type_id, .. } = &field.desc {
-                    conds.push(format!("fields['{id}'] != {type_id}.{tag_id}"));
+                    code.push(format!("if fields['{id}'] != {type_id}.{tag_id}:"));
+                    code.push(format!(r#"    raise ConstraintValueError("{packet_name}", "{id}", int({type_id}.{tag_id}), int(fields['{id}']))"#));
                 }
             }
             _ => unreachable!(),
         }
-    }
-
-    if !conds.is_empty() {
-        validation.push(format!("if {}:", conds.join(" or ")));
-        validation.push("    raise Exception(\"Invalid constraint field values\")".to_string());
     }
 
     // Parse fields iteratively.
@@ -602,33 +713,52 @@ fn generate_packet_parser<'a>(
 
     // Specialize to child packets.
     let children = get_specialized_children(file, decl);
-    let mut specialization = Vec::new();
-    for child in children {
-        // Try parsing every child packet successively until one is
-        // successfully parsed. Return a parsing error if none is valid.
-        // Return parent packet if no child packet matches.
-        // TODO: order child packets by decreasing size in case no constraint
-        // is given for specialization.
-        specialization.push("try:".to_string());
-        specialization.push(format!(
-            "    child, remainder = {}.parse(fields.copy(), payload)",
-            child.id().unwrap()
-        ));
-        specialization.push("    if remainder:".to_string());
-        specialization.push("        raise Exception('Unexpected parsing remainder')".to_string());
-        specialization.push("    return child, span".to_string());
-        specialization.push("except Exception:".to_string());
-        specialization.push("    pass".to_string());
+    let mut specialization = CodeBlock::default();
+
+    // Try parsing every child packet successively until one is
+    // successfully parsed. Return a parsing error if none is valid.
+    // Return parent packet if no child packet matches.
+    // TODO: order child packets by decreasing size in case no constraint
+    // is given for specialization.
+    match &children.as_slice() {
+        [] => (),
+        [child] => {
+            let child_name = child.id().unwrap();
+            specialization.append(format!(
+                r#"
+try:
+    child, remainder = {child_name}.parse(fields, payload)
+    if remainder:
+        raise TrailingBytesError("{child_name}", len(remainder))
+    return child, span
+except DecodeError:
+    pass
+                        "#
+            ));
+        }
+        _ => {
+            let children_classes = children
+                .iter()
+                .map(|child| child.id().unwrap())
+                .collect::<Vec<_>>()
+                .join(",\n            ");
+            specialization.append(format!(
+                r#"
+for cls in [{children_classes}]:
+    try:
+        child, remainder = cls.parse(fields, payload)
+        if remainder:
+            raise TrailingBytesError(cls.__name__, len(remainder))
+        return child, span
+    except DecodeError:
+        pass
+                        "#
+            ));
+        }
     }
 
-    let mut code = if scope.get_parent(decl).is_none() {
-        vec!["fields = {'payload': None}".to_string()]
-    } else {
-        vec![]
-    };
-    code.extend(validation);
-    code.extend(parser.code);
-    code.extend(specialization);
+    code.extend(parser.code.lines);
+    code.extend(specialization.lines);
     code.push(format!("return {}(**fields), span", decl.id().unwrap()));
     code
 }
@@ -641,8 +771,8 @@ struct FieldParser<'a> {
     offset: usize,
     shift: usize,
     chunk: Vec<(usize, usize, &'a ast::Field)>,
-    unchecked_code: Vec<String>,
-    code: Vec<String>,
+    unchecked_code: CodeBlock,
+    code: CodeBlock,
 }
 
 impl<'a> FieldParser<'a> {
@@ -660,38 +790,41 @@ impl<'a> FieldParser<'a> {
             offset: 0,
             shift: 0,
             chunk: Vec::new(),
-            unchecked_code: Vec::new(),
-            code: Vec::new(),
+            unchecked_code: CodeBlock::default(),
+            code: CodeBlock::default(),
         }
     }
 
-    fn unchecked_append(&mut self, line: String) {
-        self.unchecked_code.push(line);
+    fn unchecked_append(&mut self, code: String) {
+        self.unchecked_code.append(code);
     }
 
     fn do_append(&mut self, code: String) {
-        for line in code.split('\n') {
-            self.code.push(line.to_string());
-        }
+        self.code.append(code)
     }
 
     fn append(&mut self, code: String) {
         self.check_code();
-        self.do_append(code);
+        self.code.append(code);
     }
 
     fn check_size(&mut self, size: String) {
-        self.do_append(format!("if len(span) < {}:", size));
-        self.do_append("    raise Exception('Invalid packet size')".to_string());
+        let packet_name = self.decl.id().unwrap();
+        self.code.append(format!(
+            r#"
+if len(span) < {size}:
+    raise LengthError("{packet_name}", {size}, len(span))
+            "#
+        ));
     }
 
     fn check_code(&mut self) {
         if !self.unchecked_code.is_empty() {
             assert!(self.chunk.is_empty());
-            let unchecked_code = std::mem::take(&mut self.unchecked_code);
+            let unchecked_code = std::mem::take(&mut self.unchecked_code.lines);
             let offset = self.offset;
             self.check_size(offset.to_string());
-            self.code.extend(unchecked_code);
+            self.code.lines.extend(unchecked_code);
         }
     }
 
@@ -699,7 +832,7 @@ impl<'a> FieldParser<'a> {
         if self.offset > 0 {
             self.check_code();
             let offset = self.offset;
-            self.do_append(format!("span = span[{}:]", offset - keep));
+            self.code.append(format!("span = span[{}:]", offset - keep));
             self.offset = 0;
         }
     }
@@ -737,7 +870,9 @@ impl<'a> FieldParser<'a> {
             "value_".to_string()
         };
 
+        let packet_name = self.decl.id().unwrap();
         let chunk = std::mem::take(&mut self.chunk);
+
         for (shift, width, field) in chunk {
             let v = if shift == 0 && width == self.shift {
                 value.clone()
@@ -750,35 +885,36 @@ impl<'a> FieldParser<'a> {
                     self.unchecked_append(format!("fields['{}'] = {}", id, v));
                 }
                 ast::FieldDesc::FixedScalar { value, .. } => {
-                    self.unchecked_append(format!("if {} != {:#x}:", v, value));
-                    self.unchecked_append(
-                        "    raise Exception('Unexpected fixed field value')".to_string(),
-                    );
-                }
-                ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
-                    self.unchecked_append(format!("if {} != {}.{}:", v, enum_id, tag_id));
-                    self.unchecked_append(
-                        "    raise Exception('Unexpected fixed field value')".to_string(),
-                    );
-                }
-                ast::FieldDesc::Typedef { id, type_id, .. } => {
                     self.unchecked_append(format!(
-                        "fields['{}'] = {}.from_int({})",
-                        id, type_id, v
+                        r#"
+if {v} != {value:#x}:
+    raise FixedValueError("{packet_name}", {v}, {value})
+                        "#
                     ));
                 }
+                ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
+                    self.unchecked_append(format!(
+                        r#"
+if {v} != {enum_id}.{tag_id}:
+    raise FixedValueError("{packet_name}", {v}, int({enum_id}.{tag_id}))
+                        "#
+                    ));
+                }
+                ast::FieldDesc::Typedef { id, type_id, .. } => {
+                    self.unchecked_append(format!("fields['{id}'] = {type_id}.from_int({v})"));
+                }
                 ast::FieldDesc::Size { field_id, .. } => {
-                    self.unchecked_append(format!("{}_size = {}", field_id, v));
+                    self.unchecked_append(format!("{field_id}_size = {v}"));
                 }
                 ast::FieldDesc::Count { field_id, .. } => {
-                    self.unchecked_append(format!("{}_count = {}", field_id, v));
+                    self.unchecked_append(format!("{field_id}_count = {v}"));
                 }
                 ast::FieldDesc::ElementSize { .. } => {
                     todo!()
                 }
                 ast::FieldDesc::Reserved { .. } => {}
                 ast::FieldDesc::Flag { id, .. } => {
-                    self.unchecked_append(format!("{} = {}", id, v));
+                    self.unchecked_append(format!("{id} = {v}"));
                 }
                 _ => unreachable!(),
             }
@@ -797,6 +933,7 @@ impl<'a> FieldParser<'a> {
 
         let value_size = self.schema.field_size(value_field.key).static_().unwrap() / 8;
 
+        let packet_name = self.decl.id().unwrap();
         let mut offset_from_start: isize = -1;
         let mut offset_from_end: isize = -1;
         let mut found_start = false;
@@ -854,61 +991,60 @@ impl<'a> FieldParser<'a> {
 
         if offset_from_start != -1 {
             let offset_bytes = offset_from_start / 8;
+            let start_offset = offset_bytes + value_size as isize;
+
             self.unchecked_append(format!(
-                "if len(span) < {}:",
-                offset_bytes + value_size as isize
+                r#"
+if len(span) < {start_offset}:
+    raise LengthError("{packet_name}", {start_offset}, len(span))
+                "#
             ));
-            self.unchecked_append("    raise Exception('Invalid packet size')".to_string());
+
             let value = if value_size > 1 {
                 format!(
-                    "int.from_bytes(span[{}:{}], byteorder='{}')",
-                    offset_bytes,
-                    offset_bytes + value_size as isize,
-                    byteorder
+                    "int.from_bytes(span[{offset_bytes}:{start_offset}], byteorder='{byteorder}')"
                 )
             } else {
-                format!("span[{}]", offset_bytes)
+                format!("span[{offset_bytes}]")
             };
-            self.unchecked_append(format!("{} = {}", id, value));
-            self.unchecked_append(format!("fields['{}'] = {}", id, id));
+
             self.unchecked_append(format!(
-                "computed_{} = {}(span[:{}])",
-                id, function, offset_bytes
-            ));
-            self.unchecked_append(format!("if computed_{} != {}:", id, id));
-            self.unchecked_append(format!(
-                "    raise Exception(f'Invalid checksum computation: {{computed_{}}} != {{{}}}')",
-                id, id
+                r#"
+{id} = {value}
+fields['{id}'] = {id}
+computed_{id} = {function}(span[:{offset_bytes}])
+if computed_{id} != {id}:
+    raise Exception(f'Invalid checksum computation: {{computed_{id}}} != {{{id}}}')
+                "#,
             ));
         } else if offset_from_end != -1 {
             let offset_bytes = offset_from_end / 8;
+            let end_offset = offset_bytes + value_size as isize;
+
             self.unchecked_append(format!(
-                "if len(span) < {}:",
-                offset_bytes + value_size as isize
+                r#"
+if len(span) < {end_offset}:
+    raise LengthError("{packet_name}", {end_offset}, len(span))
+                "#,
             ));
-            self.unchecked_append("    raise Exception('Invalid packet size')".to_string());
+
             let value = if value_size > 1 {
                 format!(
-                    "int.from_bytes(span[-{}:-{}], byteorder='{}')",
-                    offset_bytes + value_size as isize,
+                    "int.from_bytes(span[-{end_offset}:-{}], byteorder='{byteorder}')",
                     if offset_bytes == 0 { "".to_string() } else { offset_bytes.to_string() },
-                    byteorder
                 )
             } else {
-                format!("span[-{}]", offset_bytes + value_size as isize)
+                format!("span[-{end_offset}]")
             };
-            self.unchecked_append(format!("{} = {}", id, value));
-            self.unchecked_append(format!("fields['{}'] = {}", id, id));
+
             self.unchecked_append(format!(
-                "computed_{} = {}(span[:-{}])",
-                id,
-                function,
-                offset_bytes + value_size as isize
-            ));
-            self.unchecked_append(format!("if computed_{} != {}:", id, id));
-            self.unchecked_append(format!(
-                "    raise Exception(f'Invalid checksum computation: {{computed_{}}} != {{{}}}')",
-                id, id
+                r#"
+{id} = {value}
+fields['{id}'] = {id}
+computed_{id} = {function}(span[:-{end_offset}])
+if computed_{id} != {id}:
+    raise Exception(f'Invalid checksum computation: {{computed_{id}}} != {{{id}}}')
+                "#
             ));
         }
     }
@@ -925,27 +1061,32 @@ impl<'a> FieldParser<'a> {
         match self.schema.field_size(field.key) {
             analyzer::Size::Static(w) => {
                 let size = w / 8;
+                let start_offset = self.offset;
                 let end_offset = self.offset + size;
                 let type_decl = self.scope.typedef.get(type_id.as_str()).unwrap();
                 if matches!(type_decl.desc, ast::DeclDesc::Checksum { .. }) {
                     // Handled by parse_checksum_start.
                 } else {
                     self.unchecked_append(format!(
-                        "fields['{}'] = {}.parse_all(span[{}:{}])",
-                        id, type_id, self.offset, end_offset
+                        "fields['{id}'] = {type_id}.parse_all(span[{start_offset}:{end_offset}])",
                     ));
                 }
                 self.offset = end_offset;
             }
             _ => {
                 self.consume_span(0);
-                self.append(format!("{}, span = {}.parse(span)", id, type_id));
-                self.append(format!("fields['{}'] = {}", id, id));
+                self.append(format!(
+                    r#"
+{id}, span = {type_id}.parse(span)
+fields['{id}'] = {id}
+                    "#
+                ));
             }
         }
     }
 
     fn parse_payload_field(&mut self, field: &'a ast::Field) {
+        let packet_name = self.decl.id().unwrap();
         self.consume_span(0);
         let id = match &field.desc {
             ast::FieldDesc::Payload { .. } => "_payload_",
@@ -962,10 +1103,14 @@ impl<'a> FieldParser<'a> {
             if let ast::FieldDesc::Payload { size_modifier: Some(modifier), .. } = &field.desc {
                 self.append(format!("{}_size -= {}", id, modifier));
             }
-            self.append(format!("if len(span) < {}_size:", id));
-            self.append("    raise Exception('Invalid packet size')".to_string());
-            self.append(format!("payload = span[:{}_size]", id));
-            self.append(format!("span = span[{}_size:]", id));
+            self.append(format!(
+                r#"
+if len(span) < {id}_size:
+    raise LengthError("{packet_name}", {id}_size, len(span))
+payload = span[:{id}_size]
+span = span[{id}_size:]
+                "#
+            ));
         } else {
             let mut offset_from_end = 0;
             let mut found = false;
@@ -982,14 +1127,23 @@ impl<'a> FieldParser<'a> {
             }
 
             if offset_from_end == 0 {
-                self.append("payload = span".to_string());
-                self.append("span = bytes([])".to_string());
+                self.append(
+                    r#"
+payload = span
+span = bytes([])
+                    "#
+                    .to_string(),
+                );
             } else {
                 let offset_bytes = offset_from_end / 8;
-                self.append(format!("if len(span) < {}:", offset_bytes));
-                self.append("    raise Exception('Invalid packet size')".to_string());
-                self.append(format!("payload = span[:-{}]", offset_bytes));
-                self.append(format!("span = span[-{}:]", offset_bytes));
+                self.append(format!(
+                    r#"
+if len(span) < {offset_bytes}:
+    raise LengthError("{packet_name}", {offset_bytes}, len(span))
+payload = span[:-{offset_bytes}]
+span = span[-{offset_bytes}:]
+                    "#
+                ));
             }
         }
         self.append("fields['payload'] = payload".to_string());
@@ -1003,6 +1157,7 @@ impl<'a> FieldParser<'a> {
         let element_size = analyzer::element_size(self.scope, self.schema, self.decl, field);
         let array_size = analyzer::array_size(self.decl, field);
         let padded_size = self.schema.padded_size(field.key);
+        let packet_name = self.decl.id().unwrap();
 
         // Shift the span to reset the offset to 0.
         self.consume_span(0);
@@ -1072,8 +1227,7 @@ impl<'a> FieldParser<'a> {
                 self.check_size(format!("{id}_size"));
                 self.append(format!("if {id}_size % {element_size} != 0:"));
                 self.append(
-                    "    raise Exception('Array size is not a multiple of the element size')"
-                        .to_string(),
+                    format!(r#"    raise ArraySizeError("{packet_name}", "{id}", {id}_size, {element_size})"#)
                 );
                 self.append(format!("{id}_count = int({id}_size / {element_size})"));
                 self.append(format!("{id} = []"));
@@ -1101,8 +1255,7 @@ impl<'a> FieldParser<'a> {
             (ElementSize::Static(element_size), ArraySize::Unknown) => {
                 self.append(format!("if len(span) % {element_size} != 0:"));
                 self.append(
-                    "    raise Exception('Array size is not a multiple of the element size')"
-                        .to_string(),
+                    format!(r#"    raise ArraySizeError("{packet_name}", "{id}", len(span), {element_size})"#)
                 );
                 self.append(format!("{id}_count = int(len(span) / {element_size})"));
                 self.append(format!("{id} = []"));
@@ -1195,6 +1348,7 @@ impl<'a> FieldParser<'a> {
         self.consume_span(0);
         let cond = field.cond.as_ref().unwrap();
         let id = field.id().unwrap();
+        let packet_name = self.decl.id().unwrap();
         let byteorder = match self.file.endianness.value {
             ast::EndiannessValue::LittleEndian => "little",
             ast::EndiannessValue::BigEndian => "big",
@@ -1204,7 +1358,10 @@ impl<'a> FieldParser<'a> {
             ast::FieldDesc::Scalar { width, .. } => {
                 self.append(format!("if {} == {}:", cond.id, cond.value.unwrap()));
                 self.append(format!("    if len(span) < {}:", width / 8));
-                self.append("        raise Exception('Invalid packet size')".to_string());
+                self.append(format!(
+                    r#"        raise LengthError("{packet_name}", {}, len(span))"#,
+                    width / 8
+                ));
                 self.append(format!(
                     "    fields['{}'] = int.from_bytes(span[:{}], byteorder='{}')",
                     id,
@@ -1219,7 +1376,10 @@ impl<'a> FieldParser<'a> {
                     ast::DeclDesc::Enum { width, .. } => {
                         self.append(format!("if {} == {}:", cond.id, cond.value.unwrap()));
                         self.append(format!("    if len(span) < {}:", width / 8));
-                        self.append("        raise Exception('Invalid packet size')".to_string());
+                        self.append(format!(
+                            r#"        raise LengthError("{packet_name}", {}, len(span))"#,
+                            width / 8
+                        ));
                         self.append(format!(
                             "    fields['{}'] = {}(int.from_bytes(span[:{}], byteorder='{}'))",
                             id,
@@ -1401,7 +1561,7 @@ impl<'a> FieldSerializer<'a> {
                                 format!("len(self.{field_id}) * {size}")
                             }
                             analyzer::ElementSize::Dynamic | analyzer::ElementSize::Unknown => {
-                                format!("sum(elt.size for elt in self.{field_id})")
+                                format!("sum(elt.encoded_size for elt in self.{field_id})")
                             }
                         };
                         let size_modifier = if let Some(size_modifier) = size_modifier {
