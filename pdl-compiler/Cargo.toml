@@ -1,6 +1,6 @@
 [package]
 name = "pdl-compiler"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 rust-version = "1.87"
 description = "Parser and serializer generator for protocol binary packets"
