@@ -58,6 +58,14 @@ pub fn rust_type(field: &ast::Field) -> proc_macro2::TokenStream {
             let field_type = Integer::new(*width);
             quote!(#field_type)
         }
+        ast::FieldDesc::Enum { enum_id, .. } if field.cond.is_some() => {
+            let field_type = enum_id.to_ident();
+            quote!(Option<#field_type>)
+        }
+        ast::FieldDesc::Enum { enum_id, .. } => {
+            let field_type = enum_id.to_ident();
+            quote!(#field_type)
+        }
         ast::FieldDesc::Typedef { type_id, .. } if field.cond.is_some() => {
             let field_type = type_id.to_ident();
             quote!(Option<#field_type>)
