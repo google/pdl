@@ -64,6 +64,18 @@
           "a": 0,
           "c": 283686952306183
         }
+      },
+      {
+        "packed": "",
+        "expected_error": "LengthError"
+      },
+      {
+        "packed": "000000",
+        "expected_error": "LengthError"
+      },
+      {
+        "packed": "000000000000000000",
+        "expected_error": "TrailingBytesError"
       }
     ]
   },
@@ -111,6 +123,18 @@
           "a": 2,
           "c": 4523477106694685
         }
+      },
+      {
+        "packed": "0000000000000000",
+        "expected_error": "EnumValueError"
+      },
+      {
+        "packed": "0500000000000000",
+        "expected_error": "EnumValueError"
+      },
+      {
+        "packed": "7e00000000000000",
+        "expected_error": "EnumValueError"
       }
     ]
   },
@@ -344,6 +368,14 @@
         "unpacked": {
           "b": 29507425461658859
         }
+      },
+      {
+        "packed": "0000000000000000",
+        "expected_error": "FixedValueError"
+      },
+      {
+        "packed": "0600000000000000",
+        "expected_error": "FixedValueError"
       }
     ]
   },
@@ -367,6 +399,14 @@
         "unpacked": {
           "b": 32055067271627274
         }
+      },
+      {
+        "packed": "0200000000000000",
+        "expected_error": "FixedValueError"
+      },
+      {
+        "packed": "0400000000000000",
+        "expected_error": "FixedValueError"
       }
     ]
   },
@@ -1099,6 +1139,10 @@
             ]
           }
         }
+      },
+      {
+        "packed": "aa02",
+        "expected_error": "LengthError"
       }
     ]
   },
@@ -1115,6 +1159,14 @@
             134
           ]
         }
+      },
+      {
+        "packed": "0102",
+        "expected_error": "LengthError"
+      },
+      {
+        "packed": "0102030405",
+        "expected_error": "TrailingBytesError"
       }
     ]
   },
@@ -1243,6 +1295,10 @@
             48613
           ]
         }
+      },
+      {
+        "packed": "03010203",
+        "expected_error": "ArraySizeError"
       }
     ]
   },
@@ -1313,6 +1369,10 @@
             52445
           ]
         }
+      },
+      {
+        "packed": "bbaaddccbbaaddee",
+        "expected_error": "EnumValueError"
       }
     ]
   },
@@ -2494,6 +2554,14 @@
           "a": 52445,
           "b": 52445
         }
+      },
+      {
+        "packed": "0212345678",
+        "expected_error": "EnumValueError"
+      },
+      {
+        "packed": "02ddccddcc00",
+        "expected_error": "TrailingBytesError"
       }
     ]
   },
@@ -5162,6 +5230,14 @@
         "unpacked": {
           "e": 1
         }
+      },
+      {
+        "packed": "02",
+        "expected_error": "EnumValueError"
+      },
+      {
+        "packed": "07",
+        "expected_error": "EnumValueError"
       }
     ]
   },
@@ -5372,102 +5448,6 @@
         "unpacked": {
           "e": 255
         }
-      }
-    ]
-  },
-
-  {
-    "packet": "Packet_Scalar_Field",
-    "tests": [
-      {
-        "packed": "",
-        "expected_error": "LengthError"
-      },
-      {
-        "packed": "000000",
-        "expected_error": "LengthError"
-      },
-      {
-        "packed": "000000000000000000",
-        "expected_error": "TrailingBytesError"
-      }
-    ]
-  },
-  {
-    "packet": "Packet_Enum_Field",
-    "tests": [
-      {
-        "packed": "0000000000000000",
-        "expected_error": "EnumValueError"
-      },
-      {
-        "packed": "0500000000000000",
-        "expected_error": "EnumValueError"
-      },
-      {
-        "packed": "7e00000000000000",
-        "expected_error": "EnumValueError"
-      }
-    ]
-  },
-  {
-    "packet": "Packet_FixedScalar_Field",
-    "tests": [
-      {
-        "packed": "0000000000000000",
-        "expected_error": "FixedValueError"
-      },
-      {
-        "packed": "0600000000000000",
-        "expected_error": "FixedValueError"
-      }
-    ]
-  },
-  {
-    "packet": "Packet_FixedEnum_Field",
-    "tests": [
-      {
-        "packed": "0200000000000000",
-        "expected_error": "FixedValueError"
-      },
-      {
-        "packed": "0400000000000000",
-        "expected_error": "FixedValueError"
-      }
-    ]
-  },
-  {
-    "packet": "Packet_Array_Field_ByteElement_ConstantSize",
-    "tests": [
-      {
-        "packed": "0102",
-        "expected_error": "LengthError"
-      },
-      {
-        "packed": "0102030405",
-        "expected_error": "TrailingBytesError"
-      }
-    ]
-  },
-  {
-    "packet": "Packet_Array_Field_ScalarElement_VariableSize",
-    "tests": [
-      {
-        "packed": "03010203",
-        "expected_error": "ArraySizeError"
-      }
-    ]
-  },
-  {
-    "packet": "Enum_Incomplete_Truncated_Closed",
-    "tests": [
-      {
-        "packed": "02",
-        "expected_error": "EnumValueError"
-      },
-      {
-        "packed": "07",
-        "expected_error": "EnumValueError"
       }
     ]
   }
