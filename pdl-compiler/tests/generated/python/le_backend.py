@@ -1987,12 +1987,12 @@ class Packet_Optional_Enum_Field(Packet):
         if c0 == 0:
             if len(span) < 2:
                 raise LengthError("Packet_Optional_Enum_Field", 2, len(span))
-            fields['a'] = Enum16(int.from_bytes(span[:2], byteorder='little'))
+            fields['a'] = Enum16.from_int(int.from_bytes(span[:2], byteorder='little'))
             span = span[2:]
         if c1 == 1:
             if len(span) < 2:
                 raise LengthError("Packet_Optional_Enum_Field", 2, len(span))
-            fields['b'] = Enum16(int.from_bytes(span[:2], byteorder='little'))
+            fields['b'] = Enum16.from_int(int.from_bytes(span[:2], byteorder='little'))
             span = span[2:]
         return Packet_Optional_Enum_Field(**fields), span
 
@@ -4425,12 +4425,12 @@ class Struct_Optional_Enum_Field_(Packet):
         if c0 == 0:
             if len(span) < 2:
                 raise LengthError("Struct_Optional_Enum_Field_", 2, len(span))
-            fields['a'] = Enum16(int.from_bytes(span[:2], byteorder='little'))
+            fields['a'] = Enum16.from_int(int.from_bytes(span[:2], byteorder='little'))
             span = span[2:]
         if c1 == 1:
             if len(span) < 2:
                 raise LengthError("Struct_Optional_Enum_Field_", 2, len(span))
-            fields['b'] = Enum16(int.from_bytes(span[:2], byteorder='little'))
+            fields['b'] = Enum16.from_int(int.from_bytes(span[:2], byteorder='little'))
             span = span[2:]
         return Struct_Optional_Enum_Field_(**fields), span
 

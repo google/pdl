@@ -1318,7 +1318,7 @@ span = span[-{offset_bytes}:]
                             width / 8
                         ));
                         self.append(format!(
-                            "    fields['{}'] = {}(int.from_bytes(span[:{}], byteorder='{}'))",
+                            "    fields['{}'] = {}.from_int(int.from_bytes(span[:{}], byteorder='{}'))",
                             id,
                             type_id,
                             width / 8,
@@ -1710,6 +1710,6 @@ mod test {
                 "Packet_Array_Field_VariableElementSize_UnknownSize".to_string(),
             ],
         );
-        assert_snapshot_eq(&format!("tests/generated/python/le_backend.py"), &actual_code);
+        assert_snapshot_eq("tests/generated/python/le_backend.py", &actual_code);
     }
 }
