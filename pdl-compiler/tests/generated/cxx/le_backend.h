@@ -1,5 +1,5 @@
-// File generated from tests/canonical/le_test_file.pdl, with the command:
-//  pdlc ...
+// File generated from tests/canonical/le_test_file.pdl, with the command
+//   pdlc --output-format cxx tests/canonical/le_test_file.pdl
 // /!\ Do not edit by hand
 
 #pragma once
@@ -67,6 +67,10 @@ class Packet_Array_Field_UnsizedElement_UnknownSizeView;
 class Packet_Array_Field_UnsizedElement_SizeModifierView;
 class Packet_Array_Field_SizedElement_VariableSize_PaddedView;
 class Packet_Array_Field_UnsizedElement_VariableCount_PaddedView;
+class Packet_Array_Field_VariableElementSize_ConstantSizeView;
+class Packet_Array_Field_VariableElementSize_VariableSizeView;
+class Packet_Array_Field_VariableElementSize_VariableCountView;
+class Packet_Array_Field_VariableElementSize_UnknownSizeView;
 class Packet_Optional_Scalar_FieldView;
 class Packet_Optional_Enum_FieldView;
 class Packet_Optional_Struct_FieldView;
@@ -134,8 +138,14 @@ inline std::string Enum7Text(Enum7 tag) {
     }
 }
 
-inline bool IsEnum7Valid(Enum7 tag) {
-    return tag == Enum7::A || tag == Enum7::B;
+inline bool IsValidEnum7(uint8_t value) {
+    switch (value) {
+        case 0x1:
+        case 0x2:
+            return true;
+        default:
+            return false;
+    }
 }
 
 enum class Enum16 : uint16_t {
@@ -153,17 +163,23 @@ inline std::string Enum16Text(Enum16 tag) {
     }
 }
 
-inline bool IsEnum16Valid(Enum16 tag) {
-    return tag == Enum16::A || tag == Enum16::B;
+inline bool IsValidEnum16(uint16_t value) {
+    switch (value) {
+        case 0xaabb:
+        case 0xccdd:
+            return true;
+        default:
+            return false;
+    }
 }
 
 class SizedStruct : public pdl::packet::Builder {
 public:
     ~SizedStruct() override = default;
     SizedStruct() = default;
-    explicit SizedStruct(uint8_t a) : a_(std::move(a)) {}
     SizedStruct(SizedStruct const&) = default;
     SizedStruct(SizedStruct&&) = default;
+    explicit SizedStruct(uint8_t a) : a_(std::move(a)) {}
     SizedStruct& operator=(SizedStruct const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, SizedStruct* output) {
@@ -193,9 +209,9 @@ class UnsizedStruct : public pdl::packet::Builder {
 public:
     ~UnsizedStruct() override = default;
     UnsizedStruct() = default;
-    explicit UnsizedStruct(std::vector<uint8_t> array) : array_(std::move(array)) {}
     UnsizedStruct(UnsizedStruct const&) = default;
     UnsizedStruct(UnsizedStruct&&) = default;
+    explicit UnsizedStruct(std::vector<uint8_t> array) : array_(std::move(array)) {}
     UnsizedStruct& operator=(UnsizedStruct const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, UnsizedStruct* output) {
@@ -205,11 +221,14 @@ public:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_size_ = (chunk0 >> 0) & 0x3;
-        if (span.size() < output->array_size_) return false;
-        if ((output->array_size_ % 1) != 0) return false;
-        size_t limit = span.size() - output->array_size_;
-        while (span.size() > limit) {
-            if (span.size() < 1) return false;
+        if (span.size() < output->array_size_) {
+            return false;
+        }
+        if ((output->array_size_ % 1) != 0) {
+            return false;
+        }
+        auto array_count_ = output->array_size_ / 1;
+        for (size_t n = 0; n < array_count_; n++) {
             output->array_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
@@ -238,15 +257,18 @@ class UnknownSizeStruct : public pdl::packet::Builder {
 public:
     ~UnknownSizeStruct() override = default;
     UnknownSizeStruct() = default;
-    explicit UnknownSizeStruct(std::vector<uint8_t> array) : array_(std::move(array)) {}
     UnknownSizeStruct(UnknownSizeStruct const&) = default;
     UnknownSizeStruct(UnknownSizeStruct&&) = default;
+    explicit UnknownSizeStruct(std::vector<uint8_t> array) : array_(std::move(array)) {}
     UnknownSizeStruct& operator=(UnknownSizeStruct const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, UnknownSizeStruct* output) {
         pdl::packet::slice span = parent_span;
-        while (span.size() > 0) {
-            if (span.size() < 1) return false;
+        if ((span.size() % 1) != 0) {
+            return false;
+        }
+        auto array_count_ = span.size() / 1;
+        for (size_t n = 0; n < array_count_; n++) {
             output->array_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
@@ -307,6 +329,9 @@ protected:
         if (span.size() < payload_size_) return false;
         payload_ = span.subrange(0, payload_size_);
         span.skip(payload_size_);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -382,12 +407,18 @@ protected:
         if (span.size() < 3) {
             return false;
         }
-        a_ = static_cast<Enum16>( span.read_le<uint16_t, 2>() );
-        if (!IsEnum16Valid(a_)) return false;
+        auto raw_value = span.read_le<uint16_t, 2>();
+        if (!IsValidEnum16(raw_value)) {
+           return false;
+        }
+        a_ = Enum16(raw_value);
         payload_size_ = span.read_le<uint8_t, 1>();
         if (span.size() < payload_size_) return false;
         payload_ = span.subrange(0, payload_size_);
         span.skip(payload_size_);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -465,6 +496,9 @@ protected:
         pdl::packet::slice span = parent.payload_;
         payload_ = span;
         span.clear();
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -540,7 +574,9 @@ protected:
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
         a_ = (chunk0 >> 0) & 0x7f;
         c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -608,10 +644,15 @@ protected:
             return false;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        a_ = static_cast<Enum7>( (chunk0 >> 0) & 0x7f );
-        if (!IsEnum7Valid(a_)) return false;
+        auto raw_value = (chunk0 >> 0) & 0x7f;
+        if (!IsValidEnum7(raw_value)) {
+           return false;
+        }
+        a_ = Enum7(raw_value);
         c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -681,7 +722,9 @@ protected:
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
         a_ = (chunk0 >> 0) & 0x7f;
         c_ = (chunk0 >> 9) & 0x7fffffffffffff;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -759,11 +802,17 @@ protected:
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
         b_size_ = (chunk0 >> 0) & 0x7;
         a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
-        if (span.size() < b_size_) return false;
-        if ((b_size_ % 1) != 0) return false;
+        if (span.size() < b_size_) {
+            return false;
+        }
+        if ((b_size_ % 1) != 0) {
+            return false;
+        }
         b_ = span.subrange(0, b_size_);
         span.skip(b_size_);
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -847,10 +896,14 @@ protected:
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
         b_count_ = (chunk0 >> 0) & 0x7;
         a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
-        if (span.size() < b_count_ * 1) return false;
-        b_ = span.subrange(0, b_count_ * 1);
-        span.skip(b_count_ * 1);
-        if (span.size() != 0) { return false; }
+        if (span.size() < 1 * b_count_) {
+            return false;
+        }
+        b_ = span.subrange(0, 1 * b_count_);
+        span.skip(1 * b_count_);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -925,7 +978,9 @@ protected:
             return false;
         }
         b_ = (chunk0 >> 7) & 0x1ffffffffffffff;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -993,7 +1048,9 @@ protected:
             return false;
         }
         b_ = (chunk0 >> 7) & 0x1ffffffffffffff;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1063,6 +1120,9 @@ protected:
         if (span.size() < payload_size_) return false;
         payload_ = span.subrange(0, payload_size_);
         span.skip(payload_size_);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1136,6 +1196,9 @@ protected:
         if (span.size() < (payload_size_ - 2)) return false;
         payload_ = span.subrange(0, (payload_size_ - 2));
         span.skip((payload_size_ - 2));
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1210,6 +1273,9 @@ protected:
             return false;
         }
         a_ = span.read_le<uint16_t, 2>();
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1282,6 +1348,9 @@ protected:
         a_ = span.read_le<uint16_t, 2>();
         payload_ = span;
         span.clear();
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1354,6 +1423,9 @@ protected:
         if (span.size() < payload_size_) return false;
         payload_ = span.subrange(0, payload_size_);
         span.skip(payload_size_);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1428,6 +1500,9 @@ protected:
             return false;
         }
         a_ = span.read_le<uint16_t, 2>();
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1500,6 +1575,9 @@ protected:
         a_ = span.read_le<uint16_t, 2>();
         payload_ = span;
         span.clear();
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1567,7 +1645,9 @@ protected:
         if (static_cast<uint64_t>(span.read_le<uint16_t, 2>()) != 0x2a) {
             return false;
         }
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1631,7 +1711,9 @@ protected:
         if (Enum16(span.read_le<uint16_t, 2>()) != Enum16::A) {
             return false;
         }
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1694,7 +1776,9 @@ protected:
         pdl::packet::slice span = parent;
         if (!SizedStruct::Parse(span, &a_)) return false;
         if (!UnsizedStruct::Parse(span, &b_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1770,7 +1854,9 @@ protected:
         }
         array_ = span.subrange(0, 4);
         span.skip(4);
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1845,11 +1931,17 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_size_) return false;
-        if ((array_size_ % 1) != 0) return false;
+        if (span.size() < array_size_) {
+            return false;
+        }
+        if ((array_size_ % 1) != 0) {
+            return false;
+        }
         array_ = span.subrange(0, array_size_);
         span.skip(array_size_);
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -1928,10 +2020,14 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_count_ * 1) return false;
-        array_ = span.subrange(0, array_count_ * 1);
-        span.skip(array_count_ * 1);
-        if (span.size() != 0) { return false; }
+        if (span.size() < 1 * array_count_) {
+            return false;
+        }
+        array_ = span.subrange(0, 1 * array_count_);
+        span.skip(1 * array_count_);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2004,9 +2100,14 @@ protected:
     bool Parse(pdl::packet::slice const& parent) {
         // Parse packet field values.
         pdl::packet::slice span = parent;
+        if ((span.size() % 1) != 0) {
+            return false;
+        }
         array_ = span;
         span.clear();
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2081,7 +2182,9 @@ protected:
         }
         array_ = span.subrange(0, 8);
         span.skip(8);
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2156,11 +2259,17 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_size_) return false;
-        if ((array_size_ % 2) != 0) return false;
+        if (span.size() < array_size_) {
+            return false;
+        }
+        if ((array_size_ % 2) != 0) {
+            return false;
+        }
         array_ = span.subrange(0, array_size_);
         span.skip(array_size_);
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2239,10 +2348,14 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_count_ * 2) return false;
-        array_ = span.subrange(0, array_count_ * 2);
-        span.skip(array_count_ * 2);
-        if (span.size() != 0) { return false; }
+        if (span.size() < 2 * array_count_) {
+            return false;
+        }
+        array_ = span.subrange(0, 2 * array_count_);
+        span.skip(2 * array_count_);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2315,9 +2428,14 @@ protected:
     bool Parse(pdl::packet::slice const& parent) {
         // Parse packet field values.
         pdl::packet::slice span = parent;
+        if ((span.size() % 2) != 0) {
+            return false;
+        }
         array_ = span;
         span.clear();
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2392,7 +2510,9 @@ protected:
         }
         array_ = span.subrange(0, 8);
         span.skip(8);
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2467,10 +2587,17 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_size_) return false;
+        if (span.size() < array_size_) {
+            return false;
+        }
+        if ((array_size_ % 2) != 0) {
+            return false;
+        }
         array_ = span.subrange(0, array_size_);
         span.skip(array_size_);
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2549,9 +2676,14 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_count_ = (chunk0 >> 0) & 0xf;
-        array_ = span;
-        span.clear();
-        if (span.size() != 0) { return false; }
+        if (span.size() < 2 * array_count_) {
+            return false;
+        }
+        array_ = span.subrange(0, 2 * array_count_);
+        span.skip(2 * array_count_);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2624,9 +2756,14 @@ protected:
     bool Parse(pdl::packet::slice const& parent) {
         // Parse packet field values.
         pdl::packet::slice span = parent;
+        if ((span.size() % 2) != 0) {
+            return false;
+        }
         array_ = span;
         span.clear();
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2701,7 +2838,9 @@ protected:
         }
         array_ = span.subrange(0, 4);
         span.skip(4);
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2778,10 +2917,17 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_size_) return false;
+        if (span.size() < array_size_) {
+            return false;
+        }
+        if ((array_size_ % 1) != 0) {
+            return false;
+        }
         array_ = span.subrange(0, array_size_);
         span.skip(array_size_);
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2862,9 +3008,14 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_count_ = (chunk0 >> 0) & 0xf;
-        array_ = span;
-        span.clear();
-        if (span.size() != 0) { return false; }
+        if (span.size() < 1 * array_count_) {
+            return false;
+        }
+        array_ = span.subrange(0, 1 * array_count_);
+        span.skip(1 * array_count_);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -2939,9 +3090,14 @@ protected:
     bool Parse(pdl::packet::slice const& parent) {
         // Parse packet field values.
         pdl::packet::slice span = parent;
+        if ((span.size() % 1) != 0) {
+            return false;
+        }
         array_ = span;
         span.clear();
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3012,8 +3168,16 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         array_ = span;
-        span.clear();
-        if (span.size() != 0) { return false; }
+        for (size_t n = 0; n < 4; n++) {
+            UnsizedStruct out;
+            if (!UnsizedStruct::Parse(span, &out)) {
+                return false;
+            }
+        }
+        array_ = array_.subrange(0, array_.size() - span.size());
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3090,10 +3254,14 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_size_) return false;
+        if (span.size() < array_size_) {
+            return false;
+        }
         array_ = span.subrange(0, array_size_);
         span.skip(array_size_);
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3175,8 +3343,16 @@ protected:
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_count_ = (chunk0 >> 0) & 0xf;
         array_ = span;
-        span.clear();
-        if (span.size() != 0) { return false; }
+        for (size_t n = 0; n < array_count_; n++) {
+            UnsizedStruct out;
+            if (!UnsizedStruct::Parse(span, &out)) {
+                return false;
+            }
+        }
+        array_ = array_.subrange(0, array_.size() - span.size());
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3252,8 +3428,16 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         array_ = span;
-        span.clear();
-        if (span.size() != 0) { return false; }
+        while (span.size() > 0) {
+            UnsizedStruct out;
+            if (!UnsizedStruct::Parse(span, &out)) {
+                return false;
+            }
+        }
+        array_ = array_.subrange(0, array_.size() - span.size());
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3330,10 +3514,15 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < (array_size_ - 2)) return false;
-        array_ = span.subrange(0, (array_size_ - 2));
-        span.skip((array_size_ - 2));
-        if (span.size() != 0) { return false; }
+        array_size_ = array_size_ - +2;
+        if (span.size() < array_size_) {
+            return false;
+        }
+        array_ = span.subrange(0, array_size_);
+        span.skip(array_size_);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3413,15 +3602,21 @@ protected:
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_size_ = (chunk0 >> 0) & 0xf;
         size_t array_start_size = span.size();
-        if (span.size() < array_size_) return false;
-        if ((array_size_ % 2) != 0) return false;
+        if (span.size() < array_size_) {
+            return false;
+        }
+        if ((array_size_ % 2) != 0) {
+            return false;
+        }
         array_ = span.subrange(0, array_size_);
         span.skip(array_size_);
         if (array_start_size - span.size() < 16) {
             if (span.size() < 16 - (array_start_size - span.size())) return false;
             span.skip(16 - (array_start_size - span.size()));
         }
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3507,12 +3702,20 @@ protected:
         array_count_ = span.read_le<uint8_t, 1>();
         size_t array_start_size = span.size();
         array_ = span;
-        span.clear();
+        for (size_t n = 0; n < array_count_; n++) {
+            UnsizedStruct out;
+            if (!UnsizedStruct::Parse(span, &out)) {
+                return false;
+            }
+        }
+        array_ = array_.subrange(0, array_.size() - span.size());
         if (array_start_size - span.size() < 16) {
             if (span.size() < 16 - (array_start_size - span.size())) return false;
             span.skip(16 - (array_start_size - span.size()));
         }
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3552,6 +3755,410 @@ public:
 
     uint8_t array_count_ {0};
     std::vector<UnsizedStruct> array_;
+};
+
+class Packet_Array_Field_VariableElementSize_ConstantSizeView {
+public:
+    static Packet_Array_Field_VariableElementSize_ConstantSizeView Create(pdl::packet::slice const& parent) {
+        return Packet_Array_Field_VariableElementSize_ConstantSizeView(parent);
+    }
+
+    std::array<UnknownSizeStruct, 4> GetArray() const {
+        _ASSERT_VALID(valid_);
+        pdl::packet::slice span = array_;
+        std::array<UnknownSizeStruct, 4> elements;
+        for (int n = 0; n < 4; n++) {
+            UnknownSizeStruct::Parse(span, &elements[n]);
+        }
+        return elements;
+    }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit Packet_Array_Field_VariableElementSize_ConstantSizeView(pdl::packet::slice const& parent)
+          : bytes_(parent) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(pdl::packet::slice const& parent) {
+        // Parse packet field values.
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
+            return false;
+        }
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        array_element_size_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < array_element_size_ * 4) {
+            return false;
+        }
+        array_ = span.subrange(0, array_element_size_ * 4);
+        span.skip(array_element_size_ * 4);
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint8_t array_element_size_ {0};
+    pdl::packet::slice array_;
+
+
+};
+
+class Packet_Array_Field_VariableElementSize_ConstantSizeBuilder : public pdl::packet::Builder {
+public:
+    ~Packet_Array_Field_VariableElementSize_ConstantSizeBuilder() override = default;
+    Packet_Array_Field_VariableElementSize_ConstantSizeBuilder() = default;
+    explicit Packet_Array_Field_VariableElementSize_ConstantSizeBuilder(std::array<UnknownSizeStruct, 4> array) : array_(std::move(array)) {}
+    Packet_Array_Field_VariableElementSize_ConstantSizeBuilder(Packet_Array_Field_VariableElementSize_ConstantSizeBuilder const&) = default;
+    Packet_Array_Field_VariableElementSize_ConstantSizeBuilder(Packet_Array_Field_VariableElementSize_ConstantSizeBuilder&&) = default;
+    Packet_Array_Field_VariableElementSize_ConstantSizeBuilder& operator=(Packet_Array_Field_VariableElementSize_ConstantSizeBuilder const&) = default;
+
+    void Serialize(std::vector<uint8_t>& output) const override {
+        size_t array_element_size = 0; // TODO
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
+        for (auto const& element : array_) {
+            element.Serialize(output);
+        }
+    }
+
+    size_t GetSize() const override {
+        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint8_t array_element_size_ {0};
+    std::array<UnknownSizeStruct, 4> array_;
+};
+
+class Packet_Array_Field_VariableElementSize_VariableSizeView {
+public:
+    static Packet_Array_Field_VariableElementSize_VariableSizeView Create(pdl::packet::slice const& parent) {
+        return Packet_Array_Field_VariableElementSize_VariableSizeView(parent);
+    }
+
+    std::vector<UnknownSizeStruct> GetArray() const {
+        _ASSERT_VALID(valid_);
+        pdl::packet::slice span = array_;
+        std::vector<UnknownSizeStruct> elements;
+        while (span.size() > 0) {
+            UnknownSizeStruct element;
+            if (!UnknownSizeStruct::Parse(span, &element)) break;
+            elements.emplace_back(std::move(element));
+        }
+        return elements;
+    }
+
+    std::vector<uint8_t> GetTail() const {
+        _ASSERT_VALID(valid_);
+        pdl::packet::slice span = tail_;
+        std::vector<uint8_t> elements;
+        while (span.size() > 0 && span.size() >= 1) {
+            elements.push_back(span.read_le<uint8_t, 1>());
+        }
+        return elements;
+    }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit Packet_Array_Field_VariableElementSize_VariableSizeView(pdl::packet::slice const& parent)
+          : bytes_(parent) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(pdl::packet::slice const& parent) {
+        // Parse packet field values.
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) {
+            return false;
+        }
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        array_size_ = (chunk0 >> 0) & 0xf;
+        uint8_t chunk1 = span.read_le<uint8_t, 1>();
+        array_element_size_ = (chunk1 >> 0) & 0xf;
+        if (span.size() < array_size_) {
+            return false;
+        }
+        if ((array_size_ % array_element_size_) != 0) {
+            return false;
+        }
+        array_ = span.subrange(0, array_size_);
+        span.skip(array_size_);
+        if ((span.size() % 1) != 0) {
+            return false;
+        }
+        tail_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint8_t array_size_ {0};
+    uint8_t array_element_size_ {0};
+    pdl::packet::slice array_;
+    pdl::packet::slice tail_;
+
+
+};
+
+class Packet_Array_Field_VariableElementSize_VariableSizeBuilder : public pdl::packet::Builder {
+public:
+    ~Packet_Array_Field_VariableElementSize_VariableSizeBuilder() override = default;
+    Packet_Array_Field_VariableElementSize_VariableSizeBuilder() = default;
+    explicit Packet_Array_Field_VariableElementSize_VariableSizeBuilder(std::vector<UnknownSizeStruct> array, std::vector<uint8_t> tail) : array_(std::move(array)), tail_(std::move(tail)) {}
+    Packet_Array_Field_VariableElementSize_VariableSizeBuilder(Packet_Array_Field_VariableElementSize_VariableSizeBuilder const&) = default;
+    Packet_Array_Field_VariableElementSize_VariableSizeBuilder(Packet_Array_Field_VariableElementSize_VariableSizeBuilder&&) = default;
+    Packet_Array_Field_VariableElementSize_VariableSizeBuilder& operator=(Packet_Array_Field_VariableElementSize_VariableSizeBuilder const&) = default;
+
+    void Serialize(std::vector<uint8_t>& output) const override {
+        size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
+        size_t array_element_size = 0; // TODO
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
+        for (auto const& element : array_) {
+            element.Serialize(output);
+        }
+        for (auto const& element : tail_) {
+            pdl::packet::Builder::write_le<uint8_t, 1>(output, static_cast<uint8_t>(element));
+        }
+    }
+
+    size_t GetSize() const override {
+        return 2 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }) + (tail_.size() * 1));
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint8_t array_size_ {0};
+    uint8_t array_element_size_ {0};
+    std::vector<UnknownSizeStruct> array_;
+    std::vector<uint8_t> tail_;
+};
+
+class Packet_Array_Field_VariableElementSize_VariableCountView {
+public:
+    static Packet_Array_Field_VariableElementSize_VariableCountView Create(pdl::packet::slice const& parent) {
+        return Packet_Array_Field_VariableElementSize_VariableCountView(parent);
+    }
+
+    std::vector<UnknownSizeStruct> GetArray() const {
+        _ASSERT_VALID(valid_);
+        pdl::packet::slice span = array_;
+        std::vector<UnknownSizeStruct> elements;
+        while (elements.size() < array_count_) {
+            UnknownSizeStruct element;
+            if (!UnknownSizeStruct::Parse(span, &element)) break;
+            elements.emplace_back(std::move(element));
+        }
+        return elements;
+    }
+
+    std::vector<uint8_t> GetTail() const {
+        _ASSERT_VALID(valid_);
+        pdl::packet::slice span = tail_;
+        std::vector<uint8_t> elements;
+        while (span.size() > 0 && span.size() >= 1) {
+            elements.push_back(span.read_le<uint8_t, 1>());
+        }
+        return elements;
+    }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit Packet_Array_Field_VariableElementSize_VariableCountView(pdl::packet::slice const& parent)
+          : bytes_(parent) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(pdl::packet::slice const& parent) {
+        // Parse packet field values.
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) {
+            return false;
+        }
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        array_count_ = (chunk0 >> 0) & 0xf;
+        uint8_t chunk1 = span.read_le<uint8_t, 1>();
+        array_element_size_ = (chunk1 >> 0) & 0xf;
+        if (span.size() < array_element_size_ * array_count_) {
+            return false;
+        }
+        array_ = span.subrange(0, array_element_size_ * array_count_);
+        span.skip(array_element_size_ * array_count_);
+        if ((span.size() % 1) != 0) {
+            return false;
+        }
+        tail_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint8_t array_count_ {0};
+    uint8_t array_element_size_ {0};
+    pdl::packet::slice array_;
+    pdl::packet::slice tail_;
+
+
+};
+
+class Packet_Array_Field_VariableElementSize_VariableCountBuilder : public pdl::packet::Builder {
+public:
+    ~Packet_Array_Field_VariableElementSize_VariableCountBuilder() override = default;
+    Packet_Array_Field_VariableElementSize_VariableCountBuilder() = default;
+    explicit Packet_Array_Field_VariableElementSize_VariableCountBuilder(std::vector<UnknownSizeStruct> array, std::vector<uint8_t> tail) : array_(std::move(array)), tail_(std::move(tail)) {}
+    Packet_Array_Field_VariableElementSize_VariableCountBuilder(Packet_Array_Field_VariableElementSize_VariableCountBuilder const&) = default;
+    Packet_Array_Field_VariableElementSize_VariableCountBuilder(Packet_Array_Field_VariableElementSize_VariableCountBuilder&&) = default;
+    Packet_Array_Field_VariableElementSize_VariableCountBuilder& operator=(Packet_Array_Field_VariableElementSize_VariableCountBuilder const&) = default;
+
+    void Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
+        size_t array_element_size = 0; // TODO
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
+        for (auto const& element : array_) {
+            element.Serialize(output);
+        }
+        for (auto const& element : tail_) {
+            pdl::packet::Builder::write_le<uint8_t, 1>(output, static_cast<uint8_t>(element));
+        }
+    }
+
+    size_t GetSize() const override {
+        return 2 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }) + (tail_.size() * 1));
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint8_t array_count_ {0};
+    uint8_t array_element_size_ {0};
+    std::vector<UnknownSizeStruct> array_;
+    std::vector<uint8_t> tail_;
+};
+
+class Packet_Array_Field_VariableElementSize_UnknownSizeView {
+public:
+    static Packet_Array_Field_VariableElementSize_UnknownSizeView Create(pdl::packet::slice const& parent) {
+        return Packet_Array_Field_VariableElementSize_UnknownSizeView(parent);
+    }
+
+    std::vector<UnknownSizeStruct> GetArray() const {
+        _ASSERT_VALID(valid_);
+        pdl::packet::slice span = array_;
+        std::vector<UnknownSizeStruct> elements;
+        while (span.size() > 0) {
+            UnknownSizeStruct element;
+            if (!UnknownSizeStruct::Parse(span, &element)) break;
+            elements.emplace_back(std::move(element));
+        }
+        return elements;
+    }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit Packet_Array_Field_VariableElementSize_UnknownSizeView(pdl::packet::slice const& parent)
+          : bytes_(parent) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(pdl::packet::slice const& parent) {
+        // Parse packet field values.
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
+            return false;
+        }
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        array_element_size_ = (chunk0 >> 0) & 0xf;
+        if ((span.size() % array_element_size_) != 0) {
+            return false;
+        }
+        array_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint8_t array_element_size_ {0};
+    pdl::packet::slice array_;
+
+
+};
+
+class Packet_Array_Field_VariableElementSize_UnknownSizeBuilder : public pdl::packet::Builder {
+public:
+    ~Packet_Array_Field_VariableElementSize_UnknownSizeBuilder() override = default;
+    Packet_Array_Field_VariableElementSize_UnknownSizeBuilder() = default;
+    explicit Packet_Array_Field_VariableElementSize_UnknownSizeBuilder(std::vector<UnknownSizeStruct> array) : array_(std::move(array)) {}
+    Packet_Array_Field_VariableElementSize_UnknownSizeBuilder(Packet_Array_Field_VariableElementSize_UnknownSizeBuilder const&) = default;
+    Packet_Array_Field_VariableElementSize_UnknownSizeBuilder(Packet_Array_Field_VariableElementSize_UnknownSizeBuilder&&) = default;
+    Packet_Array_Field_VariableElementSize_UnknownSizeBuilder& operator=(Packet_Array_Field_VariableElementSize_UnknownSizeBuilder const&) = default;
+
+    void Serialize(std::vector<uint8_t>& output) const override {
+        size_t array_element_size = 0; // TODO
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
+        for (auto const& element : array_) {
+            element.Serialize(output);
+        }
+    }
+
+    size_t GetSize() const override {
+        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint8_t array_element_size_ {0};
+    std::vector<UnknownSizeStruct> array_;
 };
 
 class Packet_Optional_Scalar_FieldView {
@@ -3601,7 +4208,9 @@ protected:
             }
             b_ = span.read_le<uint32_t, 4>();
         }
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3681,17 +4290,25 @@ protected:
             if (span.size() < 2) {
                 return false;
             }
-            a_ = static_cast<Enum16>(span.read_le<uint16_t, 2>());
-            if (!IsEnum16Valid(a_.value())) return false;
+            auto raw_value = span.read_le<uint16_t, 2>();
+            if (!IsValidEnum16(raw_value)) {
+               return false;
+            }
+            a_ = Enum16(raw_value);
         }
         if (c1 == 1) {
             if (span.size() < 2) {
                 return false;
             }
-            b_ = static_cast<Enum16>(span.read_le<uint16_t, 2>());
-            if (!IsEnum16Valid(b_.value())) return false;
+            auto raw_value = span.read_le<uint16_t, 2>();
+            if (!IsValidEnum16(raw_value)) {
+               return false;
+            }
+            b_ = Enum16(raw_value);
         }
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3779,7 +4396,9 @@ protected:
                 return false;
             }
         }
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3855,7 +4474,9 @@ protected:
             return false;
         }
         b_ = span.read_le<uint8_t, 1>();
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -3928,7 +4549,9 @@ protected:
             return false;
         }
         c_ = span.read_le<uint16_t, 2>();
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4001,7 +4624,9 @@ protected:
             return false;
         }
         b_ = span.read_le<uint8_t, 1>();
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4074,7 +4699,9 @@ protected:
             return false;
         }
         c_ = span.read_le<uint16_t, 2>();
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4147,7 +4774,9 @@ protected:
             return false;
         }
         b_ = span.read_le<uint8_t, 1>();
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4220,7 +4849,9 @@ protected:
             return false;
         }
         c_ = span.read_le<uint16_t, 2>();
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4262,9 +4893,9 @@ class Struct_Scalar_Field : public pdl::packet::Builder {
 public:
     ~Struct_Scalar_Field() override = default;
     Struct_Scalar_Field() = default;
-    explicit Struct_Scalar_Field(uint8_t a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
     Struct_Scalar_Field(Struct_Scalar_Field const&) = default;
     Struct_Scalar_Field(Struct_Scalar_Field&&) = default;
+    explicit Struct_Scalar_Field(uint8_t a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
     Struct_Scalar_Field& operator=(Struct_Scalar_Field const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Scalar_Field* output) {
@@ -4297,9 +4928,9 @@ class Struct_Enum_Field_ : public pdl::packet::Builder {
 public:
     ~Struct_Enum_Field_() override = default;
     Struct_Enum_Field_() = default;
-    explicit Struct_Enum_Field_(Enum7 a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
     Struct_Enum_Field_(Struct_Enum_Field_ const&) = default;
     Struct_Enum_Field_(Struct_Enum_Field_&&) = default;
+    explicit Struct_Enum_Field_(Enum7 a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
     Struct_Enum_Field_& operator=(Struct_Enum_Field_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Enum_Field_* output) {
@@ -4308,8 +4939,11 @@ public:
             return false;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        output->a_ = static_cast<Enum7>( (chunk0 >> 0) & 0x7f );
-        if (!IsEnum7Valid(output->a_)) return false;
+        auto raw_value = (chunk0 >> 0) & 0x7f;
+        if (!IsValidEnum7(raw_value)) {
+           return false;
+        }
+        output->a_ = Enum7(raw_value);
         output->c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
         parent_span = span;
         return true;
@@ -4357,7 +4991,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Enum_Field_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4394,9 +5030,9 @@ class Struct_Reserved_Field_ : public pdl::packet::Builder {
 public:
     ~Struct_Reserved_Field_() override = default;
     Struct_Reserved_Field_() = default;
-    explicit Struct_Reserved_Field_(uint8_t a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
     Struct_Reserved_Field_(Struct_Reserved_Field_ const&) = default;
     Struct_Reserved_Field_(Struct_Reserved_Field_&&) = default;
+    explicit Struct_Reserved_Field_(uint8_t a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
     Struct_Reserved_Field_& operator=(Struct_Reserved_Field_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Reserved_Field_* output) {
@@ -4453,7 +5089,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Reserved_Field_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4490,9 +5128,9 @@ class Struct_Size_Field_ : public pdl::packet::Builder {
 public:
     ~Struct_Size_Field_() override = default;
     Struct_Size_Field_() = default;
-    explicit Struct_Size_Field_(uint64_t a, std::vector<uint8_t> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Size_Field_(Struct_Size_Field_ const&) = default;
     Struct_Size_Field_(Struct_Size_Field_&&) = default;
+    explicit Struct_Size_Field_(uint64_t a, std::vector<uint8_t> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Size_Field_& operator=(Struct_Size_Field_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Size_Field_* output) {
@@ -4503,11 +5141,14 @@ public:
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
         output->b_size_ = (chunk0 >> 0) & 0x7;
         output->a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
-        if (span.size() < output->b_size_) return false;
-        if ((output->b_size_ % 1) != 0) return false;
-        size_t limit = span.size() - output->b_size_;
-        while (span.size() > limit) {
-            if (span.size() < 1) return false;
+        if (span.size() < output->b_size_) {
+            return false;
+        }
+        if ((output->b_size_ % 1) != 0) {
+            return false;
+        }
+        auto b_count_ = output->b_size_ / 1;
+        for (size_t n = 0; n < b_count_; n++) {
             output->b_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
@@ -4561,7 +5202,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Size_Field_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4598,9 +5241,9 @@ class Struct_Count_Field_ : public pdl::packet::Builder {
 public:
     ~Struct_Count_Field_() override = default;
     Struct_Count_Field_() = default;
-    explicit Struct_Count_Field_(uint64_t a, std::vector<uint8_t> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Count_Field_(Struct_Count_Field_ const&) = default;
     Struct_Count_Field_(Struct_Count_Field_&&) = default;
+    explicit Struct_Count_Field_(uint64_t a, std::vector<uint8_t> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Count_Field_& operator=(Struct_Count_Field_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Count_Field_* output) {
@@ -4611,8 +5254,10 @@ public:
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
         output->b_count_ = (chunk0 >> 0) & 0x7;
         output->a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
+        if (span.size() < 1 * output->b_count_) {
+            return false;
+        }
         for (size_t n = 0; n < output->b_count_; n++) {
-            if (span.size() < 1) return false;
             output->b_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
@@ -4665,7 +5310,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Count_Field_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4702,9 +5349,9 @@ class Struct_FixedScalar_Field_ : public pdl::packet::Builder {
 public:
     ~Struct_FixedScalar_Field_() override = default;
     Struct_FixedScalar_Field_() = default;
-    explicit Struct_FixedScalar_Field_(uint64_t b) : b_(std::move(b)) {}
     Struct_FixedScalar_Field_(Struct_FixedScalar_Field_ const&) = default;
     Struct_FixedScalar_Field_(Struct_FixedScalar_Field_&&) = default;
+    explicit Struct_FixedScalar_Field_(uint64_t b) : b_(std::move(b)) {}
     Struct_FixedScalar_Field_& operator=(Struct_FixedScalar_Field_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_FixedScalar_Field_* output) {
@@ -4762,7 +5409,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_FixedScalar_Field_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4799,9 +5448,9 @@ class Struct_FixedEnum_Field_ : public pdl::packet::Builder {
 public:
     ~Struct_FixedEnum_Field_() override = default;
     Struct_FixedEnum_Field_() = default;
-    explicit Struct_FixedEnum_Field_(uint64_t b) : b_(std::move(b)) {}
     Struct_FixedEnum_Field_(Struct_FixedEnum_Field_ const&) = default;
     Struct_FixedEnum_Field_(Struct_FixedEnum_Field_&&) = default;
+    explicit Struct_FixedEnum_Field_(uint64_t b) : b_(std::move(b)) {}
     Struct_FixedEnum_Field_& operator=(Struct_FixedEnum_Field_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_FixedEnum_Field_* output) {
@@ -4859,7 +5508,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_FixedEnum_Field_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4898,6 +5549,7 @@ public:
     Struct_ScalarGroup_Field_() = default;
     Struct_ScalarGroup_Field_(Struct_ScalarGroup_Field_ const&) = default;
     Struct_ScalarGroup_Field_(Struct_ScalarGroup_Field_&&) = default;
+
     Struct_ScalarGroup_Field_& operator=(Struct_ScalarGroup_Field_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_ScalarGroup_Field_* output) {
@@ -4953,7 +5605,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_ScalarGroup_Field_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -4992,6 +5646,7 @@ public:
     Struct_EnumGroup_Field_() = default;
     Struct_EnumGroup_Field_(Struct_EnumGroup_Field_ const&) = default;
     Struct_EnumGroup_Field_(Struct_EnumGroup_Field_&&) = default;
+
     Struct_EnumGroup_Field_& operator=(Struct_EnumGroup_Field_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_EnumGroup_Field_* output) {
@@ -5047,7 +5702,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_EnumGroup_Field_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -5111,7 +5768,9 @@ protected:
         pdl::packet::slice span = parent;
         if (!SizedStruct::Parse(span, &a_)) return false;
         if (!UnsizedStruct::Parse(span, &b_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -5151,15 +5810,17 @@ class Struct_Array_Field_ByteElement_ConstantSize_ : public pdl::packet::Builder
 public:
     ~Struct_Array_Field_ByteElement_ConstantSize_() override = default;
     Struct_Array_Field_ByteElement_ConstantSize_() = default;
-    explicit Struct_Array_Field_ByteElement_ConstantSize_(std::array<uint8_t, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_ConstantSize_(Struct_Array_Field_ByteElement_ConstantSize_ const&) = default;
     Struct_Array_Field_ByteElement_ConstantSize_(Struct_Array_Field_ByteElement_ConstantSize_&&) = default;
+    explicit Struct_Array_Field_ByteElement_ConstantSize_(std::array<uint8_t, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_ConstantSize_& operator=(Struct_Array_Field_ByteElement_ConstantSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ByteElement_ConstantSize_* output) {
         pdl::packet::slice span = parent_span;
-        for (int n = 0; n < 4; n++) {
-            if (span.size() < 1) return false;
+        if (span.size() < 4) {
+            return false;
+        }
+        for (size_t n = 0; n < 4; n++) {
             output->array_[n] = span.read_le<uint8_t, 1>();
         }
         parent_span = span;
@@ -5209,7 +5870,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ByteElement_ConstantSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -5246,9 +5909,9 @@ class Struct_Array_Field_ByteElement_VariableSize_ : public pdl::packet::Builder
 public:
     ~Struct_Array_Field_ByteElement_VariableSize_() override = default;
     Struct_Array_Field_ByteElement_VariableSize_() = default;
-    explicit Struct_Array_Field_ByteElement_VariableSize_(std::vector<uint8_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_VariableSize_(Struct_Array_Field_ByteElement_VariableSize_ const&) = default;
     Struct_Array_Field_ByteElement_VariableSize_(Struct_Array_Field_ByteElement_VariableSize_&&) = default;
+    explicit Struct_Array_Field_ByteElement_VariableSize_(std::vector<uint8_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_VariableSize_& operator=(Struct_Array_Field_ByteElement_VariableSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ByteElement_VariableSize_* output) {
@@ -5258,11 +5921,14 @@ public:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < output->array_size_) return false;
-        if ((output->array_size_ % 1) != 0) return false;
-        size_t limit = span.size() - output->array_size_;
-        while (span.size() > limit) {
-            if (span.size() < 1) return false;
+        if (span.size() < output->array_size_) {
+            return false;
+        }
+        if ((output->array_size_ % 1) != 0) {
+            return false;
+        }
+        auto array_count_ = output->array_size_ / 1;
+        for (size_t n = 0; n < array_count_; n++) {
             output->array_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
@@ -5315,7 +5981,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ByteElement_VariableSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -5352,9 +6020,9 @@ class Struct_Array_Field_ByteElement_VariableCount_ : public pdl::packet::Builde
 public:
     ~Struct_Array_Field_ByteElement_VariableCount_() override = default;
     Struct_Array_Field_ByteElement_VariableCount_() = default;
-    explicit Struct_Array_Field_ByteElement_VariableCount_(std::vector<uint8_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_VariableCount_(Struct_Array_Field_ByteElement_VariableCount_ const&) = default;
     Struct_Array_Field_ByteElement_VariableCount_(Struct_Array_Field_ByteElement_VariableCount_&&) = default;
+    explicit Struct_Array_Field_ByteElement_VariableCount_(std::vector<uint8_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_VariableCount_& operator=(Struct_Array_Field_ByteElement_VariableCount_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ByteElement_VariableCount_* output) {
@@ -5364,8 +6032,10 @@ public:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 1 * output->array_count_) {
+            return false;
+        }
         for (size_t n = 0; n < output->array_count_; n++) {
-            if (span.size() < 1) return false;
             output->array_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
@@ -5417,7 +6087,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ByteElement_VariableCount_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -5454,15 +6126,18 @@ class Struct_Array_Field_ByteElement_UnknownSize_ : public pdl::packet::Builder 
 public:
     ~Struct_Array_Field_ByteElement_UnknownSize_() override = default;
     Struct_Array_Field_ByteElement_UnknownSize_() = default;
-    explicit Struct_Array_Field_ByteElement_UnknownSize_(std::vector<uint8_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_UnknownSize_(Struct_Array_Field_ByteElement_UnknownSize_ const&) = default;
     Struct_Array_Field_ByteElement_UnknownSize_(Struct_Array_Field_ByteElement_UnknownSize_&&) = default;
+    explicit Struct_Array_Field_ByteElement_UnknownSize_(std::vector<uint8_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_UnknownSize_& operator=(Struct_Array_Field_ByteElement_UnknownSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ByteElement_UnknownSize_* output) {
         pdl::packet::slice span = parent_span;
-        while (span.size() > 0) {
-            if (span.size() < 1) return false;
+        if ((span.size() % 1) != 0) {
+            return false;
+        }
+        auto array_count_ = span.size() / 1;
+        for (size_t n = 0; n < array_count_; n++) {
             output->array_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
@@ -5512,7 +6187,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ByteElement_UnknownSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -5549,15 +6226,17 @@ class Struct_Array_Field_ScalarElement_ConstantSize_ : public pdl::packet::Build
 public:
     ~Struct_Array_Field_ScalarElement_ConstantSize_() override = default;
     Struct_Array_Field_ScalarElement_ConstantSize_() = default;
-    explicit Struct_Array_Field_ScalarElement_ConstantSize_(std::array<uint16_t, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_ConstantSize_(Struct_Array_Field_ScalarElement_ConstantSize_ const&) = default;
     Struct_Array_Field_ScalarElement_ConstantSize_(Struct_Array_Field_ScalarElement_ConstantSize_&&) = default;
+    explicit Struct_Array_Field_ScalarElement_ConstantSize_(std::array<uint16_t, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_ConstantSize_& operator=(Struct_Array_Field_ScalarElement_ConstantSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ScalarElement_ConstantSize_* output) {
         pdl::packet::slice span = parent_span;
-        for (int n = 0; n < 4; n++) {
-            if (span.size() < 2) return false;
+        if (span.size() < 8) {
+            return false;
+        }
+        for (size_t n = 0; n < 4; n++) {
             output->array_[n] = span.read_le<uint16_t, 2>();
         }
         parent_span = span;
@@ -5607,7 +6286,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ScalarElement_ConstantSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -5644,9 +6325,9 @@ class Struct_Array_Field_ScalarElement_VariableSize_ : public pdl::packet::Build
 public:
     ~Struct_Array_Field_ScalarElement_VariableSize_() override = default;
     Struct_Array_Field_ScalarElement_VariableSize_() = default;
-    explicit Struct_Array_Field_ScalarElement_VariableSize_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_VariableSize_(Struct_Array_Field_ScalarElement_VariableSize_ const&) = default;
     Struct_Array_Field_ScalarElement_VariableSize_(Struct_Array_Field_ScalarElement_VariableSize_&&) = default;
+    explicit Struct_Array_Field_ScalarElement_VariableSize_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_VariableSize_& operator=(Struct_Array_Field_ScalarElement_VariableSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ScalarElement_VariableSize_* output) {
@@ -5656,11 +6337,14 @@ public:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < output->array_size_) return false;
-        if ((output->array_size_ % 2) != 0) return false;
-        size_t limit = span.size() - output->array_size_;
-        while (span.size() > limit) {
-            if (span.size() < 2) return false;
+        if (span.size() < output->array_size_) {
+            return false;
+        }
+        if ((output->array_size_ % 2) != 0) {
+            return false;
+        }
+        auto array_count_ = output->array_size_ / 2;
+        for (size_t n = 0; n < array_count_; n++) {
             output->array_.push_back(span.read_le<uint16_t, 2>());
         }
         parent_span = span;
@@ -5713,7 +6397,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ScalarElement_VariableSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -5750,9 +6436,9 @@ class Struct_Array_Field_ScalarElement_VariableCount_ : public pdl::packet::Buil
 public:
     ~Struct_Array_Field_ScalarElement_VariableCount_() override = default;
     Struct_Array_Field_ScalarElement_VariableCount_() = default;
-    explicit Struct_Array_Field_ScalarElement_VariableCount_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_VariableCount_(Struct_Array_Field_ScalarElement_VariableCount_ const&) = default;
     Struct_Array_Field_ScalarElement_VariableCount_(Struct_Array_Field_ScalarElement_VariableCount_&&) = default;
+    explicit Struct_Array_Field_ScalarElement_VariableCount_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_VariableCount_& operator=(Struct_Array_Field_ScalarElement_VariableCount_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ScalarElement_VariableCount_* output) {
@@ -5762,8 +6448,10 @@ public:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 2 * output->array_count_) {
+            return false;
+        }
         for (size_t n = 0; n < output->array_count_; n++) {
-            if (span.size() < 2) return false;
             output->array_.push_back(span.read_le<uint16_t, 2>());
         }
         parent_span = span;
@@ -5815,7 +6503,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ScalarElement_VariableCount_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -5852,15 +6542,18 @@ class Struct_Array_Field_ScalarElement_UnknownSize_ : public pdl::packet::Builde
 public:
     ~Struct_Array_Field_ScalarElement_UnknownSize_() override = default;
     Struct_Array_Field_ScalarElement_UnknownSize_() = default;
-    explicit Struct_Array_Field_ScalarElement_UnknownSize_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_UnknownSize_(Struct_Array_Field_ScalarElement_UnknownSize_ const&) = default;
     Struct_Array_Field_ScalarElement_UnknownSize_(Struct_Array_Field_ScalarElement_UnknownSize_&&) = default;
+    explicit Struct_Array_Field_ScalarElement_UnknownSize_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_UnknownSize_& operator=(Struct_Array_Field_ScalarElement_UnknownSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ScalarElement_UnknownSize_* output) {
         pdl::packet::slice span = parent_span;
-        while (span.size() > 0) {
-            if (span.size() < 2) return false;
+        if ((span.size() % 2) != 0) {
+            return false;
+        }
+        auto array_count_ = span.size() / 2;
+        for (size_t n = 0; n < array_count_; n++) {
             output->array_.push_back(span.read_le<uint16_t, 2>());
         }
         parent_span = span;
@@ -5910,7 +6603,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ScalarElement_UnknownSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -5947,16 +6642,22 @@ class Struct_Array_Field_EnumElement_ConstantSize_ : public pdl::packet::Builder
 public:
     ~Struct_Array_Field_EnumElement_ConstantSize_() override = default;
     Struct_Array_Field_EnumElement_ConstantSize_() = default;
-    explicit Struct_Array_Field_EnumElement_ConstantSize_(std::array<Enum16, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_ConstantSize_(Struct_Array_Field_EnumElement_ConstantSize_ const&) = default;
     Struct_Array_Field_EnumElement_ConstantSize_(Struct_Array_Field_EnumElement_ConstantSize_&&) = default;
+    explicit Struct_Array_Field_EnumElement_ConstantSize_(std::array<Enum16, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_ConstantSize_& operator=(Struct_Array_Field_EnumElement_ConstantSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_EnumElement_ConstantSize_* output) {
         pdl::packet::slice span = parent_span;
-        for (int n = 0; n < 4; n++) {
-            if (span.size() < 2) return false;
-            output->array_[n] = Enum16(span.read_le<uint16_t, 2>());
+        if (span.size() < 8) {
+            return false;
+        }
+        for (size_t n = 0; n < 4; n++) {
+            auto raw_value = span.read_le<uint16_t, 2>();
+            if (!IsValidEnum16(raw_value)) {
+                return false;
+            }
+            output->array_[n] = Enum16(raw_value);
         }
         parent_span = span;
         return true;
@@ -6005,7 +6706,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_EnumElement_ConstantSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -6042,9 +6745,9 @@ class Struct_Array_Field_EnumElement_VariableSize_ : public pdl::packet::Builder
 public:
     ~Struct_Array_Field_EnumElement_VariableSize_() override = default;
     Struct_Array_Field_EnumElement_VariableSize_() = default;
-    explicit Struct_Array_Field_EnumElement_VariableSize_(std::vector<Enum16> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_VariableSize_(Struct_Array_Field_EnumElement_VariableSize_ const&) = default;
     Struct_Array_Field_EnumElement_VariableSize_(Struct_Array_Field_EnumElement_VariableSize_&&) = default;
+    explicit Struct_Array_Field_EnumElement_VariableSize_(std::vector<Enum16> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_VariableSize_& operator=(Struct_Array_Field_EnumElement_VariableSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_EnumElement_VariableSize_* output) {
@@ -6054,12 +6757,19 @@ public:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < output->array_size_) return false;
-        if ((output->array_size_ % 2) != 0) return false;
-        size_t limit = span.size() - output->array_size_;
-        while (span.size() > limit) {
-            if (span.size() < 2) return false;
-            output->array_.push_back(Enum16(span.read_le<uint16_t, 2>()));
+        if (span.size() < output->array_size_) {
+            return false;
+        }
+        if ((output->array_size_ % 2) != 0) {
+            return false;
+        }
+        auto array_count_ = output->array_size_ / 2;
+        for (size_t n = 0; n < array_count_; n++) {
+            auto raw_value = span.read_le<uint16_t, 2>();
+            if (!IsValidEnum16(raw_value)) {
+                return false;
+            }
+            output->array_.push_back(Enum16(raw_value));
         }
         parent_span = span;
         return true;
@@ -6111,7 +6821,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_EnumElement_VariableSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -6148,9 +6860,9 @@ class Struct_Array_Field_EnumElement_VariableCount_ : public pdl::packet::Builde
 public:
     ~Struct_Array_Field_EnumElement_VariableCount_() override = default;
     Struct_Array_Field_EnumElement_VariableCount_() = default;
-    explicit Struct_Array_Field_EnumElement_VariableCount_(std::vector<Enum16> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_VariableCount_(Struct_Array_Field_EnumElement_VariableCount_ const&) = default;
     Struct_Array_Field_EnumElement_VariableCount_(Struct_Array_Field_EnumElement_VariableCount_&&) = default;
+    explicit Struct_Array_Field_EnumElement_VariableCount_(std::vector<Enum16> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_VariableCount_& operator=(Struct_Array_Field_EnumElement_VariableCount_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_EnumElement_VariableCount_* output) {
@@ -6160,9 +6872,15 @@ public:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 2 * output->array_count_) {
+            return false;
+        }
         for (size_t n = 0; n < output->array_count_; n++) {
-            if (span.size() < 2) return false;
-            output->array_.push_back(Enum16(span.read_le<uint16_t, 2>()));
+            auto raw_value = span.read_le<uint16_t, 2>();
+            if (!IsValidEnum16(raw_value)) {
+                return false;
+            }
+            output->array_.push_back(Enum16(raw_value));
         }
         parent_span = span;
         return true;
@@ -6213,7 +6931,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_EnumElement_VariableCount_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -6250,16 +6970,23 @@ class Struct_Array_Field_EnumElement_UnknownSize_ : public pdl::packet::Builder 
 public:
     ~Struct_Array_Field_EnumElement_UnknownSize_() override = default;
     Struct_Array_Field_EnumElement_UnknownSize_() = default;
-    explicit Struct_Array_Field_EnumElement_UnknownSize_(std::vector<Enum16> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_UnknownSize_(Struct_Array_Field_EnumElement_UnknownSize_ const&) = default;
     Struct_Array_Field_EnumElement_UnknownSize_(Struct_Array_Field_EnumElement_UnknownSize_&&) = default;
+    explicit Struct_Array_Field_EnumElement_UnknownSize_(std::vector<Enum16> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_UnknownSize_& operator=(Struct_Array_Field_EnumElement_UnknownSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_EnumElement_UnknownSize_* output) {
         pdl::packet::slice span = parent_span;
-        while (span.size() > 0) {
-            if (span.size() < 2) return false;
-            output->array_.push_back(Enum16(span.read_le<uint16_t, 2>()));
+        if ((span.size() % 2) != 0) {
+            return false;
+        }
+        auto array_count_ = span.size() / 2;
+        for (size_t n = 0; n < array_count_; n++) {
+            auto raw_value = span.read_le<uint16_t, 2>();
+            if (!IsValidEnum16(raw_value)) {
+                return false;
+            }
+            output->array_.push_back(Enum16(raw_value));
         }
         parent_span = span;
         return true;
@@ -6308,7 +7035,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_EnumElement_UnknownSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -6345,15 +7074,22 @@ class Struct_Array_Field_SizedElement_ConstantSize_ : public pdl::packet::Builde
 public:
     ~Struct_Array_Field_SizedElement_ConstantSize_() override = default;
     Struct_Array_Field_SizedElement_ConstantSize_() = default;
-    explicit Struct_Array_Field_SizedElement_ConstantSize_(std::array<SizedStruct, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_ConstantSize_(Struct_Array_Field_SizedElement_ConstantSize_ const&) = default;
     Struct_Array_Field_SizedElement_ConstantSize_(Struct_Array_Field_SizedElement_ConstantSize_&&) = default;
+    explicit Struct_Array_Field_SizedElement_ConstantSize_(std::array<SizedStruct, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_ConstantSize_& operator=(Struct_Array_Field_SizedElement_ConstantSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_SizedElement_ConstantSize_* output) {
         pdl::packet::slice span = parent_span;
-        for (int n = 0; n < 4; n++) {
-            if (!SizedStruct::Parse(span, &output->array_[n])) return false;
+        if (span.size() < 4) {
+            return false;
+        }
+        for (size_t n = 0; n < 4; n++) {
+            SizedStruct out;
+            if (!SizedStruct::Parse(span, &out)) {
+                return false;
+            }
+            output->array_[n] = out;
         }
         parent_span = span;
         return true;
@@ -6402,7 +7138,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_SizedElement_ConstantSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -6439,9 +7177,9 @@ class Struct_Array_Field_SizedElement_VariableSize_ : public pdl::packet::Builde
 public:
     ~Struct_Array_Field_SizedElement_VariableSize_() override = default;
     Struct_Array_Field_SizedElement_VariableSize_() = default;
-    explicit Struct_Array_Field_SizedElement_VariableSize_(std::vector<SizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_VariableSize_(Struct_Array_Field_SizedElement_VariableSize_ const&) = default;
     Struct_Array_Field_SizedElement_VariableSize_(Struct_Array_Field_SizedElement_VariableSize_&&) = default;
+    explicit Struct_Array_Field_SizedElement_VariableSize_(std::vector<SizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_VariableSize_& operator=(Struct_Array_Field_SizedElement_VariableSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_SizedElement_VariableSize_* output) {
@@ -6451,13 +7189,19 @@ public:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < output->array_size_) return false;
-        if ((output->array_size_ % 1) != 0) return false;
-        size_t limit = span.size() - output->array_size_;
-        while (span.size() > limit) {
-            SizedStruct element;
-            if (!SizedStruct::Parse(span, &element)) return false;
-            output->array_.emplace_back(std::move(element));
+        if (span.size() < output->array_size_) {
+            return false;
+        }
+        if ((output->array_size_ % 1) != 0) {
+            return false;
+        }
+        auto array_count_ = output->array_size_ / 1;
+        for (size_t n = 0; n < array_count_; n++) {
+            SizedStruct out;
+            if (!SizedStruct::Parse(span, &out)) {
+                return false;
+            }
+            output->array_.push_back(out);
         }
         parent_span = span;
         return true;
@@ -6509,7 +7253,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_SizedElement_VariableSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -6546,9 +7292,9 @@ class Struct_Array_Field_SizedElement_VariableCount_ : public pdl::packet::Build
 public:
     ~Struct_Array_Field_SizedElement_VariableCount_() override = default;
     Struct_Array_Field_SizedElement_VariableCount_() = default;
-    explicit Struct_Array_Field_SizedElement_VariableCount_(std::vector<SizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_VariableCount_(Struct_Array_Field_SizedElement_VariableCount_ const&) = default;
     Struct_Array_Field_SizedElement_VariableCount_(Struct_Array_Field_SizedElement_VariableCount_&&) = default;
+    explicit Struct_Array_Field_SizedElement_VariableCount_(std::vector<SizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_VariableCount_& operator=(Struct_Array_Field_SizedElement_VariableCount_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_SizedElement_VariableCount_* output) {
@@ -6558,10 +7304,15 @@ public:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 1 * output->array_count_) {
+            return false;
+        }
         for (size_t n = 0; n < output->array_count_; n++) {
-            SizedStruct element;
-            if (!SizedStruct::Parse(span, &element)) return false;
-            output->array_.emplace_back(std::move(element));
+            SizedStruct out;
+            if (!SizedStruct::Parse(span, &out)) {
+                return false;
+            }
+            output->array_.push_back(out);
         }
         parent_span = span;
         return true;
@@ -6612,7 +7363,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_SizedElement_VariableCount_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -6649,17 +7402,23 @@ class Struct_Array_Field_SizedElement_UnknownSize_ : public pdl::packet::Builder
 public:
     ~Struct_Array_Field_SizedElement_UnknownSize_() override = default;
     Struct_Array_Field_SizedElement_UnknownSize_() = default;
-    explicit Struct_Array_Field_SizedElement_UnknownSize_(std::vector<SizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_UnknownSize_(Struct_Array_Field_SizedElement_UnknownSize_ const&) = default;
     Struct_Array_Field_SizedElement_UnknownSize_(Struct_Array_Field_SizedElement_UnknownSize_&&) = default;
+    explicit Struct_Array_Field_SizedElement_UnknownSize_(std::vector<SizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_UnknownSize_& operator=(Struct_Array_Field_SizedElement_UnknownSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_SizedElement_UnknownSize_* output) {
         pdl::packet::slice span = parent_span;
-        while (span.size() > 0) {
-            SizedStruct element;
-            if (!SizedStruct::Parse(span, &element)) return false;
-            output->array_.emplace_back(std::move(element));
+        if ((span.size() % 1) != 0) {
+            return false;
+        }
+        auto array_count_ = span.size() / 1;
+        for (size_t n = 0; n < array_count_; n++) {
+            SizedStruct out;
+            if (!SizedStruct::Parse(span, &out)) {
+                return false;
+            }
+            output->array_.push_back(out);
         }
         parent_span = span;
         return true;
@@ -6708,7 +7467,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_SizedElement_UnknownSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -6745,15 +7506,19 @@ class Struct_Array_Field_UnsizedElement_ConstantSize_ : public pdl::packet::Buil
 public:
     ~Struct_Array_Field_UnsizedElement_ConstantSize_() override = default;
     Struct_Array_Field_UnsizedElement_ConstantSize_() = default;
-    explicit Struct_Array_Field_UnsizedElement_ConstantSize_(std::array<UnsizedStruct, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_ConstantSize_(Struct_Array_Field_UnsizedElement_ConstantSize_ const&) = default;
     Struct_Array_Field_UnsizedElement_ConstantSize_(Struct_Array_Field_UnsizedElement_ConstantSize_&&) = default;
+    explicit Struct_Array_Field_UnsizedElement_ConstantSize_(std::array<UnsizedStruct, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_ConstantSize_& operator=(Struct_Array_Field_UnsizedElement_ConstantSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_ConstantSize_* output) {
         pdl::packet::slice span = parent_span;
-        for (int n = 0; n < 4; n++) {
-            if (!UnsizedStruct::Parse(span, &output->array_[n])) return false;
+        for (size_t n = 0; n < 4; n++) {
+            UnsizedStruct out;
+            if (!UnsizedStruct::Parse(span, &out)) {
+                return false;
+            }
+            output->array_[n] = std::move(out);
         }
         parent_span = span;
         return true;
@@ -6802,7 +7567,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_ConstantSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -6839,9 +7606,9 @@ class Struct_Array_Field_UnsizedElement_VariableSize_ : public pdl::packet::Buil
 public:
     ~Struct_Array_Field_UnsizedElement_VariableSize_() override = default;
     Struct_Array_Field_UnsizedElement_VariableSize_() = default;
-    explicit Struct_Array_Field_UnsizedElement_VariableSize_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_VariableSize_(Struct_Array_Field_UnsizedElement_VariableSize_ const&) = default;
     Struct_Array_Field_UnsizedElement_VariableSize_(Struct_Array_Field_UnsizedElement_VariableSize_&&) = default;
+    explicit Struct_Array_Field_UnsizedElement_VariableSize_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_VariableSize_& operator=(Struct_Array_Field_UnsizedElement_VariableSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_VariableSize_* output) {
@@ -6851,13 +7618,18 @@ public:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < output->array_size_) return false;
-        size_t limit = span.size() - output->array_size_;
-        while (span.size() > limit) {
-            UnsizedStruct element;
-            if (!UnsizedStruct::Parse(span, &element)) return false;
-            output->array_.emplace_back(std::move(element));
+        if (span.size() < output->array_size_) {
+            return false;
         }
+        auto array_span = span.subrange(0, output->array_size_);
+        while (array_span.size() > 0) {
+            UnsizedStruct out;
+            if (!UnsizedStruct::Parse(array_span, &out)) {
+                return false;
+            }
+            output->array_.push_back(std::move(out));
+        }
+        span.skip(output->array_size_);
         parent_span = span;
         return true;
     }
@@ -6908,7 +7680,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_VariableSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -6945,9 +7719,9 @@ class Struct_Array_Field_UnsizedElement_VariableCount_ : public pdl::packet::Bui
 public:
     ~Struct_Array_Field_UnsizedElement_VariableCount_() override = default;
     Struct_Array_Field_UnsizedElement_VariableCount_() = default;
-    explicit Struct_Array_Field_UnsizedElement_VariableCount_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_VariableCount_(Struct_Array_Field_UnsizedElement_VariableCount_ const&) = default;
     Struct_Array_Field_UnsizedElement_VariableCount_(Struct_Array_Field_UnsizedElement_VariableCount_&&) = default;
+    explicit Struct_Array_Field_UnsizedElement_VariableCount_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_VariableCount_& operator=(Struct_Array_Field_UnsizedElement_VariableCount_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_VariableCount_* output) {
@@ -6958,9 +7732,11 @@ public:
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_count_ = (chunk0 >> 0) & 0xf;
         for (size_t n = 0; n < output->array_count_; n++) {
-            UnsizedStruct element;
-            if (!UnsizedStruct::Parse(span, &element)) return false;
-            output->array_.emplace_back(std::move(element));
+            UnsizedStruct out;
+            if (!UnsizedStruct::Parse(span, &out)) {
+                return false;
+            }
+            output->array_.push_back(std::move(out));
         }
         parent_span = span;
         return true;
@@ -7011,7 +7787,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_VariableCount_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -7048,17 +7826,19 @@ class Struct_Array_Field_UnsizedElement_UnknownSize_ : public pdl::packet::Build
 public:
     ~Struct_Array_Field_UnsizedElement_UnknownSize_() override = default;
     Struct_Array_Field_UnsizedElement_UnknownSize_() = default;
-    explicit Struct_Array_Field_UnsizedElement_UnknownSize_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_UnknownSize_(Struct_Array_Field_UnsizedElement_UnknownSize_ const&) = default;
     Struct_Array_Field_UnsizedElement_UnknownSize_(Struct_Array_Field_UnsizedElement_UnknownSize_&&) = default;
+    explicit Struct_Array_Field_UnsizedElement_UnknownSize_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_UnknownSize_& operator=(Struct_Array_Field_UnsizedElement_UnknownSize_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_UnknownSize_* output) {
         pdl::packet::slice span = parent_span;
         while (span.size() > 0) {
-            UnsizedStruct element;
-            if (!UnsizedStruct::Parse(span, &element)) return false;
-            output->array_.emplace_back(std::move(element));
+            UnsizedStruct out;
+            if (!UnsizedStruct::Parse(span, &out)) {
+                return false;
+            }
+            output->array_.push_back(std::move(out));
         }
         parent_span = span;
         return true;
@@ -7107,7 +7887,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_UnknownSize_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -7144,9 +7926,9 @@ class Struct_Array_Field_UnsizedElement_SizeModifier_ : public pdl::packet::Buil
 public:
     ~Struct_Array_Field_UnsizedElement_SizeModifier_() override = default;
     Struct_Array_Field_UnsizedElement_SizeModifier_() = default;
-    explicit Struct_Array_Field_UnsizedElement_SizeModifier_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_SizeModifier_(Struct_Array_Field_UnsizedElement_SizeModifier_ const&) = default;
     Struct_Array_Field_UnsizedElement_SizeModifier_(Struct_Array_Field_UnsizedElement_SizeModifier_&&) = default;
+    explicit Struct_Array_Field_UnsizedElement_SizeModifier_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_SizeModifier_& operator=(Struct_Array_Field_UnsizedElement_SizeModifier_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_SizeModifier_* output) {
@@ -7156,13 +7938,19 @@ public:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < (output->array_size_ - 2)) return false;
-        size_t limit = span.size() - (output->array_size_ - 2);
-        while (span.size() > limit) {
-            UnsizedStruct element;
-            if (!UnsizedStruct::Parse(span, &element)) return false;
-            output->array_.emplace_back(std::move(element));
+        output->array_size_ = output->array_size_ - +2;
+        if (span.size() < output->array_size_) {
+            return false;
         }
+        auto array_span = span.subrange(0, output->array_size_);
+        while (array_span.size() > 0) {
+            UnsizedStruct out;
+            if (!UnsizedStruct::Parse(array_span, &out)) {
+                return false;
+            }
+            output->array_.push_back(std::move(out));
+        }
+        span.skip(output->array_size_);
         parent_span = span;
         return true;
     }
@@ -7213,7 +8001,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_SizeModifier_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -7250,9 +8040,9 @@ class Struct_Array_Field_SizedElement_VariableSize_Padded_ : public pdl::packet:
 public:
     ~Struct_Array_Field_SizedElement_VariableSize_Padded_() override = default;
     Struct_Array_Field_SizedElement_VariableSize_Padded_() = default;
-    explicit Struct_Array_Field_SizedElement_VariableSize_Padded_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_VariableSize_Padded_(Struct_Array_Field_SizedElement_VariableSize_Padded_ const&) = default;
     Struct_Array_Field_SizedElement_VariableSize_Padded_(Struct_Array_Field_SizedElement_VariableSize_Padded_&&) = default;
+    explicit Struct_Array_Field_SizedElement_VariableSize_Padded_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_VariableSize_Padded_& operator=(Struct_Array_Field_SizedElement_VariableSize_Padded_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_SizedElement_VariableSize_Padded_* output) {
@@ -7263,11 +8053,14 @@ public:
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         output->array_size_ = (chunk0 >> 0) & 0xf;
         size_t array_start_size = span.size();
-        if (span.size() < output->array_size_) return false;
-        if ((output->array_size_ % 2) != 0) return false;
-        size_t limit = span.size() - output->array_size_;
-        while (span.size() > limit) {
-            if (span.size() < 2) return false;
+        if (span.size() < output->array_size_) {
+            return false;
+        }
+        if ((output->array_size_ % 2) != 0) {
+            return false;
+        }
+        auto array_count_ = output->array_size_ / 2;
+        for (size_t n = 0; n < array_count_; n++) {
             output->array_.push_back(span.read_le<uint16_t, 2>());
         }
         if (array_start_size - span.size() < 16) {
@@ -7328,7 +8121,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_SizedElement_VariableSize_Padded_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -7365,9 +8160,9 @@ class Struct_Array_Field_UnsizedElement_VariableCount_Padded_ : public pdl::pack
 public:
     ~Struct_Array_Field_UnsizedElement_VariableCount_Padded_() override = default;
     Struct_Array_Field_UnsizedElement_VariableCount_Padded_() = default;
-    explicit Struct_Array_Field_UnsizedElement_VariableCount_Padded_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_VariableCount_Padded_(Struct_Array_Field_UnsizedElement_VariableCount_Padded_ const&) = default;
     Struct_Array_Field_UnsizedElement_VariableCount_Padded_(Struct_Array_Field_UnsizedElement_VariableCount_Padded_&&) = default;
+    explicit Struct_Array_Field_UnsizedElement_VariableCount_Padded_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_VariableCount_Padded_& operator=(Struct_Array_Field_UnsizedElement_VariableCount_Padded_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_VariableCount_Padded_* output) {
@@ -7378,9 +8173,11 @@ public:
         output->array_count_ = span.read_le<uint8_t, 1>();
         size_t array_start_size = span.size();
         for (size_t n = 0; n < output->array_count_; n++) {
-            UnsizedStruct element;
-            if (!UnsizedStruct::Parse(span, &element)) return false;
-            output->array_.emplace_back(std::move(element));
+            UnsizedStruct out;
+            if (!UnsizedStruct::Parse(span, &out)) {
+                return false;
+            }
+            output->array_.push_back(std::move(out));
         }
         if (array_start_size - span.size() < 16) {
             if (span.size() < 16 - (array_start_size - span.size())) return false;
@@ -7439,7 +8236,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_VariableCount_Padded_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -7476,9 +8275,9 @@ class Struct_Optional_Scalar_Field_ : public pdl::packet::Builder {
 public:
     ~Struct_Optional_Scalar_Field_() override = default;
     Struct_Optional_Scalar_Field_() = default;
-    explicit Struct_Optional_Scalar_Field_(std::optional<uint32_t> a, std::optional<uint32_t> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Optional_Scalar_Field_(Struct_Optional_Scalar_Field_ const&) = default;
     Struct_Optional_Scalar_Field_(Struct_Optional_Scalar_Field_&&) = default;
+    explicit Struct_Optional_Scalar_Field_(std::optional<uint32_t> a, std::optional<uint32_t> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Optional_Scalar_Field_& operator=(Struct_Optional_Scalar_Field_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Optional_Scalar_Field_* output) {
@@ -7553,7 +8352,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Optional_Scalar_Field_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -7590,9 +8391,9 @@ class Struct_Optional_Enum_Field_ : public pdl::packet::Builder {
 public:
     ~Struct_Optional_Enum_Field_() override = default;
     Struct_Optional_Enum_Field_() = default;
-    explicit Struct_Optional_Enum_Field_(std::optional<Enum16> a, std::optional<Enum16> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Optional_Enum_Field_(Struct_Optional_Enum_Field_ const&) = default;
     Struct_Optional_Enum_Field_(Struct_Optional_Enum_Field_&&) = default;
+    explicit Struct_Optional_Enum_Field_(std::optional<Enum16> a, std::optional<Enum16> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Optional_Enum_Field_& operator=(Struct_Optional_Enum_Field_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Optional_Enum_Field_* output) {
@@ -7607,15 +8408,21 @@ public:
             if (span.size() < 2) {
                 return false;
             }
-            output->a_ = static_cast<Enum16>(span.read_le<uint16_t, 2>());
-            if (!IsEnum16Valid(output->a_.value())) return false;
+            auto raw_value = span.read_le<uint16_t, 2>();
+            if (!IsValidEnum16(raw_value)) {
+               return false;
+            }
+            output->a_ = Enum16(raw_value);
         }
         if (c1 == 1) {
             if (span.size() < 2) {
                 return false;
             }
-            output->b_ = static_cast<Enum16>(span.read_le<uint16_t, 2>());
-            if (!IsEnum16Valid(output->b_.value())) return false;
+            auto raw_value = span.read_le<uint16_t, 2>();
+            if (!IsValidEnum16(raw_value)) {
+               return false;
+            }
+            output->b_ = Enum16(raw_value);
         }
         parent_span = span;
         return true;
@@ -7669,7 +8476,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Optional_Enum_Field_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -7706,9 +8515,9 @@ class Struct_Optional_Struct_Field_ : public pdl::packet::Builder {
 public:
     ~Struct_Optional_Struct_Field_() override = default;
     Struct_Optional_Struct_Field_() = default;
-    explicit Struct_Optional_Struct_Field_(std::optional<SizedStruct> a, std::optional<UnsizedStruct> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Optional_Struct_Field_(Struct_Optional_Struct_Field_ const&) = default;
     Struct_Optional_Struct_Field_(Struct_Optional_Struct_Field_&&) = default;
+    explicit Struct_Optional_Struct_Field_(std::optional<SizedStruct> a, std::optional<UnsizedStruct> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Optional_Struct_Field_& operator=(Struct_Optional_Struct_Field_ const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, Struct_Optional_Struct_Field_* output) {
@@ -7783,7 +8592,9 @@ protected:
         // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Optional_Struct_Field_::Parse(span, &s_)) return false;
-        if (span.size() != 0) { return false; }
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -7831,8 +8642,14 @@ inline std::string Enum_Incomplete_Truncated_Closed_Text(Enum_Incomplete_Truncat
     }
 }
 
-inline bool IsEnum_Incomplete_Truncated_Closed_Valid(Enum_Incomplete_Truncated_Closed_ tag) {
-    return tag == Enum_Incomplete_Truncated_Closed_::A || tag == Enum_Incomplete_Truncated_Closed_::B;
+inline bool IsValidEnum_Incomplete_Truncated_Closed_(uint8_t value) {
+    switch (value) {
+        case 0x0:
+        case 0x1:
+            return true;
+        default:
+            return false;
+    }
 }
 
 class Enum_Incomplete_Truncated_ClosedView {
@@ -7866,9 +8683,14 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        e_ = static_cast<Enum_Incomplete_Truncated_Closed_>( (chunk0 >> 0) & 0x7 );
-        if (!IsEnum_Incomplete_Truncated_Closed_Valid(e_)) return false;
-        if (span.size() != 0) { return false; }
+        auto raw_value = (chunk0 >> 0) & 0x7;
+        if (!IsValidEnum_Incomplete_Truncated_Closed_(raw_value)) {
+           return false;
+        }
+        e_ = Enum_Incomplete_Truncated_Closed_(raw_value);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -7916,8 +8738,6 @@ inline std::string Enum_Incomplete_Truncated_Open_Text(Enum_Incomplete_Truncated
     }
 }
 
-inline bool IsEnum_Incomplete_Truncated_Open_Valid(Enum_Incomplete_Truncated_Open_ /* tag */) { return true; }
-
 class Enum_Incomplete_Truncated_OpenView {
 public:
     static Enum_Incomplete_Truncated_OpenView Create(pdl::packet::slice const& parent) {
@@ -7949,9 +8769,10 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        e_ = static_cast<Enum_Incomplete_Truncated_Open_>( (chunk0 >> 0) & 0x7 );
-        if (!IsEnum_Incomplete_Truncated_Open_Valid(e_)) return false;
-        if (span.size() != 0) { return false; }
+        e_ = Enum_Incomplete_Truncated_Open_((chunk0 >> 0) & 0x7);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -7986,23 +8807,20 @@ public:
 
 enum class Enum_Incomplete_Truncated_Closed_WithRange_ : uint8_t {
     A = 0x0,
-    X = 0x1,
-    Y = 0x2,
 };
 
 inline std::string Enum_Incomplete_Truncated_Closed_WithRange_Text(Enum_Incomplete_Truncated_Closed_WithRange_ tag) {
     switch (tag) {
         case Enum_Incomplete_Truncated_Closed_WithRange_::A: return "A";
-        case Enum_Incomplete_Truncated_Closed_WithRange_::X: return "X";
-        case Enum_Incomplete_Truncated_Closed_WithRange_::Y: return "Y";
         default:
             return std::string("Unknown Enum_Incomplete_Truncated_Closed_WithRange_: " +
                    std::to_string(static_cast<uint64_t>(tag)));
     }
 }
 
-inline bool IsEnum_Incomplete_Truncated_Closed_WithRange_Valid(Enum_Incomplete_Truncated_Closed_WithRange_ tag) {
-    return tag == Enum_Incomplete_Truncated_Closed_WithRange_::A || (static_cast<uint64_t>(tag) >= 0x1 && static_cast<uint64_t>(tag) <= 0x6);
+inline bool IsValidEnum_Incomplete_Truncated_Closed_WithRange_(uint8_t value) {
+    return value == 0x0
+        || (0x1 <= value && value <= 0x6);
 }
 
 class Enum_Incomplete_Truncated_Closed_WithRangeView {
@@ -8036,9 +8854,14 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        e_ = static_cast<Enum_Incomplete_Truncated_Closed_WithRange_>( (chunk0 >> 0) & 0x7 );
-        if (!IsEnum_Incomplete_Truncated_Closed_WithRange_Valid(e_)) return false;
-        if (span.size() != 0) { return false; }
+        auto raw_value = (chunk0 >> 0) & 0x7;
+        if (!IsValidEnum_Incomplete_Truncated_Closed_WithRange_(raw_value)) {
+           return false;
+        }
+        e_ = Enum_Incomplete_Truncated_Closed_WithRange_(raw_value);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -8073,22 +8896,16 @@ public:
 
 enum class Enum_Incomplete_Truncated_Open_WithRange_ : uint8_t {
     A = 0x0,
-    X = 0x1,
-    Y = 0x2,
 };
 
 inline std::string Enum_Incomplete_Truncated_Open_WithRange_Text(Enum_Incomplete_Truncated_Open_WithRange_ tag) {
     switch (tag) {
         case Enum_Incomplete_Truncated_Open_WithRange_::A: return "A";
-        case Enum_Incomplete_Truncated_Open_WithRange_::X: return "X";
-        case Enum_Incomplete_Truncated_Open_WithRange_::Y: return "Y";
         default:
             return std::string("Unknown Enum_Incomplete_Truncated_Open_WithRange_: " +
                    std::to_string(static_cast<uint64_t>(tag)));
     }
 }
-
-inline bool IsEnum_Incomplete_Truncated_Open_WithRange_Valid(Enum_Incomplete_Truncated_Open_WithRange_ /* tag */) { return true; }
 
 class Enum_Incomplete_Truncated_Open_WithRangeView {
 public:
@@ -8121,9 +8938,10 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        e_ = static_cast<Enum_Incomplete_Truncated_Open_WithRange_>( (chunk0 >> 0) & 0x7 );
-        if (!IsEnum_Incomplete_Truncated_Open_WithRange_Valid(e_)) return false;
-        if (span.size() != 0) { return false; }
+        e_ = Enum_Incomplete_Truncated_Open_WithRange_((chunk0 >> 0) & 0x7);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -8183,8 +9001,20 @@ inline std::string Enum_Complete_Truncated_Text(Enum_Complete_Truncated_ tag) {
     }
 }
 
-inline bool IsEnum_Complete_Truncated_Valid(Enum_Complete_Truncated_ tag) {
-    return tag == Enum_Complete_Truncated_::A || tag == Enum_Complete_Truncated_::B || tag == Enum_Complete_Truncated_::C || tag == Enum_Complete_Truncated_::D || tag == Enum_Complete_Truncated_::E || tag == Enum_Complete_Truncated_::F || tag == Enum_Complete_Truncated_::G || tag == Enum_Complete_Truncated_::H;
+inline bool IsValidEnum_Complete_Truncated_(uint8_t value) {
+    switch (value) {
+        case 0x0:
+        case 0x1:
+        case 0x2:
+        case 0x3:
+        case 0x4:
+        case 0x5:
+        case 0x6:
+        case 0x7:
+            return true;
+        default:
+            return false;
+    }
 }
 
 class Enum_Complete_TruncatedView {
@@ -8218,9 +9048,14 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        e_ = static_cast<Enum_Complete_Truncated_>( (chunk0 >> 0) & 0x7 );
-        if (!IsEnum_Complete_Truncated_Valid(e_)) return false;
-        if (span.size() != 0) { return false; }
+        auto raw_value = (chunk0 >> 0) & 0x7;
+        if (!IsValidEnum_Complete_Truncated_(raw_value)) {
+           return false;
+        }
+        e_ = Enum_Complete_Truncated_(raw_value);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -8255,23 +9090,20 @@ public:
 
 enum class Enum_Complete_Truncated_WithRange_ : uint8_t {
     A = 0x0,
-    X = 0x1,
-    Y = 0x2,
 };
 
 inline std::string Enum_Complete_Truncated_WithRange_Text(Enum_Complete_Truncated_WithRange_ tag) {
     switch (tag) {
         case Enum_Complete_Truncated_WithRange_::A: return "A";
-        case Enum_Complete_Truncated_WithRange_::X: return "X";
-        case Enum_Complete_Truncated_WithRange_::Y: return "Y";
         default:
             return std::string("Unknown Enum_Complete_Truncated_WithRange_: " +
                    std::to_string(static_cast<uint64_t>(tag)));
     }
 }
 
-inline bool IsEnum_Complete_Truncated_WithRange_Valid(Enum_Complete_Truncated_WithRange_ tag) {
-    return tag == Enum_Complete_Truncated_WithRange_::A || (static_cast<uint64_t>(tag) >= 0x1 && static_cast<uint64_t>(tag) <= 0x7);
+inline bool IsValidEnum_Complete_Truncated_WithRange_(uint8_t value) {
+    return value == 0x0
+        || (0x1 <= value && value <= 0x7);
 }
 
 class Enum_Complete_Truncated_WithRangeView {
@@ -8305,9 +9137,14 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        e_ = static_cast<Enum_Complete_Truncated_WithRange_>( (chunk0 >> 0) & 0x7 );
-        if (!IsEnum_Complete_Truncated_WithRange_Valid(e_)) return false;
-        if (span.size() != 0) { return false; }
+        auto raw_value = (chunk0 >> 0) & 0x7;
+        if (!IsValidEnum_Complete_Truncated_WithRange_(raw_value)) {
+           return false;
+        }
+        e_ = Enum_Complete_Truncated_WithRange_(raw_value);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -8355,8 +9192,10 @@ inline std::string Enum_Complete_WithRange_Text(Enum_Complete_WithRange_ tag) {
     }
 }
 
-inline bool IsEnum_Complete_WithRange_Valid(Enum_Complete_WithRange_ tag) {
-    return tag == Enum_Complete_WithRange_::A || tag == Enum_Complete_WithRange_::B || (static_cast<uint64_t>(tag) >= 0x2 && static_cast<uint64_t>(tag) <= 0xff);
+inline bool IsValidEnum_Complete_WithRange_(uint8_t value) {
+    return value == 0x0
+        || value == 0x1
+        || (0x2 <= value && value <= 0xff);
 }
 
 class Enum_Complete_WithRangeView {
@@ -8389,9 +9228,14 @@ protected:
         if (span.size() < 1) {
             return false;
         }
-        e_ = static_cast<Enum_Complete_WithRange_>( span.read_le<uint8_t, 1>() );
-        if (!IsEnum_Complete_WithRange_Valid(e_)) return false;
-        if (span.size() != 0) { return false; }
+        auto raw_value = span.read_le<uint8_t, 1>();
+        if (!IsValidEnum_Complete_WithRange_(raw_value)) {
+           return false;
+        }
+        e_ = Enum_Complete_WithRange_(raw_value);
+        if (span.size() > 0) {
+            return false;
+        }
         return true;
     }
 

@@ -1,4 +1,4 @@
-// Copyright 2023 Google LLC
+// Copyright (C) 2026 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,10 +24,6 @@ fn indent(s: &str, level: usize) -> String {
         .map(|line| if line.is_empty() { line.to_string() } else { format!("{}{}", prefix, line) })
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn to_pascal_case(s: &str) -> String {
-    s.to_upper_camel_case()
 }
 
 fn mask(width: usize) -> String {
@@ -63,19 +59,25 @@ pub fn generate(
     let scope = analyzer::Scope::new(file).unwrap();
     let schema = analyzer::Schema::new(file);
 
-    code.push_str(&format!("// File generated from {}, with the command:\n", source.name()));
-    code.push_str("//  pdlc ...\n");
-    code.push_str("// /!\\ Do not edit by hand\n\n");
+    code.push_str(&format!(
+        r#"// File generated from {source_name}, with the command
+//   pdlc --output-format cxx {source_name}
+// /!\ Do not edit by hand
 
-    code.push_str("#pragma once\n\n");
-    code.push_str("#include <cstdint>\n");
-    code.push_str("#include <string>\n");
-    code.push_str("#include <optional>\n");
-    code.push_str("#include <utility>\n");
-    code.push_str("#include <vector>\n");
-    code.push_str("#include <array>\n");
-    code.push_str("#include <numeric>\n\n");
-    code.push_str("#include <packet_runtime.h>\n\n");
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <optional>
+#include <utility>
+#include <vector>
+#include <array>
+#include <numeric>
+
+#include <packet_runtime.h>
+"#,
+        source_name = source.name()
+    ));
 
     for header in include_headers {
         code.push_str(&format!("#include <{}>\n", header));
@@ -91,14 +93,19 @@ pub fn generate(
         code.push('\n');
     }
 
-    code.push_str("#ifndef _ASSERT_VALID\n");
-    code.push_str("#ifdef ASSERT\n");
-    code.push_str("#define _ASSERT_VALID ASSERT\n");
-    code.push_str("#else\n");
-    code.push_str("#include <cassert>\n");
-    code.push_str("#define _ASSERT_VALID assert\n");
-    code.push_str("#endif  // ASSERT\n");
-    code.push_str("#endif  // !_ASSERT_VALID\n\n");
+    code.push_str(
+        r#"
+#ifndef _ASSERT_VALID
+#ifdef ASSERT
+#define _ASSERT_VALID ASSERT
+#else
+#include <cassert>
+#define _ASSERT_VALID assert
+#endif  // ASSERT
+#endif  // !_ASSERT_VALID
+
+"#,
+    );
 
     if let Some(ns) = namespace {
         code.push_str(&format!("namespace {} {{\n", ns));
@@ -127,7 +134,7 @@ pub fn generate(
             ast::DeclDesc::Enum { id, tags, width } => {
                 code.push_str(&generate_enum_declaration(id, tags, *width));
                 code.push_str(&generate_enum_to_text(id, tags));
-                code.push_str(&generate_enum_is_valid(id, tags));
+                code.push_str(&generate_enum_is_valid(id, tags, *width));
             }
             ast::DeclDesc::Packet { .. } => {
                 code.push_str(&generate_packet_view(&scope, &schema, decl));
@@ -151,36 +158,26 @@ fn generate_enum_declaration(id: &str, tags: &[ast::Tag], width: usize) -> Strin
     let enum_type = get_cxx_scalar_type(width);
     let mut tag_decls = Vec::new();
     for tag in tags {
-        match tag {
-            ast::Tag::Value(t) => {
-                tag_decls.push(format!("{} = {:#x},", t.id, t.value));
-            }
-            ast::Tag::Range(t) => {
-                for subtag in &t.tags {
-                    tag_decls.push(format!("{} = {:#x},", subtag.id, subtag.value));
-                }
-            }
-            _ => {}
+        if let ast::Tag::Value(t) = tag {
+            tag_decls.push(format!("{} = {:#x},", t.id, t.value));
         }
     }
 
-    format!("\nenum class {} : {} {{\n{}\n}};\n", id, enum_type, indent(&tag_decls.join("\n"), 1))
+    format!(
+        r#"
+enum class {id} : {enum_type} {{
+{tag_declarations}
+}};
+"#,
+        tag_declarations = indent(&tag_decls.join("\n"), 1)
+    )
 }
 
 fn generate_enum_to_text(id: &str, tags: &[ast::Tag]) -> String {
     let mut tag_cases = Vec::new();
     for tag in tags {
-        match tag {
-            ast::Tag::Value(t) => {
-                tag_cases.push(format!("case {}::{}: return \"{}\";", id, t.id, t.id));
-            }
-            ast::Tag::Range(t) => {
-                for subtag in &t.tags {
-                    tag_cases
-                        .push(format!("case {}::{}: return \"{}\";", id, subtag.id, subtag.id));
-                }
-            }
-            _ => {}
+        if let ast::Tag::Value(t) = tag {
+            tag_cases.push(format!("case {}::{}: return \"{}\";", id, t.id, t.id));
         }
     }
 
@@ -195,45 +192,63 @@ inline std::string {id}Text({id} tag) {{
     }}
 }}
 "#,
-        id = id,
         tag_cases = indent(&tag_cases.join("\n"), 2)
     )
 }
 
-fn generate_enum_is_valid(id: &str, tags: &[ast::Tag]) -> String {
-    let mut check_exprs = Vec::new();
-    let mut has_other = false;
-    for tag in tags {
-        match tag {
-            ast::Tag::Value(t) => {
-                check_exprs.push(format!("tag == {}::{}", id, t.id));
-            }
-            ast::Tag::Range(t) => {
-                check_exprs.push(format!(
-                    "(static_cast<uint64_t>(tag) >= {:#x} && static_cast<uint64_t>(tag) <= {:#x})",
-                    t.range.start(),
-                    t.range.end()
-                ));
-            }
-            ast::Tag::Other(_) => {
-                has_other = true;
-            }
-        }
+/// Generate the validation function for enum values.
+fn generate_enum_is_valid(id: &str, tags: &[ast::Tag], width: usize) -> String {
+    let is_open = tags.iter().any(|t| matches!(t, ast::Tag::Other(_)));
+    if is_open {
+        return String::new();
     }
 
-    if has_other || check_exprs.is_empty() {
-        return format!("\ninline bool Is{id}Valid({id} /* tag */) {{ return true; }}\n", id = id);
-    }
+    let backing_type = get_cxx_scalar_type(width);
+    let has_ranges = tags.iter().any(|t| matches!(t, ast::Tag::Range(_)));
 
-    format!(
-        r#"
-inline bool Is{id}Valid({id} tag) {{
-    return {check_exprs};
+    if has_ranges {
+        let condition = tags
+            .iter()
+            .map(|tag| match tag {
+                ast::Tag::Value(t) => format!("value == {:#x}", t.value),
+                ast::Tag::Range(t) => {
+                    format!("({:#x} <= value && value <= {:#x})", t.range.start(), t.range.end())
+                }
+                _ => unreachable!(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n        || ");
+
+        format!(
+            r#"
+inline bool IsValid{id}({backing_type} value) {{
+    return {condition};
 }}
 "#,
-        id = id,
-        check_exprs = check_exprs.join(" || ")
-    )
+        )
+    } else {
+        let tag_cases = tags
+            .iter()
+            .map(|tag| match tag {
+                ast::Tag::Value(t) => format!("case {:#x}:", t.value),
+                _ => unreachable!(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n        ");
+
+        format!(
+            r#"
+inline bool IsValid{id}({backing_type} value) {{
+    switch (value) {{
+        {tag_cases}
+            return true;
+        default:
+            return false;
+    }}
+}}
+"#,
+        )
+    }
 }
 
 fn get_unconstrained_parent_fields<'a>(
@@ -431,17 +446,31 @@ impl<'a> FieldParser<'a> {
                 }
                 ast::FieldDesc::Typedef { id, type_id, .. } => {
                     let type_decl = self.scope.typedef.get(type_id).unwrap();
-                    if matches!(type_decl.desc, ast::DeclDesc::Enum { .. }) {
-                        self.unchecked_append(format!(
-                            "{}{}_ = static_cast<{}>( {} );",
-                            self.target_prefix, id, type_id, v
-                        ));
-                        self.unchecked_append(format!(
-                            "if (!Is{}Valid({}{}_)) return false;",
-                            type_id, self.target_prefix, id
-                        ));
-                    } else {
-                        self.unchecked_append(format!("{}{}_ = {};", self.target_prefix, id, v));
+                    match &type_decl.desc {
+                        ast::DeclDesc::Enum { tags, .. }
+                            if tags.iter().any(|t| matches!(t, ast::Tag::Other(_))) =>
+                        {
+                            self.unchecked_append(format!(
+                                "{}{}_ = {}({});",
+                                self.target_prefix, id, type_id, v
+                            ));
+                        }
+                        ast::DeclDesc::Enum { .. } => {
+                            self.unchecked_append(format!("auto raw_value = {v};"));
+                            self.unchecked_append(format!("if (!IsValid{type_id}(raw_value)) {{"));
+                            self.unchecked_append("   return false;".to_string());
+                            self.unchecked_append("}".to_string());
+                            self.unchecked_append(format!(
+                                "{}{}_ = {}(raw_value);",
+                                self.target_prefix, id, type_id
+                            ));
+                        }
+                        _ => {
+                            self.unchecked_append(format!(
+                                "{}{}_ = {};",
+                                self.target_prefix, id, v
+                            ));
+                        }
                     }
                 }
                 ast::FieldDesc::Size { field_id, .. } => {
@@ -488,31 +517,8 @@ impl<'a> FieldParser<'a> {
         if self.shift != 0 {
             panic!("Typedef field does not start on an octet boundary");
         }
-        self.check_code();
 
-        let type_decl = self.scope.typedef.get(type_id).unwrap();
-        if let ast::DeclDesc::Enum { width, .. } = &type_decl.desc {
-            let ty = get_cxx_scalar_type(*width);
-            let byteorder = match self.endianness {
-                ast::EndiannessValue::LittleEndian => "le",
-                ast::EndiannessValue::BigEndian => "be",
-            };
-            self.append(format!("if (span.size() < {}) return false;", width / 8));
-            self.append(format!(
-                "{}{}_ = static_cast<{}>(span.read_{}<{}, {}>());",
-                self.target_prefix,
-                id,
-                type_id,
-                byteorder,
-                ty,
-                width / 8
-            ));
-            self.append(format!(
-                "if (!Is{}Valid({}{}_)) return false;",
-                type_id, self.target_prefix, id
-            ));
-            return;
-        }
+        self.check_code();
 
         let field_size = self.schema.field_size(field.key);
         if let analyzer::Size::Unknown = field_size {
@@ -520,25 +526,22 @@ impl<'a> FieldParser<'a> {
             if trailing_size > 0 {
                 self.append(format!("if (span.size() < {}) return false;", trailing_size / 8));
                 let size = format!("span.size() - {}", trailing_size / 8);
+                self.append(format!("pdl::packet::slice {id}_span = span.subrange(0, {size});",));
                 self.append(format!(
-                    "pdl::packet::slice {0}_span = span.subrange(0, {1});",
-                    id, size
+                    "if (!{type_id}::Parse({id}_span, &{}{id}_)) return false;",
+                    self.target_prefix
                 ));
-                self.append(format!(
-                    "if (!{0}::Parse({1}_span, &{2}{1}_)) return false;",
-                    type_id, id, self.target_prefix
-                ));
-                self.append(format!("span.skip({0}_span.size());", id));
+                self.append(format!("span.skip({id}_span.size());"));
             } else {
                 self.append(format!(
-                    "if (!{}::Parse(span, &{}{}_)) return false;",
-                    type_id, self.target_prefix, id
+                    "if (!{type_id}::Parse(span, &{}{id}_)) return false;",
+                    self.target_prefix
                 ));
             }
         } else {
             self.append(format!(
-                "if (!{}::Parse(span, &{}{}_)) return false;",
-                type_id, self.target_prefix, id
+                "if (!{type_id}::Parse(span, &{}{id}_)) return false;",
+                self.target_prefix,
             ));
         }
     }
@@ -569,22 +572,34 @@ impl<'a> FieldParser<'a> {
             ast::FieldDesc::Typedef { id, type_id, .. } => {
                 let type_decl = self.scope.typedef.get(type_id).unwrap();
                 let cond_value = cond.value.unwrap();
-                if let ast::DeclDesc::Enum { width, .. } = &type_decl.desc {
+                if let ast::DeclDesc::Enum { width, tags, .. } = &type_decl.desc {
                     let backing_type = get_cxx_scalar_type(*width);
+                    let is_open = tags.iter().any(|t| matches!(t, ast::Tag::Other(_)));
                     let size = width / 8;
                     self.append(format!("if ({} == {}) {{", cond.id, cond_value));
                     self.append(format!("    if (span.size() < {}) {{", size));
                     self.append("        return false;".to_string());
                     self.append("    }".to_string());
-                    self.append(format!(
-                        "    {}{}_ = static_cast<{}>(span.read_{}<{}, {}>());",
-                        self.target_prefix, id, type_id, byteorder, backing_type, size
-                    ));
-                    self.append(format!(
-                        "    if (!Is{}Valid({}{}_.value())) return false;",
-                        type_id, self.target_prefix, id
-                    ));
-                    self.append("}".to_string());
+                    if is_open {
+                        self.append(format!(
+                            "    {}{}_ = {}(span.read_{}<{}, {}>());",
+                            self.target_prefix, id, type_id, byteorder, backing_type, size
+                        ));
+                        self.append("}".to_string());
+                    } else {
+                        self.append(format!(
+                            "    auto raw_value = span.read_{}<{}, {}>();",
+                            byteorder, backing_type, size
+                        ));
+                        self.append(format!("    if (!IsValid{type_id}(raw_value)) {{"));
+                        self.append("       return false;".to_string());
+                        self.append("    }".to_string());
+                        self.append(format!(
+                            "    {}{}_ = {}(raw_value);",
+                            self.target_prefix, id, type_id
+                        ));
+                        self.append("}".to_string());
+                    }
                 } else {
                     self.append(format!("if ({} == {}) {{", cond.id, cond_value));
                     self.append(format!(
@@ -605,104 +620,121 @@ impl<'a> FieldParser<'a> {
         &mut self,
         field: &'a ast::Field,
         id: &str,
-        _type_id: Option<&str>,
-        _width: Option<usize>,
-        _size: Option<usize>,
+        type_id: Option<&str>,
+        size_modifier: Option<&str>,
     ) {
         self.check_code();
-        match self.schema.field_size(field.key) {
-            analyzer::Size::Static(bits) => {
-                let size = bits / 8;
-                self.check_size(&size.to_string());
-                self.append(format!("{}{}_ = span.subrange(0, {});", self.target_prefix, id, size));
-                self.append(format!("span.skip({});", size));
+
+        let element_size = analyzer::element_size(self.scope, self.schema, self.decl, field);
+        let array_size = analyzer::array_size(self.decl, field);
+
+        // Apply the size modifier.
+        if let Some(size_modifier) = size_modifier {
+            self.append(format!("{id}_size_ = {id}_size_ - {size_modifier};"));
+        }
+
+        // TODO element validation
+        use analyzer::{ArraySize, ElementSize};
+        match (element_size, array_size) {
+            (ElementSize::Static(element_size), ArraySize::StaticCount(count)) => {
+                let total_size = element_size * count;
+                self.check_size(&format!("{total_size}"));
+                self.append(format!("{id}_ = span.subrange(0, {total_size});"));
+                self.append(format!("span.skip({total_size});"));
             }
-            _ => {
-                let mut size_expr = "".to_string();
-                let mut count_expr = "".to_string();
 
-                for f in self.decl.fields() {
-                    match &f.desc {
-                        ast::FieldDesc::Size { field_id, .. } if field_id == id => {
-                            let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                                "payload"
-                            } else {
-                                field_id
-                            };
-                            size_expr = format!("{}{}_size_", self.target_prefix, field_name);
-                        }
-                        ast::FieldDesc::Count { field_id, .. } if field_id == id => {
-                            count_expr = format!("{}{}_count_", self.target_prefix, field_id);
-                        }
-                        _ => {}
-                    }
-                }
+            (ElementSize::Static(element_size), ArraySize::DynamicCount) => {
+                self.check_size(&format!("{element_size} * {id}_count_"));
+                self.append(format!("{id}_ = span.subrange(0, {element_size} * {id}_count_);"));
+                self.append(format!("span.skip({element_size} * {id}_count_);"));
+            }
 
-                if !size_expr.is_empty() {
-                    let inverted_modifier = match &field.desc {
-                        ast::FieldDesc::Array { size_modifier: Some(m), .. } => {
-                            if let Some(stripped) = m.strip_prefix('+') {
-                                format!("- {}", stripped)
-                            } else if let Some(stripped) = m.strip_prefix('-') {
-                                format!("+ {}", stripped)
-                            } else {
-                                m.clone()
-                            }
-                        }
-                        _ => String::new(),
-                    };
-                    let actual_size = if inverted_modifier.is_empty() {
-                        size_expr
-                    } else {
-                        format!("({} {})", size_expr, inverted_modifier)
-                    };
-                    self.append(format!("if (span.size() < {}) return false;", actual_size));
-                    if let ast::FieldDesc::Array { width: Some(w), .. } = &field.desc {
-                        if w % 8 == 0 {
-                            self.append(format!(
-                                "if (({} % {}) != 0) return false;",
-                                actual_size,
-                                w / 8
-                            ));
-                        }
-                    }
-                    self.append(format!(
-                        "{}{}_ = span.subrange(0, {});",
-                        self.target_prefix, id, actual_size
-                    ));
-                    self.append(format!("span.skip({});", actual_size));
-                } else if !count_expr.is_empty() {
-                    if let ast::FieldDesc::Array { width: Some(w), .. } = &field.desc {
-                        let total_size = format!("{} * {}", count_expr, w / 8);
-                        self.append(format!("if (span.size() < {}) return false;", total_size));
-                        self.append(format!(
-                            "{}{}_ = span.subrange(0, {});",
-                            self.target_prefix, id, total_size
-                        ));
-                        self.append(format!("span.skip({});", total_size));
-                    } else {
-                        // Full parse needed
-                        self.append(format!("{}{}_ = span;", self.target_prefix, id));
-                        self.append("span.clear();".to_string());
-                    }
-                } else {
-                    let trailing_size = self.get_trailing_size(field);
-                    if trailing_size > 0 {
-                        self.append(format!(
-                            "if (span.size() < {}) return false;",
-                            trailing_size / 8
-                        ));
-                        let size = format!("span.size() - {}", trailing_size / 8);
-                        self.append(format!(
-                            "{}{}_ = span.subrange(0, {});",
-                            self.target_prefix, id, size
-                        ));
-                        self.append(format!("span.skip({});", size));
-                    } else {
-                        self.append(format!("{}{}_ = span;", self.target_prefix, id));
-                        self.append("span.clear();".to_string());
-                    }
-                }
+            (ElementSize::Static(element_size), ArraySize::DynamicSize) => {
+                self.check_size(&format!("{id}_size_"));
+                self.append(format!("if (({id}_size_ % {element_size}) != 0) {{"));
+                self.append("    return false;".to_string());
+                self.append("}".to_string());
+                self.append(format!("{id}_ = span.subrange(0, {id}_size_);"));
+                self.append(format!("span.skip({id}_size_);"));
+            }
+
+            (ElementSize::Static(element_size), ArraySize::Unknown) => {
+                self.append(format!("if ((span.size() % {element_size}) != 0) {{"));
+                self.append("    return false;".to_string());
+                self.append("}".to_string());
+                self.append(format!("{id}_ = span;"));
+                self.append("span.clear();".to_string());
+            }
+
+            (ElementSize::Dynamic, ArraySize::StaticCount(count)) => {
+                self.check_size(&format!("{id}_element_size_ * {count}"));
+                self.append(format!("{id}_ = span.subrange(0, {id}_element_size_ * {count});"));
+                self.append(format!("span.skip({id}_element_size_ * {count});"));
+            }
+
+            (ElementSize::Dynamic, ArraySize::DynamicCount) => {
+                self.check_size(&format!("{id}_element_size_ * {id}_count_"));
+                self.append(format!("{id}_ = span.subrange(0, {id}_element_size_ * {id}_count_);"));
+                self.append(format!("span.skip({id}_element_size_ * {id}_count_);"));
+            }
+
+            (ElementSize::Dynamic, ArraySize::DynamicSize) => {
+                self.check_size(&format!("{id}_size_"));
+                self.append(format!("if (({id}_size_ % {id}_element_size_) != 0) {{"));
+                self.append("    return false;".to_string());
+                self.append("}".to_string());
+                self.append(format!("{id}_ = span.subrange(0, {id}_size_);"));
+                self.append(format!("span.skip({id}_size_);"));
+            }
+
+            (ElementSize::Dynamic, ArraySize::Unknown) => {
+                self.append(format!("if ((span.size() % {id}_element_size_) != 0) {{"));
+                self.append("    return false;".to_string());
+                self.append("}".to_string());
+                self.append(format!("{id}_ = span;"));
+                self.append("span.clear();".to_string());
+            }
+
+            (ElementSize::Unknown, ArraySize::StaticCount(count)) => {
+                let tid = type_id.unwrap();
+                self.append(format!("{id}_ = span;"));
+                self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
+                self.append(format!("    {tid} out;"));
+                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
+                self.append("        return false;".to_string());
+                self.append("    }".to_string());
+                self.append("}".to_string());
+                self.append(format!("{id}_ = {id}_.subrange(0, {id}_.size() - span.size());"));
+            }
+
+            (ElementSize::Unknown, ArraySize::DynamicCount) => {
+                let tid = type_id.unwrap();
+                self.append(format!("{id}_ = span;"));
+                self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
+                self.append(format!("    {tid} out;"));
+                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
+                self.append("        return false;".to_string());
+                self.append("    }".to_string());
+                self.append("}".to_string());
+                self.append(format!("{id}_ = {id}_.subrange(0, {id}_.size() - span.size());"));
+            }
+
+            (ElementSize::Unknown, ArraySize::DynamicSize) => {
+                self.check_size(&format!("{id}_size_"));
+                self.append(format!("{id}_ = span.subrange(0, {id}_size_);"));
+                self.append(format!("span.skip({id}_size_);"));
+            }
+
+            (ElementSize::Unknown, ArraySize::Unknown) => {
+                let tid = type_id.unwrap();
+                self.append(format!("{id}_ = span;"));
+                self.append("while (span.size() > 0) {".to_string());
+                self.append(format!("    {tid} out;"));
+                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
+                self.append("        return false;".to_string());
+                self.append("    }".to_string());
+                self.append("}".to_string());
+                self.append(format!("{id}_ = {id}_.subrange(0, {id}_.size() - span.size());"));
             }
         }
     }
@@ -784,161 +816,197 @@ impl<'a> FieldParser<'a> {
 
     fn parse_array_field_full(
         &mut self,
-        _field: &'a ast::Field,
+        field: &'a ast::Field,
         id: &str,
         type_id: Option<&str>,
-        width: Option<usize>,
-        size: Option<usize>,
+        size_modifier: Option<&str>,
     ) {
         self.check_code();
+
+        let element_size = analyzer::element_size(self.scope, self.schema, self.decl, field);
+        let array_size = analyzer::array_size(self.decl, field);
+
+        // Apply the size modifier.
+        if let Some(size_modifier) = size_modifier {
+            self.append(format!("output->{id}_size_ = output->{id}_size_ - {size_modifier};"));
+        }
+
+        use analyzer::{ArraySize, ElementSize};
+        match (element_size, array_size) {
+            (ElementSize::Static(element_size), ArraySize::StaticCount(count)) => {
+                let total_size = element_size * count;
+                self.check_size(&format!("{total_size}"));
+                self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
+                let out = self.parse_array_element(field, "span".to_string());
+                self.append(format!("    output->{id}_[n] = {out};"));
+                self.append("}".to_string());
+            }
+
+            (ElementSize::Static(element_size), ArraySize::DynamicCount) => {
+                self.check_size(&format!("{element_size} * output->{id}_count_"));
+                self.append(format!("for (size_t n = 0; n < output->{id}_count_; n++) {{"));
+                let out = self.parse_array_element(field, "span".to_string());
+                self.append(format!("    output->{id}_.push_back({out});"));
+                self.append("}".to_string());
+            }
+
+            (ElementSize::Static(element_size), ArraySize::DynamicSize) => {
+                self.check_size(&format!("output->{id}_size_"));
+                self.append(format!("if ((output->{id}_size_ % {element_size}) != 0) {{"));
+                self.append("    return false;".to_string());
+                self.append("}".to_string());
+                self.append(format!("auto {id}_count_ = output->{id}_size_ / {element_size};"));
+                self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
+                let out = self.parse_array_element(field, "span".to_string());
+                self.append(format!("    output->{id}_.push_back({out});"));
+                self.append("}".to_string());
+            }
+
+            (ElementSize::Static(element_size), ArraySize::Unknown) => {
+                self.append(format!("if ((span.size() % {element_size}) != 0) {{"));
+                self.append("    return false;".to_string());
+                self.append("}".to_string());
+                self.append(format!("auto {id}_count_ = span.size() / {element_size};"));
+                self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
+                let out = self.parse_array_element(field, "span".to_string());
+                self.append(format!("    output->{id}_.push_back({out});"));
+                self.append("}".to_string());
+            }
+
+            (ElementSize::Dynamic, ArraySize::StaticCount(count)) => {
+                self.check_size(&format!("output->{id}_element_size_ * {count}"));
+                self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
+                self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
+                let out = self.parse_array_element(field, "element_span".to_string());
+                self.append(format!("    output->{id}_[n] = {out};"));
+                self.append("}".to_string());
+                self.append(format!("span.skip(output->{id}_element_size_ * {count});"));
+            }
+
+            (ElementSize::Dynamic, ArraySize::DynamicCount) => {
+                self.check_size(&format!("output->{id}_element_size_ * output->{id}_count_"));
+                self.append(format!("for (size_t n = 0; n < output->{id}_count_; n++) {{"));
+                self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
+                let out = self.parse_array_element(field, "element_span".to_string());
+                self.append(format!("    output->{id}_[n] = {out};"));
+                self.append("}".to_string());
+                self.append(format!("span.skip(output->{id}_element_size_ * output->{id}_count_);"));
+            }
+
+            (ElementSize::Dynamic, ArraySize::DynamicSize) => {
+                self.check_size(&format!("output->{id}_size_"));
+                self.append(format!("if ((output->{id}_size_ % output->{id}_element_size_) != 0) {{"));
+                self.append("    return false;".to_string());
+                self.append("}".to_string());
+                self.append(format!("auto {id}_count_ = output->{id}_size_ / output->{id}_element_size_;"));
+                self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
+                self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
+                let out = self.parse_array_element(field, "element_span".to_string());
+                self.append(format!("    output->{id}_[n] = {out};"));
+                self.append("}".to_string());
+                self.append(format!("span.skip(output->{id}_size_);"));
+            }
+
+            (ElementSize::Dynamic, ArraySize::Unknown) => {
+                self.append(format!("if ((span.size() % output->{id}_element_size_) != 0) {{"));
+                self.append("    return false;".to_string());
+                self.append("}".to_string());
+                self.append(format!("auto {id}_count_ = span.size() / output->{id}_element_size_;"));
+                self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
+                self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
+                let out = self.parse_array_element(field, "element_span".to_string());
+                self.append(format!("    output->{id}_[n] = {out};"));
+                self.append("}".to_string());
+                self.append("span.clear();".to_string());
+            }
+
+            (ElementSize::Unknown, ArraySize::StaticCount(count)) => {
+                let tid = type_id.unwrap();
+                self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
+                self.append(format!("    {tid} out;"));
+                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
+                self.append("        return false;".to_string());
+                self.append("    }".to_string());
+                self.append(format!("    output->{id}_[n] = std::move(out);"));
+                self.append("}".to_string());
+            }
+
+            (ElementSize::Unknown, ArraySize::DynamicCount) => {
+                let tid = type_id.unwrap();
+                self.append(format!("for (size_t n = 0; n < output->{id}_count_; n++) {{"));
+                self.append(format!("    {tid} out;"));
+                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
+                self.append("        return false;".to_string());
+                self.append("    }".to_string());
+                self.append(format!("    output->{id}_.push_back(std::move(out));"));
+                self.append("}".to_string());
+            }
+
+            (ElementSize::Unknown, ArraySize::DynamicSize) => {
+                let tid = type_id.unwrap();
+                self.check_size(&format!("output->{id}_size_"));
+                self.append(format!("auto {id}_span = span.subrange(0, output->{id}_size_);"));
+                self.append(format!("while ({id}_span.size() > 0) {{"));
+                self.append(format!("    {tid} out;"));
+                self.append(format!("    if (!{tid}::Parse({id}_span, &out)) {{"));
+                self.append("        return false;".to_string());
+                self.append("    }".to_string());
+                self.append(format!("    output->{id}_.push_back(std::move(out));"));
+                self.append("}".to_string());
+                self.append(format!("span.skip(output->{id}_size_);"));
+            }
+
+            (ElementSize::Unknown, ArraySize::Unknown) => {
+                let tid = type_id.unwrap();
+                self.append("while (span.size() > 0) {".to_string());
+                self.append(format!("    {tid} out;"));
+                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
+                self.append("        return false;".to_string());
+                self.append("    }".to_string());
+                self.append(format!("    output->{id}_.push_back(std::move(out));"));
+                self.append("}".to_string());
+            }
+        }
+    }
+
+    fn parse_array_element(&mut self, field: &'a ast::Field, span: String) -> String {
         let byteorder = match self.endianness {
             ast::EndiannessValue::LittleEndian => "le",
             ast::EndiannessValue::BigEndian => "be",
         };
-
-        if let Some(s) = size {
-            self.append(format!("for (int n = 0; n < {}; n++) {{", s));
-            if let Some(tid) = type_id {
-                let td = self.scope.typedef.get(tid).unwrap();
-                match &td.desc {
-                    ast::DeclDesc::Enum { width, .. } => {
+        match &field.desc {
+            ast::FieldDesc::Array { width: Some(width), type_id: None, .. } => {
+                let element_size = *width / 8;
+                let backing_type = get_cxx_scalar_type(*width);
+                format!("{span}.read_{byteorder}<{backing_type}, {element_size}>()")
+            }
+            ast::FieldDesc::Array { type_id: Some(type_id), .. } => {
+                match &self.scope.typedef.get(type_id).unwrap().desc {
+                    ast::DeclDesc::Enum { width, tags, .. } => {
+                        let element_size = *width / 8;
                         let backing_type = get_cxx_scalar_type(*width);
-                        self.append(format!("    if (span.size() < {}) return false;", width / 8));
-                        self.append(format!(
-                            "    {0}{1}_[n] = {2}(span.read_{3}<{4}, {5}>());",
-                            self.target_prefix,
-                            id,
-                            tid,
-                            byteorder,
-                            backing_type,
-                            width / 8
-                        ));
-                    }
-                    _ => {
-                        self.append(format!(
-                            "    if (!{}::Parse(span, &{}{}_[n])) return false;",
-                            tid, self.target_prefix, id
-                        ));
-                    }
-                }
-            } else {
-                let element_width = width.unwrap();
-                let backing_type = get_cxx_scalar_type(element_width);
-                self.append(format!("    if (span.size() < {}) return false;", element_width / 8));
-                self.append(format!(
-                    "    {0}{1}_[n] = span.read_{2}<{3}, {4}>();",
-                    self.target_prefix,
-                    id,
-                    byteorder,
-                    backing_type,
-                    element_width / 8
-                ));
-            }
-            self.append("}".to_string());
-        } else {
-            let mut count_expr = "".to_string();
-            let mut size_expr = "".to_string();
-            for f in self.decl.fields() {
-                match &f.desc {
-                    ast::FieldDesc::Size { field_id, .. } if field_id == id => {
-                        let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                            "payload"
+                        let raw_value =
+                            format!("{span}.read_{byteorder}<{backing_type}, {element_size}>()");
+                        if tags.iter().any(|t| matches!(t, ast::Tag::Other(_))) {
+                            format!("{type_id}({raw_value})")
                         } else {
-                            field_id
-                        };
-                        size_expr = format!("{}{}_size_", self.target_prefix, field_name);
-                    }
-                    ast::FieldDesc::Count { field_id, .. } if field_id == id => {
-                        count_expr = format!("{}{}_count_", self.target_prefix, field_id);
-                    }
-                    _ => {}
-                }
-            }
-
-            if !count_expr.is_empty() {
-                self.append(format!("for (size_t n = 0; n < {}; n++) {{", count_expr));
-            } else if !size_expr.is_empty() {
-                let inverted_modifier = match &_field.desc {
-                    ast::FieldDesc::Array { size_modifier: Some(m), .. } => {
-                        if let Some(stripped) = m.strip_prefix('+') {
-                            format!("- {}", stripped)
-                        } else if let Some(stripped) = m.strip_prefix('-') {
-                            format!("+ {}", stripped)
-                        } else {
-                            m.clone()
+                            self.append(format!("    auto raw_value = {raw_value};"));
+                            self.append(format!("    if (!IsValid{type_id}(raw_value)) {{"));
+                            self.append("        return false;".to_string());
+                            self.append("    }".to_string());
+                            format!("{type_id}(raw_value)")
                         }
                     }
-                    _ => String::new(),
-                };
-                let actual_size = if inverted_modifier.is_empty() {
-                    size_expr
-                } else {
-                    format!("({} {})", size_expr, inverted_modifier)
-                };
-                self.append(format!("if (span.size() < {}) return false;", actual_size));
-
-                if let Some(w) = width {
-                    self.append(format!("if (({} % {}) != 0) return false;", actual_size, w / 8));
-                } else if let Some(tid) = type_id {
-                    let decl = self.scope.typedef.get(tid).unwrap();
-                    let element_size = self.schema.decl_size(decl.key);
-                    if let analyzer::Size::Static(bits) = element_size {
-                        self.append(format!(
-                            "if (({} % {}) != 0) return false;",
-                            actual_size,
-                            bits / 8
-                        ));
-                    }
-                }
-
-                self.append(format!("size_t limit = span.size() - {};", actual_size));
-                self.append("while (span.size() > limit) {".to_string());
-            } else {
-                self.append("while (span.size() > 0) {".to_string());
-            }
-
-            if let Some(tid) = type_id {
-                let td = self.scope.typedef.get(tid).unwrap();
-                match &td.desc {
-                    ast::DeclDesc::Enum { width, .. } => {
-                        let backing_type = get_cxx_scalar_type(*width);
-                        self.append(format!("    if (span.size() < {}) return false;", width / 8));
-                        self.append(format!(
-                            "    {}{}_.push_back({}(span.read_{}<{}, {}>()));",
-                            self.target_prefix,
-                            id,
-                            tid,
-                            byteorder,
-                            backing_type,
-                            width / 8
-                        ));
-                    }
                     _ => {
-                        self.append(format!("    {} element;", tid));
-                        self.append(format!(
-                            "    if (!{}::Parse(span, &element)) return false;",
-                            tid
-                        ));
-                        self.append(format!(
-                            "    {}{}_.emplace_back(std::move(element));",
-                            self.target_prefix, id
-                        ));
+                        self.append(format!("    {type_id} out;"));
+                        self.append(format!("    if (!{type_id}::Parse({span}, &out)) {{"));
+                        self.append("        return false;".to_string());
+                        self.append("    }".to_string());
+                        "out".to_string()
                     }
                 }
-            } else {
-                let element_width = width.unwrap();
-                let backing_type = get_cxx_scalar_type(element_width);
-                self.append(format!("    if (span.size() < {}) return false;", element_width / 8));
-                self.append(format!(
-                    "    {}{}_.push_back(span.read_{}<{}, {}>());",
-                    self.target_prefix,
-                    id,
-                    byteorder,
-                    backing_type,
-                    element_width / 8
-                ));
             }
-            self.append("}".to_string());
+            _ => unreachable!(),
         }
     }
 
@@ -951,26 +1019,34 @@ impl<'a> FieldParser<'a> {
             self.check_code();
             match &field.desc {
                 ast::FieldDesc::Padding { .. } => {}
-                ast::FieldDesc::Array { id, type_id, width, size, .. } => {
+                ast::FieldDesc::Array { id, type_id, size_modifier, .. } => {
                     let padded_size = self.schema.padded_size(field.key);
                     if padded_size.is_some() {
-                        self.append(format!("size_t {0}_start_size = span.size();", id));
+                        self.append(format!("size_t {id}_start_size = span.size();"));
                     }
                     if !self.extract_arrays {
-                        self.parse_array_field_lite(field, id, type_id.as_deref(), *width, *size);
+                        self.parse_array_field_lite(
+                            field,
+                            id,
+                            type_id.as_deref(),
+                            size_modifier.as_deref(),
+                        );
                     } else {
-                        self.parse_array_field_full(field, id, type_id.as_deref(), *width, *size);
+                        self.parse_array_field_full(
+                            field,
+                            id,
+                            type_id.as_deref(),
+                            size_modifier.as_deref(),
+                        );
                     }
-                    if let Some(ps) = padded_size {
-                        let ps_bytes = ps / 8;
+                    if let Some(padded_size) = padded_size {
+                        let padding_bytes = padded_size / 8;
                         self.append(format!(
-                            "if ({0}_start_size - span.size() < {1}) {{",
-                            id, ps_bytes
+                            "if ({id}_start_size - span.size() < {padding_bytes}) {{",
                         ));
-                        self.append(format!("    if (span.size() < {1} - ({0}_start_size - span.size())) return false;", id, ps_bytes));
+                        self.append(format!("    if (span.size() < {padding_bytes} - ({id}_start_size - span.size())) return false;"));
                         self.append(format!(
-                            "    span.skip({1} - ({0}_start_size - span.size()));",
-                            id, ps_bytes
+                            "    span.skip({padding_bytes} - ({id}_start_size - span.size()));",
                         ));
                         self.append("}".to_string());
                     }
@@ -989,11 +1065,8 @@ impl<'a> FieldParser<'a> {
                     };
                     self.append(format!("if (span.size() < {}) return false;", width / 8));
                     self.append(format!(
-                        "{}{}_ = span.read_{}<{}, {}>();",
+                        "{}{id}_ = span.read_{byteorder}<{ty}, {}>();",
                         self.target_prefix,
-                        id,
-                        byteorder,
-                        ty,
                         width / 8
                     ));
                 }
@@ -1010,11 +1083,8 @@ impl<'a> FieldParser<'a> {
                     };
                     self.append(format!("if (span.size() < {}) return false;", width / 8));
                     self.append(format!(
-                        "{}{}_size_ = span.read_{}<{}, {}>();",
+                        "{}{field_name}_size_ = span.read_{byteorder}<{ty}, {}>();",
                         self.target_prefix,
-                        field_name,
-                        byteorder,
-                        ty,
                         width / 8
                     ));
                 }
@@ -1026,11 +1096,8 @@ impl<'a> FieldParser<'a> {
                     };
                     self.append(format!("if (span.size() < {}) return false;", width / 8));
                     self.append(format!(
-                        "{}{}_count_ = span.read_{}<{}, {}>();",
+                        "{}{field_id}_count_ = span.read_{byteorder}<{ty}, {}>();",
                         self.target_prefix,
-                        field_id,
-                        byteorder,
-                        ty,
                         width / 8
                     ));
                 }
@@ -1047,11 +1114,8 @@ impl<'a> FieldParser<'a> {
                     };
                     self.append(format!("if (span.size() < {}) return false;", width / 8));
                     self.append(format!(
-                        "{}{}_element_size_ = span.read_{}<{}, {}>();",
+                        "{}{field_name}_element_size_ = span.read_{byteorder}<{ty}, {}>();",
                         self.target_prefix,
-                        field_name,
-                        byteorder,
-                        ty,
                         width / 8
                     ));
                 }
@@ -1063,11 +1127,8 @@ impl<'a> FieldParser<'a> {
                     };
                     self.append(format!("if (span.size() < {}) return false;", width / 8));
                     self.append(format!(
-                        "if (span.read_{}<{}, {}>() != {:#x}) return false;",
-                        byteorder,
-                        ty,
+                        "if (span.read_{byteorder}<{ty}, {}>() != {value:#x}) return false;",
                         width / 8,
-                        value
                     ));
                 }
                 ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
@@ -1082,13 +1143,8 @@ impl<'a> FieldParser<'a> {
                     };
                     self.append(format!("if (span.size() < {}) return false;", width / 8));
                     self.append(format!(
-                        "if (span.read_{}<{}, {}>() != static_cast<{}>( {}::{} )) return false;",
-                        byteorder,
-                        ty,
+                        "if (span.read_{byteorder}<{ty}, {}>() != static_cast<{ty}>( {enum_id}::{tag_id} )) return false;",
                         width / 8,
-                        ty,
-                        enum_id,
-                        tag_id
                     ));
                 }
                 ast::FieldDesc::Typedef { id, type_id, .. } => {
@@ -1217,7 +1273,7 @@ impl<'a> FieldSerializer<'a> {
                             id, element_size
                         )
                     } else {
-                        format!("({0}_.size() * {1})", id, element_size)
+                        format!("({id}_.size() * {element_size})")
                     }
                 }
                 ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
@@ -1260,7 +1316,7 @@ impl<'a> FieldSerializer<'a> {
                     _ => None,
                 };
                 if let Some(m) = size_modifier {
-                    return format!("({} {})", size_expr, m);
+                    return format!("({size_expr} {m})");
                 }
                 size_expr
             }
@@ -1279,8 +1335,7 @@ impl<'a> FieldSerializer<'a> {
 
         if self.values.is_empty() {
             self.append(&format!(
-                "pdl::packet::Builder::write_{}<{}, {}>(output, 0);",
-                byteorder, backing_type, size
+                "pdl::packet::Builder::write_{byteorder}<{backing_type}, {size}>(output, 0);",
             ));
         } else {
             let packed_val = self
@@ -1288,16 +1343,15 @@ impl<'a> FieldSerializer<'a> {
                 .iter()
                 .map(|(v, s)| {
                     if *s == 0 {
-                        format!("(static_cast<{}>({}))", backing_type, v)
+                        format!("(static_cast<{backing_type}>({v}))")
                     } else {
-                        format!("(static_cast<{}>({}) << {})", backing_type, v, s)
+                        format!("(static_cast<{backing_type}>({v}) << {s})")
                     }
                 })
                 .collect::<Vec<_>>()
                 .join(" | ");
             self.append(&format!(
-                "pdl::packet::Builder::write_{}<{}, {}>(output, {});",
-                byteorder, backing_type, size, packed_val
+                "pdl::packet::Builder::write_{byteorder}<{backing_type}, {size}>(output, {packed_val});",
             ));
         }
 
@@ -1332,10 +1386,8 @@ impl<'a> FieldSerializer<'a> {
                     let (opt_id, val_present) = &optional_field_ids[0];
                     let val_absent = if *val_present == 0 { 1 } else { 0 };
                     format!(
-                        "({0}.has_value() ? {1} : {2})",
+                        "({0}.has_value() ? {val_present} : {val_absent})",
                         deref(var, &format!("{}_", opt_id)),
-                        val_present,
-                        val_absent
                     )
                 }
                 _ => deref(var, &format!("{}_", f.id().unwrap())),
@@ -1615,7 +1667,7 @@ fn generate_packet_view(
         if is_constrained {
             // Constrained fields still get accessors returning their constant values.
             let fid = field.id().unwrap();
-            let accessor_name = to_pascal_case(fid);
+            let accessor_name = fid.to_upper_camel_case();
             let constraint = constraint.unwrap();
             match &field.desc {
                 ast::FieldDesc::Typedef { type_id, .. } => {
@@ -1664,7 +1716,7 @@ fn generate_packet_view(
             }
             ast::FieldDesc::Array { id, type_id, width, size, .. } => {
                 field_members.push(format!("pdl::packet::slice {}_;", id));
-                let accessor_name = to_pascal_case(id);
+                let accessor_name = id.to_upper_camel_case();
                 let element_type = type_id
                     .as_deref()
                     .map(|t| t.to_string())
@@ -1781,7 +1833,7 @@ fn generate_packet_view(
             }
             ast::FieldDesc::Scalar { id, width } => {
                 let ty = get_cxx_scalar_type(*width);
-                let accessor_name = to_pascal_case(id);
+                let accessor_name = id.to_upper_camel_case();
                 if field.cond.is_some() {
                     field_members.push(format!("std::optional<{}> {}_;", ty, id));
                     field_accessors.push(format!("    std::optional<{}> Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n", ty, accessor_name, id));
@@ -1795,7 +1847,7 @@ fn generate_packet_view(
             }
             ast::FieldDesc::Typedef { id, type_id, .. } => {
                 let ty = type_id;
-                let accessor_name = to_pascal_case(id);
+                let accessor_name = id.to_upper_camel_case();
                 if field.cond.is_some() {
                     field_members.push(format!("std::optional<{}> {}_;", ty, id));
                     field_accessors.push(format!("    std::optional<{}> Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n", ty, accessor_name, id));
@@ -1866,14 +1918,11 @@ fn generate_packet_view(
         }
         parser.done();
         field_parsers.extend(parser.code);
-
-        let has_payload = decl
-            .fields()
-            .any(|f| matches!(f.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body));
-        if !has_payload {
-            field_parsers.push("if (span.size() != 0) { return false; }".to_string());
-        }
     }
+
+    field_parsers.push("if (span.size() > 0) {".to_string());
+    field_parsers.push("    return false;".to_string());
+    field_parsers.push("}".to_string());
     field_parsers.push("return true;".to_string());
 
     let friend_classes = scope
@@ -2401,22 +2450,21 @@ fn generate_struct_declaration(
     }
 
     let size_expr = if variable_widths.is_empty() {
-        format!("return {};", static_bits / 8)
+        format!("{}", static_bits / 8)
     } else if static_bits > 0 {
-        format!("return {} + ({});", static_bits / 8, variable_widths.join(" + "))
+        format!("{} + ({})", static_bits / 8, variable_widths.join(" + "))
     } else {
-        format!("return {};", variable_widths.join(" + "))
+        variable_widths.join(" + ").to_string()
     };
 
-    let constructor = if constructor_params.is_empty() {
-        format!("    {0}() = default;", id)
-    } else {
+    let constructor = if !constructor_params.is_empty() {
         format!(
-            "    {0}() = default;\n    explicit {0}({1}) : {2} {{}}",
-            id,
-            constructor_params.join(", "),
-            constructor_inits.join(", ")
+            "    explicit {id}({constructor_parameters}) : {initializer_list} {{}}",
+            constructor_parameters = constructor_params.join(", "),
+            initializer_list = constructor_inits.join(", ")
         )
+    } else {
+        String::new()
     };
 
     format!(
@@ -2424,9 +2472,10 @@ fn generate_struct_declaration(
 class {id} : public pdl::packet::Builder {{
 public:
     ~{id}() override = default;
-{constructor}
+    {id}() = default;
     {id}({id} const&) = default;
     {id}({id}&&) = default;
+{constructor}
     {id}& operator=({id} const&) = default;
 
     static bool Parse(pdl::packet::slice& parent_span, {id}* output) {{
@@ -2438,7 +2487,7 @@ public:
     }}
 
     size_t GetSize() const override {{
-        {size_expr}
+        return {size_expr};
     }}
 
     std::string ToString() const {{ return ""; }}
@@ -2446,11 +2495,8 @@ public:
 {field_members}
 }};
 "#,
-        id = id,
-        constructor = constructor,
         struct_parse_code = indent(&field_parsers.join("\n"), 2),
         field_serializers = indent(&field_serializers.join("\n"), 2),
-        size_expr = size_expr,
         field_members = indent(&field_members.join("\n"), 1)
     )
 }
@@ -2478,10 +2524,6 @@ mod test {
                 "Packet_Custom_Field_VariableSize".to_string(),
                 "Packet_Checksum_Field_FromStart".to_string(),
                 "Packet_Checksum_Field_FromEnd".to_string(),
-                "Packet_Array_Field_VariableElementSize_ConstantSize".to_string(),
-                "Packet_Array_Field_VariableElementSize_VariableSize".to_string(),
-                "Packet_Array_Field_VariableElementSize_VariableCount".to_string(),
-                "Packet_Array_Field_VariableElementSize_UnknownSize".to_string(),
                 "Struct_Custom_Field_ConstantSize".to_string(),
                 "Struct_Custom_Field_VariableSize".to_string(),
                 "Struct_Checksum_Field_FromStart".to_string(),
