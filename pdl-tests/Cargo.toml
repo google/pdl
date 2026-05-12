@@ -6,7 +6,9 @@ edition = "2024"
 description = "PDL Rust generated code tests"
 
 [features]
+default = ["python"]
 serde = []
+python = []
 
 [dependencies]
 bytes = "1.4.0"
@@ -19,3 +21,4 @@ proc-macro2 = "1.0.66"
 quote = "1.0.33"
 syn = {version = "2.0.29", features = ["full"]}
 termcolor = "1.2.0"
+pyo3 = "0.27.2"
