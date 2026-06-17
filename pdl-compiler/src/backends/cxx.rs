@@ -2508,7 +2508,7 @@ mod test {
     use crate::{analyzer, ast, parser};
 
     #[test]
-    fn test_canonical() {
+    fn test_canonical_le() {
         let mut db = ast::SourceDatabase::new();
         let input_file = "tests/canonical/le_test_file.pdl";
         let file = parser::parse_file(&mut db, input_file).unwrap();
@@ -2541,5 +2541,44 @@ mod test {
             ],
         );
         assert_snapshot_eq("tests/generated/cxx/le_backend.h", &actual_code);
+    }
+
+    #[test]
+    fn test_canonical_be() {
+        let mut db = ast::SourceDatabase::new();
+        let input_file = "tests/canonical/le_test_file.pdl";
+        let source = std::fs::read_to_string(input_file).unwrap();
+        let source = source.replace("little_endian_packets", "big_endian_packets");
+        let file =
+            parser::parse_inline(&mut db, "tests/canonical/be_test_file.pdl", source).unwrap();
+        let file = analyzer::analyze(&file).unwrap();
+        let actual_code = generate(
+            &db,
+            &file,
+            Some("be_backend"),
+            &[],
+            &[],
+            &[
+                "Packet_Custom_Field_ConstantSize".to_string(),
+                "Packet_Custom_Field_VariableSize".to_string(),
+                "Packet_Checksum_Field_FromStart".to_string(),
+                "Packet_Checksum_Field_FromEnd".to_string(),
+                "Struct_Custom_Field_ConstantSize".to_string(),
+                "Struct_Custom_Field_VariableSize".to_string(),
+                "Struct_Checksum_Field_FromStart".to_string(),
+                "Struct_Checksum_Field_FromEnd".to_string(),
+                "Struct_Custom_Field_ConstantSize_".to_string(),
+                "Struct_Custom_Field_VariableSize_".to_string(),
+                "Struct_Checksum_Field_FromStart_".to_string(),
+                "Struct_Checksum_Field_FromEnd_".to_string(),
+                "PartialParent5".to_string(),
+                "PartialChild5_A".to_string(),
+                "PartialChild5_B".to_string(),
+                "PartialParent12".to_string(),
+                "PartialChild12_A".to_string(),
+                "PartialChild12_B".to_string(),
+            ],
+        );
+        assert_snapshot_eq("tests/generated/cxx/be_backend.h", &actual_code);
     }
 }
