@@ -352,8 +352,6 @@ def run(input: argparse.FileType, output: argparse.FileType, test_vectors: argpa
         'Packet_Checksum_Field_FromEnd',
         'Struct_Checksum_Field_FromStart',
         'Struct_Checksum_Field_FromEnd',
-        'PartialParent5',
-        'PartialParent12',
         'Packet_Array_Field_VariableElementSize_ConstantSize',
         'Packet_Array_Field_VariableElementSize_VariableSize',
         'Packet_Array_Field_VariableElementSize_VariableCount',
