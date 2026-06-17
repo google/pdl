@@ -29,12 +29,6 @@ cargo run --quiet -- --output-format cxx \
     --exclude-declaration Struct_Custom_Field_VariableSize_ \
     --exclude-declaration Struct_Checksum_Field_FromStart_ \
     --exclude-declaration Struct_Checksum_Field_FromEnd_ \
-    --exclude-declaration PartialParent5 \
-    --exclude-declaration PartialChild5_A \
-    --exclude-declaration PartialChild5_B \
-    --exclude-declaration PartialParent12 \
-    --exclude-declaration PartialChild12_A \
-    --exclude-declaration PartialChild12_B \
     --namespace le_backend > "$OUT_DIR"/le_backend.h
 cargo run --quiet -- --output-format cxx \
     "$OUT_DIR"/be_test_file.pdl \
@@ -50,12 +44,6 @@ cargo run --quiet -- --output-format cxx \
     --exclude-declaration Struct_Custom_Field_VariableSize_ \
     --exclude-declaration Struct_Checksum_Field_FromStart_ \
     --exclude-declaration Struct_Checksum_Field_FromEnd_ \
-    --exclude-declaration PartialParent5 \
-    --exclude-declaration PartialChild5_A \
-    --exclude-declaration PartialChild5_B \
-    --exclude-declaration PartialParent12 \
-    --exclude-declaration PartialChild12_A \
-    --exclude-declaration PartialChild12_B \
     --namespace be_backend > "$OUT_DIR"/be_backend.h
 
 python3 scripts/generate_cxx_backend_tests.py \

@@ -2532,12 +2532,6 @@ mod test {
                 "Struct_Custom_Field_VariableSize_".to_string(),
                 "Struct_Checksum_Field_FromStart_".to_string(),
                 "Struct_Checksum_Field_FromEnd_".to_string(),
-                "PartialParent5".to_string(),
-                "PartialChild5_A".to_string(),
-                "PartialChild5_B".to_string(),
-                "PartialParent12".to_string(),
-                "PartialChild12_A".to_string(),
-                "PartialChild12_B".to_string(),
             ],
         );
         assert_snapshot_eq("tests/generated/cxx/le_backend.h", &actual_code);
@@ -2571,12 +2565,6 @@ mod test {
                 "Struct_Custom_Field_VariableSize_".to_string(),
                 "Struct_Checksum_Field_FromStart_".to_string(),
                 "Struct_Checksum_Field_FromEnd_".to_string(),
-                "PartialParent5".to_string(),
-                "PartialChild5_A".to_string(),
-                "PartialChild5_B".to_string(),
-                "PartialParent12".to_string(),
-                "PartialChild12_A".to_string(),
-                "PartialChild12_B".to_string(),
             ],
         );
         assert_snapshot_eq("tests/generated/cxx/be_backend.h", &actual_code);
