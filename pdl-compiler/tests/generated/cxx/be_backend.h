@@ -3768,7 +3768,9 @@ public:
         pdl::packet::slice span = array_;
         std::array<UnknownSizeStruct, 4> elements;
         for (int n = 0; n < 4; n++) {
-            UnknownSizeStruct::Parse(span, &elements[n]);
+            auto element_span = span.subrange(0, array_element_size_);
+            UnknownSizeStruct::Parse(element_span, &elements[n]);
+            span.skip(array_element_size_);
         }
         return elements;
     }
@@ -3826,7 +3828,7 @@ public:
     Packet_Array_Field_VariableElementSize_ConstantSizeBuilder& operator=(Packet_Array_Field_VariableElementSize_ConstantSizeBuilder const&) = default;
 
     void Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_element_size = 0; // TODO
+        size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
         for (auto const& element : array_) {
             element.Serialize(output);
@@ -3854,9 +3856,11 @@ public:
         pdl::packet::slice span = array_;
         std::vector<UnknownSizeStruct> elements;
         while (span.size() > 0) {
+            auto element_span = span.subrange(0, array_element_size_);
             UnknownSizeStruct element;
-            if (!UnknownSizeStruct::Parse(span, &element)) break;
+            if (!UnknownSizeStruct::Parse(element_span, &element)) break;
             elements.emplace_back(std::move(element));
+            span.skip(array_element_size_);
         }
         return elements;
     }
@@ -3938,7 +3942,7 @@ public:
     void Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
-        size_t array_element_size = 0; // TODO
+        size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
         for (auto const& element : array_) {
             element.Serialize(output);
@@ -3971,9 +3975,11 @@ public:
         pdl::packet::slice span = array_;
         std::vector<UnknownSizeStruct> elements;
         while (elements.size() < array_count_) {
+            auto element_span = span.subrange(0, array_element_size_);
             UnknownSizeStruct element;
-            if (!UnknownSizeStruct::Parse(span, &element)) break;
+            if (!UnknownSizeStruct::Parse(element_span, &element)) break;
             elements.emplace_back(std::move(element));
+            span.skip(array_element_size_);
         }
         return elements;
     }
@@ -4051,7 +4057,7 @@ public:
 
     void Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
-        size_t array_element_size = 0; // TODO
+        size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
         for (auto const& element : array_) {
             element.Serialize(output);
@@ -4084,9 +4090,11 @@ public:
         pdl::packet::slice span = array_;
         std::vector<UnknownSizeStruct> elements;
         while (span.size() > 0) {
+            auto element_span = span.subrange(0, array_element_size_);
             UnknownSizeStruct element;
-            if (!UnknownSizeStruct::Parse(span, &element)) break;
+            if (!UnknownSizeStruct::Parse(element_span, &element)) break;
             elements.emplace_back(std::move(element));
+            span.skip(array_element_size_);
         }
         return elements;
     }
@@ -4144,7 +4152,7 @@ public:
     Packet_Array_Field_VariableElementSize_UnknownSizeBuilder& operator=(Packet_Array_Field_VariableElementSize_UnknownSizeBuilder const&) = default;
 
     void Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_element_size = 0; // TODO
+        size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
         for (auto const& element : array_) {
             element.Serialize(output);
