@@ -890,15 +890,21 @@ impl<'a> FieldParser<'a> {
                 let out = self.parse_array_element(field, "element_span".to_string());
                 self.append(format!("    output->{id}_[n] = {out};"));
                 self.append("}".to_string());
-                self.append(format!("span.skip(output->{id}_element_size_ * output->{id}_count_);"));
+                self.append(format!(
+                    "span.skip(output->{id}_element_size_ * output->{id}_count_);"
+                ));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicSize) => {
                 self.check_size(&format!("output->{id}_size_"));
-                self.append(format!("if ((output->{id}_size_ % output->{id}_element_size_) != 0) {{"));
+                self.append(format!(
+                    "if ((output->{id}_size_ % output->{id}_element_size_) != 0) {{"
+                ));
                 self.append("    return false;".to_string());
                 self.append("}".to_string());
-                self.append(format!("auto {id}_count_ = output->{id}_size_ / output->{id}_element_size_;"));
+                self.append(format!(
+                    "auto {id}_count_ = output->{id}_size_ / output->{id}_element_size_;"
+                ));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
                 let out = self.parse_array_element(field, "element_span".to_string());
@@ -911,7 +917,9 @@ impl<'a> FieldParser<'a> {
                 self.append(format!("if ((span.size() % output->{id}_element_size_) != 0) {{"));
                 self.append("    return false;".to_string());
                 self.append("}".to_string());
-                self.append(format!("auto {id}_count_ = span.size() / output->{id}_element_size_;"));
+                self.append(format!(
+                    "auto {id}_count_ = span.size() / output->{id}_element_size_;"
+                ));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
                 let out = self.parse_array_element(field, "element_span".to_string());
@@ -1491,12 +1499,23 @@ impl<'a> FieldSerializer<'a> {
                     self.values.push((format!("{}.size()", get_field_expr(f)), shift));
                 }
                 ast::FieldDesc::ElementSize { field_id, .. } => {
+                    let f = self
+                        .scope
+                        .iter_fields(decl)
+                        .find(|f| f.id() == Some(field_id))
+                        .expect("Field not found");
+                    let array_expr = get_field_expr(f);
                     let field_name = if field_id == "_payload_" || field_id == "_body_" {
                         "payload"
                     } else {
                         field_id
                     };
-                    self.append(&format!("size_t {field_name}_element_size = 0; // TODO"));
+                    let element_size = analyzer::element_size(self.scope, self.schema, decl, f);
+                    let size_expr = match element_size {
+                        analyzer::ElementSize::Static(size) => format!("{}", size),
+                        _ => format!("{array_expr}.empty() ? 0 : {array_expr}[0].GetSize()"),
+                    };
+                    self.append(&format!("size_t {field_name}_element_size = {size_expr};"));
                     self.values.push((format!("{}_element_size", field_name), shift));
                 }
                 ast::FieldDesc::Flag { .. } => {
@@ -1727,12 +1746,25 @@ fn generate_packet_view(
                     format!("std::vector<{}>", element_type)
                 };
 
+                let is_dynamic_element_size = matches!(
+                    analyzer::element_size(scope, schema, decl, field),
+                    analyzer::ElementSize::Dynamic
+                );
                 let mut accessor_code = Vec::new();
                 accessor_code.push(format!("pdl::packet::slice span = {}_;", id));
                 if let Some(s) = size {
                     accessor_code.push(format!("{} elements;", array_type));
                     accessor_code.push(format!("for (int n = 0; n < {}; n++) {{", s));
-                    if let Some(tid) = type_id {
+                    if is_dynamic_element_size {
+                        let tid = type_id.as_deref().unwrap();
+                        accessor_code.push(format!(
+                            "    auto element_span = span.subrange(0, {}_element_size_);",
+                            id
+                        ));
+                        accessor_code
+                            .push(format!("    {}::Parse(element_span, &elements[n]);", tid));
+                        accessor_code.push(format!("    span.skip({}_element_size_);", id));
+                    } else if let Some(tid) = type_id {
                         let td = scope.typedef.get(tid).unwrap();
                         match &td.desc {
                             ast::DeclDesc::Enum { width, .. } => {
@@ -1773,7 +1805,23 @@ fn generate_packet_view(
                         }
                     }
 
-                    if let Some(tid) = type_id {
+                    if is_dynamic_element_size {
+                        let tid = type_id.as_deref().unwrap();
+                        accessor_code.push(format!("while ({}) {{", count_limit));
+                        accessor_code.push(format!(
+                            "    auto element_span = span.subrange(0, {}_element_size_);",
+                            id
+                        ));
+                        accessor_code.push(format!("    {} element;", tid));
+                        accessor_code.push(format!(
+                            "    if (!{}::Parse(element_span, &element)) break;",
+                            tid
+                        ));
+                        accessor_code
+                            .push("    elements.emplace_back(std::move(element));".to_string());
+                        accessor_code.push(format!("    span.skip({}_element_size_);", id));
+                        accessor_code.push("}".to_string());
+                    } else if let Some(tid) = type_id {
                         let td = scope.typedef.get(tid).unwrap();
                         match &td.desc {
                             ast::DeclDesc::Enum { width, .. } => {
