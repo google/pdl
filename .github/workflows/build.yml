@@ -24,13 +24,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+        with:
+          persist-credentials: false
 
       - name: Install ${{ matrix.rust }} Rust
         run: rustup default ${{ matrix.rust }}
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Install rustfmt
         run: rustup component add rustfmt
@@ -43,10 +45,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+        with:
+          persist-credentials: false
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Build documentation
         env:
@@ -58,7 +62,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+        with:
+          persist-credentials: false
 
       - name: Install 1.87.0 Rust
         run: |
@@ -66,7 +72,7 @@ jobs:
           rustup component add clippy
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Clippy
         run: cargo clippy --all-features --no-deps
@@ -77,13 +83,15 @@ jobs:
     needs: build
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+        with:
+          persist-credentials: false
 
       - name: Install stable Rust
         run: rustup default stable
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: Install dependencies
         run: |
