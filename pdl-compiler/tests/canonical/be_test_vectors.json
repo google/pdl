@@ -2155,6 +2155,42 @@
     ]
   },
   {
+    "packet": "Packet_Array_Field_VariableElementSize_ConstantSize",
+    "tests": [
+      {
+        "packed": "000102",
+        "expected_error": "LengthError"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_VariableElementSize_VariableSize",
+    "tests": [
+      {
+        "packed": "0100",
+        "expected_error": "LengthError"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_VariableElementSize_VariableCount",
+    "tests": [
+      {
+        "packed": "0100",
+        "expected_error": "LengthError"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_VariableElementSize_UnknownSize",
+    "tests": [
+      {
+        "packed": "000102",
+        "expected_error": "LengthError"
+      }
+    ]
+  },
+  {
     "packet": "Packet_Optional_Scalar_Field",
     "tests": [
       {
