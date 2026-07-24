@@ -3799,6 +3799,9 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_element_size_ = (chunk0 >> 0) & 0xf;
+        if (array_element_size_ == 0) {
+            return false;
+        }
         if (span.size() < array_element_size_ * 4) {
             return false;
         }
@@ -3904,7 +3907,7 @@ protected:
         if (span.size() < array_size_) {
             return false;
         }
-        if ((array_size_ % array_element_size_) != 0) {
+        if (array_element_size_ == 0 || (array_size_ % array_element_size_) != 0) {
             return false;
         }
         array_ = span.subrange(0, array_size_);
@@ -4020,6 +4023,9 @@ protected:
         array_count_ = (chunk0 >> 0) & 0xf;
         uint8_t chunk1 = span.read_le<uint8_t, 1>();
         array_element_size_ = (chunk1 >> 0) & 0xf;
+        if (array_element_size_ == 0) {
+            return false;
+        }
         if (span.size() < array_element_size_ * array_count_) {
             return false;
         }
@@ -4123,7 +4129,7 @@ protected:
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         array_element_size_ = (chunk0 >> 0) & 0xf;
-        if ((span.size() % array_element_size_) != 0) {
+        if (array_element_size_ == 0 || (span.size() % array_element_size_) != 0) {
             return false;
         }
         array_ = span;

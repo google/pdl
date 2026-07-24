@@ -667,12 +667,18 @@ impl<'a> FieldParser<'a> {
             }
 
             (ElementSize::Dynamic, ArraySize::StaticCount(count)) => {
+                self.append(format!("if ({id}_element_size_ == 0) {{"));
+                self.append("    return false;".to_string());
+                self.append("}".to_string());
                 self.check_size(&format!("{id}_element_size_ * {count}"));
                 self.append(format!("{id}_ = span.subrange(0, {id}_element_size_ * {count});"));
                 self.append(format!("span.skip({id}_element_size_ * {count});"));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicCount) => {
+                self.append(format!("if ({id}_element_size_ == 0) {{"));
+                self.append("    return false;".to_string());
+                self.append("}".to_string());
                 self.check_size(&format!("{id}_element_size_ * {id}_count_"));
                 self.append(format!("{id}_ = span.subrange(0, {id}_element_size_ * {id}_count_);"));
                 self.append(format!("span.skip({id}_element_size_ * {id}_count_);"));
@@ -680,7 +686,9 @@ impl<'a> FieldParser<'a> {
 
             (ElementSize::Dynamic, ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
-                self.append(format!("if (({id}_size_ % {id}_element_size_) != 0) {{"));
+                self.append(format!(
+                    "if ({id}_element_size_ == 0 || ({id}_size_ % {id}_element_size_) != 0) {{"
+                ));
                 self.append("    return false;".to_string());
                 self.append("}".to_string());
                 self.append(format!("{id}_ = span.subrange(0, {id}_size_);"));
@@ -688,7 +696,9 @@ impl<'a> FieldParser<'a> {
             }
 
             (ElementSize::Dynamic, ArraySize::Unknown) => {
-                self.append(format!("if ((span.size() % {id}_element_size_) != 0) {{"));
+                self.append(format!(
+                    "if ({id}_element_size_ == 0 || (span.size() % {id}_element_size_) != 0) {{"
+                ));
                 self.append("    return false;".to_string());
                 self.append("}".to_string());
                 self.append(format!("{id}_ = span;"));
@@ -898,7 +908,7 @@ impl<'a> FieldParser<'a> {
             (ElementSize::Dynamic, ArraySize::DynamicSize) => {
                 self.check_size(&format!("output->{id}_size_"));
                 self.append(format!(
-                    "if ((output->{id}_size_ % output->{id}_element_size_) != 0) {{"
+                    "if (output->{id}_element_size_ == 0 || (output->{id}_size_ % output->{id}_element_size_) != 0) {{"
                 ));
                 self.append("    return false;".to_string());
                 self.append("}".to_string());
@@ -914,7 +924,7 @@ impl<'a> FieldParser<'a> {
             }
 
             (ElementSize::Dynamic, ArraySize::Unknown) => {
-                self.append(format!("if ((span.size() % output->{id}_element_size_) != 0) {{"));
+                self.append(format!("if (output->{id}_element_size_ == 0 || (span.size() % output->{id}_element_size_) != 0) {{"));
                 self.append("    return false;".to_string());
                 self.append("}".to_string());
                 self.append(format!(

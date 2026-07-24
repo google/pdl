@@ -2218,6 +2218,10 @@
     "packet": "Packet_Array_Field_VariableElementSize_ConstantSize",
     "tests": [
       {
+        "packed": "000102",
+        "expected_error": "LengthError"
+      },
+      {
         "packed": "012a2b2c2d",
         "unpacked": {
           "array": [
@@ -2261,6 +2265,10 @@
     "packet": "Packet_Array_Field_VariableElementSize_VariableSize",
     "tests": [
       {
+        "packed": "0100",
+        "expected_error": "LengthError"
+      },
+      {
         "packed": "01012a2b2c",
         "unpacked": {
           "array": [
@@ -2302,6 +2310,10 @@
     "packet": "Packet_Array_Field_VariableElementSize_VariableCount",
     "tests": [
       {
+        "packed": "0100",
+        "expected_error": "LengthError"
+      },
+      {
         "packed": "03012a2b2c2d",
         "unpacked": {
           "array": [
@@ -2337,6 +2349,10 @@
   {
     "packet": "Packet_Array_Field_VariableElementSize_UnknownSize",
     "tests": [
+      {
+        "packed": "000102",
+        "expected_error": "LengthError"
+      },
       {
         "packed": "012a",
         "unpacked": {

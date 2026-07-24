@@ -125,6 +125,13 @@ impl Packet for Bar {
         let chunk = buf.get_u8();
         let x_size = (chunk & 0xf) as usize;
         let x_element_size = ((chunk >> 4) & 0xf) as usize;
+        if x_element_size == 0 {
+            return Err(DecodeError::LengthError {
+                obj: "Bar",
+                wanted: 1,
+                got: 0,
+            });
+        }
         if buf.remaining() < x_size {
             return Err(DecodeError::LengthError {
                 obj: "Bar",

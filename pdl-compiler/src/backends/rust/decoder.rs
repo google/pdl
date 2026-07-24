@@ -532,6 +532,17 @@ impl<'a> FieldParser<'a> {
                 });
             }
             (ElementWidth::Dynamic(element_size_field), ArrayShape::Static(count)) => {
+                // The element size must not be null.
+                self.tokens.extend(quote! {
+                    if #element_size_field == 0 {
+                        return Err(DecodeError::LengthError {
+                            obj: #packet_name,
+                            wanted: 1,
+                            got: 0,
+                        });
+                    }
+                });
+
                 // The element width is known, and the array element
                 // count is known statically.
                 let array_size = if *count == 1 {
@@ -569,6 +580,17 @@ impl<'a> FieldParser<'a> {
                 });
             }
             (ElementWidth::Dynamic(element_size_field), ArrayShape::CountField(count_field)) => {
+                // The element size must not be null.
+                self.tokens.extend(quote! {
+                    if #element_size_field == 0 {
+                        return Err(DecodeError::LengthError {
+                            obj: #packet_name,
+                            wanted: 1,
+                            got: 0,
+                        });
+                    }
+                });
+
                 // The element width is known, and the array element
                 // count is known dynamically by the count field.
                 self.check_size(&span, &quote!(#count_field * #element_size_field));
@@ -595,6 +617,17 @@ impl<'a> FieldParser<'a> {
             }
             (ElementWidth::Dynamic(element_size_field), ArrayShape::SizeField(_))
             | (ElementWidth::Dynamic(element_size_field), ArrayShape::Unknown) => {
+                // The element size must not be null.
+                self.tokens.extend(quote! {
+                    if #element_size_field == 0 {
+                        return Err(DecodeError::LengthError {
+                            obj: #packet_name,
+                            wanted: 1,
+                            got: 0,
+                        });
+                    }
+                });
+
                 // The element width is known, and the array full size
                 // is known by size field, or unknown (in which case
                 // it is the remaining span length).
