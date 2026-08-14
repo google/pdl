@@ -554,3 +554,128 @@ impl From<CompleteWithRange> for u64 {
         u8::from(value) as Self
     }
 }
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
+pub enum OpenWithDefaultTagFirst {
+    A,
+    Unknown(Private<u8>),
+}
+impl Default for OpenWithDefaultTagFirst {
+    fn default() -> OpenWithDefaultTagFirst {
+        OpenWithDefaultTagFirst::A
+    }
+}
+impl TryFrom<u8> for OpenWithDefaultTagFirst {
+    type Error = u8;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x0 => Ok(OpenWithDefaultTagFirst::A),
+            0..=0xff => Ok(OpenWithDefaultTagFirst::Unknown(Private(value))),
+        }
+    }
+}
+impl From<&OpenWithDefaultTagFirst> for u8 {
+    fn from(value: &OpenWithDefaultTagFirst) -> Self {
+        match value {
+            OpenWithDefaultTagFirst::A => 0x0,
+            OpenWithDefaultTagFirst::Unknown(Private(value)) => *value,
+        }
+    }
+}
+impl From<OpenWithDefaultTagFirst> for u8 {
+    fn from(value: OpenWithDefaultTagFirst) -> Self {
+        (&value).into()
+    }
+}
+impl From<OpenWithDefaultTagFirst> for i16 {
+    fn from(value: OpenWithDefaultTagFirst) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<OpenWithDefaultTagFirst> for i32 {
+    fn from(value: OpenWithDefaultTagFirst) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<OpenWithDefaultTagFirst> for i64 {
+    fn from(value: OpenWithDefaultTagFirst) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<OpenWithDefaultTagFirst> for u16 {
+    fn from(value: OpenWithDefaultTagFirst) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<OpenWithDefaultTagFirst> for u32 {
+    fn from(value: OpenWithDefaultTagFirst) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<OpenWithDefaultTagFirst> for u64 {
+    fn from(value: OpenWithDefaultTagFirst) -> Self {
+        u8::from(value) as Self
+    }
+}
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "u8", into = "u8"))]
+pub enum OpenWithOnlyDefaultTag {
+    Unknown(Private<u8>),
+}
+impl Default for OpenWithOnlyDefaultTag {
+    fn default() -> OpenWithOnlyDefaultTag {
+        OpenWithOnlyDefaultTag::Unknown(Private(0x0))
+    }
+}
+impl TryFrom<u8> for OpenWithOnlyDefaultTag {
+    type Error = u8;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0..=0xff => Ok(OpenWithOnlyDefaultTag::Unknown(Private(value))),
+        }
+    }
+}
+impl From<&OpenWithOnlyDefaultTag> for u8 {
+    fn from(value: &OpenWithOnlyDefaultTag) -> Self {
+        match value {
+            OpenWithOnlyDefaultTag::Unknown(Private(value)) => *value,
+        }
+    }
+}
+impl From<OpenWithOnlyDefaultTag> for u8 {
+    fn from(value: OpenWithOnlyDefaultTag) -> Self {
+        (&value).into()
+    }
+}
+impl From<OpenWithOnlyDefaultTag> for i16 {
+    fn from(value: OpenWithOnlyDefaultTag) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<OpenWithOnlyDefaultTag> for i32 {
+    fn from(value: OpenWithOnlyDefaultTag) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<OpenWithOnlyDefaultTag> for i64 {
+    fn from(value: OpenWithOnlyDefaultTag) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<OpenWithOnlyDefaultTag> for u16 {
+    fn from(value: OpenWithOnlyDefaultTag) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<OpenWithOnlyDefaultTag> for u32 {
+    fn from(value: OpenWithOnlyDefaultTag) -> Self {
+        u8::from(value) as Self
+    }
+}
+impl From<OpenWithOnlyDefaultTag> for u64 {
+    fn from(value: OpenWithOnlyDefaultTag) -> Self {
+        u8::from(value) as Self
+    }
+}

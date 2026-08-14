@@ -994,7 +994,10 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
             })
             .collect::<Vec<_>>();
         ranges.sort_unstable();
-        ranges.first().unwrap().0 == 0
+        // An enum that declares no value or range tag cannot cover the backing
+        // integer range, and `first`/`last` would be `None` below.
+        !ranges.is_empty()
+            && ranges.first().unwrap().0 == 0
             && ranges.last().unwrap().1 == max
             && ranges.windows(2).all(|window| {
                 if let [left, right] = window { left.1 == right.0 - 1 } else { false }
@@ -1055,24 +1058,31 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
     }
 
     // Generate the default enum value.
-    // The default value is the first tag of the enum.
-    // If the first tag identifies a range, then the first value
-    // of the range is used.
-    let default_value = match &tags[0] {
-        ast::Tag::Value(ast::TagValue { id, .. }) => {
+    // The default value is the first tag of the enum that is not the default
+    // (`Other`) tag. If the first tag identifies a range, then the first value
+    // of the range is used. If the enum declares no tag other than the default
+    // tag, the default tag is used.
+    let default_value = match tags.iter().find(|tag| !matches!(tag, ast::Tag::Other(_))) {
+        Some(ast::Tag::Value(ast::TagValue { id, .. })) => {
             let id = format_tag_ident(id);
             quote! { #name::#id }
         }
-        ast::Tag::Range(ast::TagRange { tags, .. }) if !tags.is_empty() => {
+        Some(ast::Tag::Range(ast::TagRange { tags, .. })) if !tags.is_empty() => {
             let id = format_tag_ident(&tags[0].id);
             quote! { #name::#id }
         }
-        ast::Tag::Range(ast::TagRange { id, range, .. }) => {
+        Some(ast::Tag::Range(ast::TagRange { id, range, .. })) => {
             let id = format_tag_ident(id);
             let value = format_value(*range.start());
             quote! { #name::#id(Private(#value)) }
         }
-        ast::Tag::Other(_) => todo!(),
+        // `find` skips `Tag::Other`, so the remaining case is an enum whose
+        // only declared tag is the default tag.
+        _ => {
+            let id = format_tag_ident(&default_tag.as_ref().expect("enum declares at least one tag").id);
+            let value = format_value(0);
+            quote! { #name::#id(Private(#value)) }
+        }
     };
 
     // Generate the cases for parsing the enum value from an integer.
@@ -1482,6 +1492,15 @@ mod tests {
             A = 0,
             B = 1,
             C = 2..255,
+        }
+
+        enum OpenWithDefaultTagFirst : 8 {
+            UNKNOWN = ..,
+            A = 0,
+        }
+
+        enum OpenWithOnlyDefaultTag : 8 {
+            UNKNOWN = ..,
         }
         "#
     );
