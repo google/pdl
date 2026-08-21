@@ -14,9 +14,14 @@
 
 //! C++ compiler backend.
 
-use crate::{analyzer, ast};
+use crate::{analyzer, ast, backends::common};
 use heck::ToUpperCamelCase;
 use std::collections::HashSet;
+
+// Return the maximum value for the scalar type.
+fn scalar_max(width: usize) -> usize {
+    if width >= usize::BITS as usize { usize::MAX } else { (1 << width) - 1 }
+}
 
 fn indent(s: &str, level: usize) -> String {
     let prefix = "    ".repeat(level);
@@ -198,8 +203,7 @@ inline std::string {id}Text({id} tag) {{
 
 /// Generate the validation function for enum values.
 fn generate_enum_is_valid(id: &str, tags: &[ast::Tag], width: usize) -> String {
-    let is_open = tags.iter().any(|t| matches!(t, ast::Tag::Other(_)));
-    if is_open {
+    if common::is_open_enum(tags) || common::is_complete_enum(tags, scalar_max(width)) {
         return String::new();
     }
 
@@ -447,8 +451,8 @@ impl<'a> FieldParser<'a> {
                 ast::FieldDesc::Typedef { id, type_id, .. } => {
                     let type_decl = self.scope.typedef.get(type_id).unwrap();
                     match &type_decl.desc {
-                        ast::DeclDesc::Enum { tags, .. }
-                            if tags.iter().any(|t| matches!(t, ast::Tag::Other(_))) =>
+                        ast::DeclDesc::Enum { tags, width, .. }
+                            if common::is_open_enum(tags) || common::is_complete_enum(tags, scalar_max(*width)) =>
                         {
                             self.unchecked_append(format!(
                                 "{}{}_ = {}({});",
@@ -574,7 +578,7 @@ impl<'a> FieldParser<'a> {
                 let cond_value = cond.value.unwrap();
                 if let ast::DeclDesc::Enum { width, tags, .. } = &type_decl.desc {
                     let backing_type = get_cxx_scalar_type(*width);
-                    let is_open = tags.iter().any(|t| matches!(t, ast::Tag::Other(_)));
+                    let is_open = common::is_open_enum(tags);
                     let size = width / 8;
                     self.append(format!("if ({} == {}) {{", cond.id, cond_value));
                     self.append(format!("    if (span.size() < {}) {{", size));
@@ -1700,23 +1704,13 @@ fn generate_packet_view(
             let constraint = constraint.unwrap();
             match &field.desc {
                 ast::FieldDesc::Typedef { type_id, .. } => {
-                    let type_decl = scope.typedef.get(type_id).unwrap();
-                    if let ast::DeclDesc::Enum { .. } = &type_decl.desc {
-                        field_accessors.push(format!(
-                            "    {} Get{}() const {{ return {}::{}; }}\n",
-                            type_id,
-                            accessor_name,
-                            type_id,
-                            constraint.tag_id.as_ref().unwrap()
-                        ));
-                    } else {
-                        field_accessors.push(format!(
-                            "    {} Get{}() const {{ return {}; }}\n",
-                            type_id,
-                            accessor_name,
-                            constraint.value.unwrap()
-                        ));
-                    }
+                    field_accessors.push(format!(
+                        "    {} Get{}() const {{ return {}::{}; }}\n",
+                        type_id,
+                        accessor_name,
+                        type_id,
+                        constraint.tag_id.as_ref().unwrap()
+                    ));
                 }
                 ast::FieldDesc::Scalar { width, .. } => {
                     let ty = get_cxx_scalar_type(*width);

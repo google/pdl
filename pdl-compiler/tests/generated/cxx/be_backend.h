@@ -9015,22 +9015,6 @@ inline std::string Enum_Complete_Truncated_Text(Enum_Complete_Truncated_ tag) {
     }
 }
 
-inline bool IsValidEnum_Complete_Truncated_(uint8_t value) {
-    switch (value) {
-        case 0x0:
-        case 0x1:
-        case 0x2:
-        case 0x3:
-        case 0x4:
-        case 0x5:
-        case 0x6:
-        case 0x7:
-            return true;
-        default:
-            return false;
-    }
-}
-
 class Enum_Complete_TruncatedView {
 public:
     static Enum_Complete_TruncatedView Create(pdl::packet::slice const& parent) {
@@ -9062,11 +9046,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_be<uint8_t, 1>();
-        auto raw_value = (chunk0 >> 0) & 0x7;
-        if (!IsValidEnum_Complete_Truncated_(raw_value)) {
-           return false;
-        }
-        e_ = Enum_Complete_Truncated_(raw_value);
+        e_ = Enum_Complete_Truncated_((chunk0 >> 0) & 0x7);
         if (span.size() > 0) {
             return false;
         }
@@ -9115,11 +9095,6 @@ inline std::string Enum_Complete_Truncated_WithRange_Text(Enum_Complete_Truncate
     }
 }
 
-inline bool IsValidEnum_Complete_Truncated_WithRange_(uint8_t value) {
-    return value == 0x0
-        || (0x1 <= value && value <= 0x7);
-}
-
 class Enum_Complete_Truncated_WithRangeView {
 public:
     static Enum_Complete_Truncated_WithRangeView Create(pdl::packet::slice const& parent) {
@@ -9151,11 +9126,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_be<uint8_t, 1>();
-        auto raw_value = (chunk0 >> 0) & 0x7;
-        if (!IsValidEnum_Complete_Truncated_WithRange_(raw_value)) {
-           return false;
-        }
-        e_ = Enum_Complete_Truncated_WithRange_(raw_value);
+        e_ = Enum_Complete_Truncated_WithRange_((chunk0 >> 0) & 0x7);
         if (span.size() > 0) {
             return false;
         }
@@ -9206,12 +9177,6 @@ inline std::string Enum_Complete_WithRange_Text(Enum_Complete_WithRange_ tag) {
     }
 }
 
-inline bool IsValidEnum_Complete_WithRange_(uint8_t value) {
-    return value == 0x0
-        || value == 0x1
-        || (0x2 <= value && value <= 0xff);
-}
-
 class Enum_Complete_WithRangeView {
 public:
     static Enum_Complete_WithRangeView Create(pdl::packet::slice const& parent) {
@@ -9242,11 +9207,7 @@ protected:
         if (span.size() < 1) {
             return false;
         }
-        auto raw_value = span.read_be<uint8_t, 1>();
-        if (!IsValidEnum_Complete_WithRange_(raw_value)) {
-           return false;
-        }
-        e_ = Enum_Complete_WithRange_(raw_value);
+        e_ = Enum_Complete_WithRange_(span.read_be<uint8_t, 1>());
         if (span.size() > 0) {
             return false;
         }
