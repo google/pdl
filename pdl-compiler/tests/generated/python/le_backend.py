@@ -4703,7 +4703,7 @@ class Enum_Complete_Truncated_(enum.IntEnum):
         try:
             return Enum_Complete_Truncated_(v)
         except ValueError:
-            raise EnumValueError("", "", "Enum_Complete_Truncated_", v)
+            return v
 
 @dataclass
 class Enum_Complete_Truncated(Packet):
@@ -4738,9 +4738,7 @@ class Enum_Complete_Truncated_WithRange_(enum.IntEnum):
         try:
             return Enum_Complete_Truncated_WithRange_(v)
         except ValueError:
-            if v >= 0x1 and v <= 0x7:
-                return v
-            raise EnumValueError("", "", "Enum_Complete_Truncated_WithRange_", v)
+            return v
 
 @dataclass
 class Enum_Complete_Truncated_WithRange(Packet):
@@ -4776,9 +4774,7 @@ class Enum_Complete_WithRange_(enum.IntEnum):
         try:
             return Enum_Complete_WithRange_(v)
         except ValueError:
-            if v >= 0x2 and v <= 0xff:
-                return v
-            raise EnumValueError("", "", "Enum_Complete_WithRange_", v)
+            return v
 
 @dataclass
 class Enum_Complete_WithRange(Packet):

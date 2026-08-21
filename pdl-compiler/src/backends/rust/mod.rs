@@ -14,7 +14,7 @@
 
 //! Rust compiler backend.
 
-use crate::{analyzer, ast};
+use crate::{analyzer, ast, backends::common};
 use quote::{format_ident, quote};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
@@ -982,33 +982,6 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
             .next()
     }
 
-    // Determine if the enum is complete, i.e. all values in the backing
-    // integer range have a matching tag in the original declaration.
-    fn enum_is_complete(tags: &[ast::Tag], max: usize) -> bool {
-        let mut ranges = tags
-            .iter()
-            .filter_map(|tag| match tag {
-                ast::Tag::Value(tag) => Some((tag.value, tag.value)),
-                ast::Tag::Range(tag) => Some(tag.range.clone().into_inner()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        ranges.sort_unstable();
-        // An enum that declares no value or range tag cannot cover the backing
-        // integer range, and `first`/`last` would be `None` below.
-        !ranges.is_empty()
-            && ranges.first().unwrap().0 == 0
-            && ranges.last().unwrap().1 == max
-            && ranges.windows(2).all(|window| {
-                if let [left, right] = window { left.1 == right.0 - 1 } else { false }
-            })
-    }
-
-    // Determine if the enum is primitive, i.e. does not contain any tag range.
-    fn enum_is_primitive(tags: &[ast::Tag]) -> bool {
-        tags.iter().all(|tag| matches!(tag, ast::Tag::Value(_)))
-    }
-
     // Return the maximum value for the scalar type.
     fn scalar_max(width: usize) -> usize {
         if width >= usize::BITS as usize { usize::MAX } else { (1 << width) - 1 }
@@ -1031,8 +1004,8 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
     let range_max = scalar_max(width);
     let default_tag = enum_default_tag(tags);
     let is_open = default_tag.is_some();
-    let is_complete = enum_is_complete(tags, scalar_max(width));
-    let is_primitive = enum_is_primitive(tags);
+    let is_complete = common::is_complete_enum(tags, scalar_max(width));
+    let is_primitive = common::is_primitive_enum(tags);
     let name = id.to_ident();
 
     // Generate the variant cases for the enum declaration.
@@ -1079,7 +1052,8 @@ fn generate_enum_decl(id: &str, tags: &[ast::Tag], width: usize) -> proc_macro2:
         // `find` skips `Tag::Other`, so the remaining case is an enum whose
         // only declared tag is the default tag.
         _ => {
-            let id = format_tag_ident(&default_tag.as_ref().expect("enum declares at least one tag").id);
+            let id =
+                format_tag_ident(&default_tag.as_ref().expect("enum declares at least one tag").id);
             let value = format_value(0);
             quote! { #name::#id(Private(#value)) }
         }

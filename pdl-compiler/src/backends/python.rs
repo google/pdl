@@ -14,7 +14,7 @@
 
 //! Python compiler backend.
 
-use crate::{analyzer, ast};
+use crate::{analyzer, ast, backends::common};
 
 #[derive(Default)]
 struct CodeBlock {
@@ -38,6 +38,11 @@ fn indent(s: &str, level: usize) -> String {
         .map(|line| if line.is_empty() { line.to_string() } else { format!("{}{}", prefix, line) })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+// Return the maximum value for the scalar type.
+fn scalar_max(width: usize) -> usize {
+    if width >= usize::BITS as usize { usize::MAX } else { (1 << width) - 1 }
 }
 
 /// Construct a mask of the required width.
@@ -276,7 +281,7 @@ pub fn generate(
     code
 }
 
-fn generate_enum_declaration(id: &str, tags: &[ast::Tag], _width: usize) -> String {
+fn generate_enum_declaration(id: &str, tags: &[ast::Tag], width: usize) -> String {
     let mut tag_decls = Vec::new();
     for tag in tags {
         if let ast::Tag::Value(t) = tag {
@@ -284,9 +289,8 @@ fn generate_enum_declaration(id: &str, tags: &[ast::Tag], _width: usize) -> Stri
         }
     }
 
-    let is_open = tags.iter().any(|t| matches!(t, ast::Tag::Other(_)));
     let mut unknown_handler = Vec::new();
-    if is_open {
+    if common::is_open_enum(tags) || common::is_complete_enum(tags, scalar_max(width)) {
         unknown_handler.push("return v".to_string());
     } else {
         for tag in tags {
