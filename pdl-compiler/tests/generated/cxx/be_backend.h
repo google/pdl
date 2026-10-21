@@ -192,8 +192,9 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(a_ & 0xff)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -235,12 +236,16 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = (array_.size() * 1);
+        if (array_size > 0x3) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -275,10 +280,11 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -355,11 +361,15 @@ public:
     ScalarParentBuilder(ScalarParentBuilder&&) = default;
     ScalarParentBuilder& operator=(ScalarParentBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(a_ & 0xff)));
         size_t payload_size = payload_.size();
+        if (payload_size > 0xff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
     }
 
     size_t GetSize() const override {
@@ -441,11 +451,15 @@ public:
     EnumParentBuilder(EnumParentBuilder&&) = default;
     EnumParentBuilder& operator=(EnumParentBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(static_cast<uint16_t>(a_))));
         size_t payload_size = payload_.size();
+        if (payload_size > 0xff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
     }
 
     size_t GetSize() const override {
@@ -521,11 +535,15 @@ public:
     EmptyParentBuilder(EmptyParentBuilder&&) = default;
     EmptyParentBuilder& operator=(EmptyParentBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(a_ & 0xff)));
         size_t payload_size = payload_.size();
+        if (payload_size > 0xff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
     }
 
     size_t GetSize() const override {
@@ -597,8 +615,15 @@ public:
     Packet_Scalar_FieldBuilder(Packet_Scalar_FieldBuilder&&) = default;
     Packet_Scalar_FieldBuilder& operator=(Packet_Scalar_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (a_ > 0x7f) {
+            return false;
+        }
+        if (c_ > 0x1ffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(a_ & 0x7f)) | (static_cast<uint64_t>(c_ & 0x1ffffffffffffff) << 7));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -673,8 +698,12 @@ public:
     Packet_Enum_FieldBuilder(Packet_Enum_FieldBuilder&&) = default;
     Packet_Enum_FieldBuilder& operator=(Packet_Enum_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (c_ > 0x1ffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(static_cast<uint8_t>(a_))) | (static_cast<uint64_t>(c_ & 0x1ffffffffffffff) << 7));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -745,8 +774,15 @@ public:
     Packet_Reserved_FieldBuilder(Packet_Reserved_FieldBuilder&&) = default;
     Packet_Reserved_FieldBuilder& operator=(Packet_Reserved_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (a_ > 0x7f) {
+            return false;
+        }
+        if (c_ > 0x7fffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(a_ & 0x7f)) | (static_cast<uint64_t>(c_ & 0x7fffffffffffff) << 9));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -834,12 +870,19 @@ public:
     Packet_Size_FieldBuilder(Packet_Size_FieldBuilder&&) = default;
     Packet_Size_FieldBuilder& operator=(Packet_Size_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t b_size = (b_.size() * 1);
+        if (b_size > 0x7) {
+            return false;
+        }
+        if (a_ > 0x1fffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(b_size)) | (static_cast<uint64_t>(a_ & 0x1fffffffffffffff) << 3));
         for (auto const& element : b_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -925,11 +968,18 @@ public:
     Packet_Count_FieldBuilder(Packet_Count_FieldBuilder&&) = default;
     Packet_Count_FieldBuilder& operator=(Packet_Count_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (b_.size() > 0x7) {
+            return false;
+        }
+        if (a_ > 0x1fffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(b_.size())) | (static_cast<uint64_t>(a_ & 0x1fffffffffffffff) << 3));
         for (auto const& element : b_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1000,8 +1050,12 @@ public:
     Packet_FixedScalar_FieldBuilder(Packet_FixedScalar_FieldBuilder&&) = default;
     Packet_FixedScalar_FieldBuilder& operator=(Packet_FixedScalar_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (b_ > 0x1ffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(0x7)) | (static_cast<uint64_t>(b_ & 0x1ffffffffffffff) << 7));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1070,8 +1124,12 @@ public:
     Packet_FixedEnum_FieldBuilder(Packet_FixedEnum_FieldBuilder&&) = default;
     Packet_FixedEnum_FieldBuilder& operator=(Packet_FixedEnum_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (b_ > 0x1ffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(Enum7::A)) | (static_cast<uint64_t>(b_ & 0x1ffffffffffffff) << 7));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1143,10 +1201,14 @@ public:
     Packet_Payload_Field_VariableSizeBuilder(Packet_Payload_Field_VariableSizeBuilder&&) = default;
     Packet_Payload_Field_VariableSizeBuilder& operator=(Packet_Payload_Field_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t payload_size = payload_.size();
+        if (payload_size > 0x7) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1219,10 +1281,14 @@ public:
     Packet_Payload_Field_SizeModifierBuilder(Packet_Payload_Field_SizeModifierBuilder&&) = default;
     Packet_Payload_Field_SizeModifierBuilder& operator=(Packet_Payload_Field_SizeModifierBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t payload_size = (payload_.size() +2);
+        if (payload_size > 0x7) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1296,9 +1362,10 @@ public:
     Packet_Payload_Field_UnknownSizeBuilder(Packet_Payload_Field_UnknownSizeBuilder&&) = default;
     Packet_Payload_Field_UnknownSizeBuilder& operator=(Packet_Payload_Field_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         output.insert(output.end(), payload_.begin(), payload_.end());
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(a_ & 0xffff)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1371,9 +1438,10 @@ public:
     Packet_Payload_Field_UnknownSize_TerminalBuilder(Packet_Payload_Field_UnknownSize_TerminalBuilder&&) = default;
     Packet_Payload_Field_UnknownSize_TerminalBuilder& operator=(Packet_Payload_Field_UnknownSize_TerminalBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(a_ & 0xffff)));
         output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1446,10 +1514,14 @@ public:
     Packet_Body_Field_VariableSizeBuilder(Packet_Body_Field_VariableSizeBuilder&&) = default;
     Packet_Body_Field_VariableSizeBuilder& operator=(Packet_Body_Field_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t payload_size = payload_.size();
+        if (payload_size > 0x7) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1523,9 +1595,10 @@ public:
     Packet_Body_Field_UnknownSizeBuilder(Packet_Body_Field_UnknownSizeBuilder&&) = default;
     Packet_Body_Field_UnknownSizeBuilder& operator=(Packet_Body_Field_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         output.insert(output.end(), payload_.begin(), payload_.end());
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(a_ & 0xffff)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1598,9 +1671,10 @@ public:
     Packet_Body_Field_UnknownSize_TerminalBuilder(Packet_Body_Field_UnknownSize_TerminalBuilder&&) = default;
     Packet_Body_Field_UnknownSize_TerminalBuilder& operator=(Packet_Body_Field_UnknownSize_TerminalBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(a_ & 0xffff)));
         output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1666,8 +1740,9 @@ public:
     Packet_ScalarGroup_FieldBuilder(Packet_ScalarGroup_FieldBuilder&&) = default;
     Packet_ScalarGroup_FieldBuilder& operator=(Packet_ScalarGroup_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(0x2a)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1732,8 +1807,9 @@ public:
     Packet_EnumGroup_FieldBuilder(Packet_EnumGroup_FieldBuilder&&) = default;
     Packet_EnumGroup_FieldBuilder& operator=(Packet_EnumGroup_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(Enum16::A)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1799,9 +1875,14 @@ public:
     Packet_Struct_FieldBuilder(Packet_Struct_FieldBuilder&&) = default;
     Packet_Struct_FieldBuilder& operator=(Packet_Struct_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        a_.Serialize(output);
-        b_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!a_.Serialize(output)) {
+            return false;
+        }
+        if (!b_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1876,10 +1957,11 @@ public:
     Packet_Array_Field_ByteElement_ConstantSizeBuilder(Packet_Array_Field_ByteElement_ConstantSizeBuilder&&) = default;
     Packet_Array_Field_ByteElement_ConstantSizeBuilder& operator=(Packet_Array_Field_ByteElement_ConstantSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -1962,12 +2044,16 @@ public:
     Packet_Array_Field_ByteElement_VariableSizeBuilder(Packet_Array_Field_ByteElement_VariableSizeBuilder&&) = default;
     Packet_Array_Field_ByteElement_VariableSizeBuilder& operator=(Packet_Array_Field_ByteElement_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = (array_.size() * 1);
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2048,11 +2134,15 @@ public:
     Packet_Array_Field_ByteElement_VariableCountBuilder(Packet_Array_Field_ByteElement_VariableCountBuilder&&) = default;
     Packet_Array_Field_ByteElement_VariableCountBuilder& operator=(Packet_Array_Field_ByteElement_VariableCountBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2127,10 +2217,11 @@ public:
     Packet_Array_Field_ByteElement_UnknownSizeBuilder(Packet_Array_Field_ByteElement_UnknownSizeBuilder&&) = default;
     Packet_Array_Field_ByteElement_UnknownSizeBuilder& operator=(Packet_Array_Field_ByteElement_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2204,10 +2295,11 @@ public:
     Packet_Array_Field_ScalarElement_ConstantSizeBuilder(Packet_Array_Field_ScalarElement_ConstantSizeBuilder&&) = default;
     Packet_Array_Field_ScalarElement_ConstantSizeBuilder& operator=(Packet_Array_Field_ScalarElement_ConstantSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2290,12 +2382,16 @@ public:
     Packet_Array_Field_ScalarElement_VariableSizeBuilder(Packet_Array_Field_ScalarElement_VariableSizeBuilder&&) = default;
     Packet_Array_Field_ScalarElement_VariableSizeBuilder& operator=(Packet_Array_Field_ScalarElement_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = (array_.size() * 2);
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2376,11 +2472,15 @@ public:
     Packet_Array_Field_ScalarElement_VariableCountBuilder(Packet_Array_Field_ScalarElement_VariableCountBuilder&&) = default;
     Packet_Array_Field_ScalarElement_VariableCountBuilder& operator=(Packet_Array_Field_ScalarElement_VariableCountBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2455,10 +2555,11 @@ public:
     Packet_Array_Field_ScalarElement_UnknownSizeBuilder(Packet_Array_Field_ScalarElement_UnknownSizeBuilder&&) = default;
     Packet_Array_Field_ScalarElement_UnknownSizeBuilder& operator=(Packet_Array_Field_ScalarElement_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2532,10 +2633,11 @@ public:
     Packet_Array_Field_EnumElement_ConstantSizeBuilder(Packet_Array_Field_EnumElement_ConstantSizeBuilder&&) = default;
     Packet_Array_Field_EnumElement_ConstantSizeBuilder& operator=(Packet_Array_Field_EnumElement_ConstantSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2618,12 +2720,16 @@ public:
     Packet_Array_Field_EnumElement_VariableSizeBuilder(Packet_Array_Field_EnumElement_VariableSizeBuilder&&) = default;
     Packet_Array_Field_EnumElement_VariableSizeBuilder& operator=(Packet_Array_Field_EnumElement_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = (array_.size() * 2);
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2704,11 +2810,15 @@ public:
     Packet_Array_Field_EnumElement_VariableCountBuilder(Packet_Array_Field_EnumElement_VariableCountBuilder&&) = default;
     Packet_Array_Field_EnumElement_VariableCountBuilder& operator=(Packet_Array_Field_EnumElement_VariableCountBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2783,10 +2893,11 @@ public:
     Packet_Array_Field_EnumElement_UnknownSizeBuilder(Packet_Array_Field_EnumElement_UnknownSizeBuilder&&) = default;
     Packet_Array_Field_EnumElement_UnknownSizeBuilder& operator=(Packet_Array_Field_EnumElement_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2860,10 +2971,13 @@ public:
     Packet_Array_Field_SizedElement_ConstantSizeBuilder(Packet_Array_Field_SizedElement_ConstantSizeBuilder&&) = default;
     Packet_Array_Field_SizedElement_ConstantSizeBuilder& operator=(Packet_Array_Field_SizedElement_ConstantSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -2948,12 +3062,18 @@ public:
     Packet_Array_Field_SizedElement_VariableSizeBuilder(Packet_Array_Field_SizedElement_VariableSizeBuilder&&) = default;
     Packet_Array_Field_SizedElement_VariableSizeBuilder& operator=(Packet_Array_Field_SizedElement_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -3036,11 +3156,17 @@ public:
     Packet_Array_Field_SizedElement_VariableCountBuilder(Packet_Array_Field_SizedElement_VariableCountBuilder&&) = default;
     Packet_Array_Field_SizedElement_VariableCountBuilder& operator=(Packet_Array_Field_SizedElement_VariableCountBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -3117,10 +3243,13 @@ public:
     Packet_Array_Field_SizedElement_UnknownSizeBuilder(Packet_Array_Field_SizedElement_UnknownSizeBuilder&&) = default;
     Packet_Array_Field_SizedElement_UnknownSizeBuilder& operator=(Packet_Array_Field_SizedElement_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -3197,10 +3326,13 @@ public:
     Packet_Array_Field_UnsizedElement_ConstantSizeBuilder(Packet_Array_Field_UnsizedElement_ConstantSizeBuilder&&) = default;
     Packet_Array_Field_UnsizedElement_ConstantSizeBuilder& operator=(Packet_Array_Field_UnsizedElement_ConstantSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -3282,12 +3414,18 @@ public:
     Packet_Array_Field_UnsizedElement_VariableSizeBuilder(Packet_Array_Field_UnsizedElement_VariableSizeBuilder&&) = default;
     Packet_Array_Field_UnsizedElement_VariableSizeBuilder& operator=(Packet_Array_Field_UnsizedElement_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -3373,11 +3511,17 @@ public:
     Packet_Array_Field_UnsizedElement_VariableCountBuilder(Packet_Array_Field_UnsizedElement_VariableCountBuilder&&) = default;
     Packet_Array_Field_UnsizedElement_VariableCountBuilder& operator=(Packet_Array_Field_UnsizedElement_VariableCountBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -3457,10 +3601,13 @@ public:
     Packet_Array_Field_UnsizedElement_UnknownSizeBuilder(Packet_Array_Field_UnsizedElement_UnknownSizeBuilder&&) = default;
     Packet_Array_Field_UnsizedElement_UnknownSizeBuilder& operator=(Packet_Array_Field_UnsizedElement_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -3543,12 +3690,18 @@ public:
     Packet_Array_Field_UnsizedElement_SizeModifierBuilder(Packet_Array_Field_UnsizedElement_SizeModifierBuilder&&) = default;
     Packet_Array_Field_UnsizedElement_SizeModifierBuilder& operator=(Packet_Array_Field_UnsizedElement_SizeModifierBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); }) +2);
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -3637,16 +3790,23 @@ public:
     Packet_Array_Field_SizedElement_VariableSize_PaddedBuilder(Packet_Array_Field_SizedElement_VariableSize_PaddedBuilder&&) = default;
     Packet_Array_Field_SizedElement_VariableSize_PaddedBuilder& operator=(Packet_Array_Field_SizedElement_VariableSize_PaddedBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = (array_.size() * 2);
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         size_t array_start = output.size();
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        if (output.size() - array_start > 16) {
+            return false;
+        }
         if (output.size() - array_start < 16) {
             output.resize(array_start + 16, 0);
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -3736,15 +3896,24 @@ public:
     Packet_Array_Field_UnsizedElement_VariableCount_PaddedBuilder(Packet_Array_Field_UnsizedElement_VariableCount_PaddedBuilder&&) = default;
     Packet_Array_Field_UnsizedElement_VariableCount_PaddedBuilder& operator=(Packet_Array_Field_UnsizedElement_VariableCount_PaddedBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         size_t array_start = output.size();
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
+        }
+        if (output.size() - array_start > 16) {
+            return false;
         }
         if (output.size() - array_start < 16) {
             output.resize(array_start + 16, 0);
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -3830,12 +3999,23 @@ public:
     Packet_Array_Field_VariableElementSize_ConstantSizeBuilder(Packet_Array_Field_VariableElementSize_ConstantSizeBuilder&&) = default;
     Packet_Array_Field_VariableElementSize_ConstantSizeBuilder& operator=(Packet_Array_Field_VariableElementSize_ConstantSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
+        for (auto const& element : array_) {
+            if (element.GetSize() != array_element_size) {
+                return false;
+            }
+        }
+        if (array_element_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -3942,17 +4122,31 @@ public:
     Packet_Array_Field_VariableElementSize_VariableSizeBuilder(Packet_Array_Field_VariableElementSize_VariableSizeBuilder&&) = default;
     Packet_Array_Field_VariableElementSize_VariableSizeBuilder& operator=(Packet_Array_Field_VariableElementSize_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
+        for (auto const& element : array_) {
+            if (element.GetSize() != array_element_size) {
+                return false;
+            }
+        }
+        if (array_element_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
         for (auto const& element : tail_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4061,16 +4255,30 @@ public:
     Packet_Array_Field_VariableElementSize_VariableCountBuilder(Packet_Array_Field_VariableElementSize_VariableCountBuilder&&) = default;
     Packet_Array_Field_VariableElementSize_VariableCountBuilder& operator=(Packet_Array_Field_VariableElementSize_VariableCountBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
+        for (auto const& element : array_) {
+            if (element.GetSize() != array_element_size) {
+                return false;
+            }
+        }
+        if (array_element_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
         for (auto const& element : tail_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4157,12 +4365,23 @@ public:
     Packet_Array_Field_VariableElementSize_UnknownSizeBuilder(Packet_Array_Field_VariableElementSize_UnknownSizeBuilder&&) = default;
     Packet_Array_Field_VariableElementSize_UnknownSizeBuilder& operator=(Packet_Array_Field_VariableElementSize_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
+        for (auto const& element : array_) {
+            if (element.GetSize() != array_element_size) {
+                return false;
+            }
+        }
+        if (array_element_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_element_size)));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4245,14 +4464,18 @@ public:
     Packet_Optional_Scalar_FieldBuilder(Packet_Optional_Scalar_FieldBuilder&&) = default;
     Packet_Optional_Scalar_FieldBuilder& operator=(Packet_Optional_Scalar_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
         if ((a_.has_value() ? 0 : 1) == 0) {
+            if (*a_ > 0xffffff) {
+                return false;
+            }
             pdl::packet::Builder::write_be<uint32_t, 3>(output, *a_);
         }
         if ((b_.has_value() ? 1 : 0) == 1) {
             pdl::packet::Builder::write_be<uint32_t, 4>(output, *b_);
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4343,7 +4566,7 @@ public:
     Packet_Optional_Enum_FieldBuilder(Packet_Optional_Enum_FieldBuilder&&) = default;
     Packet_Optional_Enum_FieldBuilder& operator=(Packet_Optional_Enum_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
         if ((a_.has_value() ? 0 : 1) == 0) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(*a_));
@@ -4351,6 +4574,7 @@ public:
         if ((b_.has_value() ? 1 : 0) == 1) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(*b_));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4433,14 +4657,19 @@ public:
     Packet_Optional_Struct_FieldBuilder(Packet_Optional_Struct_FieldBuilder&&) = default;
     Packet_Optional_Struct_FieldBuilder& operator=(Packet_Optional_Struct_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
         if ((a_.has_value() ? 0 : 1) == 0) {
-            a_->Serialize(output);
+            if (!a_->Serialize(output)) {
+                return false;
+            }
         }
         if ((b_.has_value() ? 1 : 0) == 1) {
-            b_->Serialize(output);
+            if (!b_->Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4511,11 +4740,15 @@ public:
     ScalarChild_ABuilder(ScalarChild_ABuilder&&) = default;
     ScalarChild_ABuilder& operator=(ScalarChild_ABuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x0 & 0xff)));
         size_t payload_size = 1;
+        if (payload_size > 0xff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(b_ & 0xff)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4586,11 +4819,15 @@ public:
     ScalarChild_BBuilder(ScalarChild_BBuilder&&) = default;
     ScalarChild_BBuilder& operator=(ScalarChild_BBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x1 & 0xff)));
         size_t payload_size = 2;
+        if (payload_size > 0xff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(c_ & 0xffff)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4661,11 +4898,15 @@ public:
     EnumChild_ABuilder(EnumChild_ABuilder&&) = default;
     EnumChild_ABuilder& operator=(EnumChild_ABuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(static_cast<uint16_t>(Enum16::A))));
         size_t payload_size = 1;
+        if (payload_size > 0xff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(b_ & 0xff)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4736,11 +4977,15 @@ public:
     EnumChild_BBuilder(EnumChild_BBuilder&&) = default;
     EnumChild_BBuilder& operator=(EnumChild_BBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(static_cast<uint16_t>(Enum16::B))));
         size_t payload_size = 2;
+        if (payload_size > 0xff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(c_ & 0xffff)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4811,11 +5056,15 @@ public:
     AliasedChild_ABuilder(AliasedChild_ABuilder&&) = default;
     AliasedChild_ABuilder& operator=(AliasedChild_ABuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x2 & 0xff)));
         size_t payload_size = 1;
+        if (payload_size > 0xff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(b_ & 0xff)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4886,11 +5135,15 @@ public:
     AliasedChild_BBuilder(AliasedChild_BBuilder&&) = default;
     AliasedChild_BBuilder& operator=(AliasedChild_BBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x3 & 0xff)));
         size_t payload_size = 2;
+        if (payload_size > 0xff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(c_ & 0xffff)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4924,8 +5177,15 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (a_ > 0x7f) {
+            return false;
+        }
+        if (c_ > 0x1ffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(a_ & 0x7f)) | (static_cast<uint64_t>(c_ & 0x1ffffffffffffff) << 7));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -4963,8 +5223,12 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (c_ > 0x1ffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(static_cast<uint8_t>(a_))) | (static_cast<uint64_t>(c_ & 0x1ffffffffffffff) << 7));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5027,8 +5291,11 @@ public:
     Struct_Enum_FieldBuilder(Struct_Enum_FieldBuilder&&) = default;
     Struct_Enum_FieldBuilder& operator=(Struct_Enum_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5061,8 +5328,15 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (a_ > 0x7f) {
+            return false;
+        }
+        if (c_ > 0x7fffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(a_ & 0x7f)) | (static_cast<uint64_t>(c_ & 0x7fffffffffffff) << 9));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5125,8 +5399,11 @@ public:
     Struct_Reserved_FieldBuilder(Struct_Reserved_FieldBuilder&&) = default;
     Struct_Reserved_FieldBuilder& operator=(Struct_Reserved_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5169,12 +5446,19 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t b_size = (b_.size() * 1);
+        if (b_size > 0x7) {
+            return false;
+        }
+        if (a_ > 0x1fffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(b_size)) | (static_cast<uint64_t>(a_ & 0x1fffffffffffffff) << 3));
         for (auto const& element : b_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5238,8 +5522,11 @@ public:
     Struct_Size_FieldBuilder(Struct_Size_FieldBuilder&&) = default;
     Struct_Size_FieldBuilder& operator=(Struct_Size_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5278,11 +5565,18 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (b_.size() > 0x7) {
+            return false;
+        }
+        if (a_ > 0x1fffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(b_.size())) | (static_cast<uint64_t>(a_ & 0x1fffffffffffffff) << 3));
         for (auto const& element : b_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5346,8 +5640,11 @@ public:
     Struct_Count_FieldBuilder(Struct_Count_FieldBuilder&&) = default;
     Struct_Count_FieldBuilder& operator=(Struct_Count_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5382,8 +5679,12 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (b_ > 0x1ffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(0x7)) | (static_cast<uint64_t>(b_ & 0x1ffffffffffffff) << 7));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5445,8 +5746,11 @@ public:
     Struct_FixedScalar_FieldBuilder(Struct_FixedScalar_FieldBuilder&&) = default;
     Struct_FixedScalar_FieldBuilder& operator=(Struct_FixedScalar_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5481,8 +5785,12 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (b_ > 0x1ffffffffffffff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint64_t, 8>(output, (static_cast<uint64_t>(Enum7::A)) | (static_cast<uint64_t>(b_ & 0x1ffffffffffffff) << 7));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5544,8 +5852,11 @@ public:
     Struct_FixedEnum_FieldBuilder(Struct_FixedEnum_FieldBuilder&&) = default;
     Struct_FixedEnum_FieldBuilder& operator=(Struct_FixedEnum_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5578,8 +5889,9 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(0x2a)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5641,8 +5953,11 @@ public:
     Struct_ScalarGroup_FieldBuilder(Struct_ScalarGroup_FieldBuilder&&) = default;
     Struct_ScalarGroup_FieldBuilder& operator=(Struct_ScalarGroup_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5675,8 +5990,9 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(Enum16::A)));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5738,8 +6054,11 @@ public:
     Struct_EnumGroup_FieldBuilder(Struct_EnumGroup_FieldBuilder&&) = default;
     Struct_EnumGroup_FieldBuilder& operator=(Struct_EnumGroup_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5805,9 +6124,14 @@ public:
     Struct_Struct_FieldBuilder(Struct_Struct_FieldBuilder&&) = default;
     Struct_Struct_FieldBuilder& operator=(Struct_Struct_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        a_.Serialize(output);
-        b_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!a_.Serialize(output)) {
+            return false;
+        }
+        if (!b_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5841,10 +6165,11 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5906,8 +6231,11 @@ public:
     Struct_Array_Field_ByteElement_ConstantSizeBuilder(Struct_Array_Field_ByteElement_ConstantSizeBuilder&&) = default;
     Struct_Array_Field_ByteElement_ConstantSizeBuilder& operator=(Struct_Array_Field_ByteElement_ConstantSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -5949,12 +6277,16 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = (array_.size() * 1);
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6017,8 +6349,11 @@ public:
     Struct_Array_Field_ByteElement_VariableSizeBuilder(Struct_Array_Field_ByteElement_VariableSizeBuilder&&) = default;
     Struct_Array_Field_ByteElement_VariableSizeBuilder& operator=(Struct_Array_Field_ByteElement_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6056,11 +6391,15 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6123,8 +6462,11 @@ public:
     Struct_Array_Field_ByteElement_VariableCountBuilder(Struct_Array_Field_ByteElement_VariableCountBuilder&&) = default;
     Struct_Array_Field_ByteElement_VariableCountBuilder& operator=(Struct_Array_Field_ByteElement_VariableCountBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6158,10 +6500,11 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint8_t, 1>(output, static_cast<uint8_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6223,8 +6566,11 @@ public:
     Struct_Array_Field_ByteElement_UnknownSizeBuilder(Struct_Array_Field_ByteElement_UnknownSizeBuilder&&) = default;
     Struct_Array_Field_ByteElement_UnknownSizeBuilder& operator=(Struct_Array_Field_ByteElement_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6257,10 +6603,11 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6322,8 +6669,11 @@ public:
     Struct_Array_Field_ScalarElement_ConstantSizeBuilder(Struct_Array_Field_ScalarElement_ConstantSizeBuilder&&) = default;
     Struct_Array_Field_ScalarElement_ConstantSizeBuilder& operator=(Struct_Array_Field_ScalarElement_ConstantSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6365,12 +6715,16 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = (array_.size() * 2);
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6433,8 +6787,11 @@ public:
     Struct_Array_Field_ScalarElement_VariableSizeBuilder(Struct_Array_Field_ScalarElement_VariableSizeBuilder&&) = default;
     Struct_Array_Field_ScalarElement_VariableSizeBuilder& operator=(Struct_Array_Field_ScalarElement_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6472,11 +6829,15 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6539,8 +6900,11 @@ public:
     Struct_Array_Field_ScalarElement_VariableCountBuilder(Struct_Array_Field_ScalarElement_VariableCountBuilder&&) = default;
     Struct_Array_Field_ScalarElement_VariableCountBuilder& operator=(Struct_Array_Field_ScalarElement_VariableCountBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6574,10 +6938,11 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6639,8 +7004,11 @@ public:
     Struct_Array_Field_ScalarElement_UnknownSizeBuilder(Struct_Array_Field_ScalarElement_UnknownSizeBuilder&&) = default;
     Struct_Array_Field_ScalarElement_UnknownSizeBuilder& operator=(Struct_Array_Field_ScalarElement_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6677,10 +7045,11 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6742,8 +7111,11 @@ public:
     Struct_Array_Field_EnumElement_ConstantSizeBuilder(Struct_Array_Field_EnumElement_ConstantSizeBuilder&&) = default;
     Struct_Array_Field_EnumElement_ConstantSizeBuilder& operator=(Struct_Array_Field_EnumElement_ConstantSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6789,12 +7161,16 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = (array_.size() * 2);
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6857,8 +7233,11 @@ public:
     Struct_Array_Field_EnumElement_VariableSizeBuilder(Struct_Array_Field_EnumElement_VariableSizeBuilder&&) = default;
     Struct_Array_Field_EnumElement_VariableSizeBuilder& operator=(Struct_Array_Field_EnumElement_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6900,11 +7279,15 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -6967,8 +7350,11 @@ public:
     Struct_Array_Field_EnumElement_VariableCountBuilder(Struct_Array_Field_EnumElement_VariableCountBuilder&&) = default;
     Struct_Array_Field_EnumElement_VariableCountBuilder& operator=(Struct_Array_Field_EnumElement_VariableCountBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7006,10 +7392,11 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7071,8 +7458,11 @@ public:
     Struct_Array_Field_EnumElement_UnknownSizeBuilder(Struct_Array_Field_EnumElement_UnknownSizeBuilder&&) = default;
     Struct_Array_Field_EnumElement_UnknownSizeBuilder& operator=(Struct_Array_Field_EnumElement_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7109,10 +7499,13 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7174,8 +7567,11 @@ public:
     Struct_Array_Field_SizedElement_ConstantSizeBuilder(Struct_Array_Field_SizedElement_ConstantSizeBuilder&&) = default;
     Struct_Array_Field_SizedElement_ConstantSizeBuilder& operator=(Struct_Array_Field_SizedElement_ConstantSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7221,12 +7617,18 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7289,8 +7691,11 @@ public:
     Struct_Array_Field_SizedElement_VariableSizeBuilder(Struct_Array_Field_SizedElement_VariableSizeBuilder&&) = default;
     Struct_Array_Field_SizedElement_VariableSizeBuilder& operator=(Struct_Array_Field_SizedElement_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7332,11 +7737,17 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7399,8 +7810,11 @@ public:
     Struct_Array_Field_SizedElement_VariableCountBuilder(Struct_Array_Field_SizedElement_VariableCountBuilder&&) = default;
     Struct_Array_Field_SizedElement_VariableCountBuilder& operator=(Struct_Array_Field_SizedElement_VariableCountBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7438,10 +7852,13 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7503,8 +7920,11 @@ public:
     Struct_Array_Field_SizedElement_UnknownSizeBuilder(Struct_Array_Field_SizedElement_UnknownSizeBuilder&&) = default;
     Struct_Array_Field_SizedElement_UnknownSizeBuilder& operator=(Struct_Array_Field_SizedElement_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7538,10 +7958,13 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7603,8 +8026,11 @@ public:
     Struct_Array_Field_UnsizedElement_ConstantSizeBuilder(Struct_Array_Field_UnsizedElement_ConstantSizeBuilder&&) = default;
     Struct_Array_Field_UnsizedElement_ConstantSizeBuilder& operator=(Struct_Array_Field_UnsizedElement_ConstantSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7648,12 +8074,18 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7716,8 +8148,11 @@ public:
     Struct_Array_Field_UnsizedElement_VariableSizeBuilder(Struct_Array_Field_UnsizedElement_VariableSizeBuilder&&) = default;
     Struct_Array_Field_UnsizedElement_VariableSizeBuilder& operator=(Struct_Array_Field_UnsizedElement_VariableSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7756,11 +8191,17 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7823,8 +8264,11 @@ public:
     Struct_Array_Field_UnsizedElement_VariableCountBuilder(Struct_Array_Field_UnsizedElement_VariableCountBuilder&&) = default;
     Struct_Array_Field_UnsizedElement_VariableCountBuilder& operator=(Struct_Array_Field_UnsizedElement_VariableCountBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7858,10 +8302,13 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7923,8 +8370,11 @@ public:
     Struct_Array_Field_UnsizedElement_UnknownSizeBuilder(Struct_Array_Field_UnsizedElement_UnknownSizeBuilder&&) = default;
     Struct_Array_Field_UnsizedElement_UnknownSizeBuilder& operator=(Struct_Array_Field_UnsizedElement_UnknownSizeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -7969,12 +8419,18 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); }) +2);
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8037,8 +8493,11 @@ public:
     Struct_Array_Field_UnsizedElement_SizeModifierBuilder(Struct_Array_Field_UnsizedElement_SizeModifierBuilder&&) = default;
     Struct_Array_Field_UnsizedElement_SizeModifierBuilder& operator=(Struct_Array_Field_UnsizedElement_SizeModifierBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8085,16 +8544,23 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_size = (array_.size() * 2);
+        if (array_size > 0xf) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         size_t array_start = output.size();
         for (auto const& element : array_) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
         }
+        if (output.size() - array_start > 16) {
+            return false;
+        }
         if (output.size() - array_start < 16) {
             output.resize(array_start + 16, 0);
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8157,8 +8623,11 @@ public:
     Struct_Array_Field_SizedElement_VariableSize_PaddedBuilder(Struct_Array_Field_SizedElement_VariableSize_PaddedBuilder&&) = default;
     Struct_Array_Field_SizedElement_VariableSize_PaddedBuilder& operator=(Struct_Array_Field_SizedElement_VariableSize_PaddedBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8201,15 +8670,24 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (array_.size() > 0xff) {
+            return false;
+        }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         size_t array_start = output.size();
         for (auto const& element : array_) {
-            element.Serialize(output);
+            if (!element.Serialize(output)) {
+                return false;
+            }
+        }
+        if (output.size() - array_start > 16) {
+            return false;
         }
         if (output.size() - array_start < 16) {
             output.resize(array_start + 16, 0);
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8272,8 +8750,11 @@ public:
     Struct_Array_Field_UnsizedElement_VariableCount_PaddedBuilder(Struct_Array_Field_UnsizedElement_VariableCount_PaddedBuilder&&) = default;
     Struct_Array_Field_UnsizedElement_VariableCount_PaddedBuilder& operator=(Struct_Array_Field_UnsizedElement_VariableCount_PaddedBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8318,14 +8799,18 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
         if ((a_.has_value() ? 0 : 1) == 0) {
+            if (*a_ > 0xffffff) {
+                return false;
+            }
             pdl::packet::Builder::write_be<uint32_t, 3>(output, *a_);
         }
         if ((b_.has_value() ? 1 : 0) == 1) {
             pdl::packet::Builder::write_be<uint32_t, 4>(output, *b_);
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8388,8 +8873,11 @@ public:
     Struct_Optional_Scalar_FieldBuilder(Struct_Optional_Scalar_FieldBuilder&&) = default;
     Struct_Optional_Scalar_FieldBuilder& operator=(Struct_Optional_Scalar_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8442,7 +8930,7 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
         if ((a_.has_value() ? 0 : 1) == 0) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(*a_));
@@ -8450,6 +8938,7 @@ public:
         if ((b_.has_value() ? 1 : 0) == 1) {
             pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(*b_));
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8512,8 +9001,11 @@ public:
     Struct_Optional_Enum_FieldBuilder(Struct_Optional_Enum_FieldBuilder&&) = default;
     Struct_Optional_Enum_FieldBuilder& operator=(Struct_Optional_Enum_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8558,14 +9050,19 @@ public:
         return true;
     }
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
         if ((a_.has_value() ? 0 : 1) == 0) {
-            a_->Serialize(output);
+            if (!a_->Serialize(output)) {
+                return false;
+            }
         }
         if ((b_.has_value() ? 1 : 0) == 1) {
-            b_->Serialize(output);
+            if (!b_->Serialize(output)) {
+                return false;
+            }
         }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8628,8 +9125,11 @@ public:
     Struct_Optional_Struct_FieldBuilder(Struct_Optional_Struct_FieldBuilder&&) = default;
     Struct_Optional_Struct_FieldBuilder& operator=(Struct_Optional_Struct_FieldBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
-        s_.Serialize(output);
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8724,8 +9224,9 @@ public:
     Enum_Incomplete_Truncated_ClosedBuilder(Enum_Incomplete_Truncated_ClosedBuilder&&) = default;
     Enum_Incomplete_Truncated_ClosedBuilder& operator=(Enum_Incomplete_Truncated_ClosedBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(static_cast<uint8_t>(e_))));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8806,8 +9307,9 @@ public:
     Enum_Incomplete_Truncated_OpenBuilder(Enum_Incomplete_Truncated_OpenBuilder&&) = default;
     Enum_Incomplete_Truncated_OpenBuilder& operator=(Enum_Incomplete_Truncated_OpenBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(static_cast<uint8_t>(e_))));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8895,8 +9397,9 @@ public:
     Enum_Incomplete_Truncated_Closed_WithRangeBuilder(Enum_Incomplete_Truncated_Closed_WithRangeBuilder&&) = default;
     Enum_Incomplete_Truncated_Closed_WithRangeBuilder& operator=(Enum_Incomplete_Truncated_Closed_WithRangeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(static_cast<uint8_t>(e_))));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -8975,8 +9478,9 @@ public:
     Enum_Incomplete_Truncated_Open_WithRangeBuilder(Enum_Incomplete_Truncated_Open_WithRangeBuilder&&) = default;
     Enum_Incomplete_Truncated_Open_WithRangeBuilder& operator=(Enum_Incomplete_Truncated_Open_WithRangeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(static_cast<uint8_t>(e_))));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -9089,8 +9593,9 @@ public:
     Enum_Complete_TruncatedBuilder(Enum_Complete_TruncatedBuilder&&) = default;
     Enum_Complete_TruncatedBuilder& operator=(Enum_Complete_TruncatedBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(static_cast<uint8_t>(e_))));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -9178,8 +9683,9 @@ public:
     Enum_Complete_Truncated_WithRangeBuilder(Enum_Complete_Truncated_WithRangeBuilder&&) = default;
     Enum_Complete_Truncated_WithRangeBuilder& operator=(Enum_Complete_Truncated_WithRangeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(static_cast<uint8_t>(e_))));
+        return true;
     }
 
     size_t GetSize() const override {
@@ -9269,8 +9775,9 @@ public:
     Enum_Complete_WithRangeBuilder(Enum_Complete_WithRangeBuilder&&) = default;
     Enum_Complete_WithRangeBuilder& operator=(Enum_Complete_WithRangeBuilder const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {
+    bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(static_cast<uint8_t>(e_))));
+        return true;
     }
 
     size_t GetSize() const override {

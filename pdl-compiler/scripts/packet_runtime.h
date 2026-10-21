@@ -125,7 +125,7 @@ class Builder {
 
   /// Method implemented by generated packet builders.
   /// The packet fields are concatenated to the output vector.
-  virtual void Serialize(std::vector<uint8_t>&) const {}
+  virtual bool Serialize(std::vector<uint8_t>&) const { return true; }
 
   /// Method implemented by generated packet builders.
   /// Returns the size of the serialized packet in bytes.

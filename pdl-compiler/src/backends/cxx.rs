@@ -1431,12 +1431,18 @@ impl<'a> FieldSerializer<'a> {
             match &field.desc {
                 ast::FieldDesc::Scalar { width, .. } => {
                     let ty = get_cxx_scalar_type(*width);
+                    let var_expr = field_var.as_ref().unwrap();
+                    if !matches!(*width, 8 | 16 | 32 | 64) {
+                        self.append(&format!("if (*{} > {}) {{", var_expr, mask(*width)));
+                        self.append("    return false;");
+                        self.append("}");
+                    }
                     self.append(&format!(
                         "pdl::packet::Builder::write_{}<{}, {}>(output, *{});",
                         byteorder,
                         ty,
                         width / 8,
-                        field_var.as_ref().unwrap()
+                        var_expr
                     ));
                 }
                 ast::FieldDesc::Typedef { type_id, .. } => {
@@ -1453,9 +1459,11 @@ impl<'a> FieldSerializer<'a> {
                         ));
                     } else {
                         self.append(&format!(
-                            "{0}->Serialize(output);",
+                            "if (!{0}->Serialize(output)) {{",
                             field_var.as_ref().unwrap()
                         ));
+                        self.append("    return false;");
+                        self.append("}");
                     }
                 }
                 _ => {}
@@ -1466,8 +1474,16 @@ impl<'a> FieldSerializer<'a> {
             let width = self.schema.field_size(field.key).static_().unwrap();
             let shift = self.shift;
             match &field.desc {
-                ast::FieldDesc::Scalar { .. } => {
-                    self.values.push((format!("{} & {}", field_var.unwrap(), mask(width)), shift));
+                ast::FieldDesc::Scalar { id, .. } => {
+                    let var_expr = field_var.unwrap();
+                    if !parent_constraints.iter().any(|c| c.id == *id)
+                        && !matches!(width, 8 | 16 | 32 | 64)
+                    {
+                        self.append(&format!("if ({} > {}) {{", var_expr, mask(width)));
+                        self.append("    return false;");
+                        self.append("}");
+                    }
+                    self.values.push((format!("{} & {}", var_expr, mask(width)), shift));
                 }
                 ast::FieldDesc::FixedScalar { value, .. } => {
                     self.values.push((format!("{:#x}", value), shift));
@@ -1490,7 +1506,7 @@ impl<'a> FieldSerializer<'a> {
                         self.values.push((field_var.unwrap(), shift));
                     }
                 }
-                ast::FieldDesc::Size { field_id, .. } => {
+                ast::FieldDesc::Size { field_id, width, .. } => {
                     let field_name = if field_id == "_payload_" || field_id == "_body_" {
                         "payload"
                     } else {
@@ -1498,17 +1514,28 @@ impl<'a> FieldSerializer<'a> {
                     };
                     let size_expr = self.get_payload_field_size(var, field_id, decl);
                     self.append(&format!("size_t {field_name}_size = {size_expr};"));
+                    if *width < 64 {
+                        self.append(&format!("if ({field_name}_size > {}) {{", mask(*width)));
+                        self.append("    return false;");
+                        self.append("}");
+                    }
                     self.values.push((format!("{}_size", field_name), shift));
                 }
-                ast::FieldDesc::Count { field_id, .. } => {
+                ast::FieldDesc::Count { field_id, width, .. } => {
                     let f = self
                         .scope
                         .iter_fields(decl)
                         .find(|f| f.id() == Some(field_id))
                         .expect("Field not found");
-                    self.values.push((format!("{}.size()", get_field_expr(f)), shift));
+                    let array_expr = get_field_expr(f);
+                    if *width < 64 {
+                        self.append(&format!("if ({array_expr}.size() > {}) {{", mask(*width)));
+                        self.append("    return false;");
+                        self.append("}");
+                    }
+                    self.values.push((format!("{array_expr}.size()"), shift));
                 }
-                ast::FieldDesc::ElementSize { field_id, .. } => {
+                ast::FieldDesc::ElementSize { field_id, width, .. } => {
                     let f = self
                         .scope
                         .iter_fields(decl)
@@ -1526,6 +1553,23 @@ impl<'a> FieldSerializer<'a> {
                         _ => format!("{array_expr}.empty() ? 0 : {array_expr}[0].GetSize()"),
                     };
                     self.append(&format!("size_t {field_name}_element_size = {size_expr};"));
+                    if !matches!(element_size, analyzer::ElementSize::Static(_)) {
+                        self.append(&format!("for (auto const& element : {array_expr}) {{"));
+                        self.append(&format!(
+                            "    if (element.GetSize() != {field_name}_element_size) {{"
+                        ));
+                        self.append("        return false;");
+                        self.append("    }");
+                        self.append("}");
+                    }
+                    if *width < 64 {
+                        self.append(&format!(
+                            "if ({field_name}_element_size > {}) {{",
+                            mask(*width)
+                        ));
+                        self.append("    return false;");
+                        self.append("}");
+                    }
                     self.values.push((format!("{}_element_size", field_name), shift));
                 }
                 ast::FieldDesc::Flag { .. } => {
@@ -1555,7 +1599,11 @@ impl<'a> FieldSerializer<'a> {
                                     let backing_type = get_cxx_scalar_type(*width);
                                     self.append(&format!("pdl::packet::Builder::write_{}<{}, {}>(output, static_cast<{}>(element));", byteorder, backing_type, width / 8, backing_type));
                                 }
-                                _ => self.append("element.Serialize(output);"),
+                                _ => {
+                                    self.append("if (!element.Serialize(output)) {");
+                                    self.append("    return false;");
+                                    self.append("}");
+                                }
                             }
                         } else {
                             let element_width = width.unwrap();
@@ -1567,6 +1615,12 @@ impl<'a> FieldSerializer<'a> {
                     }
                     if let Some(ps) = padded_size {
                         let ps_bytes = ps / 8;
+                        self.append(&format!(
+                            "if (output.size() - {0}_start > {1}) {{",
+                            id, ps_bytes
+                        ));
+                        self.append("    return false;");
+                        self.append("}");
                         self.append(&format!(
                             "if (output.size() - {0}_start < {1}) {{",
                             id, ps_bytes
@@ -1601,7 +1655,9 @@ impl<'a> FieldSerializer<'a> {
                             field_var.unwrap()
                         ));
                     } else {
-                        self.append(&format!("{}.Serialize(output);", field_var.unwrap()));
+                        self.append(&format!("if (!{}.Serialize(output)) {{", field_var.unwrap()));
+                        self.append("    return false;");
+                        self.append("}");
                     }
                 }
                 ast::FieldDesc::Size { field_id, width, .. } => {
@@ -2136,6 +2192,7 @@ fn generate_packet_builder(
     for f in &all_fields {
         serializer.serialize(f, decl, None);
     }
+    serializer.append("return true;");
     let field_serializers = serializer.code;
 
     let mut variable_widths = Vec::new();
@@ -2278,7 +2335,7 @@ public:
     {class_name}({class_name}&&) = default;
     {class_name}& operator=({class_name} const&) = default;
 
-    void Serialize(std::vector<uint8_t>& output) const override {{
+    bool Serialize(std::vector<uint8_t>& output) const override {{
 {field_serializers}
     }}
 
@@ -2399,6 +2456,7 @@ fn generate_struct_declaration(
     for f in decl.fields() {
         serializer.serialize(f, decl, None);
     }
+    serializer.append("return true;");
     let field_serializers = serializer.code;
 
     let mut variable_widths = Vec::new();
@@ -2540,7 +2598,7 @@ public:
 {struct_parse_code}
     }}
 
-    void Serialize(std::vector<uint8_t>& output) const override {{
+    bool Serialize(std::vector<uint8_t>& output) const override {{
 {field_serializers}
     }}
 
