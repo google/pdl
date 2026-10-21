@@ -147,6 +147,9 @@ def generate_packet_parser_test(parser_test_suite: str, packet: ast.PacketDeclar
 
     generated_tests = []
     for (test_nr, test) in enumerate(tests):
+        if 'packed' not in test:
+            continue
+
         child_packet_id = test.get('packet', packet.id)
         child_packet = packet.file.packet_scope[child_packet_id]
 
@@ -308,31 +311,50 @@ def generate_packet_serializer_test(serializer_test_suite: str, packet: ast.Pack
 
     generated_tests = []
     for (test_nr, test) in enumerate(tests):
-        if 'expected_error' in test:
+        if 'unpacked' not in test:
             continue
 
         child_packet_id = test.get('packet', packet.id)
         child_packet = packet.file.packet_scope[child_packet_id]
 
         (built_packet, intermediate_declarations) = build_packet(child_packet, 'packet', test['unpacked'])
-        generated_tests.append(
-            dedent("""\
+        if 'expected_error' in test:
+            generated_tests.append(
+                dedent("""\
 
-            TEST_F({serializer_test_suite}, {packet_id}_Case{test_nr}) {{
-                std::vector<uint8_t> expected_output {{
-                    {output_bytes}
-                }};
-                {intermediate_declarations}
-                {child_packet_id}Builder packet = {built_packet};
-                ASSERT_EQ(packet.SerializeToBytes(), expected_output);
-            }}
-            """).format(serializer_test_suite=serializer_test_suite,
-                        packet_id=packet.id,
-                        child_packet_id=child_packet_id,
-                        test_nr=test_nr,
-                        output_bytes=indent(output_bytes(test['packed']), 2),
-                        built_packet=built_packet,
-                        intermediate_declarations=indent(intermediate_declarations, 1)))
+                TEST_F({serializer_test_suite}, {packet_id}_Invalid_Case{test_nr}) {{
+                    {intermediate_declarations}
+                    {child_packet_id}Builder packet = {built_packet};
+                    std::vector<uint8_t> output;
+                    ASSERT_FALSE(packet.Serialize(output));
+                }}
+                """).format(serializer_test_suite=serializer_test_suite,
+                            packet_id=packet.id,
+                            child_packet_id=child_packet_id,
+                            test_nr=test_nr,
+                            built_packet=built_packet,
+                            intermediate_declarations=indent(intermediate_declarations, 1)))
+        else:
+            generated_tests.append(
+                dedent("""\
+
+                TEST_F({serializer_test_suite}, {packet_id}_Case{test_nr}) {{
+                    std::vector<uint8_t> expected_output {{
+                        {output_bytes}
+                    }};
+                    {intermediate_declarations}
+                    {child_packet_id}Builder packet = {built_packet};
+                    std::vector<uint8_t> output;
+                    ASSERT_TRUE(packet.Serialize(output));
+                    ASSERT_EQ(output, expected_output);
+                }}
+                """).format(serializer_test_suite=serializer_test_suite,
+                            packet_id=packet.id,
+                            child_packet_id=child_packet_id,
+                            test_nr=test_nr,
+                            output_bytes=indent(output_bytes(test['packed']), 2),
+                            built_packet=built_packet,
+                            intermediate_declarations=indent(intermediate_declarations, 1)))
 
     return ''.join(generated_tests)
 
