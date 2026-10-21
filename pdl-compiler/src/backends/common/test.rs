@@ -10,7 +10,8 @@ pub struct Packet {
 
 #[derive(Debug, Deserialize)]
 pub struct TestVector {
-    pub packed: String,
+    #[serde(default)]
+    pub packed: Option<String>,
     #[serde(default)]
     pub unpacked: Option<Value>,
     pub packet: Option<String>,

@@ -96,6 +96,10 @@ fn get_test_cases(file: &str, exclude_packets: &[String]) -> Result<Vec<Packet>,
             if t.packet.as_ref().is_some_and(|p| exclude_packets.contains(p)) {
                 return false;
             }
+            // Skip negative serialization test vectors.
+            if t.packed.is_none() {
+                return false;
+            }
             true
         });
     }
@@ -159,8 +163,10 @@ impl TestVector {
     ) -> impl FormatInto<Java> + 'a {
         let maybe_child = self.packet.as_ref().unwrap_or(id);
 
+        let packed = self.packed.as_deref().unwrap();
+
         quote_fn! {
-            $(java::block_comment(iter::once(format!("0x{}", &self.packed))))$['\n']
+            $(java::block_comment(iter::once(format!("0x{}", packed))))$['\n']
             static void testEncode$test_id() {
                 $(Class::name_from_id(maybe_child)) packet = $(build_packet_from_fields(
                     self.packet.as_ref().unwrap_or(id),
@@ -168,7 +174,7 @@ impl TestVector {
                     decls
                 ));
                 byte[] encodedPacket = packet.toBytes();
-                byte[] expectedBytes = $(hex_to_array(&self.packed));
+                byte[] expectedBytes = $(hex_to_array(packed));
                 assert $(&*import::ARRAYS).equals(expectedBytes, encodedPacket);
             }
         }
@@ -192,11 +198,12 @@ impl TestVector {
                 .map(|child_id| Class::name_from_id(child_id))
                 .unwrap_or(Class::name_from_id(id))
         );
+        let packed = self.packed.as_deref().unwrap();
 
         quote_fn! {
             $(java::block_comment(iter::once(format!("{}", self.unpacked.as_ref().unwrap()))))$['\n']
             static void testDecode$test_id() {
-                $(&packet_name) decodedPacket = $(&packet_name).fromBytes($(hex_to_array(&self.packed)));
+                $(&packet_name) decodedPacket = $(&packet_name).fromBytes($(hex_to_array(packed)));
                 $(self.gen_asserts_for_fields(id, decls))
             }
         }
@@ -212,11 +219,12 @@ impl TestVector {
             .as_ref()
             .map(|child_id| Class::name_from_id(child_id))
             .unwrap_or(Class::name_from_id(id));
+        let packed = self.packed.as_deref().unwrap();
 
         quote_fn! {
             static void testDecodeInvalid$test_id() {
                 try {
-                    $(&packet_name).fromBytes($(hex_to_array(&self.packed)));
+                    $(&packet_name).fromBytes($(hex_to_array(packed)));
                     throw new AssertionError("Expected exception");
                 } catch (Exception e) {
                     // expected

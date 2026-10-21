@@ -5466,5 +5466,430 @@
         }
       }
     ]
+  },
+  {
+    "packet": "Packet_Scalar_Field",
+    "tests": [
+      {
+        "unpacked": {
+          "a": 128,
+          "c": 0
+        },
+        "expected_error": "InvalidScalarValue"
+      },
+      {
+        "unpacked": {
+          "a": 0,
+          "c": 144115188075855872
+        },
+        "expected_error": "InvalidScalarValue"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Reserved_Field",
+    "tests": [
+      {
+        "unpacked": {
+          "a": 128,
+          "c": 0
+        },
+        "expected_error": "InvalidScalarValue"
+      },
+      {
+        "unpacked": {
+          "a": 0,
+          "c": 36028797018963968
+        },
+        "expected_error": "InvalidScalarValue"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Optional_Scalar_Field",
+    "tests": [
+      {
+        "unpacked": {
+          "a": 16777216,
+          "b": null
+        },
+        "expected_error": "InvalidScalarValue"
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Reserved_Field",
+    "tests": [
+      {
+        "unpacked": {
+          "s": {
+            "a": 128,
+            "c": 0
+          }
+        },
+        "expected_error": "InvalidScalarValue"
+      },
+      {
+        "unpacked": {
+          "s": {
+            "a": 0,
+            "c": 36028797018963968
+          }
+        },
+        "expected_error": "InvalidScalarValue"
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Optional_Scalar_Field",
+    "tests": [
+      {
+        "unpacked": {
+          "s": {
+            "a": 16777216,
+            "b": null
+          }
+        },
+        "expected_error": "InvalidScalarValue"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Size_Field",
+    "tests": [
+      {
+        "unpacked": {
+          "a": 0,
+          "b": [0, 1, 2, 3, 4, 5, 6, 7]
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Payload_Field_VariableSize",
+    "tests": [
+      {
+        "unpacked": {
+          "payload": [0, 1, 2, 3, 4, 5, 6, 7]
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Payload_Field_SizeModifier",
+    "tests": [
+      {
+        "unpacked": {
+          "payload": [0, 1, 2, 3, 4, 5]
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Body_Field_VariableSize",
+    "tests": [
+      {
+        "unpacked": {
+          "payload": [0, 1, 2, 3, 4, 5, 6, 7]
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_ByteElement_VariableSize",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_ScalarElement_VariableSize",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [0, 1, 2, 3, 4, 5, 6, 7]
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_SizedElement_VariableSize",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [
+            {"a": 0},
+            {"a": 1},
+            {"a": 2},
+            {"a": 3},
+            {"a": 4},
+            {"a": 5},
+            {"a": 6},
+            {"a": 7},
+            {"a": 8},
+            {"a": 9},
+            {"a": 10},
+            {"a": 11},
+            {"a": 12},
+            {"a": 13},
+            {"a": 14},
+            {"a": 15}
+          ]
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_UnsizedElement_VariableSize",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [
+            {"array": [1, 2, 3, 4]}
+          ]
+        },
+        "expected_error": "SizeOverflow"
+      },
+      {
+        "unpacked": {
+          "array": [
+            {"array": [1, 2, 3]},
+            {"array": [1, 2, 3]},
+            {"array": [1, 2, 3]},
+            {"array": [1, 2, 3]}
+          ]
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_SizedElement_VariableSize_Padded",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [0, 1, 2, 3, 4, 5, 6, 7]
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_UnsizedElement_VariableCount_Padded",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [
+            {"array": [1, 2, 3]},
+            {"array": [1, 2, 3]},
+            {"array": [1, 2, 3]},
+            {"array": [1, 2, 3]},
+            {"array": [1, 2, 3]}
+          ]
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_VariableElementSize_ConstantSize",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [
+            {"array": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]},
+            {"array": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]},
+            {"array": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]},
+            {"array": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]}
+          ]
+        },
+        "expected_error": "SizeOverflow"
+      },
+      {
+        "unpacked": {
+          "array": [
+            {"array": [1]},
+            {"array": [1, 2]},
+            {"array": [1]},
+            {"array": [1]}
+          ]
+        },
+        "expected_error": "InvalidArrayElementSize"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_VariableElementSize_VariableSize",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [
+            {"array": [1]},
+            {"array": [1, 2]}
+          ],
+          "tail": []
+        },
+        "expected_error": "InvalidArrayElementSize"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_VariableElementSize_VariableCount",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [
+            {"array": [1]},
+            {"array": [1, 2]}
+          ],
+          "tail": []
+        },
+        "expected_error": "InvalidArrayElementSize"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_VariableElementSize_UnknownSize",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [
+            {"array": [1]},
+            {"array": [1, 2]}
+          ]
+        },
+        "expected_error": "InvalidArrayElementSize"
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Size_Field",
+    "tests": [
+      {
+        "unpacked": {
+          "s": {
+            "a": 0,
+            "b": [0, 1, 2, 3, 4, 5, 6, 7]
+          }
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Array_Field_ByteElement_VariableSize",
+    "tests": [
+      {
+        "unpacked": {
+          "s": {
+            "array": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+          }
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Array_Field_SizedElement_VariableSize_Padded",
+    "tests": [
+      {
+        "unpacked": {
+          "s": {
+            "array": [0, 1, 2, 3, 4, 5, 6, 7]
+          }
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Array_Field_UnsizedElement_VariableCount_Padded",
+    "tests": [
+      {
+        "unpacked": {
+          "s": {
+            "array": [
+              {"array": [1, 2, 3]},
+              {"array": [1, 2, 3]},
+              {"array": [1, 2, 3]},
+              {"array": [1, 2, 3]},
+              {"array": [1, 2, 3]}
+            ]
+          }
+        },
+        "expected_error": "SizeOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Count_Field",
+    "tests": [
+      {
+        "unpacked": {
+          "a": 0,
+          "b": [0, 1, 2, 3, 4, 5, 6, 7]
+        },
+        "expected_error": "CountOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_ByteElement_VariableCount",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        },
+        "expected_error": "CountOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Packet_Array_Field_ScalarElement_VariableCount",
+    "tests": [
+      {
+        "unpacked": {
+          "array": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        },
+        "expected_error": "CountOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Count_Field",
+    "tests": [
+      {
+        "unpacked": {
+          "s": {
+            "a": 0,
+            "b": [0, 1, 2, 3, 4, 5, 6, 7]
+          }
+        },
+        "expected_error": "CountOverflow"
+      }
+    ]
+  },
+  {
+    "packet": "Struct_Array_Field_ByteElement_VariableCount",
+    "tests": [
+      {
+        "unpacked": {
+          "s": {
+            "array": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+          }
+        },
+        "expected_error": "CountOverflow"
+      }
+    ]
   }
 ]
