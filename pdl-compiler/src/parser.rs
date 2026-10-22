@@ -12,12 +12,294 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ast;
 use codespan_reporting::diagnostic::Diagnostic;
 use codespan_reporting::files;
 use pest::iterators::{Pair, Pairs};
 use pest::{Parser, Token};
 use std::iter::{Filter, Peekable};
+
+pub mod ast {
+    use serde::Serialize;
+
+    pub use crate::ast::{
+        Comment, Constraint, Endianness, EndiannessValue, FileId, SourceDatabase, SourceLocation,
+        SourceRange, Tag, TagOther, TagRange, TagValue, TestCase,
+    };
+
+    #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+    #[serde(tag = "kind")]
+    pub enum FieldDesc {
+        #[serde(rename = "checksum_field")]
+        Checksum { field_id: String },
+        #[serde(rename = "padding_field")]
+        Padding { size: usize },
+        #[serde(rename = "size_field")]
+        Size { field_id: String, width: usize },
+        #[serde(rename = "count_field")]
+        Count { field_id: String, width: usize },
+        #[serde(rename = "elementsize_field")]
+        ElementSize { field_id: String, width: usize },
+        #[serde(rename = "body_field")]
+        Body,
+        #[serde(rename = "payload_field")]
+        Payload { size_modifier: Option<String> },
+        #[serde(rename = "fixed_field")]
+        FixedScalar { width: usize, value: usize },
+        #[serde(rename = "fixed_field")]
+        FixedEnum { enum_id: String, tag_id: String },
+        #[serde(rename = "reserved_field")]
+        Reserved { width: usize },
+        #[serde(rename = "array_field")]
+        Array {
+            id: String,
+            width: Option<usize>,
+            type_id: Option<String>,
+            size_modifier: Option<String>,
+            size: Option<usize>,
+        },
+        #[serde(rename = "scalar_field")]
+        Scalar { id: String, width: usize },
+        /// Special case of Scalar for fields used as condition for
+        /// optional fields. The width is always 1.
+        #[serde(rename = "flag_field")]
+        Flag { id: String, optional_field_ids: Vec<(String, usize)> },
+        #[serde(rename = "typedef_field")]
+        Typedef { id: String, type_id: String },
+        #[serde(rename = "group_field")]
+        Group { group_id: String, constraints: Vec<Constraint> },
+    }
+
+    #[derive(Debug, Serialize, Clone)]
+    pub struct Field {
+        pub loc: SourceRange,
+        #[serde(flatten)]
+        pub desc: FieldDesc,
+        pub cond: Option<Constraint>,
+    }
+
+    #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+    #[serde(tag = "kind")]
+    pub enum DeclDesc {
+        #[serde(rename = "checksum_declaration")]
+        Checksum { id: String, function: String, width: usize },
+        #[serde(rename = "custom_field_declaration")]
+        CustomField { id: String, width: Option<usize>, function: String },
+        #[serde(rename = "enum_declaration")]
+        Enum { id: String, tags: Vec<Tag>, width: usize },
+        #[serde(rename = "packet_declaration")]
+        Packet {
+            id: String,
+            constraints: Vec<Constraint>,
+            fields: Vec<Field>,
+            parent_id: Option<String>,
+        },
+        #[serde(rename = "struct_declaration")]
+        Struct {
+            id: String,
+            constraints: Vec<Constraint>,
+            fields: Vec<Field>,
+            parent_id: Option<String>,
+        },
+        #[serde(rename = "group_declaration")]
+        Group { id: String, fields: Vec<Field> },
+        #[serde(rename = "test_declaration")]
+        Test { type_id: String, test_cases: Vec<TestCase> },
+    }
+
+    #[derive(Debug, Serialize, Clone)]
+    pub struct Decl {
+        pub loc: SourceRange,
+        #[serde(flatten)]
+        pub desc: DeclDesc,
+    }
+
+    #[derive(Debug, Serialize, Clone)]
+    pub struct File {
+        pub version: String,
+        pub file: FileId,
+        pub comments: Vec<Comment>,
+        pub endianness: Endianness,
+        pub declarations: Vec<Decl>,
+    }
+
+    impl Eq for File {}
+    impl PartialEq for File {
+        fn eq(&self, other: &Self) -> bool {
+            // Implement structural equality, leave out comments and PDL
+            // version information.
+            self.endianness == other.endianness && self.declarations == other.declarations
+        }
+    }
+
+    impl File {
+        pub fn new(file: FileId) -> File {
+            File {
+                version: "1,0".to_owned(),
+                comments: vec![],
+                // The endianness is mandatory, so this default value will
+                // be updated while parsing.
+                endianness: Endianness {
+                    loc: SourceRange::default(),
+                    value: EndiannessValue::LittleEndian,
+                },
+                declarations: vec![],
+                file,
+            }
+        }
+
+        /// Iterate over the children of the selected declaration.
+        /// /!\ This method is unsafe to use if the file contains cyclic
+        /// declarations, use with caution.
+        pub fn iter_children<'d>(&'d self, decl: &'d Decl) -> impl Iterator<Item = &'d Decl> {
+            self.declarations.iter().filter(|other_decl| other_decl.parent_id() == decl.id())
+        }
+    }
+
+    impl Eq for Decl {}
+    impl PartialEq for Decl {
+        fn eq(&self, other: &Self) -> bool {
+            // Implement structural equality, leave out loc.
+            self.desc == other.desc
+        }
+    }
+
+    impl Decl {
+        pub fn id(&self) -> Option<&str> {
+            match &self.desc {
+                DeclDesc::Test { .. } => None,
+                DeclDesc::Checksum { id, .. }
+                | DeclDesc::CustomField { id, .. }
+                | DeclDesc::Enum { id, .. }
+                | DeclDesc::Packet { id, .. }
+                | DeclDesc::Struct { id, .. }
+                | DeclDesc::Group { id, .. } => Some(id),
+            }
+        }
+
+        pub fn parent_id(&self) -> Option<&str> {
+            match &self.desc {
+                DeclDesc::Packet { parent_id, .. } | DeclDesc::Struct { parent_id, .. } => {
+                    parent_id.as_deref()
+                }
+                _ => None,
+            }
+        }
+
+        pub fn constraints(&self) -> std::slice::Iter<'_, Constraint> {
+            match &self.desc {
+                DeclDesc::Packet { constraints, .. } | DeclDesc::Struct { constraints, .. } => {
+                    constraints.iter()
+                }
+                _ => [].iter(),
+            }
+        }
+
+        pub fn fields(&self) -> std::slice::Iter<'_, Field> {
+            match &self.desc {
+                DeclDesc::Packet { fields, .. }
+                | DeclDesc::Struct { fields, .. }
+                | DeclDesc::Group { fields, .. } => fields.iter(),
+                _ => [].iter(),
+            }
+        }
+
+        /// Return the reference to the payload or body field in a declaration,
+        /// if present.
+        pub fn payload(&self) -> Option<&Field> {
+            self.fields()
+                .find(|field| matches!(&field.desc, FieldDesc::Payload { .. } | FieldDesc::Body))
+        }
+
+        /// Return the reference to the payload or body size field in a declaration,
+        /// if present.
+        pub fn payload_size(&self) -> Option<&Field> {
+            self.fields().find(|field| match &field.desc {
+                FieldDesc::Size { field_id, .. } => field_id == "_payload_" || field_id == "_body_",
+                _ => false,
+            })
+        }
+
+        /// Return the reference to the array size or count field in a declaration,
+        /// if present.
+        pub fn array_size(&self, id: &str) -> Option<&Field> {
+            self.fields().find(|field| match &field.desc {
+                FieldDesc::Size { field_id, .. } | FieldDesc::Count { field_id, .. } => {
+                    field_id == id
+                }
+                _ => false,
+            })
+        }
+
+        /// Return the reference to the array element size in a declaration, if present.
+        pub fn element_size(&self, id: &str) -> Option<&Field> {
+            self.fields().find(|field| match &field.desc {
+                FieldDesc::ElementSize { field_id, .. } => field_id == id,
+                _ => false,
+            })
+        }
+
+        pub fn kind(&self) -> &str {
+            match &self.desc {
+                DeclDesc::Checksum { .. } => "checksum",
+                DeclDesc::CustomField { .. } => "custom field",
+                DeclDesc::Enum { .. } => "enum",
+                DeclDesc::Packet { .. } => "packet",
+                DeclDesc::Struct { .. } => "struct",
+                DeclDesc::Group { .. } => "group",
+                DeclDesc::Test { .. } => "test",
+            }
+        }
+    }
+
+    impl Eq for Field {}
+    impl PartialEq for Field {
+        fn eq(&self, other: &Self) -> bool {
+            // Implement structural equality, leave out loc.
+            self.desc == other.desc
+        }
+    }
+
+    impl Field {
+        pub fn id(&self) -> Option<&str> {
+            match &self.desc {
+                FieldDesc::Checksum { .. }
+                | FieldDesc::Padding { .. }
+                | FieldDesc::Size { .. }
+                | FieldDesc::Count { .. }
+                | FieldDesc::ElementSize { .. }
+                | FieldDesc::Body
+                | FieldDesc::Payload { .. }
+                | FieldDesc::FixedScalar { .. }
+                | FieldDesc::FixedEnum { .. }
+                | FieldDesc::Reserved { .. }
+                | FieldDesc::Group { .. } => None,
+                FieldDesc::Array { id, .. }
+                | FieldDesc::Scalar { id, .. }
+                | FieldDesc::Flag { id, .. }
+                | FieldDesc::Typedef { id, .. } => Some(id),
+            }
+        }
+
+        pub fn kind(&self) -> &str {
+            match &self.desc {
+                FieldDesc::Checksum { .. } => "payload",
+                FieldDesc::Padding { .. } => "padding",
+                FieldDesc::Size { .. } => "size",
+                FieldDesc::Count { .. } => "count",
+                FieldDesc::ElementSize { .. } => "elementsize",
+                FieldDesc::Body => "body",
+                FieldDesc::Payload { .. } => "payload",
+                FieldDesc::FixedScalar { .. } | FieldDesc::FixedEnum { .. } => "fixed",
+                FieldDesc::Reserved { .. } => "reserved",
+                FieldDesc::Group { .. } => "group",
+                FieldDesc::Array { .. } => "array",
+                FieldDesc::Scalar { .. } => "scalar",
+                FieldDesc::Flag { .. } => "scalar",
+                FieldDesc::Typedef { .. } => "typedef",
+            }
+        }
+    }
+}
 
 // Generate the PDL parser.
 //
@@ -179,7 +461,6 @@ type NodeIterator<'i> = Peekable<Filter<Pairs<'i, Rule>, fn(&Node<'i>) -> bool>>
 struct Context<'a> {
     file: ast::FileId,
     line_starts: &'a Vec<usize>,
-    key: std::cell::Cell<usize>,
 }
 
 trait Helpers<'i> {
@@ -187,16 +468,6 @@ trait Helpers<'i> {
     fn as_loc(&self, context: &Context) -> ast::SourceRange;
     fn as_string(&self) -> String;
     fn as_usize(&self) -> Result<usize, String>;
-}
-
-impl Context<'_> {
-    fn field_key(&self) -> ast::FieldKey {
-        ast::FieldKey(self.key.replace(self.key.get() + 1))
-    }
-
-    fn decl_key(&self) -> ast::DeclKey {
-        ast::DeclKey(self.key.replace(self.key.get() + 1))
-    }
 }
 
 impl<'i> Helpers<'i> for Node<'i> {
@@ -422,7 +693,6 @@ fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> 
     let mut children = desc.children();
     Ok(ast::Field {
         loc,
-        key: context.field_key(),
         cond: cond.map(|constraint| parse_constraint(constraint, context)).transpose()?,
         desc: match rule {
             Rule::checksum_field => {
@@ -561,11 +831,8 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let id = parse_identifier(&mut children)?;
                 let width = parse_integer(&mut children)?;
                 let function = parse_string(&mut children)?;
-                file.declarations.push(ast::Decl {
-                    loc,
-                    key: context.decl_key(),
-                    desc: ast::DeclDesc::Checksum { id, function, width },
-                })
+                file.declarations
+                    .push(ast::Decl { loc, desc: ast::DeclDesc::Checksum { id, function, width } })
             }
             Rule::custom_field_declaration => {
                 let mut children = node.children();
@@ -575,7 +842,6 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let function = parse_string(&mut children)?;
                 file.declarations.push(ast::Decl {
                     loc,
-                    key: context.decl_key(),
                     desc: ast::DeclDesc::CustomField { id, function, width },
                 })
             }
@@ -585,11 +851,8 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let id = parse_identifier(&mut children)?;
                 let width = parse_integer(&mut children)?;
                 let tags = parse_enum_tag_list(&mut children, context)?;
-                file.declarations.push(ast::Decl {
-                    loc,
-                    key: context.decl_key(),
-                    desc: ast::DeclDesc::Enum { id, width, tags },
-                })
+                file.declarations
+                    .push(ast::Decl { loc, desc: ast::DeclDesc::Enum { id, width, tags } })
             }
             Rule::packet_declaration => {
                 let mut children = node.children();
@@ -600,7 +863,6 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let fields = parse_field_list_opt(&mut children, context)?;
                 file.declarations.push(ast::Decl {
                     loc,
-                    key: context.decl_key(),
                     desc: ast::DeclDesc::Packet { id, parent_id, constraints, fields },
                 })
             }
@@ -613,7 +875,6 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 let fields = parse_field_list_opt(&mut children, context)?;
                 file.declarations.push(ast::Decl {
                     loc,
-                    key: context.decl_key(),
                     desc: ast::DeclDesc::Struct { id, parent_id, constraints, fields },
                 })
             }
@@ -622,11 +883,7 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
                 expect(&mut children, Rule::GROUP)?;
                 let id = parse_identifier(&mut children)?;
                 let fields = parse_field_list(&mut children, context)?;
-                file.declarations.push(ast::Decl {
-                    loc,
-                    key: context.decl_key(),
-                    desc: ast::DeclDesc::Group { id, fields },
-                })
+                file.declarations.push(ast::Decl { loc, desc: ast::DeclDesc::Group { id, fields } })
             }
             Rule::test_declaration => {}
             Rule::EOI => (),
@@ -634,7 +891,6 @@ fn parse_toplevel(root: Node<'_>, context: &Context) -> Result<ast::File, String
         }
     }
     file.comments.append(&mut toplevel_comments);
-    file.max_key = context.key.get();
     Ok(file)
 }
 
@@ -655,7 +911,7 @@ pub fn parse_inline(
         .unwrap();
     let line_starts: Vec<_> = files::line_starts(&source).collect();
     let file = sources.add(name.to_owned(), source.clone());
-    parse_toplevel(root, &Context { file, line_starts: &line_starts, key: std::cell::Cell::new(0) })
+    parse_toplevel(root, &Context { file, line_starts: &line_starts })
         .map_err(|e| Diagnostic::error().with_message(e))
 }
 
