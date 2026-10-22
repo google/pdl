@@ -14,7 +14,7 @@
 
 //! Json compiler backend.
 
-use crate::ast;
+use crate::parser::ast;
 
 /// Turn the AST into a JSON representation.
 pub fn generate(file: &ast::File) -> Result<String, String> {

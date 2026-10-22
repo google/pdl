@@ -31,12 +31,15 @@ use std::{
 
 use super::{Class, Integral, JavaFile, import};
 use crate::{
-    ast::{self, Decl, DeclDesc, Field, FieldDesc},
+    ast,
     backends::{
         common::test::{Packet, TestVector},
         java::{codegen::expr::literal, preamble::Utils},
     },
-    parser,
+    parser::{
+        self,
+        ast::{Decl, DeclDesc, Field, FieldDesc},
+    },
 };
 
 pub fn generate_tests(

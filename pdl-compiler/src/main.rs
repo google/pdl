@@ -116,11 +116,11 @@ struct Opt {
 
 /// Remove declarations listed in the input filter.
 fn filter_declarations(
-    file: ast::File,
+    file: parser::ast::File,
     exclude_declarations: &[String],
     include_declarations: &[String],
-) -> ast::File {
-    ast::File {
+) -> parser::ast::File {
+    parser::ast::File {
         declarations: file
             .declarations
             .into_iter()
