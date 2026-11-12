@@ -411,6 +411,27 @@
     ]
   },
   {
+    "packet": "Packet_Enum_Field_Packed",
+    "tests": [
+      {
+        "packed": "01c1",
+        "unpacked": {
+          "a": 1,
+          "b": 2,
+          "c": 3
+        }
+      },
+      {
+        "packed": "8200",
+        "unpacked": {
+          "a": 2,
+          "b": 1,
+          "c": 0
+        }
+      }
+    ]
+  },
+  {
     "packet": "Packet_Payload_Field_VariableSize",
     "tests": [
       {
@@ -2818,6 +2839,59 @@
           "c": 33847
         },
         "packet": "AliasedChild_B"
+      },
+      {
+        "packed": "0403013412",
+        "unpacked": {
+          "a": 4,
+          "b": 1,
+          "c": 4660
+        },
+        "packet": "ScalarGrandChild_C"
+      },
+      {
+        "packed": "040301ffff",
+        "unpacked": {
+          "a": 4,
+          "b": 1,
+          "c": 65535
+        },
+        "packet": "ScalarGrandChild_C"
+      },
+      {
+        "packed": "050100",
+        "unpacked": {
+          "a": 5,
+          "payload": []
+        },
+        "packet": "ScalarChild_D"
+      },
+      {
+        "packed": "050403010203",
+        "unpacked": {
+          "a": 5,
+          "payload": [1, 2, 3]
+        },
+        "packet": "ScalarChild_D"
+      }
+    ]
+  },
+  {
+    "packet": "ConstrainedParent",
+    "tests": [
+      {
+        "packed": "01",
+        "unpacked": {
+          "a": 1
+        },
+        "packet": "ConstrainedChild_A"
+      },
+      {
+        "packed": "02",
+        "unpacked": {
+          "a": 2
+        },
+        "packet": "ConstrainedChild_B"
       }
     ]
   },

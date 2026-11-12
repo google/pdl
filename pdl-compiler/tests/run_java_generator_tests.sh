@@ -23,6 +23,11 @@ EXCLUDE_DECLS="--exclude-declaration SizedCustomField \
 --exclude-declaration Packet_Optional_Struct_Field \
 --exclude-declaration AliasedChild_A \
 --exclude-declaration AliasedChild_B \
+--exclude-declaration ConstrainedParent \
+--exclude-declaration ConstrainedChild_A \
+--exclude-declaration ConstrainedChild_B \
+--exclude-declaration ScalarChild_C \
+--exclude-declaration ScalarGrandChild_C \
 --exclude-declaration Struct_Checksum_Field_FromStart_ \
 --exclude-declaration Struct_Checksum_Field_FromStart \
 --exclude-declaration Struct_Checksum_Field_FromEnd_ \
