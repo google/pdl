@@ -15,7 +15,6 @@
 //! C++ compiler backend.
 
 use crate::{analyzer, ast, backends::common};
-use heck::ToUpperCamelCase;
 use std::collections::HashSet;
 
 // Return the maximum value for the scalar type.
@@ -40,6 +39,31 @@ fn deref(var: Option<&str>, id: &str) -> String {
         Some(v) => format!("{}.{}", v, id),
         None => id.to_string(),
     }
+}
+
+/// Convert a snake_case identifier to PascalCase, with the same convention
+/// as the generate_cxx_backend.py script (Python `str.title()`): the first
+/// letter following a non-letter character is capitalized, e.g.
+/// `ch3c_shape` is converted to `Ch3CShape`.
+fn to_pascal_case(id: &str) -> String {
+    let mut output = String::with_capacity(id.len());
+    let mut capitalize = true;
+    for c in id.chars() {
+        if c.is_alphabetic() {
+            if capitalize {
+                output.extend(c.to_uppercase());
+            } else {
+                output.extend(c.to_lowercase());
+            }
+            capitalize = false;
+        } else {
+            if c != '_' {
+                output.push(c);
+            }
+            capitalize = true;
+        }
+    }
+    output
 }
 
 fn get_cxx_scalar_type(width: usize) -> String {
@@ -1906,7 +1930,7 @@ fn generate_packet_view(
         if is_constrained {
             // Constrained fields still get accessors returning their constant values.
             let fid = field.id().unwrap();
-            let accessor_name = fid.to_upper_camel_case();
+            let accessor_name = to_pascal_case(fid);
             let constraint = constraint.unwrap();
             match &field.desc {
                 ast::FieldDesc::Typedef { type_id, .. } => {
@@ -1945,7 +1969,7 @@ fn generate_packet_view(
             }
             ast::FieldDesc::Array { id, type_id, width, size, .. } => {
                 field_members.push(format!("pdl::packet::slice {}_;", id));
-                let accessor_name = id.to_upper_camel_case();
+                let accessor_name = to_pascal_case(id);
                 let element_type = type_id
                     .as_deref()
                     .map(|t| t.to_string())
@@ -2091,7 +2115,7 @@ fn generate_packet_view(
             }
             ast::FieldDesc::Scalar { id, width } => {
                 let ty = get_cxx_scalar_type(*width);
-                let accessor_name = id.to_upper_camel_case();
+                let accessor_name = to_pascal_case(id);
                 if field.cond.is_some() {
                     field_members.push(format!("std::optional<{}> {}_;", ty, id));
                     field_accessors.push(format!("    std::optional<{}> Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n", ty, accessor_name, id));
@@ -2105,7 +2129,7 @@ fn generate_packet_view(
             }
             ast::FieldDesc::Typedef { id, type_id, .. } => {
                 let ty = type_id;
-                let accessor_name = id.to_upper_camel_case();
+                let accessor_name = to_pascal_case(id);
                 if field.cond.is_some() {
                     field_members.push(format!("std::optional<{}> {}_;", ty, id));
                     field_accessors.push(format!("    std::optional<{}> Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n", ty, accessor_name, id));
@@ -2786,6 +2810,15 @@ mod test {
     use super::*;
     use crate::test_utils::assert_snapshot_eq;
     use crate::{analyzer, ast, parser};
+
+    #[test]
+    fn test_to_pascal_case() {
+        assert_eq!(to_pascal_case("a"), "A");
+        assert_eq!(to_pascal_case("op_code"), "OpCode");
+        assert_eq!(to_pascal_case("ch3c_shape"), "Ch3CShape");
+        assert_eq!(to_pascal_case("tx_power_level_8dpsk"), "TxPowerLevel8Dpsk");
+        assert_eq!(to_pascal_case("le_2m_phy"), "Le2MPhy");
+    }
 
     #[test]
     fn test_canonical_le() {
