@@ -34,6 +34,7 @@ class Packet_Size_FieldView;
 class Packet_Count_FieldView;
 class Packet_FixedScalar_FieldView;
 class Packet_FixedEnum_FieldView;
+class Packet_Enum_Field_PackedView;
 class Packet_Payload_Field_VariableSizeView;
 class Packet_Payload_Field_SizeModifierView;
 class Packet_Payload_Field_UnknownSizeView;
@@ -80,6 +81,12 @@ class EnumChild_AView;
 class EnumChild_BView;
 class AliasedChild_AView;
 class AliasedChild_BView;
+class ScalarChild_CView;
+class ScalarGrandChild_CView;
+class ScalarChild_DView;
+class ConstrainedParentView;
+class ConstrainedChild_AView;
+class ConstrainedChild_BView;
 class Struct_Enum_FieldView;
 class Struct_Reserved_FieldView;
 class Struct_Size_FieldView;
@@ -496,6 +503,8 @@ protected:
     friend class EmptyParentView;
     friend class ScalarChild_AView;
     friend class ScalarChild_BView;
+    friend class ScalarChild_CView;
+    friend class ScalarChild_DView;
 };
 
 class ScalarParentBuilder : public pdl::packet::Builder {
@@ -1279,6 +1288,95 @@ public:
     std::string ToString() const { return ""; }
 
     uint64_t b_{0};
+};
+
+class Packet_Enum_Field_PackedView {
+public:
+    static Packet_Enum_Field_PackedView Create(pdl::packet::slice const& parent) {
+        return Packet_Enum_Field_PackedView(parent);
+    }
+
+    Enum7 GetA() const { _ASSERT_VALID(valid_); return a_; }
+
+    Enum7 GetB() const { _ASSERT_VALID(valid_); return b_; }
+
+    uint8_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit Packet_Enum_Field_PackedView(pdl::packet::slice const& parent)
+          : bytes_(parent) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(pdl::packet::slice const& parent) {
+        pdl::packet::slice span = parent;
+        // Parse packet field values.
+        if (span.size() < 2) {
+            return false;
+        }
+        uint16_t chunk0 = span.read_le<uint16_t, 2>();
+        auto raw_a = (chunk0 >> 0) & 0x7f;
+        if (!IsValidEnum7(raw_a)) {
+           return false;
+        }
+        a_ = Enum7(raw_a);
+        auto raw_b = (chunk0 >> 7) & 0x7f;
+        if (!IsValidEnum7(raw_b)) {
+           return false;
+        }
+        b_ = Enum7(raw_b);
+        c_ = (chunk0 >> 14) & 0x3;
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    Enum7 a_{Enum7::A};
+    Enum7 b_{Enum7::A};
+    uint8_t c_;
+
+
+};
+
+class Packet_Enum_Field_PackedBuilder : public pdl::packet::Builder {
+public:
+    ~Packet_Enum_Field_PackedBuilder() override = default;
+    Packet_Enum_Field_PackedBuilder() = default;
+    explicit Packet_Enum_Field_PackedBuilder(Enum7 a, Enum7 b, uint8_t c) : a_(std::move(a)), b_(std::move(b)), c_(std::move(c)) {}
+    Packet_Enum_Field_PackedBuilder(Packet_Enum_Field_PackedBuilder const&) = default;
+    Packet_Enum_Field_PackedBuilder(Packet_Enum_Field_PackedBuilder&&) = default;
+    Packet_Enum_Field_PackedBuilder& operator=(Packet_Enum_Field_PackedBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (c_ > 0x3) {
+            return false;
+        }
+        pdl::packet::Builder::write_le<uint16_t, 2>(output, (static_cast<uint16_t>(static_cast<uint8_t>(a_))) | (static_cast<uint16_t>(static_cast<uint8_t>(b_)) << 7) | (static_cast<uint16_t>(c_ & 0x3) << 14));
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 2;
+    }
+
+    std::string ToString() const { return ""; }
+
+    Enum7 a_{Enum7::A};
+    Enum7 b_{Enum7::A};
+    uint8_t c_{0};
 };
 
 class Packet_Payload_Field_VariableSizeView {
@@ -5262,6 +5360,454 @@ public:
     std::string ToString() const { return ""; }
 
     uint16_t c_{0};
+};
+
+class ScalarChild_CView {
+public:
+    static ScalarChild_CView Create(ScalarParentView const& parent) {
+        return ScalarChild_CView(parent);
+    }
+
+    uint8_t GetA() const { return 4; }
+
+    uint8_t GetB() const { _ASSERT_VALID(valid_); return b_; }
+
+    std::vector<uint8_t> GetPayload() const {
+        _ASSERT_VALID(valid_);
+        return payload_.bytes();
+    }
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ScalarChild_CView(ScalarParentView const& parent)
+          : bytes_(parent.bytes_) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(ScalarParentView const& parent) {
+        // Check validity of parent packet.
+        if (!parent.IsValid()) { return false; }
+        pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
+        if (span.size() < 1) {
+            return false;
+        }
+        b_ = span.read_le<uint8_t, 1>();
+        payload_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint8_t b_;
+    pdl::packet::slice payload_;
+
+    friend class ScalarGrandChild_CView;
+};
+
+class ScalarChild_CBuilder : public pdl::packet::Builder {
+public:
+    ~ScalarChild_CBuilder() override = default;
+    ScalarChild_CBuilder() = default;
+    explicit ScalarChild_CBuilder(uint8_t b, std::vector<uint8_t> payload) : b_(std::move(b)), payload_(std::move(payload)) {}
+    ScalarChild_CBuilder(ScalarChild_CBuilder const&) = default;
+    ScalarChild_CBuilder(ScalarChild_CBuilder&&) = default;
+    ScalarChild_CBuilder& operator=(ScalarChild_CBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(0x4 & 0xff)));
+        size_t ScalarParent_payload_size = 1 + payload_.size();
+        if (ScalarParent_payload_size > 0xff) {
+            return false;
+        }
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(b_ & 0xff)));
+        output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 3 + (payload_.size());
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint8_t b_{0};
+    std::vector<uint8_t> payload_;
+};
+
+class ScalarGrandChild_CView {
+public:
+    static ScalarGrandChild_CView Create(ScalarChild_CView const& parent) {
+        return ScalarGrandChild_CView(parent);
+    }
+
+    uint8_t GetA() const { return 4; }
+
+    uint8_t GetB() const { return 1; }
+
+    uint16_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ScalarGrandChild_CView(ScalarChild_CView const& parent)
+          : bytes_(parent.bytes_) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(ScalarChild_CView const& parent) {
+        // Check validity of parent packet.
+        if (!parent.IsValid()) { return false; }
+        pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
+        if (span.size() < 2) {
+            return false;
+        }
+        c_ = span.read_le<uint16_t, 2>();
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint16_t c_;
+
+
+};
+
+class ScalarGrandChild_CBuilder : public pdl::packet::Builder {
+public:
+    ~ScalarGrandChild_CBuilder() override = default;
+    ScalarGrandChild_CBuilder() = default;
+    explicit ScalarGrandChild_CBuilder(uint16_t c) : c_(std::move(c)) {}
+    ScalarGrandChild_CBuilder(ScalarGrandChild_CBuilder const&) = default;
+    ScalarGrandChild_CBuilder(ScalarGrandChild_CBuilder&&) = default;
+    ScalarGrandChild_CBuilder& operator=(ScalarGrandChild_CBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(0x4 & 0xff)));
+        size_t ScalarParent_payload_size = 1 + 2;
+        if (ScalarParent_payload_size > 0xff) {
+            return false;
+        }
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(0x1 & 0xff)));
+        pdl::packet::Builder::write_le<uint16_t, 2>(output, (static_cast<uint16_t>(c_ & 0xffff)));
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 5;
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint16_t c_{0};
+};
+
+class ScalarChild_DView {
+public:
+    static ScalarChild_DView Create(ScalarParentView const& parent) {
+        return ScalarChild_DView(parent);
+    }
+
+    uint8_t GetA() const { return 5; }
+
+    std::vector<uint8_t> GetPayload() const {
+        _ASSERT_VALID(valid_);
+        return payload_.bytes();
+    }
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ScalarChild_DView(ScalarParentView const& parent)
+          : bytes_(parent.bytes_) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(ScalarParentView const& parent) {
+        // Check validity of parent packet.
+        if (!parent.IsValid()) { return false; }
+        pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
+        if (span.size() < 1) {
+            return false;
+        }
+        payload_size_ = span.read_le<uint8_t, 1>();
+        if (span.size() < payload_size_) return false;
+        payload_ = span.subrange(0, payload_size_);
+        span.skip(payload_size_);
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint8_t payload_size_ {0};
+    pdl::packet::slice payload_;
+
+
+};
+
+class ScalarChild_DBuilder : public pdl::packet::Builder {
+public:
+    ~ScalarChild_DBuilder() override = default;
+    ScalarChild_DBuilder() = default;
+    explicit ScalarChild_DBuilder(std::vector<uint8_t> payload) : payload_(std::move(payload)) {}
+    ScalarChild_DBuilder(ScalarChild_DBuilder const&) = default;
+    ScalarChild_DBuilder(ScalarChild_DBuilder&&) = default;
+    ScalarChild_DBuilder& operator=(ScalarChild_DBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(0x5 & 0xff)));
+        size_t ScalarParent_payload_size = 1 + payload_.size();
+        if (ScalarParent_payload_size > 0xff) {
+            return false;
+        }
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
+        size_t payload_size = payload_.size();
+        if (payload_size > 0xff) {
+            return false;
+        }
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 3 + (payload_.size());
+    }
+
+    std::string ToString() const { return ""; }
+
+    std::vector<uint8_t> payload_;
+};
+
+class ConstrainedParentView {
+public:
+    static ConstrainedParentView Create(pdl::packet::slice const& parent) {
+        return ConstrainedParentView(parent);
+    }
+
+    uint8_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ConstrainedParentView(pdl::packet::slice const& parent)
+          : bytes_(parent) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(pdl::packet::slice const& parent) {
+        pdl::packet::slice span = parent;
+        // Parse packet field values.
+        if (span.size() < 1) {
+            return false;
+        }
+        a_ = span.read_le<uint8_t, 1>();
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint8_t a_;
+
+    friend class ConstrainedChild_AView;
+    friend class ConstrainedChild_BView;
+};
+
+class ConstrainedParentBuilder : public pdl::packet::Builder {
+public:
+    ~ConstrainedParentBuilder() override = default;
+    ConstrainedParentBuilder() = default;
+    explicit ConstrainedParentBuilder(uint8_t a) : a_(std::move(a)) {}
+    ConstrainedParentBuilder(ConstrainedParentBuilder const&) = default;
+    ConstrainedParentBuilder(ConstrainedParentBuilder&&) = default;
+    ConstrainedParentBuilder& operator=(ConstrainedParentBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(a_ & 0xff)));
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 1;
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint8_t a_{0};
+};
+
+class ConstrainedChild_AView {
+public:
+    static ConstrainedChild_AView Create(ConstrainedParentView const& parent) {
+        return ConstrainedChild_AView(parent);
+    }
+
+    uint8_t GetA() const { return 1; }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ConstrainedChild_AView(ConstrainedParentView const& parent)
+          : bytes_(parent.bytes_) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(ConstrainedParentView const& parent) {
+        // Check validity of parent packet.
+        if (!parent.IsValid()) { return false; }
+        pdl::packet::slice span;
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+
+
+
+};
+
+class ConstrainedChild_ABuilder : public pdl::packet::Builder {
+public:
+    ~ConstrainedChild_ABuilder() override = default;
+    ConstrainedChild_ABuilder() = default;
+    ConstrainedChild_ABuilder(ConstrainedChild_ABuilder const&) = default;
+    ConstrainedChild_ABuilder(ConstrainedChild_ABuilder&&) = default;
+    ConstrainedChild_ABuilder& operator=(ConstrainedChild_ABuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(0x1 & 0xff)));
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 1;
+    }
+
+    std::string ToString() const { return ""; }
+
+
+};
+
+class ConstrainedChild_BView {
+public:
+    static ConstrainedChild_BView Create(ConstrainedParentView const& parent) {
+        return ConstrainedChild_BView(parent);
+    }
+
+    uint8_t GetA() const { return 2; }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ConstrainedChild_BView(ConstrainedParentView const& parent)
+          : bytes_(parent.bytes_) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(ConstrainedParentView const& parent) {
+        // Check validity of parent packet.
+        if (!parent.IsValid()) { return false; }
+        pdl::packet::slice span;
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+
+
+
+};
+
+class ConstrainedChild_BBuilder : public pdl::packet::Builder {
+public:
+    ~ConstrainedChild_BBuilder() override = default;
+    ConstrainedChild_BBuilder() = default;
+    ConstrainedChild_BBuilder(ConstrainedChild_BBuilder const&) = default;
+    ConstrainedChild_BBuilder(ConstrainedChild_BBuilder&&) = default;
+    ConstrainedChild_BBuilder& operator=(ConstrainedChild_BBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(0x2 & 0xff)));
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 1;
+    }
+
+    std::string ToString() const { return ""; }
+
+
 };
 
 class Struct_Scalar_Field : public pdl::packet::Builder {
