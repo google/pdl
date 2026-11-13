@@ -15,7 +15,6 @@
 //! C++ compiler backend.
 
 use crate::{analyzer, ast, backends::common};
-use heck::ToUpperCamelCase;
 use std::collections::HashSet;
 
 // Return the maximum value for the scalar type.
@@ -40,6 +39,31 @@ fn deref(var: Option<&str>, id: &str) -> String {
         Some(v) => format!("{}.{}", v, id),
         None => id.to_string(),
     }
+}
+
+/// Convert a snake_case identifier to PascalCase, with the same convention
+/// as the generate_cxx_backend.py script (Python `str.title()`): the first
+/// letter following a non-letter character is capitalized, e.g.
+/// `ch3c_shape` is converted to `Ch3CShape`.
+fn to_pascal_case(id: &str) -> String {
+    let mut output = String::with_capacity(id.len());
+    let mut capitalize = true;
+    for c in id.chars() {
+        if c.is_alphabetic() {
+            if capitalize {
+                output.extend(c.to_uppercase());
+            } else {
+                output.extend(c.to_lowercase());
+            }
+            capitalize = false;
+        } else {
+            if c != '_' {
+                output.push(c);
+            }
+            capitalize = true;
+        }
+    }
+    output
 }
 
 fn get_cxx_scalar_type(width: usize) -> String {
@@ -128,19 +152,29 @@ pub fn generate(
         }
     }
 
+    let is_excluded =
+        |decl: &ast::Decl| decl.id().is_some_and(|id| exclude_declarations.iter().any(|e| e == id));
+
+    // Enums do not have dependencies and are generated first.
     for decl in &file.declarations {
-        if let Some(id) = decl.id() {
-            if exclude_declarations.contains(&id.to_string()) {
+        if let ast::DeclDesc::Enum { id, tags, width } = &decl.desc {
+            if is_excluded(decl) {
                 continue;
             }
+            code.push_str(&generate_enum_declaration(id, tags, *width));
+            code.push_str(&generate_enum_to_text(id, tags));
+            code.push_str(&generate_enum_is_valid(id, tags, *width));
         }
+    }
 
+    // Packets and structs are generated in dependency order: C++ types
+    // must be defined before they are used, while PDL declarations can be
+    // used before they are declared.
+    for decl in sort_declarations(&scope, file) {
+        if is_excluded(decl) {
+            continue;
+        }
         match &decl.desc {
-            ast::DeclDesc::Enum { id, tags, width } => {
-                code.push_str(&generate_enum_declaration(id, tags, *width));
-                code.push_str(&generate_enum_to_text(id, tags));
-                code.push_str(&generate_enum_is_valid(id, tags, *width));
-            }
             ast::DeclDesc::Packet { .. } => {
                 code.push_str(&generate_packet_view(&scope, &schema, decl));
                 code.push_str(&generate_packet_builder(&scope, &schema, decl));
@@ -159,12 +193,89 @@ pub fn generate(
     code
 }
 
+/// Return the packet and struct declarations of the file, sorted such that
+/// every declaration comes after its parent declaration and after the
+/// struct declarations used in its fields. The original declaration order
+/// is preserved otherwise.
+fn sort_declarations<'a>(scope: &analyzer::Scope<'a>, file: &'a ast::File) -> Vec<&'a ast::Decl> {
+    fn visit<'a>(
+        scope: &analyzer::Scope<'a>,
+        decl: &'a ast::Decl,
+        visited: &mut HashSet<String>,
+        sorted: &mut Vec<&'a ast::Decl>,
+    ) {
+        if !matches!(decl.desc, ast::DeclDesc::Packet { .. } | ast::DeclDesc::Struct { .. }) {
+            return;
+        }
+        let Some(id) = decl.id() else { return };
+        if !visited.insert(id.to_owned()) {
+            return;
+        }
+        if let Some(parent) = scope.get_parent(decl) {
+            visit(scope, parent, visited, sorted);
+        }
+        for field in decl.fields() {
+            let type_id = match &field.desc {
+                ast::FieldDesc::Typedef { type_id, .. } => Some(type_id.as_str()),
+                ast::FieldDesc::Array { type_id, .. } => type_id.as_deref(),
+                _ => None,
+            };
+            if let Some(type_decl) = type_id.and_then(|type_id| scope.typedef.get(type_id)) {
+                visit(scope, type_decl, visited, sorted);
+            }
+        }
+        sorted.push(decl);
+    }
+
+    let mut visited = HashSet::new();
+    let mut sorted = Vec::new();
+    for decl in &file.declarations {
+        visit(scope, decl, &mut visited, &mut sorted);
+    }
+    sorted
+}
+
+/// Return the tag values declared in the enum, including the tags declared
+/// inside of ranges.
+fn get_enum_tag_values(tags: &[ast::Tag]) -> Vec<&ast::TagValue> {
+    let mut values = Vec::new();
+    for tag in tags {
+        match tag {
+            ast::Tag::Value(t) => values.push(t),
+            ast::Tag::Range(t) => values.extend(t.tags.iter()),
+            ast::Tag::Other(_) => (),
+        }
+    }
+    values
+}
+
+/// Return the expression of the default value for an enum field, used to
+/// initialize the field members.
+fn get_enum_default_value(id: &str, tags: &[ast::Tag]) -> String {
+    match tags.iter().find(|t| !matches!(t, ast::Tag::Other(_))) {
+        Some(ast::Tag::Value(t)) => format!("{id}::{}", t.id),
+        Some(ast::Tag::Range(t)) => format!("{id}::{}_MIN", t.id),
+        _ => format!("{id}{{}}"),
+    }
+}
+
 fn generate_enum_declaration(id: &str, tags: &[ast::Tag], width: usize) -> String {
     let enum_type = get_cxx_scalar_type(width);
     let mut tag_decls = Vec::new();
     for tag in tags {
-        if let ast::Tag::Value(t) = tag {
-            tag_decls.push(format!("{} = {:#x},", t.id, t.value));
+        match tag {
+            ast::Tag::Value(t) => tag_decls.push(format!("{} = {:#x},", t.id, t.value)),
+            ast::Tag::Range(t) => {
+                // Ranges are declared with their lower and upper bounds,
+                // followed by the tags declared inside the range.
+                tag_decls.push(format!("{}_MIN = {:#x},", t.id, t.range.start()));
+                tag_decls.push(format!("{}_MAX = {:#x},", t.id, t.range.end()));
+                for t in &t.tags {
+                    tag_decls.push(format!("{} = {:#x},", t.id, t.value));
+                }
+            }
+            // C++ enums are open, the default tag is not declared.
+            ast::Tag::Other(_) => (),
         }
     }
 
@@ -180,10 +291,8 @@ enum class {id} : {enum_type} {{
 
 fn generate_enum_to_text(id: &str, tags: &[ast::Tag]) -> String {
     let mut tag_cases = Vec::new();
-    for tag in tags {
-        if let ast::Tag::Value(t) = tag {
-            tag_cases.push(format!("case {}::{}: return \"{}\";", id, t.id, t.id));
-        }
+    for t in get_enum_tag_values(tags) {
+        tag_cases.push(format!("case {}::{}: return \"{}\";", id, t.id, t.id));
     }
 
     format!(
@@ -287,6 +396,17 @@ fn get_unconstrained_parent_fields<'a>(
         }
     }
     fields
+}
+
+/// Return true if the field is the size or element size field of a
+/// payload or body field.
+fn is_payload_size_field(field: &ast::Field) -> bool {
+    match &field.desc {
+        ast::FieldDesc::Size { field_id, .. } | ast::FieldDesc::ElementSize { field_id, .. } => {
+            field_id == "_payload_" || field_id == "_body_"
+        }
+        _ => false,
+    }
 }
 
 fn get_all_parent_fields<'a>(
@@ -452,7 +572,8 @@ impl<'a> FieldParser<'a> {
                     let type_decl = self.scope.typedef.get(type_id).unwrap();
                     match &type_decl.desc {
                         ast::DeclDesc::Enum { tags, width, .. }
-                            if common::is_open_enum(tags) || common::is_complete_enum(tags, scalar_max(*width)) =>
+                            if common::is_open_enum(tags)
+                                || common::is_complete_enum(tags, scalar_max(*width)) =>
                         {
                             self.unchecked_append(format!(
                                 "{}{}_ = {}({});",
@@ -460,12 +581,14 @@ impl<'a> FieldParser<'a> {
                             ));
                         }
                         ast::DeclDesc::Enum { .. } => {
-                            self.unchecked_append(format!("auto raw_value = {v};"));
-                            self.unchecked_append(format!("if (!IsValid{type_id}(raw_value)) {{"));
+                            // The raw value is named after the field: multiple enum
+                            // fields can be extracted from the same chunk.
+                            self.unchecked_append(format!("auto raw_{id} = {v};"));
+                            self.unchecked_append(format!("if (!IsValid{type_id}(raw_{id})) {{"));
                             self.unchecked_append("   return false;".to_string());
                             self.unchecked_append("}".to_string());
                             self.unchecked_append(format!(
-                                "{}{}_ = {}(raw_value);",
+                                "{}{}_ = {}(raw_{id});",
                                 self.target_prefix, id, type_id
                             ));
                         }
@@ -526,16 +649,18 @@ impl<'a> FieldParser<'a> {
 
         let field_size = self.schema.field_size(field.key);
         if let analyzer::Size::Unknown = field_size {
-            let trailing_size = self.get_trailing_size(field);
+            let trailing_size = self.get_trailing_size(field).unwrap_or(0);
             if trailing_size > 0 {
                 self.append(format!("if (span.size() < {}) return false;", trailing_size / 8));
-                let size = format!("span.size() - {}", trailing_size / 8);
-                self.append(format!("pdl::packet::slice {id}_span = span.subrange(0, {size});",));
+                self.append(format!("size_t {id}_size = span.size() - {};", trailing_size / 8));
+                self.append(
+                    format!("pdl::packet::slice {id}_span = span.subrange(0, {id}_size);",),
+                );
                 self.append(format!(
                     "if (!{type_id}::Parse({id}_span, &{}{id}_)) return false;",
                     self.target_prefix
                 ));
-                self.append(format!("span.skip({id}_span.size());"));
+                self.append(format!("span.skip({id}_size - {id}_span.size());"));
             } else {
                 self.append(format!(
                     "if (!{type_id}::Parse(span, &{}{id}_)) return false;",
@@ -753,24 +878,23 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    fn get_trailing_size(&self, field: &'a ast::Field) -> usize {
+    /// Return the size in bits of the fields following `field`,
+    /// or `None` if one of the following fields does not have a static size.
+    fn get_trailing_size(&self, field: &'a ast::Field) -> Option<usize> {
         let mut trailing_size = 0;
         let mut found = false;
         for f in self.decl.fields() {
             if found {
                 match self.schema.field_size(f.key) {
                     analyzer::Size::Static(bits) => trailing_size += bits,
-                    _ => panic!(
-                        "Multiple unknown size fields in {}",
-                        self.decl.id().unwrap_or("unknown")
-                    ),
+                    _ => return None,
                 }
             }
             if f.key == field.key {
                 found = true;
             }
         }
-        trailing_size
+        Some(trailing_size)
     }
 
     fn parse_payload_field_lite(&mut self, _field: &'a ast::Field, _is_body: bool) {
@@ -778,6 +902,9 @@ impl<'a> FieldParser<'a> {
             panic!("Payload field does not start on an octet boundary");
         }
         self.check_code();
+        // Packet views store the payload as a slice, structs store the
+        // payload as a byte vector.
+        let bytes = if self.target_prefix.is_empty() { "" } else { ".bytes()" };
         let mut size_expr = "".to_string();
         for f in self.decl.fields() {
             if let ast::FieldDesc::Size { field_id, .. } = &f.desc {
@@ -807,22 +934,22 @@ impl<'a> FieldParser<'a> {
             };
             self.append(format!("if (span.size() < {}) return false;", actual_size));
             self.append(format!(
-                "{}payload_ = span.subrange(0, {});",
-                self.target_prefix, actual_size
+                "{}payload_ = span.subrange(0, {}){};",
+                self.target_prefix, actual_size, bytes
             ));
             self.append(format!("span.skip({});", actual_size));
         } else {
-            let trailing_size = self.get_trailing_size(_field);
+            let trailing_size = self.get_trailing_size(_field).unwrap_or(0);
             if trailing_size > 0 {
                 self.append(format!("if (span.size() < {}) return false;", trailing_size / 8));
-                let size = format!("span.size() - {}", trailing_size / 8);
+                self.append(format!("size_t payload_size = span.size() - {};", trailing_size / 8));
                 self.append(format!(
-                    "{}payload_ = span.subrange(0, {});",
-                    self.target_prefix, size
+                    "{}payload_ = span.subrange(0, payload_size){};",
+                    self.target_prefix, bytes
                 ));
-                self.append(format!("span.skip({});", size));
+                self.append("span.skip(payload_size);".to_string());
             } else {
-                self.append(format!("{}payload_ = span;", self.target_prefix));
+                self.append(format!("{}payload_ = span{};", self.target_prefix, bytes));
                 self.append("span.clear();".to_string());
             }
         }
@@ -1224,9 +1351,35 @@ impl<'a> FieldSerializer<'a> {
         }
     }
 
+    /// Return the declaration owning the field `field`, which is either
+    /// `decl` or one of its parents.
+    fn get_field_owner(&self, field: &ast::Field, decl: &'a ast::Decl) -> &'a ast::Decl {
+        self.scope
+            .iter_parents_and_self(decl)
+            .find(|d| d.fields().any(|f| f.key == field.key))
+            .unwrap_or(decl)
+    }
+
+    /// Return the name of the local variable holding the value of the size
+    /// field `field`. The payload size variables of the parent declarations
+    /// are prefixed with the parent identifier to avoid name conflicts.
+    fn get_size_variable(&self, field: &ast::Field, field_id: &str, decl: &'a ast::Decl) -> String {
+        if field_id == "_payload_" || field_id == "_body_" {
+            let owner = self.get_field_owner(field, decl);
+            if std::ptr::eq(owner, decl) {
+                "payload_size".to_string()
+            } else {
+                format!("{}_payload_size", owner.id().unwrap())
+            }
+        } else {
+            format!("{field_id}_size")
+        }
+    }
+
     fn get_payload_field_size(
         &self,
         var: Option<&str>,
+        size_field: &ast::Field,
         field_id: &str,
         decl: &'a ast::Decl,
     ) -> String {
@@ -1306,19 +1459,38 @@ impl<'a> FieldSerializer<'a> {
         };
 
         if field_id == "_payload_" || field_id == "_body_" {
-            let size_modifier = self.scope.iter_fields(decl).find_map(|f| match &f.desc {
+            // The size field refers to the payload of the declaration `owner`,
+            // which is either `decl` or one of its parents.
+            let owner = self.get_field_owner(size_field, decl);
+            let size_modifier = owner.fields().find_map(|f| match &f.desc {
                 ast::FieldDesc::Payload { size_modifier, .. } => size_modifier.as_ref(),
                 _ => None,
             });
 
-            let has_local_payload = decl
-                .fields()
-                .any(|f| matches!(f.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body));
-            let size_expr = if has_local_payload {
+            let size_expr = if std::ptr::eq(owner, decl) {
                 format!("{}.size()", deref(var, "payload_"))
             } else {
-                let local_fields = decl.fields().map(get_field_size_expr).collect::<Vec<_>>();
-                if local_fields.is_empty() { "0".to_string() } else { local_fields.join(" + ") }
+                // The payload of a parent declaration contains the fields of
+                // all the declarations between the parent and `decl`.
+                // The payload fields of the intermediate declarations are
+                // replaced by the fields of their children, except for the
+                // payload of `decl` itself.
+                let mut chain = self.scope.iter_parents_and_self(decl).collect::<Vec<_>>();
+                chain.reverse();
+                let mut sizes = Vec::new();
+                for d in chain.iter().skip_while(|d| !std::ptr::eq(**d, owner)).skip(1) {
+                    for f in d.fields() {
+                        match &f.desc {
+                            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+                                if std::ptr::eq(*d, decl) {
+                                    sizes.push(format!("{}.size()", deref(var, "payload_")));
+                                }
+                            }
+                            _ => sizes.push(get_field_size_expr(f)),
+                        }
+                    }
+                }
+                if sizes.is_empty() { "0".to_string() } else { sizes.join(" + ") }
             };
 
             if let Some(m) = size_modifier {
@@ -1511,19 +1683,15 @@ impl<'a> FieldSerializer<'a> {
                     }
                 }
                 ast::FieldDesc::Size { field_id, width, .. } => {
-                    let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                        "payload"
-                    } else {
-                        field_id
-                    };
-                    let size_expr = self.get_payload_field_size(var, field_id, decl);
-                    self.append(&format!("size_t {field_name}_size = {size_expr};"));
+                    let size_var = self.get_size_variable(field, field_id, decl);
+                    let size_expr = self.get_payload_field_size(var, field, field_id, decl);
+                    self.append(&format!("size_t {size_var} = {size_expr};"));
                     if *width < 64 {
-                        self.append(&format!("if ({field_name}_size > {}) {{", mask(*width)));
+                        self.append(&format!("if ({size_var} > {}) {{", mask(*width)));
                         self.append("    return false;");
                         self.append("}");
                     }
-                    self.values.push((format!("{}_size", field_name), shift));
+                    self.values.push((size_var, shift));
                 }
                 ast::FieldDesc::Count { field_id, width, .. } => {
                     let f = self
@@ -1666,7 +1834,7 @@ impl<'a> FieldSerializer<'a> {
                 }
                 ast::FieldDesc::Size { field_id, width, .. } => {
                     let ty = get_cxx_scalar_type(*width);
-                    let size_expr = self.get_payload_field_size(var, field_id, decl);
+                    let size_expr = self.get_payload_field_size(var, field, field_id, decl);
                     self.append(&format!(
                         "pdl::packet::Builder::write_{}<{}, {}>(output, static_cast<{}>( {}));",
                         byteorder,
@@ -1743,8 +1911,14 @@ fn generate_packet_view(
 
     let mut field_members = Vec::new();
     let mut field_accessors = Vec::new();
-    let all_fields =
-        get_all_parent_fields(scope, decl).into_iter().chain(decl.fields()).collect::<Vec<_>>();
+    // The payload size field of the parent declarations is not needed
+    // in the child view, and would conflict with the payload size field
+    // of the child declaration.
+    let all_fields = get_all_parent_fields(scope, decl)
+        .into_iter()
+        .filter(|f| !is_payload_size_field(f))
+        .chain(decl.fields())
+        .collect::<Vec<_>>();
 
     let parent_constraints =
         scope.iter_parents_and_self(decl).flat_map(|d| d.constraints()).collect::<Vec<_>>();
@@ -1756,7 +1930,7 @@ fn generate_packet_view(
         if is_constrained {
             // Constrained fields still get accessors returning their constant values.
             let fid = field.id().unwrap();
-            let accessor_name = fid.to_upper_camel_case();
+            let accessor_name = to_pascal_case(fid);
             let constraint = constraint.unwrap();
             match &field.desc {
                 ast::FieldDesc::Typedef { type_id, .. } => {
@@ -1795,7 +1969,7 @@ fn generate_packet_view(
             }
             ast::FieldDesc::Array { id, type_id, width, size, .. } => {
                 field_members.push(format!("pdl::packet::slice {}_;", id));
-                let accessor_name = id.to_upper_camel_case();
+                let accessor_name = to_pascal_case(id);
                 let element_type = type_id
                     .as_deref()
                     .map(|t| t.to_string())
@@ -1941,7 +2115,7 @@ fn generate_packet_view(
             }
             ast::FieldDesc::Scalar { id, width } => {
                 let ty = get_cxx_scalar_type(*width);
-                let accessor_name = id.to_upper_camel_case();
+                let accessor_name = to_pascal_case(id);
                 if field.cond.is_some() {
                     field_members.push(format!("std::optional<{}> {}_;", ty, id));
                     field_accessors.push(format!("    std::optional<{}> Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n", ty, accessor_name, id));
@@ -1955,14 +2129,19 @@ fn generate_packet_view(
             }
             ast::FieldDesc::Typedef { id, type_id, .. } => {
                 let ty = type_id;
-                let accessor_name = id.to_upper_camel_case();
+                let accessor_name = to_pascal_case(id);
                 if field.cond.is_some() {
                     field_members.push(format!("std::optional<{}> {}_;", ty, id));
                     field_accessors.push(format!("    std::optional<{}> Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n", ty, accessor_name, id));
                 } else {
                     let type_decl = scope.typedef.get(type_id).unwrap();
                     if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
-                        field_members.push(format!("{} {}_{{{}::{}}};", ty, id, ty, tags[0].id()));
+                        field_members.push(format!(
+                            "{} {}_{{{}}};",
+                            ty,
+                            id,
+                            get_enum_default_value(ty, tags)
+                        ));
                         field_accessors.push(format!(
                             "    {} Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n",
                             ty, accessor_name, id
@@ -2012,12 +2191,37 @@ fn generate_packet_view(
                 }
             }
         }
+        // Copy the size, count, and element size values of the parent array
+        // fields, which are used by the array accessors.
+        for f in get_all_parent_fields(scope, decl) {
+            let member = match &f.desc {
+                _ if is_payload_size_field(f) => continue,
+                ast::FieldDesc::Size { field_id, .. } => format!("{field_id}_size_"),
+                ast::FieldDesc::Count { field_id, .. } => format!("{field_id}_count_"),
+                ast::FieldDesc::ElementSize { field_id, .. } => format!("{field_id}_element_size_"),
+                _ => continue,
+            };
+            field_parsers.push(format!("{member} = parent.{member};"));
+        }
     }
 
+    // The span is always declared: it is used to check that the packet
+    // has no trailing bytes, even when the packet declares no fields.
+    // Children of packets without payload (specialized by constraints only)
+    // parse an empty span.
+    let parent_has_payload = scope.get_parent(decl).is_some_and(|parent| {
+        parent
+            .fields()
+            .any(|f| matches!(f.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body))
+    });
+    let span = match parent_id {
+        Some(_) if parent_has_payload => "pdl::packet::slice span = parent.payload_;",
+        Some(_) => "pdl::packet::slice span;",
+        None => "pdl::packet::slice span = parent;",
+    };
+    field_parsers.push(span.to_string());
     if decl.fields().next().is_some() {
         field_parsers.push("// Parse packet field values.".to_string());
-        let span = if parent_id.is_some() { "parent.payload_" } else { "parent" };
-        field_parsers.push(format!("pdl::packet::slice span = {};", span));
 
         let mut parser = FieldParser::new(scope, schema, endianness, "", false, decl);
         parser.is_cond_for = is_cond_for;
@@ -2148,7 +2352,12 @@ fn generate_packet_builder(
                 } else {
                     let type_decl = scope.typedef.get(type_id).unwrap();
                     if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
-                        field_members.push(format!("{} {}_{{{}::{}}};", ty, id, ty, tags[0].id()));
+                        field_members.push(format!(
+                            "{} {}_{{{}}};",
+                            ty,
+                            id,
+                            get_enum_default_value(ty, tags)
+                        ));
                     } else {
                         field_members.push(format!("{} {}_;", ty, id));
                     }
@@ -2156,28 +2365,8 @@ fn generate_packet_builder(
                 }
                 constructor_inits.push(format!("{0}_(std::move({0}))", id));
             }
-            ast::FieldDesc::Size { field_id, width, .. } => {
-                let ty = get_cxx_scalar_type(*width);
-                let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                    "payload"
-                } else {
-                    field_id
-                };
-                field_members.push(format!("{} {}_size_ {{0}};", ty, field_name));
-            }
-            ast::FieldDesc::Count { field_id, width, .. } => {
-                let ty = get_cxx_scalar_type(*width);
-                field_members.push(format!("{} {}_count_ {{0}};", ty, field_id));
-            }
-            ast::FieldDesc::ElementSize { field_id, width, .. } => {
-                let ty = get_cxx_scalar_type(*width);
-                let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                    "payload"
-                } else {
-                    field_id
-                };
-                field_members.push(format!("{} {}_element_size_ {{0}};", ty, field_name));
-            }
+            // Size, count, and element size values are computed
+            // when serializing the packet.
             _ => {}
         }
     }
@@ -2400,7 +2589,12 @@ fn generate_struct_declaration(
                 } else {
                     let type_decl = scope.typedef.get(type_id).unwrap();
                     if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
-                        field_members.push(format!("{} {}_{{{}::{}}};", ty, id, ty, tags[0].id()));
+                        field_members.push(format!(
+                            "{} {}_{{{}}};",
+                            ty,
+                            id,
+                            get_enum_default_value(ty, tags)
+                        ));
                     } else {
                         field_members.push(format!("{} {}_;", ty, id));
                     }
@@ -2616,6 +2810,15 @@ mod test {
     use super::*;
     use crate::test_utils::assert_snapshot_eq;
     use crate::{analyzer, ast, parser};
+
+    #[test]
+    fn test_to_pascal_case() {
+        assert_eq!(to_pascal_case("a"), "A");
+        assert_eq!(to_pascal_case("op_code"), "OpCode");
+        assert_eq!(to_pascal_case("ch3c_shape"), "Ch3CShape");
+        assert_eq!(to_pascal_case("tx_power_level_8dpsk"), "TxPowerLevel8Dpsk");
+        assert_eq!(to_pascal_case("le_2m_phy"), "Le2MPhy");
+    }
 
     #[test]
     fn test_canonical_le() {

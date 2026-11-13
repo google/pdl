@@ -308,6 +308,20 @@ class ScalarParent(Packet):
             return child, span
         except Exception:
             pass
+        try:
+            child, remainder = ScalarChild_C.parse(fields.copy(), payload)
+            if remainder:
+                raise TrailingBytesError("ScalarChild_C", len(remainder))
+            return child, span
+        except Exception:
+            pass
+        try:
+            child, remainder = ScalarChild_D.parse(fields.copy(), payload)
+            if remainder:
+                raise TrailingBytesError("ScalarChild_D", len(remainder))
+            return child, span
+        except Exception:
+            pass
         return ScalarParent(**fields), span
 
     def serialize(self, payload: Optional[bytes] = None) -> bytes:
@@ -676,6 +690,43 @@ class Packet_FixedEnum_Field(Packet):
     @property
     def size(self) -> int:
         return 8
+
+@dataclass
+class Packet_Enum_Field_Packed(Packet):
+    a: Enum7 = field(kw_only=True, default=Enum7.A)
+    b: Enum7 = field(kw_only=True, default=Enum7.A)
+    c: int = field(kw_only=True, default=0)
+
+    def __post_init__(self) -> None:
+        pass
+
+    @staticmethod
+    def parse(span: bytes) -> Tuple['Packet_Enum_Field_Packed', bytes]:
+        fields = {'payload': None}
+        if len(span) < 2:
+            raise LengthError("Packet_Enum_Field_Packed", 2, len(span))
+        value_ = int.from_bytes(span[0:2], byteorder='little')
+        fields['a'] = Enum7.from_int((value_ >> 0) & 0x7f)
+        fields['b'] = Enum7.from_int((value_ >> 7) & 0x7f)
+        fields['c'] = (value_ >> 14) & 0x3
+        span = span[2:]
+        return Packet_Enum_Field_Packed(**fields), span
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+        _span = bytearray()
+        if self.c > 0x3:
+            raise ValueError("Invalid scalar value Packet_Enum_Field_Packed::c: {self.c} > 0x3")
+        _value = (
+            (self.a << 0) |
+            (self.b << 7) |
+            (self.c << 14)
+        )
+        _span.extend(int.to_bytes(_value, length=2, byteorder='little'))
+        return bytes(_span)
+
+    @property
+    def size(self) -> int:
+        return 2
 
 @dataclass
 class Packet_Payload_Field_VariableSize(Packet):
@@ -2230,6 +2281,181 @@ class AliasedChild_B(EmptyParent):
     @property
     def size(self) -> int:
         return 2
+
+@dataclass
+class ScalarChild_C(ScalarParent):
+    b: int = field(kw_only=True, default=0)
+
+    def __post_init__(self) -> None:
+        self.a = 4
+
+    @staticmethod
+    def parse(fields: dict, span: bytes) -> Tuple['ScalarChild_C', bytes]:
+        if fields['a'] != 4:
+            raise ConstraintValueError("ScalarChild_C", "a", 4, fields['a'])
+        if len(span) < 1:
+            raise LengthError("ScalarChild_C", 1, len(span))
+        fields['b'] = span[0]
+        span = span[1:]
+        payload = span
+        span = bytes([])
+        fields['payload'] = payload
+        try:
+            child, remainder = ScalarGrandChild_C.parse(fields.copy(), payload)
+            if remainder:
+                raise TrailingBytesError("ScalarGrandChild_C", len(remainder))
+            return child, span
+        except Exception:
+            pass
+        return ScalarChild_C(**fields), span
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+        _span = bytearray()
+        if self.b > 0xff:
+            raise ValueError("Invalid scalar value ScalarChild_C::b: {self.b} > 0xff")
+        _span.append((self.b << 0))
+        _span.extend(payload or self.payload or [])
+        return ScalarParent.serialize(self, payload = bytes(_span))
+
+    @property
+    def size(self) -> int:
+        return len(self.payload) + 1
+
+@dataclass
+class ScalarGrandChild_C(ScalarChild_C):
+    c: int = field(kw_only=True, default=0)
+
+    def __post_init__(self) -> None:
+        self.a = 4
+        self.b = 1
+
+    @staticmethod
+    def parse(fields: dict, span: bytes) -> Tuple['ScalarGrandChild_C', bytes]:
+        if fields['b'] != 1:
+            raise ConstraintValueError("ScalarGrandChild_C", "b", 1, fields['b'])
+        if fields['a'] != 4:
+            raise ConstraintValueError("ScalarGrandChild_C", "a", 4, fields['a'])
+        if len(span) < 2:
+            raise LengthError("ScalarGrandChild_C", 2, len(span))
+        value_ = int.from_bytes(span[0:2], byteorder='little')
+        fields['c'] = value_
+        span = span[2:]
+        return ScalarGrandChild_C(**fields), span
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+        _span = bytearray()
+        if self.c > 0xffff:
+            raise ValueError("Invalid scalar value ScalarGrandChild_C::c: {self.c} > 0xffff")
+        _span.extend(int.to_bytes((self.c << 0), length=2, byteorder='little'))
+        return ScalarChild_C.serialize(self, payload = bytes(_span))
+
+    @property
+    def size(self) -> int:
+        return 2
+
+@dataclass
+class ScalarChild_D(ScalarParent):
+
+
+    def __post_init__(self) -> None:
+        self.a = 5
+
+    @staticmethod
+    def parse(fields: dict, span: bytes) -> Tuple['ScalarChild_D', bytes]:
+        if fields['a'] != 5:
+            raise ConstraintValueError("ScalarChild_D", "a", 5, fields['a'])
+        if len(span) < 1:
+            raise LengthError("ScalarChild_D", 1, len(span))
+        _payload__size = span[0]
+        span = span[1:]
+        if len(span) < _payload__size:
+            raise LengthError("ScalarChild_D", _payload__size, len(span))
+        payload = span[:_payload__size]
+        span = span[_payload__size:]
+        fields['payload'] = payload
+        return ScalarChild_D(**fields), span
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+        _span = bytearray()
+        _payload_size = len(payload or self.payload or [])
+        if _payload_size > 0xff:
+            raise ValueError("Invalid size value ScalarChild_D::_payload_: {_payload_size} > 0xff")
+        _span.append((_payload_size << 0))
+        _span.extend(payload or self.payload or [])
+        return ScalarParent.serialize(self, payload = bytes(_span))
+
+    @property
+    def size(self) -> int:
+        return len(self.payload) + 1
+
+@dataclass
+class ConstrainedParent(Packet):
+    a: int = field(kw_only=True, default=0)
+
+    def __post_init__(self) -> None:
+        pass
+
+    @staticmethod
+    def parse(span: bytes) -> Tuple['ConstrainedParent', bytes]:
+        fields = {'payload': None}
+        if len(span) < 1:
+            raise LengthError("ConstrainedParent", 1, len(span))
+        fields['a'] = span[0]
+        span = span[1:]
+        return ConstrainedParent(**fields), span
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+        _span = bytearray()
+        if self.a > 0xff:
+            raise ValueError("Invalid scalar value ConstrainedParent::a: {self.a} > 0xff")
+        _span.append((self.a << 0))
+        return bytes(_span)
+
+    @property
+    def size(self) -> int:
+        return 1
+
+@dataclass
+class ConstrainedChild_A(ConstrainedParent):
+
+
+    def __post_init__(self) -> None:
+        self.a = 1
+
+    @staticmethod
+    def parse(fields: dict, span: bytes) -> Tuple['ConstrainedChild_A', bytes]:
+        if fields['a'] != 1:
+            raise ConstraintValueError("ConstrainedChild_A", "a", 1, fields['a'])
+        return ConstrainedChild_A(**fields), span
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+        _span = bytearray()
+        return ConstrainedParent.serialize(self, payload = bytes(_span))
+
+    @property
+    def size(self) -> int:
+        return 0
+
+@dataclass
+class ConstrainedChild_B(ConstrainedParent):
+
+
+    def __post_init__(self) -> None:
+        self.a = 2
+
+    @staticmethod
+    def parse(fields: dict, span: bytes) -> Tuple['ConstrainedChild_B', bytes]:
+        if fields['a'] != 2:
+            raise ConstraintValueError("ConstrainedChild_B", "a", 2, fields['a'])
+        return ConstrainedChild_B(**fields), span
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+        _span = bytearray()
+        return ConstrainedParent.serialize(self, payload = bytes(_span))
+
+    @property
+    def size(self) -> int:
+        return 0
 
 @dataclass
 class Struct_Scalar_Field(Packet):

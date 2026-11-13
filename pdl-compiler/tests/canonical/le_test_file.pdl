@@ -108,6 +108,14 @@ packet Packet_FixedEnum_Field {
     b: 57,
 }
 
+// The parser must be able to handle multiple enum fields packed
+// in the same bit field chunk.
+packet Packet_Enum_Field_Packed {
+    a: Enum7,
+    b: Enum7,
+    c: 2,
+}
+
 // Packet payload fields
 
 // The parser must be able to handle sized payload fields without
@@ -445,6 +453,41 @@ packet AliasedChild_A : EmptyParent (a = 2) {
 packet AliasedChild_B : EmptyParent (a = 3) {
     c: 16,
 }
+
+// The serializer must compute the payload size of the root packet
+// from the fields declared at every level of inheritance.
+packet ScalarChild_C : ScalarParent (a = 4) {
+    b: 8,
+    _payload_,
+}
+
+// The serializer must compute the payload size of the root packet
+// from the fields declared at every level of inheritance.
+packet ScalarGrandChild_C : ScalarChild_C (b = 1) {
+    c: 16,
+}
+
+// The parser and serializer must handle child packets declaring
+// a payload size field when the parent packet also declares a payload
+// size field.
+packet ScalarChild_D : ScalarParent (a = 5) {
+    _size_(_payload_): 8,
+    _payload_,
+}
+
+// The parser must handle the specialization of packets without
+// payload through constraints only.
+packet ConstrainedParent {
+    a: 8,
+}
+
+// The parser must handle the specialization of packets without
+// payload through constraints only.
+packet ConstrainedChild_A : ConstrainedParent (a = 1) {}
+
+// The parser must handle the specialization of packets without
+// payload through constraints only.
+packet ConstrainedChild_B : ConstrainedParent (a = 2) {}
 
 // Struct bit fields
 

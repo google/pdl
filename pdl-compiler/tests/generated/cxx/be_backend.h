@@ -34,6 +34,7 @@ class Packet_Size_FieldView;
 class Packet_Count_FieldView;
 class Packet_FixedScalar_FieldView;
 class Packet_FixedEnum_FieldView;
+class Packet_Enum_Field_PackedView;
 class Packet_Payload_Field_VariableSizeView;
 class Packet_Payload_Field_SizeModifierView;
 class Packet_Payload_Field_UnknownSizeView;
@@ -80,6 +81,12 @@ class EnumChild_AView;
 class EnumChild_BView;
 class AliasedChild_AView;
 class AliasedChild_BView;
+class ScalarChild_CView;
+class ScalarGrandChild_CView;
+class ScalarChild_DView;
+class ConstrainedParentView;
+class ConstrainedChild_AView;
+class ConstrainedChild_BView;
 class Struct_Enum_FieldView;
 class Struct_Reserved_FieldView;
 class Struct_Size_FieldView;
@@ -170,6 +177,152 @@ inline bool IsValidEnum16(uint16_t value) {
             return true;
         default:
             return false;
+    }
+}
+
+enum class Enum_Incomplete_Truncated_Closed_ : uint8_t {
+    A = 0x0,
+    B = 0x1,
+};
+
+inline std::string Enum_Incomplete_Truncated_Closed_Text(Enum_Incomplete_Truncated_Closed_ tag) {
+    switch (tag) {
+        case Enum_Incomplete_Truncated_Closed_::A: return "A";
+        case Enum_Incomplete_Truncated_Closed_::B: return "B";
+        default:
+            return std::string("Unknown Enum_Incomplete_Truncated_Closed_: " +
+                   std::to_string(static_cast<uint64_t>(tag)));
+    }
+}
+
+inline bool IsValidEnum_Incomplete_Truncated_Closed_(uint8_t value) {
+    switch (value) {
+        case 0x0:
+        case 0x1:
+            return true;
+        default:
+            return false;
+    }
+}
+
+enum class Enum_Incomplete_Truncated_Open_ : uint8_t {
+    A = 0x0,
+    B = 0x1,
+};
+
+inline std::string Enum_Incomplete_Truncated_Open_Text(Enum_Incomplete_Truncated_Open_ tag) {
+    switch (tag) {
+        case Enum_Incomplete_Truncated_Open_::A: return "A";
+        case Enum_Incomplete_Truncated_Open_::B: return "B";
+        default:
+            return std::string("Unknown Enum_Incomplete_Truncated_Open_: " +
+                   std::to_string(static_cast<uint64_t>(tag)));
+    }
+}
+
+enum class Enum_Incomplete_Truncated_Closed_WithRange_ : uint8_t {
+    A = 0x0,
+    B_MIN = 0x1,
+    B_MAX = 0x6,
+    X = 0x1,
+    Y = 0x2,
+};
+
+inline std::string Enum_Incomplete_Truncated_Closed_WithRange_Text(Enum_Incomplete_Truncated_Closed_WithRange_ tag) {
+    switch (tag) {
+        case Enum_Incomplete_Truncated_Closed_WithRange_::A: return "A";
+        case Enum_Incomplete_Truncated_Closed_WithRange_::X: return "X";
+        case Enum_Incomplete_Truncated_Closed_WithRange_::Y: return "Y";
+        default:
+            return std::string("Unknown Enum_Incomplete_Truncated_Closed_WithRange_: " +
+                   std::to_string(static_cast<uint64_t>(tag)));
+    }
+}
+
+inline bool IsValidEnum_Incomplete_Truncated_Closed_WithRange_(uint8_t value) {
+    return value == 0x0
+        || (0x1 <= value && value <= 0x6);
+}
+
+enum class Enum_Incomplete_Truncated_Open_WithRange_ : uint8_t {
+    A = 0x0,
+    B_MIN = 0x1,
+    B_MAX = 0x6,
+    X = 0x1,
+    Y = 0x2,
+};
+
+inline std::string Enum_Incomplete_Truncated_Open_WithRange_Text(Enum_Incomplete_Truncated_Open_WithRange_ tag) {
+    switch (tag) {
+        case Enum_Incomplete_Truncated_Open_WithRange_::A: return "A";
+        case Enum_Incomplete_Truncated_Open_WithRange_::X: return "X";
+        case Enum_Incomplete_Truncated_Open_WithRange_::Y: return "Y";
+        default:
+            return std::string("Unknown Enum_Incomplete_Truncated_Open_WithRange_: " +
+                   std::to_string(static_cast<uint64_t>(tag)));
+    }
+}
+
+enum class Enum_Complete_Truncated_ : uint8_t {
+    A = 0x0,
+    B = 0x1,
+    C = 0x2,
+    D = 0x3,
+    E = 0x4,
+    F = 0x5,
+    G = 0x6,
+    H = 0x7,
+};
+
+inline std::string Enum_Complete_Truncated_Text(Enum_Complete_Truncated_ tag) {
+    switch (tag) {
+        case Enum_Complete_Truncated_::A: return "A";
+        case Enum_Complete_Truncated_::B: return "B";
+        case Enum_Complete_Truncated_::C: return "C";
+        case Enum_Complete_Truncated_::D: return "D";
+        case Enum_Complete_Truncated_::E: return "E";
+        case Enum_Complete_Truncated_::F: return "F";
+        case Enum_Complete_Truncated_::G: return "G";
+        case Enum_Complete_Truncated_::H: return "H";
+        default:
+            return std::string("Unknown Enum_Complete_Truncated_: " +
+                   std::to_string(static_cast<uint64_t>(tag)));
+    }
+}
+
+enum class Enum_Complete_Truncated_WithRange_ : uint8_t {
+    A = 0x0,
+    B_MIN = 0x1,
+    B_MAX = 0x7,
+    X = 0x1,
+    Y = 0x2,
+};
+
+inline std::string Enum_Complete_Truncated_WithRange_Text(Enum_Complete_Truncated_WithRange_ tag) {
+    switch (tag) {
+        case Enum_Complete_Truncated_WithRange_::A: return "A";
+        case Enum_Complete_Truncated_WithRange_::X: return "X";
+        case Enum_Complete_Truncated_WithRange_::Y: return "Y";
+        default:
+            return std::string("Unknown Enum_Complete_Truncated_WithRange_: " +
+                   std::to_string(static_cast<uint64_t>(tag)));
+    }
+}
+
+enum class Enum_Complete_WithRange_ : uint8_t {
+    A = 0x0,
+    B = 0x1,
+    C_MIN = 0x2,
+    C_MAX = 0xff,
+};
+
+inline std::string Enum_Complete_WithRange_Text(Enum_Complete_WithRange_ tag) {
+    switch (tag) {
+        case Enum_Complete_WithRange_::A: return "A";
+        case Enum_Complete_WithRange_::B: return "B";
+        default:
+            return std::string("Unknown Enum_Complete_WithRange_: " +
+                   std::to_string(static_cast<uint64_t>(tag)));
     }
 }
 
@@ -325,8 +478,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 2) {
             return false;
         }
@@ -350,6 +503,8 @@ protected:
     friend class EmptyParentView;
     friend class ScalarChild_AView;
     friend class ScalarChild_BView;
+    friend class ScalarChild_CView;
+    friend class ScalarChild_DView;
 };
 
 class ScalarParentBuilder : public pdl::packet::Builder {
@@ -379,7 +534,6 @@ public:
     std::string ToString() const { return ""; }
 
     uint8_t a_{0};
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -412,16 +566,16 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 3) {
             return false;
         }
-        auto raw_value = span.read_be<uint16_t, 2>();
-        if (!IsValidEnum16(raw_value)) {
+        auto raw_a = span.read_be<uint16_t, 2>();
+        if (!IsValidEnum16(raw_a)) {
            return false;
         }
-        a_ = Enum16(raw_value);
+        a_ = Enum16(raw_a);
         payload_size_ = span.read_be<uint8_t, 1>();
         if (span.size() < payload_size_) return false;
         payload_ = span.subrange(0, payload_size_);
@@ -469,7 +623,6 @@ public:
     std::string ToString() const { return ""; }
 
     Enum16 a_{Enum16::A};
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -506,8 +659,8 @@ protected:
         if (!parent.IsValid()) { return false; }
         // Copy parent field values.
         a_ = parent.a_;
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
         payload_ = span;
         span.clear();
         if (span.size() > 0) {
@@ -519,7 +672,6 @@ protected:
     bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t a_;
-    uint8_t payload_size_ {0};
     pdl::packet::slice payload_;
 
     friend class AliasedChild_AView;
@@ -537,11 +689,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(a_ & 0xff)));
-        size_t payload_size = payload_.size();
-        if (payload_size > 0xff) {
+        size_t ScalarParent_payload_size = payload_.size();
+        if (ScalarParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
         return true;
     }
@@ -553,7 +705,6 @@ public:
     std::string ToString() const { return ""; }
 
     uint8_t a_{0};
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -584,8 +735,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 8) {
             return false;
         }
@@ -663,17 +814,17 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 8) {
             return false;
         }
         uint64_t chunk0 = span.read_be<uint64_t, 8>();
-        auto raw_value = (chunk0 >> 0) & 0x7f;
-        if (!IsValidEnum7(raw_value)) {
+        auto raw_a = (chunk0 >> 0) & 0x7f;
+        if (!IsValidEnum7(raw_a)) {
            return false;
         }
-        a_ = Enum7(raw_value);
+        a_ = Enum7(raw_a);
         c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
         if (span.size() > 0) {
             return false;
@@ -743,8 +894,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 8) {
             return false;
         }
@@ -830,8 +981,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 8) {
             return false;
         }
@@ -891,7 +1042,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t b_size_ {0};
     uint64_t a_{0};
     std::vector<uint8_t> b_;
 };
@@ -931,8 +1081,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 8) {
             return false;
         }
@@ -988,7 +1138,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t b_count_ {0};
     uint64_t a_{0};
     std::vector<uint8_t> b_;
 };
@@ -1018,8 +1167,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 8) {
             return false;
         }
@@ -1092,8 +1241,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 8) {
             return false;
         }
@@ -1141,6 +1290,95 @@ public:
     uint64_t b_{0};
 };
 
+class Packet_Enum_Field_PackedView {
+public:
+    static Packet_Enum_Field_PackedView Create(pdl::packet::slice const& parent) {
+        return Packet_Enum_Field_PackedView(parent);
+    }
+
+    Enum7 GetA() const { _ASSERT_VALID(valid_); return a_; }
+
+    Enum7 GetB() const { _ASSERT_VALID(valid_); return b_; }
+
+    uint8_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit Packet_Enum_Field_PackedView(pdl::packet::slice const& parent)
+          : bytes_(parent) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(pdl::packet::slice const& parent) {
+        pdl::packet::slice span = parent;
+        // Parse packet field values.
+        if (span.size() < 2) {
+            return false;
+        }
+        uint16_t chunk0 = span.read_be<uint16_t, 2>();
+        auto raw_a = (chunk0 >> 0) & 0x7f;
+        if (!IsValidEnum7(raw_a)) {
+           return false;
+        }
+        a_ = Enum7(raw_a);
+        auto raw_b = (chunk0 >> 7) & 0x7f;
+        if (!IsValidEnum7(raw_b)) {
+           return false;
+        }
+        b_ = Enum7(raw_b);
+        c_ = (chunk0 >> 14) & 0x3;
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    Enum7 a_{Enum7::A};
+    Enum7 b_{Enum7::A};
+    uint8_t c_;
+
+
+};
+
+class Packet_Enum_Field_PackedBuilder : public pdl::packet::Builder {
+public:
+    ~Packet_Enum_Field_PackedBuilder() override = default;
+    Packet_Enum_Field_PackedBuilder() = default;
+    explicit Packet_Enum_Field_PackedBuilder(Enum7 a, Enum7 b, uint8_t c) : a_(std::move(a)), b_(std::move(b)), c_(std::move(c)) {}
+    Packet_Enum_Field_PackedBuilder(Packet_Enum_Field_PackedBuilder const&) = default;
+    Packet_Enum_Field_PackedBuilder(Packet_Enum_Field_PackedBuilder&&) = default;
+    Packet_Enum_Field_PackedBuilder& operator=(Packet_Enum_Field_PackedBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        if (c_ > 0x3) {
+            return false;
+        }
+        pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(static_cast<uint8_t>(a_))) | (static_cast<uint16_t>(static_cast<uint8_t>(b_)) << 7) | (static_cast<uint16_t>(c_ & 0x3) << 14));
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 2;
+    }
+
+    std::string ToString() const { return ""; }
+
+    Enum7 a_{Enum7::A};
+    Enum7 b_{Enum7::A};
+    uint8_t c_{0};
+};
+
 class Packet_Payload_Field_VariableSizeView {
 public:
     static Packet_Payload_Field_VariableSizeView Create(pdl::packet::slice const& parent) {
@@ -1168,8 +1406,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -1217,7 +1455,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -1248,8 +1485,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -1297,7 +1534,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -1330,11 +1566,12 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 2) return false;
-        payload_ = span.subrange(0, span.size() - 2);
-        span.skip(span.size() - 2);
+        size_t payload_size = span.size() - 2;
+        payload_ = span.subrange(0, payload_size);
+        span.skip(payload_size);
         if (span.size() < 2) {
             return false;
         }
@@ -1407,8 +1644,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 2) {
             return false;
         }
@@ -1481,8 +1718,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -1530,7 +1767,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -1563,11 +1799,12 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 2) return false;
-        payload_ = span.subrange(0, span.size() - 2);
-        span.skip(span.size() - 2);
+        size_t payload_size = span.size() - 2;
+        payload_ = span.subrange(0, payload_size);
+        span.skip(payload_size);
         if (span.size() < 2) {
             return false;
         }
@@ -1640,8 +1877,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 2) {
             return false;
         }
@@ -1711,8 +1948,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 2) {
             return false;
         }
@@ -1778,8 +2015,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 2) {
             return false;
         }
@@ -1848,8 +2085,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!SizedStruct::Parse(span, &a_)) return false;
         if (!UnsizedStruct::Parse(span, &b_)) return false;
         if (span.size() > 0) {
@@ -1928,8 +2165,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 4) {
             return false;
         }
@@ -2006,8 +2243,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -2062,7 +2299,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<uint8_t> array_;
 };
 
@@ -2099,8 +2335,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -2151,7 +2387,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<uint8_t> array_;
 };
 
@@ -2188,8 +2423,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if ((span.size() % 1) != 0) {
             return false;
         }
@@ -2266,8 +2501,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 8) {
             return false;
         }
@@ -2344,8 +2579,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -2400,7 +2635,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<uint16_t> array_;
 };
 
@@ -2437,8 +2671,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -2489,7 +2723,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<uint16_t> array_;
 };
 
@@ -2526,8 +2759,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if ((span.size() % 2) != 0) {
             return false;
         }
@@ -2604,8 +2837,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 8) {
             return false;
         }
@@ -2682,8 +2915,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -2738,7 +2971,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<Enum16> array_;
 };
 
@@ -2775,8 +3007,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -2827,7 +3059,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<Enum16> array_;
 };
 
@@ -2864,8 +3095,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if ((span.size() % 2) != 0) {
             return false;
         }
@@ -2942,8 +3173,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 4) {
             return false;
         }
@@ -3024,8 +3255,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -3082,7 +3313,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<SizedStruct> array_;
 };
 
@@ -3121,8 +3351,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -3175,7 +3405,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<SizedStruct> array_;
 };
 
@@ -3214,8 +3443,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if ((span.size() % 1) != 0) {
             return false;
         }
@@ -3294,8 +3523,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         array_ = span;
         for (size_t n = 0; n < 4; n++) {
             UnsizedStruct out;
@@ -3379,8 +3608,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -3434,7 +3663,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -3473,8 +3701,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -3530,7 +3758,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -3569,8 +3796,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         array_ = span;
         while (span.size() > 0) {
             UnsizedStruct out;
@@ -3654,8 +3881,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -3710,7 +3937,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -3747,8 +3973,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -3815,7 +4041,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<uint16_t> array_;
 };
 
@@ -3854,8 +4079,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -3922,7 +4147,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -3961,8 +4185,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -4024,7 +4248,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_element_size_ {0};
     std::array<UnknownSizeStruct, 4> array_;
 };
 
@@ -4075,8 +4298,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 2) {
             return false;
         }
@@ -4155,8 +4378,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
-    uint8_t array_element_size_ {0};
     std::vector<UnknownSizeStruct> array_;
     std::vector<uint8_t> tail_;
 };
@@ -4208,8 +4429,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 2) {
             return false;
         }
@@ -4287,8 +4508,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
-    uint8_t array_element_size_ {0};
     std::vector<UnknownSizeStruct> array_;
     std::vector<uint8_t> tail_;
 };
@@ -4330,8 +4549,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -4390,7 +4609,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_element_size_ {0};
     std::vector<UnknownSizeStruct> array_;
 };
 
@@ -4421,8 +4639,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -4515,8 +4733,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -4614,8 +4832,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -4711,8 +4929,8 @@ protected:
     bool Parse(ScalarParentView const& parent) {
         // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -4725,7 +4943,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint8_t b_;
 
 
@@ -4742,11 +4959,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x0 & 0xff)));
-        size_t payload_size = 1;
-        if (payload_size > 0xff) {
+        size_t ScalarParent_payload_size = 1;
+        if (ScalarParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(b_ & 0xff)));
         return true;
     }
@@ -4757,7 +4974,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint8_t b_{0};
 };
 
@@ -4790,8 +5006,8 @@ protected:
     bool Parse(ScalarParentView const& parent) {
         // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
         if (span.size() < 2) {
             return false;
         }
@@ -4804,7 +5020,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint16_t c_;
 
 
@@ -4821,11 +5036,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x1 & 0xff)));
-        size_t payload_size = 2;
-        if (payload_size > 0xff) {
+        size_t ScalarParent_payload_size = 2;
+        if (ScalarParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(c_ & 0xffff)));
         return true;
     }
@@ -4836,7 +5051,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint16_t c_{0};
 };
 
@@ -4869,8 +5083,8 @@ protected:
     bool Parse(EnumParentView const& parent) {
         // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -4883,7 +5097,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint8_t b_;
 
 
@@ -4900,11 +5113,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(static_cast<uint16_t>(Enum16::A))));
-        size_t payload_size = 1;
-        if (payload_size > 0xff) {
+        size_t EnumParent_payload_size = 1;
+        if (EnumParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(EnumParent_payload_size)));
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(b_ & 0xff)));
         return true;
     }
@@ -4915,7 +5128,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint8_t b_{0};
 };
 
@@ -4948,8 +5160,8 @@ protected:
     bool Parse(EnumParentView const& parent) {
         // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
         if (span.size() < 2) {
             return false;
         }
@@ -4962,7 +5174,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint16_t c_;
 
 
@@ -4979,11 +5190,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(static_cast<uint16_t>(Enum16::B))));
-        size_t payload_size = 2;
-        if (payload_size > 0xff) {
+        size_t EnumParent_payload_size = 2;
+        if (EnumParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(EnumParent_payload_size)));
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(c_ & 0xffff)));
         return true;
     }
@@ -4994,7 +5205,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint16_t c_{0};
 };
 
@@ -5027,8 +5237,8 @@ protected:
     bool Parse(EmptyParentView const& parent) {
         // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -5041,7 +5251,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint8_t b_;
 
 
@@ -5058,11 +5267,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x2 & 0xff)));
-        size_t payload_size = 1;
-        if (payload_size > 0xff) {
+        size_t ScalarParent_payload_size = 1;
+        if (ScalarParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(b_ & 0xff)));
         return true;
     }
@@ -5073,7 +5282,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint8_t b_{0};
 };
 
@@ -5106,8 +5314,8 @@ protected:
     bool Parse(EmptyParentView const& parent) {
         // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
         if (span.size() < 2) {
             return false;
         }
@@ -5120,7 +5328,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint16_t c_;
 
 
@@ -5137,11 +5344,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x3 & 0xff)));
-        size_t payload_size = 2;
-        if (payload_size > 0xff) {
+        size_t ScalarParent_payload_size = 2;
+        if (ScalarParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(c_ & 0xffff)));
         return true;
     }
@@ -5152,8 +5359,455 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint16_t c_{0};
+};
+
+class ScalarChild_CView {
+public:
+    static ScalarChild_CView Create(ScalarParentView const& parent) {
+        return ScalarChild_CView(parent);
+    }
+
+    uint8_t GetA() const { return 4; }
+
+    uint8_t GetB() const { _ASSERT_VALID(valid_); return b_; }
+
+    std::vector<uint8_t> GetPayload() const {
+        _ASSERT_VALID(valid_);
+        return payload_.bytes();
+    }
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ScalarChild_CView(ScalarParentView const& parent)
+          : bytes_(parent.bytes_) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(ScalarParentView const& parent) {
+        // Check validity of parent packet.
+        if (!parent.IsValid()) { return false; }
+        pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
+        if (span.size() < 1) {
+            return false;
+        }
+        b_ = span.read_be<uint8_t, 1>();
+        payload_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint8_t b_;
+    pdl::packet::slice payload_;
+
+    friend class ScalarGrandChild_CView;
+};
+
+class ScalarChild_CBuilder : public pdl::packet::Builder {
+public:
+    ~ScalarChild_CBuilder() override = default;
+    ScalarChild_CBuilder() = default;
+    explicit ScalarChild_CBuilder(uint8_t b, std::vector<uint8_t> payload) : b_(std::move(b)), payload_(std::move(payload)) {}
+    ScalarChild_CBuilder(ScalarChild_CBuilder const&) = default;
+    ScalarChild_CBuilder(ScalarChild_CBuilder&&) = default;
+    ScalarChild_CBuilder& operator=(ScalarChild_CBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x4 & 0xff)));
+        size_t ScalarParent_payload_size = 1 + payload_.size();
+        if (ScalarParent_payload_size > 0xff) {
+            return false;
+        }
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(b_ & 0xff)));
+        output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 3 + (payload_.size());
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint8_t b_{0};
+    std::vector<uint8_t> payload_;
+};
+
+class ScalarGrandChild_CView {
+public:
+    static ScalarGrandChild_CView Create(ScalarChild_CView const& parent) {
+        return ScalarGrandChild_CView(parent);
+    }
+
+    uint8_t GetA() const { return 4; }
+
+    uint8_t GetB() const { return 1; }
+
+    uint16_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ScalarGrandChild_CView(ScalarChild_CView const& parent)
+          : bytes_(parent.bytes_) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(ScalarChild_CView const& parent) {
+        // Check validity of parent packet.
+        if (!parent.IsValid()) { return false; }
+        pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
+        if (span.size() < 2) {
+            return false;
+        }
+        c_ = span.read_be<uint16_t, 2>();
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint16_t c_;
+
+
+};
+
+class ScalarGrandChild_CBuilder : public pdl::packet::Builder {
+public:
+    ~ScalarGrandChild_CBuilder() override = default;
+    ScalarGrandChild_CBuilder() = default;
+    explicit ScalarGrandChild_CBuilder(uint16_t c) : c_(std::move(c)) {}
+    ScalarGrandChild_CBuilder(ScalarGrandChild_CBuilder const&) = default;
+    ScalarGrandChild_CBuilder(ScalarGrandChild_CBuilder&&) = default;
+    ScalarGrandChild_CBuilder& operator=(ScalarGrandChild_CBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x4 & 0xff)));
+        size_t ScalarParent_payload_size = 1 + 2;
+        if (ScalarParent_payload_size > 0xff) {
+            return false;
+        }
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x1 & 0xff)));
+        pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(c_ & 0xffff)));
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 5;
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint16_t c_{0};
+};
+
+class ScalarChild_DView {
+public:
+    static ScalarChild_DView Create(ScalarParentView const& parent) {
+        return ScalarChild_DView(parent);
+    }
+
+    uint8_t GetA() const { return 5; }
+
+    std::vector<uint8_t> GetPayload() const {
+        _ASSERT_VALID(valid_);
+        return payload_.bytes();
+    }
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ScalarChild_DView(ScalarParentView const& parent)
+          : bytes_(parent.bytes_) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(ScalarParentView const& parent) {
+        // Check validity of parent packet.
+        if (!parent.IsValid()) { return false; }
+        pdl::packet::slice span = parent.payload_;
+        // Parse packet field values.
+        if (span.size() < 1) {
+            return false;
+        }
+        payload_size_ = span.read_be<uint8_t, 1>();
+        if (span.size() < payload_size_) return false;
+        payload_ = span.subrange(0, payload_size_);
+        span.skip(payload_size_);
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint8_t payload_size_ {0};
+    pdl::packet::slice payload_;
+
+
+};
+
+class ScalarChild_DBuilder : public pdl::packet::Builder {
+public:
+    ~ScalarChild_DBuilder() override = default;
+    ScalarChild_DBuilder() = default;
+    explicit ScalarChild_DBuilder(std::vector<uint8_t> payload) : payload_(std::move(payload)) {}
+    ScalarChild_DBuilder(ScalarChild_DBuilder const&) = default;
+    ScalarChild_DBuilder(ScalarChild_DBuilder&&) = default;
+    ScalarChild_DBuilder& operator=(ScalarChild_DBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x5 & 0xff)));
+        size_t ScalarParent_payload_size = 1 + payload_.size();
+        if (ScalarParent_payload_size > 0xff) {
+            return false;
+        }
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
+        size_t payload_size = payload_.size();
+        if (payload_size > 0xff) {
+            return false;
+        }
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 3 + (payload_.size());
+    }
+
+    std::string ToString() const { return ""; }
+
+    std::vector<uint8_t> payload_;
+};
+
+class ConstrainedParentView {
+public:
+    static ConstrainedParentView Create(pdl::packet::slice const& parent) {
+        return ConstrainedParentView(parent);
+    }
+
+    uint8_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ConstrainedParentView(pdl::packet::slice const& parent)
+          : bytes_(parent) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(pdl::packet::slice const& parent) {
+        pdl::packet::slice span = parent;
+        // Parse packet field values.
+        if (span.size() < 1) {
+            return false;
+        }
+        a_ = span.read_be<uint8_t, 1>();
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+    uint8_t a_;
+
+    friend class ConstrainedChild_AView;
+    friend class ConstrainedChild_BView;
+};
+
+class ConstrainedParentBuilder : public pdl::packet::Builder {
+public:
+    ~ConstrainedParentBuilder() override = default;
+    ConstrainedParentBuilder() = default;
+    explicit ConstrainedParentBuilder(uint8_t a) : a_(std::move(a)) {}
+    ConstrainedParentBuilder(ConstrainedParentBuilder const&) = default;
+    ConstrainedParentBuilder(ConstrainedParentBuilder&&) = default;
+    ConstrainedParentBuilder& operator=(ConstrainedParentBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(a_ & 0xff)));
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 1;
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint8_t a_{0};
+};
+
+class ConstrainedChild_AView {
+public:
+    static ConstrainedChild_AView Create(ConstrainedParentView const& parent) {
+        return ConstrainedChild_AView(parent);
+    }
+
+    uint8_t GetA() const { return 1; }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ConstrainedChild_AView(ConstrainedParentView const& parent)
+          : bytes_(parent.bytes_) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(ConstrainedParentView const& parent) {
+        // Check validity of parent packet.
+        if (!parent.IsValid()) { return false; }
+        pdl::packet::slice span;
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+
+
+
+};
+
+class ConstrainedChild_ABuilder : public pdl::packet::Builder {
+public:
+    ~ConstrainedChild_ABuilder() override = default;
+    ConstrainedChild_ABuilder() = default;
+    ConstrainedChild_ABuilder(ConstrainedChild_ABuilder const&) = default;
+    ConstrainedChild_ABuilder(ConstrainedChild_ABuilder&&) = default;
+    ConstrainedChild_ABuilder& operator=(ConstrainedChild_ABuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x1 & 0xff)));
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 1;
+    }
+
+    std::string ToString() const { return ""; }
+
+
+};
+
+class ConstrainedChild_BView {
+public:
+    static ConstrainedChild_BView Create(ConstrainedParentView const& parent) {
+        return ConstrainedChild_BView(parent);
+    }
+
+    uint8_t GetA() const { return 2; }
+
+    std::string ToString() const { return ""; }
+
+    bool IsValid() const {
+        return valid_;
+    }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit ConstrainedChild_BView(ConstrainedParentView const& parent)
+          : bytes_(parent.bytes_) {
+        valid_ = Parse(parent);
+    }
+
+    bool Parse(ConstrainedParentView const& parent) {
+        // Check validity of parent packet.
+        if (!parent.IsValid()) { return false; }
+        pdl::packet::slice span;
+        if (span.size() > 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool valid_{false};
+    pdl::packet::slice bytes_;
+
+
+
+};
+
+class ConstrainedChild_BBuilder : public pdl::packet::Builder {
+public:
+    ~ConstrainedChild_BBuilder() override = default;
+    ConstrainedChild_BBuilder() = default;
+    ConstrainedChild_BBuilder(ConstrainedChild_BBuilder const&) = default;
+    ConstrainedChild_BBuilder(ConstrainedChild_BBuilder&&) = default;
+    ConstrainedChild_BBuilder& operator=(ConstrainedChild_BBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x2 & 0xff)));
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 1;
+    }
+
+    std::string ToString() const { return ""; }
+
+
 };
 
 class Struct_Scalar_Field : public pdl::packet::Builder {
@@ -5213,11 +5867,11 @@ public:
             return false;
         }
         uint64_t chunk0 = span.read_be<uint64_t, 8>();
-        auto raw_value = (chunk0 >> 0) & 0x7f;
-        if (!IsValidEnum7(raw_value)) {
+        auto raw_a = (chunk0 >> 0) & 0x7f;
+        if (!IsValidEnum7(raw_a)) {
            return false;
         }
-        output->a_ = Enum7(raw_value);
+        output->a_ = Enum7(raw_a);
         output->c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
         parent_span = span;
         return true;
@@ -5266,8 +5920,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Enum_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -5374,8 +6028,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Reserved_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -5497,8 +6151,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Size_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -5615,8 +6269,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Count_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -5721,8 +6375,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_FixedScalar_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -5827,8 +6481,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_FixedEnum_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -5928,8 +6582,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_ScalarGroup_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -6029,8 +6683,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_EnumGroup_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -6097,8 +6751,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!SizedStruct::Parse(span, &a_)) return false;
         if (!UnsizedStruct::Parse(span, &b_)) return false;
         if (span.size() > 0) {
@@ -6206,8 +6860,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_ByteElement_ConstantSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -6324,8 +6978,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_ByteElement_VariableSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -6437,8 +7091,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_ByteElement_VariableCount_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -6541,8 +7195,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_ByteElement_UnknownSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -6644,8 +7298,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_ScalarElement_ConstantSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -6762,8 +7416,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_ScalarElement_VariableSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -6875,8 +7529,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_ScalarElement_VariableCount_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -6979,8 +7633,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_ScalarElement_UnknownSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -7086,8 +7740,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_EnumElement_ConstantSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -7208,8 +7862,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_EnumElement_VariableSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -7325,8 +7979,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_EnumElement_VariableCount_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -7433,8 +8087,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_EnumElement_UnknownSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -7542,8 +8196,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_SizedElement_ConstantSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -7666,8 +8320,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_SizedElement_VariableSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -7785,8 +8439,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_SizedElement_VariableCount_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -7895,8 +8549,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_SizedElement_UnknownSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -8001,8 +8655,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_UnsizedElement_ConstantSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -8123,8 +8777,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_UnsizedElement_VariableSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -8239,8 +8893,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_UnsizedElement_VariableCount_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -8345,8 +8999,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_UnsizedElement_UnknownSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -8468,8 +9122,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_UnsizedElement_SizeModifier_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -8598,8 +9252,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_SizedElement_VariableSize_Padded_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -8725,8 +9379,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Array_Field_UnsizedElement_VariableCount_Padded_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -8848,8 +9502,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Optional_Scalar_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -8976,8 +9630,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Optional_Enum_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -9100,8 +9754,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (!Struct_Optional_Struct_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
             return false;
@@ -9141,31 +9795,6 @@ public:
     Struct_Optional_Struct_Field_ s_;
 };
 
-enum class Enum_Incomplete_Truncated_Closed_ : uint8_t {
-    A = 0x0,
-    B = 0x1,
-};
-
-inline std::string Enum_Incomplete_Truncated_Closed_Text(Enum_Incomplete_Truncated_Closed_ tag) {
-    switch (tag) {
-        case Enum_Incomplete_Truncated_Closed_::A: return "A";
-        case Enum_Incomplete_Truncated_Closed_::B: return "B";
-        default:
-            return std::string("Unknown Enum_Incomplete_Truncated_Closed_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
-    }
-}
-
-inline bool IsValidEnum_Incomplete_Truncated_Closed_(uint8_t value) {
-    switch (value) {
-        case 0x0:
-        case 0x1:
-            return true;
-        default:
-            return false;
-    }
-}
-
 class Enum_Incomplete_Truncated_ClosedView {
 public:
     static Enum_Incomplete_Truncated_ClosedView Create(pdl::packet::slice const& parent) {
@@ -9191,17 +9820,17 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
         uint8_t chunk0 = span.read_be<uint8_t, 1>();
-        auto raw_value = (chunk0 >> 0) & 0x7;
-        if (!IsValidEnum_Incomplete_Truncated_Closed_(raw_value)) {
+        auto raw_e = (chunk0 >> 0) & 0x7;
+        if (!IsValidEnum_Incomplete_Truncated_Closed_(raw_e)) {
            return false;
         }
-        e_ = Enum_Incomplete_Truncated_Closed_(raw_value);
+        e_ = Enum_Incomplete_Truncated_Closed_(raw_e);
         if (span.size() > 0) {
             return false;
         }
@@ -9238,21 +9867,6 @@ public:
     Enum_Incomplete_Truncated_Closed_ e_{Enum_Incomplete_Truncated_Closed_::A};
 };
 
-enum class Enum_Incomplete_Truncated_Open_ : uint8_t {
-    A = 0x0,
-    B = 0x1,
-};
-
-inline std::string Enum_Incomplete_Truncated_Open_Text(Enum_Incomplete_Truncated_Open_ tag) {
-    switch (tag) {
-        case Enum_Incomplete_Truncated_Open_::A: return "A";
-        case Enum_Incomplete_Truncated_Open_::B: return "B";
-        default:
-            return std::string("Unknown Enum_Incomplete_Truncated_Open_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
-    }
-}
-
 class Enum_Incomplete_Truncated_OpenView {
 public:
     static Enum_Incomplete_Truncated_OpenView Create(pdl::packet::slice const& parent) {
@@ -9278,8 +9892,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -9321,24 +9935,6 @@ public:
     Enum_Incomplete_Truncated_Open_ e_{Enum_Incomplete_Truncated_Open_::A};
 };
 
-enum class Enum_Incomplete_Truncated_Closed_WithRange_ : uint8_t {
-    A = 0x0,
-};
-
-inline std::string Enum_Incomplete_Truncated_Closed_WithRange_Text(Enum_Incomplete_Truncated_Closed_WithRange_ tag) {
-    switch (tag) {
-        case Enum_Incomplete_Truncated_Closed_WithRange_::A: return "A";
-        default:
-            return std::string("Unknown Enum_Incomplete_Truncated_Closed_WithRange_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
-    }
-}
-
-inline bool IsValidEnum_Incomplete_Truncated_Closed_WithRange_(uint8_t value) {
-    return value == 0x0
-        || (0x1 <= value && value <= 0x6);
-}
-
 class Enum_Incomplete_Truncated_Closed_WithRangeView {
 public:
     static Enum_Incomplete_Truncated_Closed_WithRangeView Create(pdl::packet::slice const& parent) {
@@ -9364,17 +9960,17 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
         uint8_t chunk0 = span.read_be<uint8_t, 1>();
-        auto raw_value = (chunk0 >> 0) & 0x7;
-        if (!IsValidEnum_Incomplete_Truncated_Closed_WithRange_(raw_value)) {
+        auto raw_e = (chunk0 >> 0) & 0x7;
+        if (!IsValidEnum_Incomplete_Truncated_Closed_WithRange_(raw_e)) {
            return false;
         }
-        e_ = Enum_Incomplete_Truncated_Closed_WithRange_(raw_value);
+        e_ = Enum_Incomplete_Truncated_Closed_WithRange_(raw_e);
         if (span.size() > 0) {
             return false;
         }
@@ -9411,19 +10007,6 @@ public:
     Enum_Incomplete_Truncated_Closed_WithRange_ e_{Enum_Incomplete_Truncated_Closed_WithRange_::A};
 };
 
-enum class Enum_Incomplete_Truncated_Open_WithRange_ : uint8_t {
-    A = 0x0,
-};
-
-inline std::string Enum_Incomplete_Truncated_Open_WithRange_Text(Enum_Incomplete_Truncated_Open_WithRange_ tag) {
-    switch (tag) {
-        case Enum_Incomplete_Truncated_Open_WithRange_::A: return "A";
-        default:
-            return std::string("Unknown Enum_Incomplete_Truncated_Open_WithRange_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
-    }
-}
-
 class Enum_Incomplete_Truncated_Open_WithRangeView {
 public:
     static Enum_Incomplete_Truncated_Open_WithRangeView Create(pdl::packet::slice const& parent) {
@@ -9449,8 +10032,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -9492,33 +10075,6 @@ public:
     Enum_Incomplete_Truncated_Open_WithRange_ e_{Enum_Incomplete_Truncated_Open_WithRange_::A};
 };
 
-enum class Enum_Complete_Truncated_ : uint8_t {
-    A = 0x0,
-    B = 0x1,
-    C = 0x2,
-    D = 0x3,
-    E = 0x4,
-    F = 0x5,
-    G = 0x6,
-    H = 0x7,
-};
-
-inline std::string Enum_Complete_Truncated_Text(Enum_Complete_Truncated_ tag) {
-    switch (tag) {
-        case Enum_Complete_Truncated_::A: return "A";
-        case Enum_Complete_Truncated_::B: return "B";
-        case Enum_Complete_Truncated_::C: return "C";
-        case Enum_Complete_Truncated_::D: return "D";
-        case Enum_Complete_Truncated_::E: return "E";
-        case Enum_Complete_Truncated_::F: return "F";
-        case Enum_Complete_Truncated_::G: return "G";
-        case Enum_Complete_Truncated_::H: return "H";
-        default:
-            return std::string("Unknown Enum_Complete_Truncated_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
-    }
-}
-
 class Enum_Complete_TruncatedView {
 public:
     static Enum_Complete_TruncatedView Create(pdl::packet::slice const& parent) {
@@ -9544,8 +10100,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -9587,19 +10143,6 @@ public:
     Enum_Complete_Truncated_ e_{Enum_Complete_Truncated_::A};
 };
 
-enum class Enum_Complete_Truncated_WithRange_ : uint8_t {
-    A = 0x0,
-};
-
-inline std::string Enum_Complete_Truncated_WithRange_Text(Enum_Complete_Truncated_WithRange_ tag) {
-    switch (tag) {
-        case Enum_Complete_Truncated_WithRange_::A: return "A";
-        default:
-            return std::string("Unknown Enum_Complete_Truncated_WithRange_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
-    }
-}
-
 class Enum_Complete_Truncated_WithRangeView {
 public:
     static Enum_Complete_Truncated_WithRangeView Create(pdl::packet::slice const& parent) {
@@ -9625,8 +10168,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
@@ -9668,21 +10211,6 @@ public:
     Enum_Complete_Truncated_WithRange_ e_{Enum_Complete_Truncated_WithRange_::A};
 };
 
-enum class Enum_Complete_WithRange_ : uint8_t {
-    A = 0x0,
-    B = 0x1,
-};
-
-inline std::string Enum_Complete_WithRange_Text(Enum_Complete_WithRange_ tag) {
-    switch (tag) {
-        case Enum_Complete_WithRange_::A: return "A";
-        case Enum_Complete_WithRange_::B: return "B";
-        default:
-            return std::string("Unknown Enum_Complete_WithRange_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
-    }
-}
-
 class Enum_Complete_WithRangeView {
 public:
     static Enum_Complete_WithRangeView Create(pdl::packet::slice const& parent) {
@@ -9708,8 +10236,8 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
+        // Parse packet field values.
         if (span.size() < 1) {
             return false;
         }
