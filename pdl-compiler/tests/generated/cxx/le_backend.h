@@ -382,7 +382,6 @@ public:
     std::string ToString() const { return ""; }
 
     uint8_t a_{0};
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -471,7 +470,6 @@ public:
     std::string ToString() const { return ""; }
 
     Enum16 a_{Enum16::A};
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -552,7 +550,6 @@ public:
     std::string ToString() const { return ""; }
 
     uint8_t a_{0};
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -886,7 +883,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t b_size_ {0};
     uint64_t a_{0};
     std::vector<uint8_t> b_;
 };
@@ -982,7 +978,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t b_count_ {0};
     uint64_t a_{0};
     std::vector<uint8_t> b_;
 };
@@ -1208,7 +1203,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -1287,7 +1281,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -1517,7 +1510,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     std::vector<uint8_t> payload_;
 };
 
@@ -2042,7 +2034,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<uint8_t> array_;
 };
 
@@ -2130,7 +2121,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<uint8_t> array_;
 };
 
@@ -2376,7 +2366,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<uint16_t> array_;
 };
 
@@ -2464,7 +2453,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<uint16_t> array_;
 };
 
@@ -2710,7 +2698,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<Enum16> array_;
 };
 
@@ -2798,7 +2785,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<Enum16> array_;
 };
 
@@ -3050,7 +3036,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<SizedStruct> array_;
 };
 
@@ -3142,7 +3127,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<SizedStruct> array_;
 };
 
@@ -3398,7 +3382,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -3493,7 +3476,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -3671,7 +3653,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -3775,7 +3756,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<uint16_t> array_;
 };
 
@@ -3881,7 +3861,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -3982,7 +3961,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_element_size_ {0};
     std::array<UnknownSizeStruct, 4> array_;
 };
 
@@ -4112,8 +4090,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
-    uint8_t array_element_size_ {0};
     std::vector<UnknownSizeStruct> array_;
     std::vector<uint8_t> tail_;
 };
@@ -4243,8 +4219,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
-    uint8_t array_element_size_ {0};
     std::vector<UnknownSizeStruct> array_;
     std::vector<uint8_t> tail_;
 };
@@ -4345,7 +4319,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_element_size_ {0};
     std::vector<UnknownSizeStruct> array_;
 };
 
@@ -4707,7 +4680,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint8_t b_{0};
 };
 
@@ -4784,7 +4756,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint16_t c_{0};
 };
 
@@ -4861,7 +4832,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint8_t b_{0};
 };
 
@@ -4938,7 +4908,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint16_t c_{0};
 };
 
@@ -5015,7 +4984,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint8_t b_{0};
 };
 
@@ -5092,7 +5060,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t payload_size_ {0};
     uint16_t c_{0};
 };
 
