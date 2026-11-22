@@ -2227,28 +2227,8 @@ fn generate_packet_builder(
                 }
                 constructor_inits.push(format!("{0}_(std::move({0}))", id));
             }
-            ast::FieldDesc::Size { field_id, width, .. } => {
-                let ty = get_cxx_scalar_type(*width);
-                let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                    "payload"
-                } else {
-                    field_id
-                };
-                field_members.push(format!("{} {}_size_ {{0}};", ty, field_name));
-            }
-            ast::FieldDesc::Count { field_id, width, .. } => {
-                let ty = get_cxx_scalar_type(*width);
-                field_members.push(format!("{} {}_count_ {{0}};", ty, field_id));
-            }
-            ast::FieldDesc::ElementSize { field_id, width, .. } => {
-                let ty = get_cxx_scalar_type(*width);
-                let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                    "payload"
-                } else {
-                    field_id
-                };
-                field_members.push(format!("{} {}_element_size_ {{0}};", ty, field_name));
-            }
+            // Size, count, and element size values are computed
+            // when serializing the packet.
             _ => {}
         }
     }
