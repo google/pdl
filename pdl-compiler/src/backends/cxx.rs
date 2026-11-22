@@ -590,16 +590,20 @@ impl<'a> FieldParser<'a> {
 
         let field_size = self.schema.field_size(field.key);
         if let analyzer::Size::Unknown = field_size {
-            let trailing_size = self.get_trailing_size(field);
+            let trailing_size = self.get_trailing_size(field).unwrap_or(0);
             if trailing_size > 0 {
                 self.append(format!("if (span.size() < {}) return false;", trailing_size / 8));
-                let size = format!("span.size() - {}", trailing_size / 8);
-                self.append(format!("pdl::packet::slice {id}_span = span.subrange(0, {size});",));
+                self.append(format!("size_t {id}_size = span.size() - {};", trailing_size / 8));
+                self.append(
+                    format!("pdl::packet::slice {id}_span = span.subrange(0, {id}_size);",),
+                );
                 self.append(format!(
                     "if (!{type_id}::Parse({id}_span, &{}{id}_)) return false;",
                     self.target_prefix
                 ));
-                self.append(format!("span.skip({id}_span.size());"));
+                // The bytes remaining after parsing the typedef field are added
+                // back to the input span.
+                self.append(format!("span.skip({id}_size - {id}_span.size());"));
             } else {
                 self.append(format!(
                     "if (!{type_id}::Parse(span, &{}{id}_)) return false;",
@@ -817,24 +821,23 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    fn get_trailing_size(&self, field: &'a ast::Field) -> usize {
+    /// Return the size in bits of the fields following `field`,
+    /// or `None` if one of the following fields does not have a static size.
+    fn get_trailing_size(&self, field: &'a ast::Field) -> Option<usize> {
         let mut trailing_size = 0;
         let mut found = false;
         for f in self.decl.fields() {
             if found {
                 match self.schema.field_size(f.key) {
                     analyzer::Size::Static(bits) => trailing_size += bits,
-                    _ => panic!(
-                        "Multiple unknown size fields in {}",
-                        self.decl.id().unwrap_or("unknown")
-                    ),
+                    _ => return None,
                 }
             }
             if f.key == field.key {
                 found = true;
             }
         }
-        trailing_size
+        Some(trailing_size)
     }
 
     fn parse_payload_field_lite(&mut self, _field: &'a ast::Field, _is_body: bool) {
@@ -876,7 +879,7 @@ impl<'a> FieldParser<'a> {
             ));
             self.append(format!("span.skip({});", actual_size));
         } else {
-            let trailing_size = self.get_trailing_size(_field);
+            let trailing_size = self.get_trailing_size(_field).unwrap_or(0);
             if trailing_size > 0 {
                 self.append(format!("if (span.size() < {}) return false;", trailing_size / 8));
                 let size = format!("span.size() - {}", trailing_size / 8);
