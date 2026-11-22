@@ -128,14 +128,16 @@ enum class Enum7 : uint8_t {
     B = 0x2,
 };
 
-inline std::string Enum7Text(Enum7 tag) {
+inline std::string Enum7ToString(Enum7 tag) {
     switch (tag) {
         case Enum7::A: return "A";
         case Enum7::B: return "B";
         default:
-            return std::string("Unknown Enum7: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
+            break;
     }
+
+    return std::string("UNKNOWN(" +
+           std::to_string(uint8_t(tag)) + ")");
 }
 
 inline bool IsValidEnum7(uint8_t value) {
@@ -153,14 +155,16 @@ enum class Enum16 : uint16_t {
     B = 0xccdd,
 };
 
-inline std::string Enum16Text(Enum16 tag) {
+inline std::string Enum16ToString(Enum16 tag) {
     switch (tag) {
         case Enum16::A: return "A";
         case Enum16::B: return "B";
         default:
-            return std::string("Unknown Enum16: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
+            break;
     }
+
+    return std::string("UNKNOWN(" +
+           std::to_string(uint16_t(tag)) + ")");
 }
 
 inline bool IsValidEnum16(uint16_t value) {
@@ -417,11 +421,11 @@ protected:
         if (span.size() < 3) {
             return false;
         }
-        auto raw_value = span.read_le<uint16_t, 2>();
-        if (!IsValidEnum16(raw_value)) {
+        auto raw_a = span.read_le<uint16_t, 2>();
+        if (!IsValidEnum16(raw_a)) {
            return false;
         }
-        a_ = Enum16(raw_value);
+        a_ = Enum16(raw_a);
         payload_size_ = span.read_le<uint8_t, 1>();
         if (span.size() < payload_size_) return false;
         payload_ = span.subrange(0, payload_size_);
@@ -669,11 +673,11 @@ protected:
             return false;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        auto raw_value = (chunk0 >> 0) & 0x7f;
-        if (!IsValidEnum7(raw_value)) {
+        auto raw_a = (chunk0 >> 0) & 0x7f;
+        if (!IsValidEnum7(raw_a)) {
            return false;
         }
-        a_ = Enum7(raw_value);
+        a_ = Enum7(raw_a);
         c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
         if (span.size() > 0) {
             return false;
@@ -5213,11 +5217,11 @@ public:
             return false;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        auto raw_value = (chunk0 >> 0) & 0x7f;
-        if (!IsValidEnum7(raw_value)) {
+        auto raw_a = (chunk0 >> 0) & 0x7f;
+        if (!IsValidEnum7(raw_a)) {
            return false;
         }
-        output->a_ = Enum7(raw_value);
+        output->a_ = Enum7(raw_a);
         output->c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
         parent_span = span;
         return true;
@@ -9146,14 +9150,16 @@ enum class Enum_Incomplete_Truncated_Closed_ : uint8_t {
     B = 0x1,
 };
 
-inline std::string Enum_Incomplete_Truncated_Closed_Text(Enum_Incomplete_Truncated_Closed_ tag) {
+inline std::string Enum_Incomplete_Truncated_Closed_ToString(Enum_Incomplete_Truncated_Closed_ tag) {
     switch (tag) {
         case Enum_Incomplete_Truncated_Closed_::A: return "A";
         case Enum_Incomplete_Truncated_Closed_::B: return "B";
         default:
-            return std::string("Unknown Enum_Incomplete_Truncated_Closed_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
+            break;
     }
+
+    return std::string("UNKNOWN(" +
+           std::to_string(uint8_t(tag)) + ")");
 }
 
 inline bool IsValidEnum_Incomplete_Truncated_Closed_(uint8_t value) {
@@ -9197,11 +9203,11 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        auto raw_value = (chunk0 >> 0) & 0x7;
-        if (!IsValidEnum_Incomplete_Truncated_Closed_(raw_value)) {
+        auto raw_e = (chunk0 >> 0) & 0x7;
+        if (!IsValidEnum_Incomplete_Truncated_Closed_(raw_e)) {
            return false;
         }
-        e_ = Enum_Incomplete_Truncated_Closed_(raw_value);
+        e_ = Enum_Incomplete_Truncated_Closed_(raw_e);
         if (span.size() > 0) {
             return false;
         }
@@ -9243,14 +9249,16 @@ enum class Enum_Incomplete_Truncated_Open_ : uint8_t {
     B = 0x1,
 };
 
-inline std::string Enum_Incomplete_Truncated_Open_Text(Enum_Incomplete_Truncated_Open_ tag) {
+inline std::string Enum_Incomplete_Truncated_Open_ToString(Enum_Incomplete_Truncated_Open_ tag) {
     switch (tag) {
         case Enum_Incomplete_Truncated_Open_::A: return "A";
         case Enum_Incomplete_Truncated_Open_::B: return "B";
         default:
-            return std::string("Unknown Enum_Incomplete_Truncated_Open_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
+            break;
     }
+
+    return std::string("UNKNOWN(" +
+           std::to_string(uint8_t(tag)) + ")");
 }
 
 class Enum_Incomplete_Truncated_OpenView {
@@ -9323,15 +9331,23 @@ public:
 
 enum class Enum_Incomplete_Truncated_Closed_WithRange_ : uint8_t {
     A = 0x0,
+    X = 0x1,
+    Y = 0x2,
 };
 
-inline std::string Enum_Incomplete_Truncated_Closed_WithRange_Text(Enum_Incomplete_Truncated_Closed_WithRange_ tag) {
+inline std::string Enum_Incomplete_Truncated_Closed_WithRange_ToString(Enum_Incomplete_Truncated_Closed_WithRange_ tag) {
     switch (tag) {
         case Enum_Incomplete_Truncated_Closed_WithRange_::A: return "A";
+        case Enum_Incomplete_Truncated_Closed_WithRange_::X: return "X";
+        case Enum_Incomplete_Truncated_Closed_WithRange_::Y: return "Y";
         default:
-            return std::string("Unknown Enum_Incomplete_Truncated_Closed_WithRange_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
+            break;
     }
+    if (uint8_t(tag) >= 1 && uint8_t(tag) <= 6) {
+        return std::string("B(" + std::to_string(uint8_t(tag)) + ")");
+    }
+    return std::string("UNKNOWN(" +
+           std::to_string(uint8_t(tag)) + ")");
 }
 
 inline bool IsValidEnum_Incomplete_Truncated_Closed_WithRange_(uint8_t value) {
@@ -9370,11 +9386,11 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        auto raw_value = (chunk0 >> 0) & 0x7;
-        if (!IsValidEnum_Incomplete_Truncated_Closed_WithRange_(raw_value)) {
+        auto raw_e = (chunk0 >> 0) & 0x7;
+        if (!IsValidEnum_Incomplete_Truncated_Closed_WithRange_(raw_e)) {
            return false;
         }
-        e_ = Enum_Incomplete_Truncated_Closed_WithRange_(raw_value);
+        e_ = Enum_Incomplete_Truncated_Closed_WithRange_(raw_e);
         if (span.size() > 0) {
             return false;
         }
@@ -9413,15 +9429,23 @@ public:
 
 enum class Enum_Incomplete_Truncated_Open_WithRange_ : uint8_t {
     A = 0x0,
+    X = 0x1,
+    Y = 0x2,
 };
 
-inline std::string Enum_Incomplete_Truncated_Open_WithRange_Text(Enum_Incomplete_Truncated_Open_WithRange_ tag) {
+inline std::string Enum_Incomplete_Truncated_Open_WithRange_ToString(Enum_Incomplete_Truncated_Open_WithRange_ tag) {
     switch (tag) {
         case Enum_Incomplete_Truncated_Open_WithRange_::A: return "A";
+        case Enum_Incomplete_Truncated_Open_WithRange_::X: return "X";
+        case Enum_Incomplete_Truncated_Open_WithRange_::Y: return "Y";
         default:
-            return std::string("Unknown Enum_Incomplete_Truncated_Open_WithRange_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
+            break;
     }
+    if (uint8_t(tag) >= 1 && uint8_t(tag) <= 6) {
+        return std::string("B(" + std::to_string(uint8_t(tag)) + ")");
+    }
+    return std::string("UNKNOWN(" +
+           std::to_string(uint8_t(tag)) + ")");
 }
 
 class Enum_Incomplete_Truncated_Open_WithRangeView {
@@ -9503,7 +9527,7 @@ enum class Enum_Complete_Truncated_ : uint8_t {
     H = 0x7,
 };
 
-inline std::string Enum_Complete_Truncated_Text(Enum_Complete_Truncated_ tag) {
+inline std::string Enum_Complete_Truncated_ToString(Enum_Complete_Truncated_ tag) {
     switch (tag) {
         case Enum_Complete_Truncated_::A: return "A";
         case Enum_Complete_Truncated_::B: return "B";
@@ -9514,9 +9538,11 @@ inline std::string Enum_Complete_Truncated_Text(Enum_Complete_Truncated_ tag) {
         case Enum_Complete_Truncated_::G: return "G";
         case Enum_Complete_Truncated_::H: return "H";
         default:
-            return std::string("Unknown Enum_Complete_Truncated_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
+            break;
     }
+
+    return std::string("UNKNOWN(" +
+           std::to_string(uint8_t(tag)) + ")");
 }
 
 class Enum_Complete_TruncatedView {
@@ -9589,15 +9615,23 @@ public:
 
 enum class Enum_Complete_Truncated_WithRange_ : uint8_t {
     A = 0x0,
+    X = 0x1,
+    Y = 0x2,
 };
 
-inline std::string Enum_Complete_Truncated_WithRange_Text(Enum_Complete_Truncated_WithRange_ tag) {
+inline std::string Enum_Complete_Truncated_WithRange_ToString(Enum_Complete_Truncated_WithRange_ tag) {
     switch (tag) {
         case Enum_Complete_Truncated_WithRange_::A: return "A";
+        case Enum_Complete_Truncated_WithRange_::X: return "X";
+        case Enum_Complete_Truncated_WithRange_::Y: return "Y";
         default:
-            return std::string("Unknown Enum_Complete_Truncated_WithRange_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
+            break;
     }
+    if (uint8_t(tag) >= 1 && uint8_t(tag) <= 7) {
+        return std::string("B(" + std::to_string(uint8_t(tag)) + ")");
+    }
+    return std::string("UNKNOWN(" +
+           std::to_string(uint8_t(tag)) + ")");
 }
 
 class Enum_Complete_Truncated_WithRangeView {
@@ -9673,14 +9707,18 @@ enum class Enum_Complete_WithRange_ : uint8_t {
     B = 0x1,
 };
 
-inline std::string Enum_Complete_WithRange_Text(Enum_Complete_WithRange_ tag) {
+inline std::string Enum_Complete_WithRange_ToString(Enum_Complete_WithRange_ tag) {
     switch (tag) {
         case Enum_Complete_WithRange_::A: return "A";
         case Enum_Complete_WithRange_::B: return "B";
         default:
-            return std::string("Unknown Enum_Complete_WithRange_: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
+            break;
     }
+    if (uint8_t(tag) >= 2 && uint8_t(tag) <= 255) {
+        return std::string("C(" + std::to_string(uint8_t(tag)) + ")");
+    }
+    return std::string("UNKNOWN(" +
+           std::to_string(uint8_t(tag)) + ")");
 }
 
 class Enum_Complete_WithRangeView {

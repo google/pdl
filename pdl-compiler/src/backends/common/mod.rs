@@ -26,6 +26,13 @@ pub fn is_complete_enum(tags: &[ast::Tag], max: usize) -> bool {
             .all(|window| if let [left, right] = window { left.1 == right.0 - 1 } else { false })
 }
 
+// Determine if the enum tag range is complete, i.e. all values in the range
+// have a matching tag in the declaration.
+pub fn is_complete_enum_range(range: &ast::TagRange) -> bool {
+    // The analyzer already checks that enum tag values are uniquely defined.
+    range.tags.len() == (range.range.end() - range.range.start() + 1)
+}
+
 // Determine if the enum is open, i.e. a default tag is defined.
 pub fn is_open_enum(tags: &[ast::Tag]) -> bool {
     tags.iter().any(|tag| matches!(tag, ast::Tag::Other(_)))

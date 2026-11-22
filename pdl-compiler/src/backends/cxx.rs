@@ -128,17 +128,19 @@ pub fn generate(
         }
     }
 
+    // Packets and structs must be generated in dependency order: C++ types
+    // must be defined before they are used. `analyzer::analyze` reorders
+    // declarations according to this constraint.
     for decl in &file.declarations {
         if let Some(id) = decl.id() {
             if exclude_declarations.contains(&id.to_string()) {
                 continue;
             }
         }
-
         match &decl.desc {
             ast::DeclDesc::Enum { id, tags, width } => {
                 code.push_str(&generate_enum_declaration(id, tags, *width));
-                code.push_str(&generate_enum_to_text(id, tags));
+                code.push_str(&generate_enum_to_string(id, tags, *width));
                 code.push_str(&generate_enum_is_valid(id, tags, *width));
             }
             ast::DeclDesc::Packet { .. } => {
@@ -163,8 +165,17 @@ fn generate_enum_declaration(id: &str, tags: &[ast::Tag], width: usize) -> Strin
     let enum_type = get_cxx_scalar_type(width);
     let mut tag_decls = Vec::new();
     for tag in tags {
-        if let ast::Tag::Value(t) = tag {
-            tag_decls.push(format!("{} = {:#x},", t.id, t.value));
+        match tag {
+            ast::Tag::Value(t) => tag_decls.push(format!("{} = {:#x},", t.id, t.value)),
+            ast::Tag::Range(t) => {
+                // Generate enum tags for named values in the range.
+                // TBD: optionally generate values for the enum start and end values.
+                for t in &t.tags {
+                    tag_decls.push(format!("{} = {:#x},", t.id, t.value));
+                }
+            }
+            // C++ enums are open, the default tag is not declared.
+            ast::Tag::Other(_) => (),
         }
     }
 
@@ -178,26 +189,56 @@ enum class {id} : {enum_type} {{
     )
 }
 
-fn generate_enum_to_text(id: &str, tags: &[ast::Tag]) -> String {
+// Generate the string conversion method for an enum declaration.
+fn generate_enum_to_string(id: &str, tags: &[ast::Tag], width: usize) -> String {
     let mut tag_cases = Vec::new();
+    let mut range_matches = Vec::new();
+    let mut other = "UNKNOWN";
+    let enum_type = get_cxx_scalar_type(width);
     for tag in tags {
-        if let ast::Tag::Value(t) = tag {
-            tag_cases.push(format!("case {}::{}: return \"{}\";", id, t.id, t.id));
+        match tag {
+            ast::Tag::Value(t) => {
+                tag_cases.push(format!("case {}::{}: return \"{}\";", id, t.id, t.id))
+            }
+            ast::Tag::Range(t) => {
+                tag_cases.extend(
+                    t.tags.iter().map(|t| format!("case {}::{}: return \"{}\";", id, t.id, t.id)),
+                );
+                if !common::is_complete_enum_range(t) {
+                    range_matches.push(format!(
+                        r#"if ({enum_type}(tag) >= {start} && {enum_type}(tag) <= {end}) {{
+    return std::string("{id}(" + std::to_string({enum_type}(tag)) + ")");
+}}"#,
+                        start = t.range.start(),
+                        end = t.range.end(),
+                        id = t.id,
+                        enum_type = enum_type,
+                    ))
+                }
+            }
+            ast::Tag::Other(t) => {
+                other = &t.id;
+            }
         }
     }
 
     format!(
         r#"
-inline std::string {id}Text({id} tag) {{
+inline std::string {id}ToString({id} tag) {{
     switch (tag) {{
 {tag_cases}
         default:
-            return std::string("Unknown {id}: " +
-                   std::to_string(static_cast<uint64_t>(tag)));
+            break;
     }}
+{range_matches}
+    return std::string("{other}(" +
+           std::to_string({enum_type}(tag)) + ")");
 }}
 "#,
-        tag_cases = indent(&tag_cases.join("\n"), 2)
+        tag_cases = indent(&tag_cases.join("\n"), 2),
+        range_matches = indent(&range_matches.join("\n"), 1),
+        other = other,
+        enum_type = enum_type,
     )
 }
 
@@ -452,7 +493,8 @@ impl<'a> FieldParser<'a> {
                     let type_decl = self.scope.typedef.get(type_id).unwrap();
                     match &type_decl.desc {
                         ast::DeclDesc::Enum { tags, width, .. }
-                            if common::is_open_enum(tags) || common::is_complete_enum(tags, scalar_max(*width)) =>
+                            if common::is_open_enum(tags)
+                                || common::is_complete_enum(tags, scalar_max(*width)) =>
                         {
                             self.unchecked_append(format!(
                                 "{}{}_ = {}({});",
@@ -460,12 +502,14 @@ impl<'a> FieldParser<'a> {
                             ));
                         }
                         ast::DeclDesc::Enum { .. } => {
-                            self.unchecked_append(format!("auto raw_value = {v};"));
-                            self.unchecked_append(format!("if (!IsValid{type_id}(raw_value)) {{"));
+                            // The raw value is named after the field: multiple enum
+                            // fields can be extracted from the same chunk.
+                            self.unchecked_append(format!("auto raw_{id} = {v};"));
+                            self.unchecked_append(format!("if (!IsValid{type_id}(raw_{id})) {{"));
                             self.unchecked_append("   return false;".to_string());
                             self.unchecked_append("}".to_string());
                             self.unchecked_append(format!(
-                                "{}{}_ = {}(raw_value);",
+                                "{}{}_ = {}(raw_{id});",
                                 self.target_prefix, id, type_id
                             ));
                         }
