@@ -2070,11 +2070,9 @@ fn generate_packet_view(
 
     let mut field_parsers = Vec::new();
     if parent_id.is_some() {
-        field_parsers.push("// Check validity of parent packet.".to_string());
         field_parsers.push("if (!parent.IsValid()) { return false; }".to_string());
         let unconstrained_parent_fields = get_unconstrained_parent_fields(scope, decl);
         if !unconstrained_parent_fields.is_empty() {
-            field_parsers.push("// Copy parent field values.".to_string());
             for f in unconstrained_parent_fields {
                 if let Some(id) = f.id() {
                     field_parsers.push(format!("{}_ = parent.{}_;", id, id));
@@ -2084,7 +2082,6 @@ fn generate_packet_view(
     }
 
     if decl.fields().next().is_some() {
-        field_parsers.push("// Parse packet field values.".to_string());
         let span = if parent_id.is_some() { "parent.payload_" } else { "parent" };
         field_parsers.push(format!("pdl::packet::slice span = {};", span));
 

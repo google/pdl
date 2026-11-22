@@ -329,7 +329,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 2) {
             return false;
@@ -416,7 +415,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 3) {
             return false;
@@ -506,11 +504,8 @@ protected:
     }
 
     bool Parse(ScalarParentView const& parent) {
-        // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Copy parent field values.
         a_ = parent.a_;
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
         payload_ = span;
         span.clear();
@@ -588,7 +583,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 8) {
             return false;
@@ -667,7 +661,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 8) {
             return false;
@@ -747,7 +740,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 8) {
             return false;
@@ -834,7 +826,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 8) {
             return false;
@@ -935,7 +926,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 8) {
             return false;
@@ -1022,7 +1012,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 8) {
             return false;
@@ -1096,7 +1085,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 8) {
             return false;
@@ -1172,7 +1160,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -1252,7 +1239,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -1334,7 +1320,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 2) return false;
         payload_ = span.subrange(0, span.size() - 2);
@@ -1411,7 +1396,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 2) {
             return false;
@@ -1485,7 +1469,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -1567,7 +1550,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 2) return false;
         payload_ = span.subrange(0, span.size() - 2);
@@ -1644,7 +1626,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 2) {
             return false;
@@ -1715,7 +1696,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 2) {
             return false;
@@ -1782,7 +1762,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 2) {
             return false;
@@ -1852,7 +1831,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!SizedStruct::Parse(span, &a_)) return false;
         if (!UnsizedStruct::Parse(span, &b_)) return false;
@@ -1932,7 +1910,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 4) {
             return false;
@@ -2010,7 +1987,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -2103,7 +2079,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -2192,7 +2167,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if ((span.size() % 1) != 0) {
             return false;
@@ -2270,7 +2244,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 8) {
             return false;
@@ -2348,7 +2321,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -2441,7 +2413,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -2530,7 +2501,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if ((span.size() % 2) != 0) {
             return false;
@@ -2608,7 +2578,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 8) {
             return false;
@@ -2686,7 +2655,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -2779,7 +2747,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -2868,7 +2835,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if ((span.size() % 2) != 0) {
             return false;
@@ -2946,7 +2912,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 4) {
             return false;
@@ -3028,7 +2993,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -3125,7 +3089,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -3218,7 +3181,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if ((span.size() % 1) != 0) {
             return false;
@@ -3298,7 +3260,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         array_ = span;
         for (size_t n = 0; n < 4; n++) {
@@ -3383,7 +3344,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -3477,7 +3437,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -3573,7 +3532,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         array_ = span;
         while (span.size() > 0) {
@@ -3658,7 +3616,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -3751,7 +3708,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -3858,7 +3814,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -3965,7 +3920,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -4079,7 +4033,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 2) {
             return false;
@@ -4212,7 +4165,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 2) {
             return false;
@@ -4334,7 +4286,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -4425,7 +4376,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -4519,7 +4469,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -4618,7 +4567,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -4713,9 +4661,7 @@ protected:
     }
 
     bool Parse(ScalarParentView const& parent) {
-        // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return false;
@@ -4792,9 +4738,7 @@ protected:
     }
 
     bool Parse(ScalarParentView const& parent) {
-        // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 2) {
             return false;
@@ -4871,9 +4815,7 @@ protected:
     }
 
     bool Parse(EnumParentView const& parent) {
-        // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return false;
@@ -4950,9 +4892,7 @@ protected:
     }
 
     bool Parse(EnumParentView const& parent) {
-        // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 2) {
             return false;
@@ -5029,9 +4969,7 @@ protected:
     }
 
     bool Parse(EmptyParentView const& parent) {
-        // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return false;
@@ -5108,9 +5046,7 @@ protected:
     }
 
     bool Parse(EmptyParentView const& parent) {
-        // Check validity of parent packet.
         if (!parent.IsValid()) { return false; }
-        // Parse packet field values.
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 2) {
             return false;
@@ -5270,7 +5206,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Enum_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -5378,7 +5313,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Reserved_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -5501,7 +5435,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Size_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -5619,7 +5552,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Count_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -5725,7 +5657,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_FixedScalar_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -5831,7 +5762,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_FixedEnum_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -5932,7 +5862,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_ScalarGroup_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -6033,7 +5962,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_EnumGroup_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -6101,7 +6029,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!SizedStruct::Parse(span, &a_)) return false;
         if (!UnsizedStruct::Parse(span, &b_)) return false;
@@ -6210,7 +6137,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ByteElement_ConstantSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -6328,7 +6254,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ByteElement_VariableSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -6441,7 +6366,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ByteElement_VariableCount_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -6545,7 +6469,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ByteElement_UnknownSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -6648,7 +6571,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ScalarElement_ConstantSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -6766,7 +6688,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ScalarElement_VariableSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -6879,7 +6800,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ScalarElement_VariableCount_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -6983,7 +6903,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_ScalarElement_UnknownSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -7090,7 +7009,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_EnumElement_ConstantSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -7212,7 +7130,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_EnumElement_VariableSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -7329,7 +7246,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_EnumElement_VariableCount_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -7437,7 +7353,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_EnumElement_UnknownSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -7546,7 +7461,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_SizedElement_ConstantSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -7670,7 +7584,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_SizedElement_VariableSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -7789,7 +7702,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_SizedElement_VariableCount_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -7899,7 +7811,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_SizedElement_UnknownSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -8005,7 +7916,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_ConstantSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -8127,7 +8037,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_VariableSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -8243,7 +8152,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_VariableCount_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -8349,7 +8257,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_UnknownSize_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -8472,7 +8379,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_SizeModifier_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -8602,7 +8508,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_SizedElement_VariableSize_Padded_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -8729,7 +8634,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Array_Field_UnsizedElement_VariableCount_Padded_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -8852,7 +8756,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Optional_Scalar_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -8980,7 +8883,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Optional_Enum_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -9104,7 +9006,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (!Struct_Optional_Struct_Field_::Parse(span, &s_)) return false;
         if (span.size() > 0) {
@@ -9197,7 +9098,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -9286,7 +9186,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -9380,7 +9279,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -9473,7 +9371,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -9570,7 +9467,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -9659,7 +9555,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
@@ -9746,7 +9641,6 @@ protected:
     }
 
     bool Parse(pdl::packet::slice const& parent) {
-        // Parse packet field values.
         pdl::packet::slice span = parent;
         if (span.size() < 1) {
             return false;
