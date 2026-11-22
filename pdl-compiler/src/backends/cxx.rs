@@ -161,6 +161,26 @@ pub fn generate(
     code
 }
 
+// Generate the default enum value.
+// The default value is the first tag of the enum that is not the default
+// (`Other`) tag. If the first tag identifies a range, then the first value
+// of the range is used. If the enum declares no tag other than the default
+// tag, the default tag is used.
+fn default_enum_value(type_id: &str, tags: &[ast::Tag]) -> String {
+    match tags.iter().find(|tag| !matches!(tag, ast::Tag::Other(_))) {
+        Some(ast::Tag::Value(ast::TagValue { id, .. })) => format!("{type_id}::{id}"),
+        Some(ast::Tag::Range(ast::TagRange { tags, .. })) if !tags.is_empty() => {
+            format!("{type_id}::{}", &tags[0].id)
+        }
+        Some(ast::Tag::Range(ast::TagRange { range, .. })) => {
+            format!("{type_id}({})", range.start())
+        }
+        // `find` skips `Tag::Other`, so the remaining case is an enum whose
+        // only declared tag is the default tag.
+        _ => format!("{type_id}(0)"),
+    }
+}
+
 fn generate_enum_declaration(id: &str, tags: &[ast::Tag], width: usize) -> String {
     let enum_type = get_cxx_scalar_type(width);
     let mut tag_decls = Vec::new();
@@ -2006,7 +2026,12 @@ fn generate_packet_view(
                 } else {
                     let type_decl = scope.typedef.get(type_id).unwrap();
                     if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
-                        field_members.push(format!("{} {}_{{{}::{}}};", ty, id, ty, tags[0].id()));
+                        field_members.push(format!(
+                            "{} {}_{{{}}};",
+                            ty,
+                            id,
+                            default_enum_value(ty, tags)
+                        ));
                         field_accessors.push(format!(
                             "    {} Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n",
                             ty, accessor_name, id
@@ -2192,7 +2217,12 @@ fn generate_packet_builder(
                 } else {
                     let type_decl = scope.typedef.get(type_id).unwrap();
                     if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
-                        field_members.push(format!("{} {}_{{{}::{}}};", ty, id, ty, tags[0].id()));
+                        field_members.push(format!(
+                            "{} {}_{{{}}};",
+                            ty,
+                            id,
+                            default_enum_value(ty, tags)
+                        ));
                     } else {
                         field_members.push(format!("{} {}_;", ty, id));
                     }
@@ -2444,7 +2474,12 @@ fn generate_struct_declaration(
                 } else {
                     let type_decl = scope.typedef.get(type_id).unwrap();
                     if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
-                        field_members.push(format!("{} {}_{{{}::{}}};", ty, id, ty, tags[0].id()));
+                        field_members.push(format!(
+                            "{} {}_{{{}}};",
+                            ty,
+                            id,
+                            default_enum_value(ty, tags)
+                        ));
                     } else {
                         field_members.push(format!("{} {}_;", ty, id));
                     }
