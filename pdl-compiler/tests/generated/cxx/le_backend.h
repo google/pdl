@@ -1315,8 +1315,9 @@ protected:
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
         if (span.size() < 2) return false;
-        payload_ = span.subrange(0, span.size() - 2);
-        span.skip(span.size() - 2);
+        size_t payload_size = span.size() - 2;
+        payload_ = span.subrange(0, payload_size);
+        span.skip(payload_size);
         if (span.size() < 2) {
             return false;
         }
@@ -1544,8 +1545,9 @@ protected:
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
         if (span.size() < 2) return false;
-        payload_ = span.subrange(0, span.size() - 2);
-        span.skip(span.size() - 2);
+        size_t payload_size = span.size() - 2;
+        payload_ = span.subrange(0, payload_size);
+        span.skip(payload_size);
         if (span.size() < 2) {
             return false;
         }
