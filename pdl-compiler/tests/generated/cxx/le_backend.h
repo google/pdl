@@ -225,14 +225,14 @@ public:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_size_ = (chunk0 >> 0) & 0x3;
-        if (span.size() < output->array_size_) {
+        size_t array_size_ = (chunk0 >> 0) & 0x3;
+        if (span.size() < array_size_) {
             return false;
         }
-        if ((output->array_size_ % 1) != 0) {
+        if ((array_size_ % 1) != 0) {
             return false;
         }
-        auto array_count_ = output->array_size_ / 1;
+        auto array_count_ = array_size_ / 1;
         for (size_t n = 0; n < array_count_; n++) {
             output->array_.push_back(span.read_le<uint8_t, 1>());
         }
@@ -258,7 +258,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<uint8_t> array_;
 };
 
@@ -334,7 +333,7 @@ protected:
             return false;
         }
         a_ = span.read_le<uint8_t, 1>();
-        payload_size_ = span.read_le<uint8_t, 1>();
+        size_t payload_size_ = span.read_le<uint8_t, 1>();
         if (span.size() < payload_size_) return false;
         payload_ = span.subrange(0, payload_size_);
         span.skip(payload_size_);
@@ -347,7 +346,6 @@ protected:
     bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t a_;
-    uint8_t payload_size_ {0};
     pdl::packet::slice payload_;
 
     friend class EmptyParentView;
@@ -423,7 +421,7 @@ protected:
            return false;
         }
         a_ = Enum16(raw_a);
-        payload_size_ = span.read_le<uint8_t, 1>();
+        size_t payload_size_ = span.read_le<uint8_t, 1>();
         if (span.size() < payload_size_) return false;
         payload_ = span.subrange(0, payload_size_);
         span.skip(payload_size_);
@@ -436,7 +434,6 @@ protected:
     bool valid_{false};
     pdl::packet::slice bytes_;
     Enum16 a_{Enum16::A};
-    uint8_t payload_size_ {0};
     pdl::packet::slice payload_;
 
     friend class EnumChild_AView;
@@ -516,7 +513,6 @@ protected:
     bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t a_;
-    uint8_t payload_size_ {0};
     pdl::packet::slice payload_;
 
     friend class AliasedChild_AView;
@@ -828,7 +824,7 @@ protected:
             return false;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        b_size_ = (chunk0 >> 0) & 0x7;
+        size_t b_size_ = (chunk0 >> 0) & 0x7;
         a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
         if (span.size() < b_size_) {
             return false;
@@ -846,7 +842,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t b_size_ {0};
     uint64_t a_;
     pdl::packet::slice b_;
 
@@ -1160,7 +1155,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        payload_size_ = (chunk0 >> 0) & 0x7;
+        size_t payload_size_ = (chunk0 >> 0) & 0x7;
         if (span.size() < payload_size_) return false;
         payload_ = span.subrange(0, payload_size_);
         span.skip(payload_size_);
@@ -1172,7 +1167,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     pdl::packet::slice payload_;
 
 
@@ -1238,7 +1232,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        payload_size_ = (chunk0 >> 0) & 0x7;
+        size_t payload_size_ = (chunk0 >> 0) & 0x7;
         if (span.size() < (payload_size_ - 2)) return false;
         payload_ = span.subrange(0, (payload_size_ - 2));
         span.skip((payload_size_ - 2));
@@ -1250,7 +1244,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     pdl::packet::slice payload_;
 
 
@@ -1468,7 +1461,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        payload_size_ = (chunk0 >> 0) & 0x7;
+        size_t payload_size_ = (chunk0 >> 0) & 0x7;
         if (span.size() < payload_size_) return false;
         payload_ = span.subrange(0, payload_size_);
         span.skip(payload_size_);
@@ -1480,7 +1473,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     pdl::packet::slice payload_;
 
 
@@ -1986,7 +1978,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_size_ = (chunk0 >> 0) & 0xf;
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
         if (span.size() < array_size_) {
             return false;
         }
@@ -2003,7 +1995,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t array_size_ {0};
     pdl::packet::slice array_;
 
 
@@ -2318,7 +2309,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_size_ = (chunk0 >> 0) & 0xf;
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
         if (span.size() < array_size_) {
             return false;
         }
@@ -2335,7 +2326,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t array_size_ {0};
     pdl::packet::slice array_;
 
 
@@ -2650,7 +2640,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_size_ = (chunk0 >> 0) & 0xf;
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
         if (span.size() < array_size_) {
             return false;
         }
@@ -2667,7 +2657,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t array_size_ {0};
     pdl::packet::slice array_;
 
 
@@ -2986,7 +2975,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_size_ = (chunk0 >> 0) & 0xf;
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
         if (span.size() < array_size_) {
             return false;
         }
@@ -3003,7 +2992,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t array_size_ {0};
     pdl::packet::slice array_;
 
 
@@ -3335,7 +3323,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_size_ = (chunk0 >> 0) & 0xf;
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
         if (span.size() < array_size_) {
             return false;
         }
@@ -3349,7 +3337,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t array_size_ {0};
     pdl::packet::slice array_;
 
 
@@ -3608,7 +3595,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_size_ = (chunk0 >> 0) & 0xf;
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
         array_size_ = array_size_ - +2;
         if (span.size() < array_size_) {
             return false;
@@ -3623,7 +3610,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t array_size_ {0};
     pdl::packet::slice array_;
 
 
@@ -3703,7 +3689,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_size_ = (chunk0 >> 0) & 0xf;
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
         size_t array_start_size = span.size();
         if (span.size() < array_size_) {
             return false;
@@ -3725,7 +3711,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t array_size_ {0};
     pdl::packet::slice array_;
 
 
@@ -4025,7 +4010,7 @@ protected:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_size_ = (chunk0 >> 0) & 0xf;
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
         uint8_t chunk1 = span.read_le<uint8_t, 1>();
         array_element_size_ = (chunk1 >> 0) & 0xf;
         if (span.size() < array_size_) {
@@ -4049,7 +4034,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t array_size_ {0};
     uint8_t array_element_size_ {0};
     pdl::packet::slice array_;
     pdl::packet::slice tail_;
@@ -4660,7 +4644,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint8_t b_;
 
 
@@ -4736,7 +4719,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint16_t c_;
 
 
@@ -4812,7 +4794,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint8_t b_;
 
 
@@ -4888,7 +4869,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint16_t c_;
 
 
@@ -4964,7 +4944,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint8_t b_;
 
 
@@ -5040,7 +5019,6 @@ protected:
 
     bool valid_{false};
     pdl::packet::slice bytes_;
-    uint8_t payload_size_ {0};
     uint16_t c_;
 
 
@@ -5347,15 +5325,15 @@ public:
             return false;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        output->b_size_ = (chunk0 >> 0) & 0x7;
+        size_t b_size_ = (chunk0 >> 0) & 0x7;
         output->a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
-        if (span.size() < output->b_size_) {
+        if (span.size() < b_size_) {
             return false;
         }
-        if ((output->b_size_ % 1) != 0) {
+        if ((b_size_ % 1) != 0) {
             return false;
         }
-        auto b_count_ = output->b_size_ / 1;
+        auto b_count_ = b_size_ / 1;
         for (size_t n = 0; n < b_count_; n++) {
             output->b_.push_back(span.read_le<uint8_t, 1>());
         }
@@ -5384,7 +5362,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t b_size_ {0};
     uint64_t a_{0};
     std::vector<uint8_t> b_;
 };
@@ -6171,14 +6148,14 @@ public:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < output->array_size_) {
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < array_size_) {
             return false;
         }
-        if ((output->array_size_ % 1) != 0) {
+        if ((array_size_ % 1) != 0) {
             return false;
         }
-        auto array_count_ = output->array_size_ / 1;
+        auto array_count_ = array_size_ / 1;
         for (size_t n = 0; n < array_count_; n++) {
             output->array_.push_back(span.read_le<uint8_t, 1>());
         }
@@ -6204,7 +6181,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<uint8_t> array_;
 };
 
@@ -6605,14 +6581,14 @@ public:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < output->array_size_) {
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < array_size_) {
             return false;
         }
-        if ((output->array_size_ % 2) != 0) {
+        if ((array_size_ % 2) != 0) {
             return false;
         }
-        auto array_count_ = output->array_size_ / 2;
+        auto array_count_ = array_size_ / 2;
         for (size_t n = 0; n < array_count_; n++) {
             output->array_.push_back(span.read_le<uint16_t, 2>());
         }
@@ -6638,7 +6614,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<uint16_t> array_;
 };
 
@@ -7043,14 +7018,14 @@ public:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < output->array_size_) {
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < array_size_) {
             return false;
         }
-        if ((output->array_size_ % 2) != 0) {
+        if ((array_size_ % 2) != 0) {
             return false;
         }
-        auto array_count_ = output->array_size_ / 2;
+        auto array_count_ = array_size_ / 2;
         for (size_t n = 0; n < array_count_; n++) {
             auto raw_value = span.read_le<uint16_t, 2>();
             if (!IsValidEnum16(raw_value)) {
@@ -7080,7 +7055,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<Enum16> array_;
 };
 
@@ -7495,14 +7469,14 @@ public:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < output->array_size_) {
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < array_size_) {
             return false;
         }
-        if ((output->array_size_ % 1) != 0) {
+        if ((array_size_ % 1) != 0) {
             return false;
         }
-        auto array_count_ = output->array_size_ / 1;
+        auto array_count_ = array_size_ / 1;
         for (size_t n = 0; n < array_count_; n++) {
             SizedStruct out;
             if (!SizedStruct::Parse(span, &out)) {
@@ -7534,7 +7508,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<SizedStruct> array_;
 };
 
@@ -7950,11 +7923,11 @@ public:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < output->array_size_) {
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < array_size_) {
             return false;
         }
-        auto array_span = span.subrange(0, output->array_size_);
+        auto array_span = span.subrange(0, array_size_);
         while (array_span.size() > 0) {
             UnsizedStruct out;
             if (!UnsizedStruct::Parse(array_span, &out)) {
@@ -7962,7 +7935,7 @@ public:
             }
             output->array_.push_back(std::move(out));
         }
-        span.skip(output->array_size_);
+        span.skip(array_size_);
         parent_span = span;
         return true;
     }
@@ -7990,7 +7963,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -8294,12 +8266,12 @@ public:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_size_ = (chunk0 >> 0) & 0xf;
-        output->array_size_ = output->array_size_ - +2;
-        if (span.size() < output->array_size_) {
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        array_size_ = array_size_ - +2;
+        if (span.size() < array_size_) {
             return false;
         }
-        auto array_span = span.subrange(0, output->array_size_);
+        auto array_span = span.subrange(0, array_size_);
         while (array_span.size() > 0) {
             UnsizedStruct out;
             if (!UnsizedStruct::Parse(array_span, &out)) {
@@ -8307,7 +8279,7 @@ public:
             }
             output->array_.push_back(std::move(out));
         }
-        span.skip(output->array_size_);
+        span.skip(array_size_);
         parent_span = span;
         return true;
     }
@@ -8336,7 +8308,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -8420,15 +8391,15 @@ public:
             return false;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_size_ = (chunk0 >> 0) & 0xf;
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
         size_t array_start_size = span.size();
-        if (span.size() < output->array_size_) {
+        if (span.size() < array_size_) {
             return false;
         }
-        if ((output->array_size_ % 2) != 0) {
+        if ((array_size_ % 2) != 0) {
             return false;
         }
-        auto array_count_ = output->array_size_ / 2;
+        auto array_count_ = array_size_ / 2;
         for (size_t n = 0; n < array_count_; n++) {
             output->array_.push_back(span.read_le<uint16_t, 2>());
         }
@@ -8465,7 +8436,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_size_ {0};
     std::vector<uint16_t> array_;
 };
 

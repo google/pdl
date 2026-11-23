@@ -547,10 +547,7 @@ impl<'a> FieldParser<'a> {
                     } else {
                         field_id
                     };
-                    self.unchecked_append(format!(
-                        "{}{}_size_ = {};",
-                        self.target_prefix, field_name, v
-                    ));
+                    self.unchecked_append(format!("size_t {}_size_ = {};", field_name, v));
                 }
                 ast::FieldDesc::Count { field_id, .. } => {
                     self.unchecked_append(format!(
@@ -912,7 +909,7 @@ impl<'a> FieldParser<'a> {
 
         // Apply the size modifier.
         if let Some(size_modifier) = size_modifier {
-            self.append(format!("output->{id}_size_ = output->{id}_size_ - {size_modifier};"));
+            self.append(format!("{id}_size_ = {id}_size_ - {size_modifier};"));
         }
 
         use analyzer::{ArraySize, ElementSize};
@@ -935,11 +932,11 @@ impl<'a> FieldParser<'a> {
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicSize) => {
-                self.check_size(&format!("output->{id}_size_"));
-                self.append(format!("if ((output->{id}_size_ % {element_size}) != 0) {{"));
+                self.check_size(&format!("{id}_size_"));
+                self.append(format!("if (({id}_size_ % {element_size}) != 0) {{"));
                 self.append("    return false;".to_string());
                 self.append("}".to_string());
-                self.append(format!("auto {id}_count_ = output->{id}_size_ / {element_size};"));
+                self.append(format!("auto {id}_count_ = {id}_size_ / {element_size};"));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 let out = self.parse_array_element(field, "span".to_string());
                 self.append(format!("    output->{id}_.push_back({out});"));
@@ -980,21 +977,19 @@ impl<'a> FieldParser<'a> {
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicSize) => {
-                self.check_size(&format!("output->{id}_size_"));
+                self.check_size(&format!("{id}_size_"));
                 self.append(format!(
-                    "if (output->{id}_element_size_ == 0 || (output->{id}_size_ % output->{id}_element_size_) != 0) {{"
+                    "if (output->{id}_element_size_ == 0 || ({id}_size_ % output->{id}_element_size_) != 0) {{"
                 ));
                 self.append("    return false;".to_string());
                 self.append("}".to_string());
-                self.append(format!(
-                    "auto {id}_count_ = output->{id}_size_ / output->{id}_element_size_;"
-                ));
+                self.append(format!("auto {id}_count_ = {id}_size_ / output->{id}_element_size_;"));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
                 let out = self.parse_array_element(field, "element_span".to_string());
                 self.append(format!("    output->{id}_[n] = {out};"));
                 self.append("}".to_string());
-                self.append(format!("span.skip(output->{id}_size_);"));
+                self.append(format!("span.skip({id}_size_);"));
             }
 
             (ElementSize::Dynamic, ArraySize::Unknown) => {
@@ -1036,8 +1031,8 @@ impl<'a> FieldParser<'a> {
 
             (ElementSize::Unknown, ArraySize::DynamicSize) => {
                 let tid = type_id.unwrap();
-                self.check_size(&format!("output->{id}_size_"));
-                self.append(format!("auto {id}_span = span.subrange(0, output->{id}_size_);"));
+                self.check_size(&format!("{id}_size_"));
+                self.append(format!("auto {id}_span = span.subrange(0, {id}_size_);"));
                 self.append(format!("while ({id}_span.size() > 0) {{"));
                 self.append(format!("    {tid} out;"));
                 self.append(format!("    if (!{tid}::Parse({id}_span, &out)) {{"));
@@ -1045,7 +1040,7 @@ impl<'a> FieldParser<'a> {
                 self.append("    }".to_string());
                 self.append(format!("    output->{id}_.push_back(std::move(out));"));
                 self.append("}".to_string());
-                self.append(format!("span.skip(output->{id}_size_);"));
+                self.append(format!("span.skip({id}_size_);"));
             }
 
             (ElementSize::Unknown, ArraySize::Unknown) => {
@@ -1969,15 +1964,9 @@ fn generate_packet_view(
                     }
                 }
             }
-            ast::FieldDesc::Size { field_id, width, .. } => {
-                let ty = get_cxx_scalar_type(*width);
-                let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                    "payload"
-                } else {
-                    field_id
-                };
-                field_members.push(format!("{} {}_size_ {{0}};", ty, field_name));
-            }
+            // Size fields are never required in the generated views.
+            // The slice already contains the length indication.
+            ast::FieldDesc::Size { .. } => {}
             ast::FieldDesc::Count { field_id, width, .. } => {
                 let ty = get_cxx_scalar_type(*width);
                 field_members.push(format!("{} {}_count_ {{0}};", ty, field_id));
@@ -2421,15 +2410,9 @@ fn generate_struct_declaration(
                 }
                 constructor_inits.push(format!("{0}_(std::move({0}))", id));
             }
-            ast::FieldDesc::Size { field_id, width, .. } => {
-                let ty = get_cxx_scalar_type(*width);
-                let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                    "payload"
-                } else {
-                    field_id
-                };
-                field_members.push(format!("{} {}_size_ {{0}};", ty, field_name));
-            }
+            // Size fields are never required in the generated views.
+            // The slice already contains the length indication.
+            ast::FieldDesc::Size { .. } => {}
             ast::FieldDesc::Count { field_id, width, .. } => {
                 let ty = get_cxx_scalar_type(*width);
                 field_members.push(format!("{} {}_count_ {{0}};", ty, field_id));
