@@ -840,11 +840,14 @@ impl<'a> FieldParser<'a> {
         Some(trailing_size)
     }
 
-    fn parse_payload_field_lite(&mut self, _field: &'a ast::Field, _is_body: bool) {
+    fn parse_payload_field_lite(&mut self, _field: &'a ast::Field) {
         if self.shift != 0 {
             panic!("Payload field does not start on an octet boundary");
         }
         self.check_code();
+        // Packet views store the payload as a slice, structs store the
+        // payload as a byte vector.
+        let bytes = if self.extract_arrays { ".bytes()" } else { "" };
         let mut size_expr = "".to_string();
         for f in self.decl.fields() {
             if let ast::FieldDesc::Size { field_id, .. } = &f.desc {
@@ -874,22 +877,22 @@ impl<'a> FieldParser<'a> {
             };
             self.append(format!("if (span.size() < {}) return false;", actual_size));
             self.append(format!(
-                "{}payload_ = span.subrange(0, {});",
-                self.target_prefix, actual_size
+                "{}payload_ = span.subrange(0, {}){};",
+                self.target_prefix, actual_size, bytes
             ));
             self.append(format!("span.skip({});", actual_size));
         } else {
             let trailing_size = self.get_trailing_size(_field).unwrap_or(0);
             if trailing_size > 0 {
                 self.append(format!("if (span.size() < {}) return false;", trailing_size / 8));
-                let size = format!("span.size() - {}", trailing_size / 8);
+                self.append(format!("size_t payload_size = span.size() - {};", trailing_size / 8));
                 self.append(format!(
-                    "{}payload_ = span.subrange(0, {});",
-                    self.target_prefix, size
+                    "{}payload_ = span.subrange(0, payload_size){};",
+                    self.target_prefix, bytes
                 ));
-                self.append(format!("span.skip({});", size));
+                self.append("span.skip(payload_size);".to_string());
             } else {
-                self.append(format!("{}payload_ = span;", self.target_prefix));
+                self.append(format!("{}payload_ = span{};", self.target_prefix, bytes));
                 self.append("span.clear();".to_string());
             }
         }
@@ -1141,10 +1144,7 @@ impl<'a> FieldParser<'a> {
                     }
                 }
                 ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
-                    self.parse_payload_field_lite(
-                        field,
-                        matches!(field.desc, ast::FieldDesc::Body),
-                    );
+                    self.parse_payload_field_lite(field);
                 }
                 ast::FieldDesc::Scalar { id, width } => {
                     let ty = get_cxx_scalar_type(*width);
