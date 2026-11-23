@@ -29,8 +29,8 @@ java = ["genco", "once_cell"]
 [dependencies]
 codespan-reporting = "0.13.1"
 heck = "0.4.1"
-pest = "2.7.6"
-pest_derive = "2.7.6"
+pest = "=2.7.6"
+pest_derive = "=2.7.6"
 proc-macro2 = "1.0.75"
 quote = "1.0.36"
 serde_json = "1.0.143"
