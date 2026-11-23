@@ -2099,10 +2099,22 @@ fn generate_packet_view(
         }
     }
 
-    if decl.fields().next().is_some() {
+    // The trailing byte check is only added when the parent packet has a payload field,
+    // or the current packet is a root packet. In other cases there is no actual parsing
+    // done in the method, just added field constraints.
+    let trailing_size_check = match scope.get_parent(decl) {
+        Some(parent) => parent
+            .fields()
+            .any(|f| matches!(f.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body)),
+        None => true,
+    };
+
+    if trailing_size_check {
         let span = if parent_id.is_some() { "parent.payload_" } else { "parent" };
         field_parsers.push(format!("pdl::packet::slice span = {};", span));
+    }
 
+    if decl.fields().next().is_some() {
         let mut parser = FieldParser::new(scope, schema, endianness, "", false, decl);
         parser.is_cond_for = is_cond_for;
         for f in decl.fields() {
@@ -2112,9 +2124,12 @@ fn generate_packet_view(
         field_parsers.extend(parser.code);
     }
 
-    field_parsers.push("if (span.size() > 0) {".to_string());
-    field_parsers.push("    return false;".to_string());
-    field_parsers.push("}".to_string());
+    if trailing_size_check {
+        field_parsers.push("if (span.size() > 0) {".to_string());
+        field_parsers.push("    return false;".to_string());
+        field_parsers.push("}".to_string());
+    }
+
     field_parsers.push("return true;".to_string());
 
     let friend_classes = scope
