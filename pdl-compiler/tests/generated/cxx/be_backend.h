@@ -241,7 +241,7 @@ public:
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = (array_.size() * 1);
+        size_t array_size = 1 * array_.size();
         if (array_size > 0x3) {
             return false;
         }
@@ -863,7 +863,7 @@ public:
     Packet_Size_FieldBuilder& operator=(Packet_Size_FieldBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t b_size = (b_.size() * 1);
+        size_t b_size = 1 * b_.size();
         if (b_size > 0x7) {
             return false;
         }
@@ -2019,7 +2019,7 @@ public:
     Packet_Array_Field_ByteElement_VariableSizeBuilder& operator=(Packet_Array_Field_ByteElement_VariableSizeBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = (array_.size() * 1);
+        size_t array_size = 1 * array_.size();
         if (array_size > 0xf) {
             return false;
         }
@@ -2351,7 +2351,7 @@ public:
     Packet_Array_Field_ScalarElement_VariableSizeBuilder& operator=(Packet_Array_Field_ScalarElement_VariableSizeBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = (array_.size() * 2);
+        size_t array_size = 2 * array_.size();
         if (array_size > 0xf) {
             return false;
         }
@@ -2683,7 +2683,7 @@ public:
     Packet_Array_Field_EnumElement_VariableSizeBuilder& operator=(Packet_Array_Field_EnumElement_VariableSizeBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = (array_.size() * 2);
+        size_t array_size = 2 * array_.size();
         if (array_size > 0xf) {
             return false;
         }
@@ -3019,7 +3019,7 @@ public:
     Packet_Array_Field_SizedElement_VariableSizeBuilder& operator=(Packet_Array_Field_SizedElement_VariableSizeBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
+        size_t array_size = 1 * array_.size();
         if (array_size > 0xf) {
             return false;
         }
@@ -3365,7 +3365,10 @@ public:
     Packet_Array_Field_UnsizedElement_VariableSizeBuilder& operator=(Packet_Array_Field_UnsizedElement_VariableSizeBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
+        size_t array_size = 0;
+        for (auto const& elt : array_) {
+            array_size += elt.GetSize();
+        }
         if (array_size > 0xf) {
             return false;
         }
@@ -3636,7 +3639,11 @@ public:
     Packet_Array_Field_UnsizedElement_SizeModifierBuilder& operator=(Packet_Array_Field_UnsizedElement_SizeModifierBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); }) +2);
+        size_t array_size = 0;
+        for (auto const& elt : array_) {
+            array_size += elt.GetSize();
+        }
+        array_size = array_size +2;
         if (array_size > 0xf) {
             return false;
         }
@@ -3734,7 +3741,7 @@ public:
     Packet_Array_Field_SizedElement_VariableSize_PaddedBuilder& operator=(Packet_Array_Field_SizedElement_VariableSize_PaddedBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = (array_.size() * 2);
+        size_t array_size = 2 * array_.size();
         if (array_size > 0xf) {
             return false;
         }
@@ -3940,8 +3947,8 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
-        for (auto const& element : array_) {
-            if (element.GetSize() != array_element_size) {
+        for (auto const& elt : array_) {
+            if (elt.GetSize() != array_element_size) {
                 return false;
             }
         }
@@ -4060,14 +4067,17 @@ public:
     Packet_Array_Field_VariableElementSize_VariableSizeBuilder& operator=(Packet_Array_Field_VariableElementSize_VariableSizeBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
+        size_t array_size = 0;
+        for (auto const& elt : array_) {
+            array_size += elt.GetSize();
+        }
         if (array_size > 0xf) {
             return false;
         }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
-        for (auto const& element : array_) {
-            if (element.GetSize() != array_element_size) {
+        for (auto const& elt : array_) {
+            if (elt.GetSize() != array_element_size) {
                 return false;
             }
         }
@@ -4195,8 +4205,8 @@ public:
         }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
-        for (auto const& element : array_) {
-            if (element.GetSize() != array_element_size) {
+        for (auto const& elt : array_) {
+            if (elt.GetSize() != array_element_size) {
                 return false;
             }
         }
@@ -4298,8 +4308,8 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         size_t array_element_size = array_.empty() ? 0 : array_[0].GetSize();
-        for (auto const& element : array_) {
-            if (element.GetSize() != array_element_size) {
+        for (auto const& elt : array_) {
+            if (elt.GetSize() != array_element_size) {
                 return false;
             }
         }
@@ -5354,7 +5364,7 @@ public:
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t b_size = (b_.size() * 1);
+        size_t b_size = 1 * b_.size();
         if (b_size > 0x7) {
             return false;
         }
@@ -6177,7 +6187,7 @@ public:
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = (array_.size() * 1);
+        size_t array_size = 1 * array_.size();
         if (array_size > 0xf) {
             return false;
         }
@@ -6611,7 +6621,7 @@ public:
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = (array_.size() * 2);
+        size_t array_size = 2 * array_.size();
         if (array_size > 0xf) {
             return false;
         }
@@ -7053,7 +7063,7 @@ public:
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = (array_.size() * 2);
+        size_t array_size = 2 * array_.size();
         if (array_size > 0xf) {
             return false;
         }
@@ -7505,7 +7515,7 @@ public:
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
+        size_t array_size = 1 * array_.size();
         if (array_size > 0xf) {
             return false;
         }
@@ -7958,7 +7968,10 @@ public:
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); });
+        size_t array_size = 0;
+        for (auto const& elt : array_) {
+            array_size += elt.GetSize();
+        }
         if (array_size > 0xf) {
             return false;
         }
@@ -8300,7 +8313,11 @@ public:
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) { return s + element.GetSize(); }) +2);
+        size_t array_size = 0;
+        for (auto const& elt : array_) {
+            array_size += elt.GetSize();
+        }
+        array_size = array_size +2;
         if (array_size > 0xf) {
             return false;
         }
@@ -8424,7 +8441,7 @@ public:
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t array_size = (array_.size() * 2);
+        size_t array_size = 2 * array_.size();
         if (array_size > 0xf) {
             return false;
         }
