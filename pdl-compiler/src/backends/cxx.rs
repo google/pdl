@@ -2082,6 +2082,21 @@ fn generate_packet_view(
                 }
             }
         }
+        // Copy the size, count, and element size values of the parent array
+        // fields, which are used by the array accessors.
+        for f in get_all_parent_fields(scope, decl) {
+            let member = match &f.desc {
+                ast::FieldDesc::Size { field_id, .. }
+                    if field_id != "_payload_" && field_id != "_body_" =>
+                {
+                    format!("{field_id}_size_")
+                }
+                ast::FieldDesc::Count { field_id, .. } => format!("{field_id}_count_"),
+                ast::FieldDesc::ElementSize { field_id, .. } => format!("{field_id}_element_size_"),
+                _ => continue,
+            };
+            field_parsers.push(format!("{member} = parent.{member};"));
+        }
     }
 
     if decl.fields().next().is_some() {
