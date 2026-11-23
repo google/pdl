@@ -1654,7 +1654,6 @@ impl<'a> FieldSerializer<'a> {
             }
         } else {
             match &field.desc {
-                ast::FieldDesc::Padding { .. } => {}
                 ast::FieldDesc::Array { id, type_id, width, .. } => {
                     let padded_size = self.schema.padded_size(field.key);
                     if padded_size.is_some() {
@@ -1703,75 +1702,10 @@ impl<'a> FieldSerializer<'a> {
                         self.append("}");
                     }
                 }
-                ast::FieldDesc::Scalar { width, .. } => {
-                    let ty = get_cxx_scalar_type(*width);
-                    self.append(&format!(
-                        "pdl::packet::Builder::write_{}<{}, {}>(output, {});",
-                        byteorder,
-                        ty,
-                        width / 8,
-                        field_var.unwrap()
-                    ));
-                }
-                ast::FieldDesc::Typedef { type_id, .. } => {
-                    let td = self.scope.typedef.get(type_id).unwrap();
-                    if let ast::DeclDesc::Enum { width, .. } = &td.desc {
-                        let ty = get_cxx_scalar_type(*width);
-                        self.append(&format!(
-                            "pdl::packet::Builder::write_{}<{}, {}>(output, static_cast<{}>( {}));",
-                            byteorder,
-                            ty,
-                            width / 8,
-                            ty,
-                            field_var.unwrap()
-                        ));
-                    } else {
-                        self.append(&format!("if (!{}.Serialize(output)) {{", field_var.unwrap()));
-                        self.append("    return false;");
-                        self.append("}");
-                    }
-                }
-                ast::FieldDesc::Size { field_id, width, .. } => {
-                    let ty = get_cxx_scalar_type(*width);
-                    let size_expr = self.get_payload_field_size(var, field_id, decl);
-                    self.append(&format!(
-                        "pdl::packet::Builder::write_{}<{}, {}>(output, static_cast<{}>( {}));",
-                        byteorder,
-                        ty,
-                        width / 8,
-                        ty,
-                        size_expr
-                    ));
-                }
-                ast::FieldDesc::Count { field_id, width, .. } => {
-                    let ty = get_cxx_scalar_type(*width);
-                    let f = self
-                        .scope
-                        .iter_fields(decl)
-                        .find(|f| f.id() == Some(field_id))
-                        .expect("Field not found");
-                    self.append(&format!("pdl::packet::Builder::write_{}<{}, {}>(output, static_cast<{}>( {}.size() ));", byteorder, ty, width / 8, ty, get_field_expr(f)));
-                }
-                ast::FieldDesc::ElementSize { width, .. } => {
-                    let ty = get_cxx_scalar_type(*width);
-                    self.append(&format!("pdl::packet::Builder::write_{}<{}, {}>(output, static_cast<{}>( 0 )); // TODO", byteorder, ty, width / 8, ty));
-                }
-                ast::FieldDesc::FixedScalar { width, value } => {
-                    let ty = get_cxx_scalar_type(*width);
-                    self.append(&format!(
-                        "pdl::packet::Builder::write_{}<{}, {}>(output, {:#x});",
-                        byteorder,
-                        ty,
-                        width / 8,
-                        value
-                    ));
-                }
-                ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
-                    let td = self.scope.typedef.get(enum_id).unwrap();
-                    if let ast::DeclDesc::Enum { width, .. } = &td.desc {
-                        let ty = get_cxx_scalar_type(*width);
-                        self.append(&format!("pdl::packet::Builder::write_{}<{}, {}>(output, static_cast<{}>( {}::{} ));", byteorder, ty, width / 8, ty, enum_id, tag_id));
-                    }
+                ast::FieldDesc::Typedef { .. } => {
+                    self.append(&format!("if (!{}.Serialize(output)) {{", field_var.unwrap()));
+                    self.append("    return false;");
+                    self.append("}");
                 }
                 ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
                     self.append(&format!(
