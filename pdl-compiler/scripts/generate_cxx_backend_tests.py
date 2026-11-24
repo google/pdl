@@ -347,6 +347,7 @@ def generate_packet_serializer_test(serializer_test_suite: str, packet: ast.Pack
                     std::vector<uint8_t> output;
                     ASSERT_TRUE(packet.Serialize(output));
                     ASSERT_EQ(output, expected_output);
+                    ASSERT_EQ(packet.GetSize(), output.size());
                 }}
                 """).format(serializer_test_suite=serializer_test_suite,
                             packet_id=packet.id,

@@ -260,7 +260,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 1));
+        return 1 + 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -298,7 +298,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 1);
+        return 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -383,7 +383,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 2 + (payload_.size());
+        return 2 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -473,7 +473,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 3 + (payload_.size());
+        return 3 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -552,7 +552,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 2 + (payload_.size());
+        return 2 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -891,7 +891,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 8 + ((b_.size() * 1));
+        return 8 + 1 * b_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -986,7 +986,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 8 + ((b_.size() * 1));
+        return 8 + 1 * b_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -1310,7 +1310,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (payload_.size());
+        return 1 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -1388,7 +1388,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (payload_.size());
+        return 1 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -1464,7 +1464,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 2 + (payload_.size());
+        return 2 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -1539,7 +1539,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 2 + (payload_.size());
+        return 2 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -1617,7 +1617,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (payload_.size());
+        return 1 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -1693,7 +1693,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 2 + (payload_.size());
+        return 2 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -1768,7 +1768,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 2 + (payload_.size());
+        return 2 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -1973,7 +1973,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return a_.GetSize() + b_.GetSize();
+        return 1 + b_.GetSize();
     }
 
     std::string ToString() const { return ""; }
@@ -2051,7 +2051,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 1);
+        return 4;
     }
 
     std::string ToString() const { return ""; }
@@ -2141,7 +2141,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 1));
+        return 1 + 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -2228,7 +2228,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 1));
+        return 1 + 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -2305,7 +2305,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 1);
+        return 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -2382,7 +2382,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 2);
+        return 8;
     }
 
     std::string ToString() const { return ""; }
@@ -2472,7 +2472,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 2));
+        return 1 + 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -2559,7 +2559,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 2));
+        return 1 + 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -2636,7 +2636,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 2);
+        return 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -2713,7 +2713,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 2);
+        return 8;
     }
 
     std::string ToString() const { return ""; }
@@ -2803,7 +2803,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 2));
+        return 1 + 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -2890,7 +2890,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 2));
+        return 1 + 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -2967,7 +2967,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 2);
+        return 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -3046,7 +3046,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); });
+        return 4;
     }
 
     std::string ToString() const { return ""; }
@@ -3140,7 +3140,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -3231,7 +3231,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -3312,7 +3312,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); });
+        return 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -3394,7 +3394,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); });
+        return std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -3488,7 +3488,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -3582,7 +3582,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -3666,7 +3666,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); });
+        return std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -3762,7 +3762,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -3864,7 +3864,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::max<size_t>((array_.size() * 2), 16));
+        return 17;
     }
 
     std::string ToString() const { return ""; }
@@ -3969,7 +3969,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::max<size_t>(std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }), 16));
+        return 17;
     }
 
     std::string ToString() const { return ""; }
@@ -4069,7 +4069,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -4200,7 +4200,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 2 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }) + (tail_.size() * 1));
+        return 2 + std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); }) + 1 * tail_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -4329,7 +4329,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 2 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }) + (tail_.size() * 1));
+        return 2 + std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); }) + 1 * tail_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -4429,7 +4429,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -4529,7 +4529,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((((a_.has_value() ? 0 : 1) == 0) ? 3 : 0) + (((b_.has_value() ? 1 : 0) == 1) ? 4 : 0));
+        return 1 + (a_.has_value() ? 3 : 0) + (b_.has_value() ? 4 : 0);
     }
 
     std::string ToString() const { return ""; }
@@ -4635,7 +4635,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((((a_.has_value() ? 0 : 1) == 0) ? 2 : 0) + (((b_.has_value() ? 1 : 0) == 1) ? 2 : 0));
+        return 1 + (a_.has_value() ? 2 : 0) + (b_.has_value() ? 2 : 0);
     }
 
     std::string ToString() const { return ""; }
@@ -4737,7 +4737,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((((a_.has_value() ? 0 : 1) == 0) ? a_->GetSize() : 0) + (((b_.has_value() ? 1 : 0) == 1) ? b_->GetSize() : 0));
+        return 1 + (a_.has_value() ? 1 : 0) + (b_.has_value() ? b_->GetSize() : 0);
     }
 
     std::string ToString() const { return ""; }
@@ -5271,7 +5271,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 3 + (payload_.size());
+        return 3 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -5435,7 +5435,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 3 + (payload_.size());
+        return 3 + payload_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -5774,7 +5774,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 8;
     }
 
     std::string ToString() const { return ""; }
@@ -5881,7 +5881,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 8;
     }
 
     std::string ToString() const { return ""; }
@@ -5936,7 +5936,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 8 + ((b_.size() * 1));
+        return 8 + 1 * b_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -6052,7 +6052,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 8 + ((b_.size() * 1));
+        return 8 + 1 * b_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -6224,7 +6224,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 8;
     }
 
     std::string ToString() const { return ""; }
@@ -6329,7 +6329,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 8;
     }
 
     std::string ToString() const { return ""; }
@@ -6429,7 +6429,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 2;
     }
 
     std::string ToString() const { return ""; }
@@ -6529,7 +6529,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 2;
     }
 
     std::string ToString() const { return ""; }
@@ -6601,7 +6601,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return a_.GetSize() + b_.GetSize();
+        return 1 + b_.GetSize();
     }
 
     std::string ToString() const { return ""; }
@@ -6639,7 +6639,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 1);
+        return 4;
     }
 
     std::string ToString() const { return ""; }
@@ -6704,7 +6704,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 4;
     }
 
     std::string ToString() const { return ""; }
@@ -6755,7 +6755,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 1));
+        return 1 + 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -6866,7 +6866,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 1));
+        return 1 + 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -6970,7 +6970,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 1);
+        return 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -7072,7 +7072,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 2);
+        return 8;
     }
 
     std::string ToString() const { return ""; }
@@ -7137,7 +7137,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 8;
     }
 
     std::string ToString() const { return ""; }
@@ -7188,7 +7188,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 2));
+        return 1 + 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -7299,7 +7299,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 2));
+        return 1 + 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -7403,7 +7403,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 2);
+        return 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -7509,7 +7509,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 2);
+        return 8;
     }
 
     std::string ToString() const { return ""; }
@@ -7574,7 +7574,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 8;
     }
 
     std::string ToString() const { return ""; }
@@ -7629,7 +7629,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 2));
+        return 1 + 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -7744,7 +7744,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((array_.size() * 2));
+        return 1 + 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -7852,7 +7852,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return (array_.size() * 2);
+        return 2 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -7960,7 +7960,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); });
+        return 4;
     }
 
     std::string ToString() const { return ""; }
@@ -8025,7 +8025,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 4;
     }
 
     std::string ToString() const { return ""; }
@@ -8082,7 +8082,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -8199,7 +8199,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -8309,7 +8309,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); });
+        return 1 * array_.size();
     }
 
     std::string ToString() const { return ""; }
@@ -8414,7 +8414,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); });
+        return std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -8537,7 +8537,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -8651,7 +8651,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -8757,7 +8757,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); });
+        return std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -8882,7 +8882,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }));
+        return 1 + std::accumulate(array_.begin(), array_.end(), size_t(0), [](size_t s, auto const& elt) { return s + elt.GetSize(); });
     }
 
     std::string ToString() const { return ""; }
@@ -9010,7 +9010,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::max<size_t>((array_.size() * 2), 16));
+        return 17;
     }
 
     std::string ToString() const { return ""; }
@@ -9075,7 +9075,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 17;
     }
 
     std::string ToString() const { return ""; }
@@ -9135,7 +9135,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + (std::max<size_t>(std::accumulate(array_.begin(), array_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) { return s + e.GetSize(); }), 16));
+        return 17;
     }
 
     std::string ToString() const { return ""; }
@@ -9201,7 +9201,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return s_.GetSize();
+        return 17;
     }
 
     std::string ToString() const { return ""; }
@@ -9265,7 +9265,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((((a_.has_value() ? 0 : 1) == 0) ? 3 : 0) + (((b_.has_value() ? 1 : 0) == 1) ? 4 : 0));
+        return 1 + (a_.has_value() ? 3 : 0) + (b_.has_value() ? 4 : 0);
     }
 
     std::string ToString() const { return ""; }
@@ -9400,7 +9400,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((((a_.has_value() ? 0 : 1) == 0) ? 2 : 0) + (((b_.has_value() ? 1 : 0) == 1) ? 2 : 0));
+        return 1 + (a_.has_value() ? 2 : 0) + (b_.has_value() ? 2 : 0);
     }
 
     std::string ToString() const { return ""; }
@@ -9531,7 +9531,7 @@ public:
     }
 
     size_t GetSize() const override {
-        return 1 + ((((a_.has_value() ? 0 : 1) == 0) ? a_->GetSize() : 0) + (((b_.has_value() ? 1 : 0) == 1) ? b_->GetSize() : 0));
+        return 1 + (a_.has_value() ? 1 : 0) + (b_.has_value() ? b_->GetSize() : 0);
     }
 
     std::string ToString() const { return ""; }

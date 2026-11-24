@@ -1333,6 +1333,10 @@ impl<'a> Encoder<'a> {
         // Accumulate the size of all fields in the packet declaration.
         let mut packet_size = RuntimeSize::default();
         for f in decl.fields() {
+            if let Some(padded_size) = self.schema.padded_size(f.key) {
+                packet_size += padded_size;
+                continue;
+            }
             match &f.desc {
                 ast::FieldDesc::Scalar { id, width, .. } if f.cond.is_some() => {
                     packet_size += format!("({id}_.has_value() ? {} : 0)", *width / 8)
@@ -1347,7 +1351,7 @@ impl<'a> Encoder<'a> {
                         (_, Some(_)) => {
                             packet_size += format!("({id}_.has_value() ? {id}_->GetSize() : 0)")
                         }
-                        (_, None) => packet_size += format!("({id}_.GetSize()"),
+                        (_, None) => packet_size += format!("{id}_.GetSize()"),
                     }
                 }
                 ast::FieldDesc::Array { id, .. } => {
@@ -1357,10 +1361,10 @@ impl<'a> Encoder<'a> {
                     use analyzer::{ArraySize, ElementSize};
                     match (element_size, array_size) {
                         (ElementSize::Static(width), ArraySize::StaticCount(count)) => {
-                            packet_size += width * count
+                            packet_size += 8 * width * count
                         }
                         (ElementSize::Static(width), _) => {
-                            packet_size += format!("{} * {id}_.size()", width / 8)
+                            packet_size += format!("{width} * {id}_.size()")
                         }
                         _ => {
                             packet_size += format!(
@@ -1666,111 +1670,68 @@ impl<'a> Encoder<'a> {
         children: &[&'a ast::Decl],
         field: &'a ast::Field,
     ) {
-        let get_field_expr = |f: &ast::Field| -> String {
-            if let Some(fid) = f.id() {
-                if let Some(constraint) = self.constraints.get(fid) {
-                    if let Some(tag_id) = &constraint.tag_id {
-                        let type_id = match &f.desc {
-                            ast::FieldDesc::Typedef { type_id, .. } => Some(type_id.as_str()),
-                            ast::FieldDesc::Array { type_id, .. } => type_id.as_deref(),
-                            _ => None,
-                        };
-                        if let Some(type_id) = type_id {
-                            return format!("{}::{}", type_id, tag_id);
+        let byteorder = self.byteorder();
+        match &field.desc {
+            _ if field.cond.is_some() => self.encode_optional_field(field),
+            _ if self.scope.is_bitfield(field) => self.encode_bit_field(decl, children, field),
+            ast::FieldDesc::Array { id, type_id, width, .. } => {
+                let padded_size = self.schema.padded_size(field.key);
+                if padded_size.is_some() {
+                    self.append(&format!("size_t {id}_start = output.size();"));
+                }
+
+                self.append(&format!("for (auto const& element : {id}_) {{"));
+                self.indent();
+
+                if let Some(tid) = type_id {
+                    let td = self.scope.typedef.get(tid).unwrap();
+                    match &td.desc {
+                        ast::DeclDesc::Enum { width, .. } => {
+                            let ty = get_cxx_scalar_type(*width);
+                            self.append(&format!("pdl::packet::Builder::write_{byteorder}<{ty}, {}>(output, {ty}(element));", width / 8));
+                        }
+                        _ => {
+                            self.append("if (!element.Serialize(output)) {");
+                            self.append("    return false;");
+                            self.append("}");
                         }
                     }
-                    return format!("{:#x}", constraint.value.unwrap());
+                } else {
+                    let element_width = width.unwrap();
+                    let backing_type = get_cxx_scalar_type(element_width);
+                    self.append(&format!("pdl::packet::Builder::write_{byteorder}<{}, {}>(output, static_cast<{}>(element));", backing_type, element_width / 8, backing_type));
                 }
-            }
-            match &f.desc {
-                ast::FieldDesc::Flag { optional_field_ids, .. } => {
-                    let (opt_id, val_present) = &optional_field_ids[0];
-                    let val_absent = if *val_present == 0 { 1 } else { 0 };
-                    format!("({opt_id}_.has_value() ? {val_present} : {val_absent})")
-                }
-                _ => format!("{}_", f.id().unwrap()),
-            }
-        };
 
-        let field_var = field.id().map(|_| get_field_expr(field));
-        let byteorder = match self.endianness {
-            ast::EndiannessValue::LittleEndian => "le",
-            ast::EndiannessValue::BigEndian => "be",
-        };
+                self.unindent();
+                self.append("}");
 
-        if field.cond.is_some() {
-            self.encode_optional_field(field);
-        } else if self.scope.is_bitfield(field) {
-            self.encode_bit_field(decl, children, field);
-        } else {
-            match &field.desc {
-                ast::FieldDesc::Array { id, type_id, width, .. } => {
-                    let padded_size = self.schema.padded_size(field.key);
-                    if padded_size.is_some() {
-                        self.append(&format!("size_t {0}_start = output.size();", id));
-                    }
-                    if let Some(v) = field_var {
-                        self.append(&format!("for (auto const& element : {}) {{", v));
-                        self.indent();
-                        if let Some(tid) = type_id {
-                            let td = self.scope.typedef.get(tid).unwrap();
-                            match &td.desc {
-                                ast::DeclDesc::Enum { width, .. } => {
-                                    let ty = get_cxx_scalar_type(*width);
-                                    self.append(&format!("pdl::packet::Builder::write_{byteorder}<{ty}, {}>(output, {ty}(element));", width / 8));
-                                }
-                                _ => {
-                                    self.append("if (!element.Serialize(output)) {");
-                                    self.append("    return false;");
-                                    self.append("}");
-                                }
-                            }
-                        } else {
-                            let element_width = width.unwrap();
-                            let backing_type = get_cxx_scalar_type(element_width);
-                            self.append(&format!("pdl::packet::Builder::write_{}<{}, {}>(output, static_cast<{}>(element));", byteorder, backing_type, element_width / 8, backing_type));
-                        }
-                        self.unindent();
-                        self.append("}");
-                    }
-                    if let Some(ps) = padded_size {
-                        let ps_bytes = ps / 8;
-                        self.append(&format!(
-                            "if (output.size() - {0}_start > {1}) {{",
-                            id, ps_bytes
-                        ));
-                        self.append("    return false;");
-                        self.append("}");
-                        self.append(&format!(
-                            "if (output.size() - {0}_start < {1}) {{",
-                            id, ps_bytes
-                        ));
-                        self.append(&format!(
-                            "    output.resize({0}_start + {1}, 0);",
-                            id, ps_bytes
-                        ));
-                        self.append("}");
-                    }
-                }
-                ast::FieldDesc::Typedef { .. } => {
-                    self.append(&format!("if (!{}.Serialize(output)) {{", field_var.unwrap()));
+                if let Some(ps) = padded_size {
+                    let ps_bytes = ps / 8;
+                    self.append(&format!("if (output.size() - {0}_start > {1}) {{", id, ps_bytes));
                     self.append("    return false;");
                     self.append("}");
+                    self.append(&format!("if (output.size() - {0}_start < {1}) {{", id, ps_bytes));
+                    self.append(&format!("    output.resize({0}_start + {1}, 0);", id, ps_bytes));
+                    self.append("}");
                 }
-                ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
-                    if children.is_empty() {
-                        // The current declaration corresponds to the packet being generated.
-                        // The payload is encoded as a builder field in this case.
-                        self.append(
-                            "output.insert(output.end(), payload_.begin(), payload_.end());",
-                        );
-                    } else {
-                        // Serialize the children fields in place of the parent payload.
-                        self.encode(children[0], &children[1..])
-                    }
-                }
-                _ => {}
             }
+            ast::FieldDesc::Typedef { id, .. } => {
+                self.append(&format!("if (!{id}_.Serialize(output)) {{"));
+                self.append("    return false;");
+                self.append("}");
+            }
+            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+                if children.is_empty() {
+                    // The current declaration corresponds to the packet being generated.
+                    // The payload is encoded as a builder field in this case.
+                    self.append("output.insert(output.end(), payload_.begin(), payload_.end());");
+                } else {
+                    // Serialize the children fields in place of the parent payload.
+                    self.encode(children[0], &children[1..])
+                }
+            }
+            ast::FieldDesc::Padding { .. } => (),
+            _ => unreachable!(),
         }
     }
 }
@@ -2255,131 +2216,21 @@ fn generate_packet_builder(
 
     let mut all_decls = scope.iter_parents_and_self(decl).collect::<Vec<_>>();
     all_decls.reverse();
+
     let mut serializer = Encoder::new(scope, schema, endianness, parent_constraints.clone());
     serializer.encode(all_decls[0], &all_decls[1..]);
     serializer.append("return true;");
 
+    let encoded_size = match serializer.compute_partial_packet_size(all_decls[0], &all_decls[1..]) {
+        RuntimeSize { constant: 0, variable } if variable.is_empty() => "0".to_owned(),
+        RuntimeSize { constant: 0, variable } => variable.join(" + "),
+        RuntimeSize { constant, variable } if variable.is_empty() => format!("{}", constant / 8),
+        RuntimeSize { constant, variable } => {
+            format!("{} + {}", constant / 8, variable.join(" + "))
+        }
+    };
+
     let field_serializers = serializer.code;
-
-    let mut variable_widths = Vec::new();
-    let mut static_bits = 0;
-
-    let get_field_expr = |f: &ast::Field| -> String {
-        if let Some(fid) = f.id() {
-            if let Some(constraint) = parent_constraints.get(fid) {
-                return format!("{:#x}", constraint.value.unwrap());
-            }
-        }
-        match &f.desc {
-            ast::FieldDesc::Flag { optional_field_ids, .. } => {
-                let (opt_id, val_present) = &optional_field_ids[0];
-                let val_absent = if *val_present == 0 { 1 } else { 0 };
-                format!("({0}_.has_value() ? {1} : {2})", opt_id, val_present, val_absent)
-            }
-            _ => format!("{}_", f.id().unwrap()),
-        }
-    };
-
-    for f in &all_fields {
-        let field_size = schema.field_size(f.key);
-        match &f.desc {
-            ast::FieldDesc::Scalar { width, .. } => {
-                if let Some(cond) = &f.cond {
-                    let cond_field = scope
-                        .iter_fields(decl)
-                        .find(|f| f.id() == Some(&cond.id))
-                        .expect("Cond field not found");
-                    let cond_field_var = get_field_expr(cond_field);
-                    variable_widths.push(format!(
-                        "(({} == {}) ? {} : 0)",
-                        cond_field_var,
-                        cond.value.unwrap(),
-                        width / 8
-                    ));
-                } else {
-                    static_bits += width;
-                }
-            }
-            ast::FieldDesc::Typedef { id: _, type_id, .. } => {
-                let type_decl = scope.typedef.get(type_id).unwrap();
-                let width = match &type_decl.desc {
-                    ast::DeclDesc::Enum { width, .. } => *width,
-                    _ => 0,
-                };
-                if let Some(cond) = &f.cond {
-                    let cond_field = scope
-                        .iter_fields(decl)
-                        .find(|f| f.id() == Some(&cond.id))
-                        .expect("Cond field not found");
-                    let cond_field_var = get_field_expr(cond_field);
-                    if width > 0 {
-                        variable_widths.push(format!(
-                            "(({} == {}) ? {} : 0)",
-                            cond_field_var,
-                            cond.value.unwrap(),
-                            width / 8
-                        ));
-                    } else {
-                        variable_widths.push(format!(
-                            "(({} == {}) ? {}_->GetSize() : 0)",
-                            cond_field_var,
-                            cond.value.unwrap(),
-                            f.id().unwrap()
-                        ));
-                    }
-                } else if width > 0 {
-                    static_bits += width;
-                } else {
-                    variable_widths.push(format!("{}_.GetSize()", f.id().unwrap()));
-                }
-            }
-            ast::FieldDesc::Array { id, width, type_id, .. } => {
-                let padded_size = schema.padded_size(f.key);
-                let array_size = if let Some(w) = width {
-                    format!("({0}_.size() * {1})", id, w / 8)
-                } else if let Some(tid) = type_id {
-                    let td = scope.typedef.get(tid).unwrap();
-                    match &td.desc {
-                        ast::DeclDesc::Enum { width, .. } => {
-                            format!("({0}_.size() * {1})", id, width / 8)
-                        }
-                        _ => format!(
-                            "std::accumulate({0}_.begin(), {0}_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) {{ return s + e.GetSize(); }})",
-                            id
-                        ),
-                    }
-                } else {
-                    format!(
-                        "std::accumulate({0}_.begin(), {0}_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) {{ return s + e.GetSize(); }})",
-                        id
-                    )
-                };
-
-                if let Some(ps) = padded_size {
-                    variable_widths.push(format!("std::max<size_t>({}, {})", array_size, ps / 8));
-                } else {
-                    variable_widths.push(array_size);
-                }
-            }
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
-                variable_widths.push("payload_.size()".to_string());
-            }
-            _ => {
-                if let analyzer::Size::Static(bits) = field_size {
-                    static_bits += bits;
-                }
-            }
-        }
-    }
-
-    let size_expr = if variable_widths.is_empty() {
-        format!("return {};", static_bits / 8)
-    } else if static_bits > 0 {
-        format!("return {} + ({});", static_bits / 8, variable_widths.join(" + "))
-    } else {
-        format!("return {};", variable_widths.join(" + "))
-    };
-
     let constructor = if constructor_params.is_empty() {
         format!("    {0}() = default;", class_name)
     } else {
@@ -2406,7 +2257,7 @@ public:
     }}
 
     size_t GetSize() const override {{
-        {size_expr}
+        return {encoded_size};
     }}
 
     std::string ToString() const {{ return ""; }}
@@ -2417,7 +2268,6 @@ public:
         class_name = class_name,
         constructor = constructor,
         field_serializers = indent(&field_serializers.join("\n"), 2),
-        size_expr = size_expr,
         field_members = indent(&field_members.join("\n"), 1)
     )
 }
@@ -2529,122 +2379,16 @@ fn generate_struct_declaration(
     serializer.encode(all_decls[0], &all_decls[1..]);
     serializer.append("return true;");
 
+    let encoded_size = match serializer.compute_partial_packet_size(all_decls[0], &all_decls[1..]) {
+        RuntimeSize { constant: 0, variable } if variable.is_empty() => "0".to_owned(),
+        RuntimeSize { constant: 0, variable } => variable.join(" + "),
+        RuntimeSize { constant, variable } if variable.is_empty() => format!("{}", constant / 8),
+        RuntimeSize { constant, variable } => {
+            format!("{} + {}", constant / 8, variable.join(" + "))
+        }
+    };
+
     let field_serializers = serializer.code;
-
-    let mut variable_widths = Vec::new();
-    let mut static_bits = 0;
-
-    let get_field_expr = |f: &ast::Field| -> String {
-        match &f.desc {
-            ast::FieldDesc::Flag { optional_field_ids, .. } => {
-                let (opt_id, val_present) = &optional_field_ids[0];
-                let val_absent = if *val_present == 0 { 1 } else { 0 };
-                format!("({0}_.has_value() ? {1} : {2})", opt_id, val_present, val_absent)
-            }
-            _ => format!("{}_", f.id().unwrap()),
-        }
-    };
-
-    for f in decl.fields() {
-        let field_size = schema.field_size(f.key);
-        match &f.desc {
-            ast::FieldDesc::Scalar { width, .. } => {
-                if let Some(cond) = &f.cond {
-                    let cond_field = scope
-                        .iter_fields(decl)
-                        .find(|f| f.id() == Some(&cond.id))
-                        .expect("Cond field not found");
-                    let cond_field_var = get_field_expr(cond_field);
-                    variable_widths.push(format!(
-                        "(({} == {}) ? {} : 0)",
-                        cond_field_var,
-                        cond.value.unwrap(),
-                        width / 8
-                    ));
-                } else {
-                    static_bits += width;
-                }
-            }
-            ast::FieldDesc::Typedef { id: _, type_id, .. } => {
-                let type_decl = scope.typedef.get(type_id).unwrap();
-                let width = match &type_decl.desc {
-                    ast::DeclDesc::Enum { width, .. } => *width,
-                    _ => 0,
-                };
-                if let Some(cond) = &f.cond {
-                    let cond_field = scope
-                        .iter_fields(decl)
-                        .find(|f| f.id() == Some(&cond.id))
-                        .expect("Cond field not found");
-                    let cond_field_var = get_field_expr(cond_field);
-                    if width > 0 {
-                        variable_widths.push(format!(
-                            "(({} == {}) ? {} : 0)",
-                            cond_field_var,
-                            cond.value.unwrap(),
-                            width / 8
-                        ));
-                    } else {
-                        variable_widths.push(format!(
-                            "(({} == {}) ? {}_->GetSize() : 0)",
-                            cond_field_var,
-                            cond.value.unwrap(),
-                            f.id().unwrap()
-                        ));
-                    }
-                } else if width > 0 {
-                    static_bits += width;
-                } else {
-                    variable_widths.push(format!("{}_.GetSize()", f.id().unwrap()));
-                }
-            }
-            ast::FieldDesc::Array { id, width, type_id, .. } => {
-                let padded_size = schema.padded_size(f.key);
-                let array_size = if let Some(w) = width {
-                    format!("({0}_.size() * {1})", id, w / 8)
-                } else if let Some(tid) = type_id {
-                    let td = scope.typedef.get(tid).unwrap();
-                    match &td.desc {
-                        ast::DeclDesc::Enum { width, .. } => {
-                            format!("({0}_.size() * {1})", id, width / 8)
-                        }
-                        _ => format!(
-                            "std::accumulate({0}_.begin(), {0}_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) {{ return s + e.GetSize(); }})",
-                            id
-                        ),
-                    }
-                } else {
-                    format!(
-                        "std::accumulate({0}_.begin(), {0}_.end(), static_cast<size_t>(0), [](size_t s, auto const& e) {{ return s + e.GetSize(); }})",
-                        id
-                    )
-                };
-
-                if let Some(ps) = padded_size {
-                    variable_widths.push(format!("std::max<size_t>({}, {})", array_size, ps / 8));
-                } else {
-                    variable_widths.push(array_size);
-                }
-            }
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
-                variable_widths.push("payload_.size()".to_string());
-            }
-            _ => {
-                if let analyzer::Size::Static(bits) = field_size {
-                    static_bits += bits;
-                }
-            }
-        }
-    }
-
-    let size_expr = if variable_widths.is_empty() {
-        format!("{}", static_bits / 8)
-    } else if static_bits > 0 {
-        format!("{} + ({})", static_bits / 8, variable_widths.join(" + "))
-    } else {
-        variable_widths.join(" + ").to_string()
-    };
-
     let constructor = if !constructor_params.is_empty() {
         format!(
             "    explicit {id}({constructor_parameters}) : {initializer_list} {{}}",
@@ -2675,7 +2419,7 @@ public:
     }}
 
     size_t GetSize() const override {{
-        return {size_expr};
+        return {encoded_size};
     }}
 
     std::string ToString() const {{ return ""; }}
