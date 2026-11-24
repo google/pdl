@@ -322,7 +322,6 @@ impl<'d> Scope<'d> {
             | FieldDesc::Size { .. }
             | FieldDesc::Count { .. }
             | FieldDesc::ElementSize { .. }
-            | FieldDesc::Body
             | FieldDesc::Payload { .. }
             | FieldDesc::FixedScalar { .. }
             | FieldDesc::Reserved { .. }
@@ -386,7 +385,7 @@ impl Schema {
                 // Sum the size of the non payload fields to get the
                 // declaration size. Lookup the payload field size.
                 match &field.desc {
-                    FieldDesc::Payload { .. } | FieldDesc::Body => payload_size = field_size,
+                    FieldDesc::Payload { .. } => payload_size = field_size,
                     _ => {
                         decl_size = decl_size
                             + match schema.padded_size.get(&field.key).unwrap() {
@@ -432,11 +431,9 @@ impl Schema {
                 | FieldDesc::Reserved { width }
                 | FieldDesc::Scalar { width, .. } => Size::Static(*width),
                 FieldDesc::Flag { .. } => Size::Static(1),
-                FieldDesc::Body | FieldDesc::Payload { .. } => {
+                FieldDesc::Payload { .. } => {
                     let has_payload_size = decl.fields().any(|field| match &field.desc {
-                        FieldDesc::Size { field_id, .. } => {
-                            field_id == "_body_" || field_id == "_payload_"
-                        }
+                        FieldDesc::Size { field_id, .. } => field_id == "_payload_",
                         _ => false,
                     });
                     if has_payload_size { Size::Dynamic } else { Size::Unknown }
@@ -1302,7 +1299,6 @@ fn check_size_fields(file: &File) -> Result<(), Diagnostics> {
                 FieldDesc::Size { field_id, .. } => {
                     match decl.fields().find(|field| match &field.desc {
                         FieldDesc::Payload { .. } => field_id == "_payload_",
-                        FieldDesc::Body => field_id == "_body_",
                         _ => field.id() == Some(field_id),
                     }) {
                         None => diagnostics.push(
@@ -1318,8 +1314,7 @@ fn check_size_fields(file: &File) -> Result<(), Diagnostics> {
                                     "hint: expected payload, body, or array identifier".to_owned(),
                                 ]),
                         ),
-                        Some(Field { desc: FieldDesc::Body, .. })
-                        | Some(Field { desc: FieldDesc::Payload { .. }, .. })
+                        Some(Field { desc: FieldDesc::Payload { .. }, .. })
                         | Some(Field { desc: FieldDesc::Array { .. }, .. }) => (),
                         Some(Field { loc, .. }) => diagnostics.push(
                             Diagnostic::error()
@@ -1465,26 +1460,23 @@ fn check_payload_fields(file: &File) -> Result<(), Diagnostics> {
     for decl in &file.declarations {
         let mut payload: Option<&Field> = None;
         for field in decl.fields() {
-            match &field.desc {
-                FieldDesc::Payload { .. } | FieldDesc::Body => {
-                    if let Some(prev) = payload {
-                        diagnostics.push(
-                            Diagnostic::error()
-                                .with_code(ErrorCode::DuplicatePayloadField)
-                                .with_message(format!("duplicate {} field", field.kind()))
-                                .with_labels(vec![
-                                    field.loc.primary(),
-                                    prev.loc.secondary().with_message(format!(
-                                        "{} is first declared here",
-                                        prev.kind()
-                                    )),
-                                ]),
-                        )
-                    } else {
-                        payload = Some(field);
-                    }
+            if let FieldDesc::Payload { .. } = &field.desc {
+                if let Some(prev) = payload {
+                    diagnostics.push(
+                        Diagnostic::error()
+                            .with_code(ErrorCode::DuplicatePayloadField)
+                            .with_message(format!("duplicate {} field", field.kind()))
+                            .with_labels(vec![
+                                field.loc.primary(),
+                                prev.loc.secondary().with_message(format!(
+                                    "{} is first declared here",
+                                    prev.kind()
+                                )),
+                            ]),
+                    )
+                } else {
+                    payload = Some(field);
                 }
-                _ => (),
             }
         }
 
@@ -1688,7 +1680,6 @@ fn check_field_offsets(file: &File, scope: &Scope, schema: &Schema) -> Result<()
                         Some(Decl { desc: DeclDesc::Enum { .. }, .. })
                     ) => {}
                 FieldDesc::Payload { .. }
-                | FieldDesc::Body
                 | FieldDesc::Typedef { .. }
                 | FieldDesc::Array { .. }
                 | FieldDesc::Padding { .. }

@@ -319,7 +319,7 @@ impl Field {
             FieldDesc::Scalar { .. } | FieldDesc::Size { .. } | FieldDesc::Count { .. } => {
                 quote!($field == $other)
             }
-            FieldDesc::Body | FieldDesc::Payload { .. } | FieldDesc::Array { .. } => {
+            FieldDesc::Payload { .. } | FieldDesc::Array { .. } => {
                 quote!(Arrays.equals($field, $other))
             }
             FieldDesc::Typedef { .. } | FieldDesc::FixedEnum { .. } => {
@@ -410,7 +410,6 @@ fn json_id_to_field<'a>(field_id: &'a str, mut fields: Iter<'a, Field>) -> Optio
     fields.find(|field| match field.desc {
         _ if field.id().is_some_and(|id| id == field_id) => true,
         FieldDesc::Payload { .. } if field_id == "payload" => true,
-        FieldDesc::Body if field_id == "body" => true,
         _ => false,
     })
 }
