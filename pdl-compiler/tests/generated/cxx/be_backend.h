@@ -14,15 +14,6 @@
 
 #include <packet_runtime.h>
 
-#ifndef _ASSERT_VALID
-#ifdef ASSERT
-#define _ASSERT_VALID ASSERT
-#else
-#include <cassert>
-#define _ASSERT_VALID assert
-#endif  // ASSERT
-#endif  // !_ASSERT_VALID
-
 namespace be_backend {
 class ScalarParentView;
 class EnumParentView;
@@ -308,31 +299,29 @@ public:
 
 class ScalarParentView {
 public:
-    static ScalarParentView Create(pdl::packet::slice const& parent) {
-        return ScalarParentView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<ScalarParentView> Decode(pdl::packet::slice const& parent) {
+        ScalarParentView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    uint8_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+    uint8_t GetA() const { return a_; }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit ScalarParentView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit ScalarParentView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -350,7 +339,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t a_;
     pdl::packet::slice payload_;
@@ -394,31 +382,29 @@ public:
 
 class EnumParentView {
 public:
-    static EnumParentView Create(pdl::packet::slice const& parent) {
-        return EnumParentView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<EnumParentView> Decode(pdl::packet::slice const& parent) {
+        EnumParentView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Enum16 GetA() const { _ASSERT_VALID(valid_); return a_; }
+    Enum16 GetA() const { return a_; }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit EnumParentView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit EnumParentView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -440,7 +426,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Enum16 a_{Enum16::A};
     pdl::packet::slice payload_;
@@ -484,34 +469,31 @@ public:
 
 class EmptyParentView {
 public:
-    static EmptyParentView Create(ScalarParentView const& parent) {
-        return EmptyParentView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<EmptyParentView> Decode(ScalarParentView const& parent) {
+        EmptyParentView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    uint8_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+    uint8_t GetA() const { return a_; }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit EmptyParentView(ScalarParentView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit EmptyParentView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(ScalarParentView const& parent) {
-        if (!parent.IsValid()) { return false; }
         a_ = parent.a_;
         pdl::packet::slice span = parent.payload_;
         payload_ = span;
@@ -522,7 +504,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t a_;
     pdl::packet::slice payload_;
@@ -563,29 +544,28 @@ public:
 
 class Packet_Scalar_FieldView {
 public:
-    static Packet_Scalar_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_Scalar_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Scalar_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_Scalar_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    uint8_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+    uint8_t GetA() const { return a_; }
 
-    uint64_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+    uint64_t GetC() const { return c_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Scalar_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Scalar_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -601,7 +581,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t a_;
     uint64_t c_;
@@ -641,29 +620,28 @@ public:
 
 class Packet_Enum_FieldView {
 public:
-    static Packet_Enum_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_Enum_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Enum_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_Enum_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Enum7 GetA() const { _ASSERT_VALID(valid_); return a_; }
+    Enum7 GetA() const { return a_; }
 
-    uint64_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+    uint64_t GetC() const { return c_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Enum_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Enum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -683,7 +661,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Enum7 a_{Enum7::A};
     uint64_t c_;
@@ -726,29 +703,28 @@ public:
 
 class Packet_Reserved_FieldView {
 public:
-    static Packet_Reserved_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_Reserved_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Reserved_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_Reserved_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    uint8_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+    uint8_t GetA() const { return a_; }
 
-    uint64_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+    uint64_t GetC() const { return c_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Reserved_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Reserved_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -764,7 +740,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t a_;
     uint64_t c_;
@@ -804,14 +779,19 @@ public:
 
 class Packet_Size_FieldView {
 public:
-    static Packet_Size_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_Size_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Size_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_Size_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    uint64_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+    uint64_t GetA() const { return a_; }
 
     std::vector<uint8_t> GetB() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = b_;
         std::vector<uint8_t> elements;
         while (span.size() > 0 && span.size() >= 1) {
@@ -822,19 +802,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Size_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Size_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -858,7 +831,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint64_t a_;
     pdl::packet::slice b_;
@@ -902,14 +874,19 @@ public:
 
 class Packet_Count_FieldView {
 public:
-    static Packet_Count_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_Count_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Count_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_Count_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    uint64_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+    uint64_t GetA() const { return a_; }
 
     std::vector<uint8_t> GetB() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = b_;
         std::vector<uint8_t> elements;
         while (elements.size() < b_count_ && span.size() >= 1) {
@@ -920,19 +897,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Count_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Count_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -953,7 +923,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t b_count_ {0};
     uint64_t a_;
@@ -997,27 +966,26 @@ public:
 
 class Packet_FixedScalar_FieldView {
 public:
-    static Packet_FixedScalar_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_FixedScalar_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_FixedScalar_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_FixedScalar_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    uint64_t GetB() const { _ASSERT_VALID(valid_); return b_; }
+    uint64_t GetB() const { return b_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_FixedScalar_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_FixedScalar_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1035,7 +1003,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint64_t b_;
 
@@ -1070,27 +1037,26 @@ public:
 
 class Packet_FixedEnum_FieldView {
 public:
-    static Packet_FixedEnum_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_FixedEnum_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_FixedEnum_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_FixedEnum_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    uint64_t GetB() const { _ASSERT_VALID(valid_); return b_; }
+    uint64_t GetB() const { return b_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_FixedEnum_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_FixedEnum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1108,7 +1074,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint64_t b_;
 
@@ -1143,31 +1108,30 @@ public:
 
 class Packet_Enum_Field_PackedView {
 public:
-    static Packet_Enum_Field_PackedView Create(pdl::packet::slice const& parent) {
-        return Packet_Enum_Field_PackedView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Enum_Field_PackedView> Decode(pdl::packet::slice const& parent) {
+        Packet_Enum_Field_PackedView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Enum7 GetA() const { _ASSERT_VALID(valid_); return a_; }
+    Enum7 GetA() const { return a_; }
 
-    Enum7 GetB() const { _ASSERT_VALID(valid_); return b_; }
+    Enum7 GetB() const { return b_; }
 
-    uint8_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+    uint8_t GetC() const { return c_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Enum_Field_PackedView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Enum_Field_PackedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1192,7 +1156,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Enum7 a_{Enum7::A};
     Enum7 b_{Enum7::A};
@@ -1243,29 +1206,27 @@ public:
 
 class Packet_Payload_Field_VariableSizeView {
 public:
-    static Packet_Payload_Field_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Payload_Field_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Payload_Field_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Payload_Field_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Payload_Field_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Payload_Field_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1283,7 +1244,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
 
@@ -1320,29 +1280,27 @@ public:
 
 class Packet_Payload_Field_SizeModifierView {
 public:
-    static Packet_Payload_Field_SizeModifierView Create(pdl::packet::slice const& parent) {
-        return Packet_Payload_Field_SizeModifierView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Payload_Field_SizeModifierView> Decode(pdl::packet::slice const& parent) {
+        Packet_Payload_Field_SizeModifierView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Payload_Field_SizeModifierView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Payload_Field_SizeModifierView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1360,7 +1318,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
 
@@ -1398,31 +1355,29 @@ public:
 
 class Packet_Payload_Field_UnknownSizeView {
 public:
-    static Packet_Payload_Field_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Payload_Field_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Payload_Field_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Payload_Field_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
-    uint16_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+    uint16_t GetA() const { return a_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Payload_Field_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Payload_Field_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1440,7 +1395,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
     uint16_t a_;
@@ -1475,31 +1429,29 @@ public:
 
 class Packet_Payload_Field_UnknownSize_TerminalView {
 public:
-    static Packet_Payload_Field_UnknownSize_TerminalView Create(pdl::packet::slice const& parent) {
-        return Packet_Payload_Field_UnknownSize_TerminalView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Payload_Field_UnknownSize_TerminalView> Decode(pdl::packet::slice const& parent) {
+        Packet_Payload_Field_UnknownSize_TerminalView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    uint16_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+    uint16_t GetA() const { return a_; }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Payload_Field_UnknownSize_TerminalView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Payload_Field_UnknownSize_TerminalView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1515,7 +1467,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint16_t a_;
     pdl::packet::slice payload_;
@@ -1550,29 +1501,27 @@ public:
 
 class Packet_Body_Field_VariableSizeView {
 public:
-    static Packet_Body_Field_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Body_Field_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Body_Field_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Body_Field_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Body_Field_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Body_Field_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1590,7 +1539,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
 
@@ -1627,31 +1575,29 @@ public:
 
 class Packet_Body_Field_UnknownSizeView {
 public:
-    static Packet_Body_Field_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Body_Field_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Body_Field_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Body_Field_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
-    uint16_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+    uint16_t GetA() const { return a_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Body_Field_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Body_Field_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1669,7 +1615,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
     uint16_t a_;
@@ -1704,31 +1649,29 @@ public:
 
 class Packet_Body_Field_UnknownSize_TerminalView {
 public:
-    static Packet_Body_Field_UnknownSize_TerminalView Create(pdl::packet::slice const& parent) {
-        return Packet_Body_Field_UnknownSize_TerminalView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Body_Field_UnknownSize_TerminalView> Decode(pdl::packet::slice const& parent) {
+        Packet_Body_Field_UnknownSize_TerminalView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    uint16_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+    uint16_t GetA() const { return a_; }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Body_Field_UnknownSize_TerminalView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Body_Field_UnknownSize_TerminalView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1744,7 +1687,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint16_t a_;
     pdl::packet::slice payload_;
@@ -1779,26 +1721,25 @@ public:
 
 class Packet_ScalarGroup_FieldView {
 public:
-    static Packet_ScalarGroup_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_ScalarGroup_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_ScalarGroup_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_ScalarGroup_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_ScalarGroup_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_ScalarGroup_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1814,7 +1755,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
 
 
@@ -1845,26 +1785,25 @@ public:
 
 class Packet_EnumGroup_FieldView {
 public:
-    static Packet_EnumGroup_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_EnumGroup_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_EnumGroup_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_EnumGroup_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_EnumGroup_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_EnumGroup_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1880,7 +1819,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
 
 
@@ -1911,29 +1849,28 @@ public:
 
 class Packet_Struct_FieldView {
 public:
-    static Packet_Struct_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_Struct_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Struct_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_Struct_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    SizedStruct const& GetA() const { _ASSERT_VALID(valid_); return a_; }
+    SizedStruct const& GetA() const { return a_; }
 
-    UnsizedStruct const& GetB() const { _ASSERT_VALID(valid_); return b_; }
+    UnsizedStruct const& GetB() const { return b_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Struct_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Struct_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -1945,7 +1882,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     SizedStruct a_;
     UnsizedStruct b_;
@@ -1984,12 +1920,17 @@ public:
 
 class Packet_Array_Field_ByteElement_ConstantSizeView {
 public:
-    static Packet_Array_Field_ByteElement_ConstantSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_ByteElement_ConstantSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_ByteElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_ByteElement_ConstantSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::array<uint8_t, 4> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::array<uint8_t, 4> elements;
         for (int n = 0; n < 4; n++) {
@@ -2000,19 +1941,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_ByteElement_ConstantSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_ByteElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2027,7 +1961,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -2061,12 +1994,17 @@ public:
 
 class Packet_Array_Field_ByteElement_VariableSizeView {
 public:
-    static Packet_Array_Field_ByteElement_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_ByteElement_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_ByteElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_ByteElement_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<uint8_t> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<uint8_t> elements;
         while (span.size() > 0 && span.size() >= 1) {
@@ -2077,19 +2015,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_ByteElement_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_ByteElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2112,7 +2043,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -2151,12 +2081,17 @@ public:
 
 class Packet_Array_Field_ByteElement_VariableCountView {
 public:
-    static Packet_Array_Field_ByteElement_VariableCountView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_ByteElement_VariableCountView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_ByteElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_ByteElement_VariableCountView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<uint8_t> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<uint8_t> elements;
         while (elements.size() < array_count_ && span.size() >= 1) {
@@ -2167,19 +2102,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_ByteElement_VariableCountView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_ByteElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2199,7 +2127,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
     pdl::packet::slice array_;
@@ -2238,12 +2165,17 @@ public:
 
 class Packet_Array_Field_ByteElement_UnknownSizeView {
 public:
-    static Packet_Array_Field_ByteElement_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_ByteElement_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_ByteElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_ByteElement_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<uint8_t> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<uint8_t> elements;
         while (span.size() > 0 && span.size() >= 1) {
@@ -2254,19 +2186,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_ByteElement_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_ByteElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2281,7 +2206,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -2315,12 +2239,17 @@ public:
 
 class Packet_Array_Field_ScalarElement_ConstantSizeView {
 public:
-    static Packet_Array_Field_ScalarElement_ConstantSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_ScalarElement_ConstantSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_ScalarElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_ScalarElement_ConstantSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::array<uint16_t, 4> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::array<uint16_t, 4> elements;
         for (int n = 0; n < 4; n++) {
@@ -2331,19 +2260,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_ScalarElement_ConstantSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_ScalarElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2358,7 +2280,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -2392,12 +2313,17 @@ public:
 
 class Packet_Array_Field_ScalarElement_VariableSizeView {
 public:
-    static Packet_Array_Field_ScalarElement_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_ScalarElement_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_ScalarElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_ScalarElement_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<uint16_t> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<uint16_t> elements;
         while (span.size() > 0 && span.size() >= 2) {
@@ -2408,19 +2334,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_ScalarElement_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_ScalarElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2443,7 +2362,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -2482,12 +2400,17 @@ public:
 
 class Packet_Array_Field_ScalarElement_VariableCountView {
 public:
-    static Packet_Array_Field_ScalarElement_VariableCountView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_ScalarElement_VariableCountView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_ScalarElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_ScalarElement_VariableCountView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<uint16_t> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<uint16_t> elements;
         while (elements.size() < array_count_ && span.size() >= 2) {
@@ -2498,19 +2421,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_ScalarElement_VariableCountView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_ScalarElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2530,7 +2446,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
     pdl::packet::slice array_;
@@ -2569,12 +2484,17 @@ public:
 
 class Packet_Array_Field_ScalarElement_UnknownSizeView {
 public:
-    static Packet_Array_Field_ScalarElement_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_ScalarElement_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_ScalarElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_ScalarElement_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<uint16_t> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<uint16_t> elements;
         while (span.size() > 0 && span.size() >= 2) {
@@ -2585,19 +2505,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_ScalarElement_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_ScalarElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2612,7 +2525,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -2646,12 +2558,17 @@ public:
 
 class Packet_Array_Field_EnumElement_ConstantSizeView {
 public:
-    static Packet_Array_Field_EnumElement_ConstantSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_EnumElement_ConstantSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_EnumElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_EnumElement_ConstantSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::array<Enum16, 4> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::array<Enum16, 4> elements;
         for (int n = 0; n < 4; n++) {
@@ -2662,19 +2579,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_EnumElement_ConstantSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_EnumElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2689,7 +2599,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -2723,12 +2632,17 @@ public:
 
 class Packet_Array_Field_EnumElement_VariableSizeView {
 public:
-    static Packet_Array_Field_EnumElement_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_EnumElement_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_EnumElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_EnumElement_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<Enum16> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<Enum16> elements;
         while (span.size() > 0 && span.size() >= 2) {
@@ -2739,19 +2653,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_EnumElement_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_EnumElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2774,7 +2681,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -2813,12 +2719,17 @@ public:
 
 class Packet_Array_Field_EnumElement_VariableCountView {
 public:
-    static Packet_Array_Field_EnumElement_VariableCountView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_EnumElement_VariableCountView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_EnumElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_EnumElement_VariableCountView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<Enum16> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<Enum16> elements;
         while (elements.size() < array_count_ && span.size() >= 2) {
@@ -2829,19 +2740,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_EnumElement_VariableCountView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_EnumElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2861,7 +2765,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
     pdl::packet::slice array_;
@@ -2900,12 +2803,17 @@ public:
 
 class Packet_Array_Field_EnumElement_UnknownSizeView {
 public:
-    static Packet_Array_Field_EnumElement_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_EnumElement_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_EnumElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_EnumElement_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<Enum16> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<Enum16> elements;
         while (span.size() > 0 && span.size() >= 2) {
@@ -2916,19 +2824,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_EnumElement_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_EnumElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -2943,7 +2844,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -2977,12 +2877,17 @@ public:
 
 class Packet_Array_Field_SizedElement_ConstantSizeView {
 public:
-    static Packet_Array_Field_SizedElement_ConstantSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_SizedElement_ConstantSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_SizedElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_SizedElement_ConstantSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::array<SizedStruct, 4> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::array<SizedStruct, 4> elements;
         for (int n = 0; n < 4; n++) {
@@ -2993,19 +2898,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_SizedElement_ConstantSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_SizedElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -3020,7 +2918,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -3056,12 +2953,17 @@ public:
 
 class Packet_Array_Field_SizedElement_VariableSizeView {
 public:
-    static Packet_Array_Field_SizedElement_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_SizedElement_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_SizedElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_SizedElement_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<SizedStruct> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<SizedStruct> elements;
         while (span.size() > 0) {
@@ -3074,19 +2976,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_SizedElement_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_SizedElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -3109,7 +3004,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -3150,12 +3044,17 @@ public:
 
 class Packet_Array_Field_SizedElement_VariableCountView {
 public:
-    static Packet_Array_Field_SizedElement_VariableCountView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_SizedElement_VariableCountView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_SizedElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_SizedElement_VariableCountView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<SizedStruct> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<SizedStruct> elements;
         while (elements.size() < array_count_) {
@@ -3168,19 +3067,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_SizedElement_VariableCountView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_SizedElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -3200,7 +3092,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
     pdl::packet::slice array_;
@@ -3241,12 +3132,17 @@ public:
 
 class Packet_Array_Field_SizedElement_UnknownSizeView {
 public:
-    static Packet_Array_Field_SizedElement_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_SizedElement_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_SizedElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_SizedElement_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<SizedStruct> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<SizedStruct> elements;
         while (span.size() > 0) {
@@ -3259,19 +3155,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_SizedElement_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_SizedElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -3286,7 +3175,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -3322,12 +3210,17 @@ public:
 
 class Packet_Array_Field_UnsizedElement_ConstantSizeView {
 public:
-    static Packet_Array_Field_UnsizedElement_ConstantSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_UnsizedElement_ConstantSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_UnsizedElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_UnsizedElement_ConstantSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::array<UnsizedStruct, 4> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::array<UnsizedStruct, 4> elements;
         for (int n = 0; n < 4; n++) {
@@ -3338,19 +3231,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_UnsizedElement_ConstantSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_UnsizedElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -3368,7 +3254,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -3404,12 +3289,17 @@ public:
 
 class Packet_Array_Field_UnsizedElement_VariableSizeView {
 public:
-    static Packet_Array_Field_UnsizedElement_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_UnsizedElement_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_UnsizedElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_UnsizedElement_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<UnsizedStruct> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<UnsizedStruct> elements;
         while (span.size() > 0) {
@@ -3422,19 +3312,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_UnsizedElement_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_UnsizedElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -3454,7 +3337,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -3498,12 +3380,17 @@ public:
 
 class Packet_Array_Field_UnsizedElement_VariableCountView {
 public:
-    static Packet_Array_Field_UnsizedElement_VariableCountView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_UnsizedElement_VariableCountView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_UnsizedElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_UnsizedElement_VariableCountView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<UnsizedStruct> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<UnsizedStruct> elements;
         while (elements.size() < array_count_) {
@@ -3516,19 +3403,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_UnsizedElement_VariableCountView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_UnsizedElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -3551,7 +3431,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
     pdl::packet::slice array_;
@@ -3592,12 +3471,17 @@ public:
 
 class Packet_Array_Field_UnsizedElement_UnknownSizeView {
 public:
-    static Packet_Array_Field_UnsizedElement_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_UnsizedElement_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_UnsizedElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_UnsizedElement_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<UnsizedStruct> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<UnsizedStruct> elements;
         while (span.size() > 0) {
@@ -3610,19 +3494,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_UnsizedElement_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_UnsizedElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -3640,7 +3517,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -3676,12 +3552,17 @@ public:
 
 class Packet_Array_Field_UnsizedElement_SizeModifierView {
 public:
-    static Packet_Array_Field_UnsizedElement_SizeModifierView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_UnsizedElement_SizeModifierView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_UnsizedElement_SizeModifierView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_UnsizedElement_SizeModifierView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<UnsizedStruct> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<UnsizedStruct> elements;
         while (span.size() > 0) {
@@ -3694,19 +3575,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_UnsizedElement_SizeModifierView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_UnsizedElement_SizeModifierView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -3727,7 +3601,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -3772,12 +3645,17 @@ public:
 
 class Packet_Array_Field_SizedElement_VariableSize_PaddedView {
 public:
-    static Packet_Array_Field_SizedElement_VariableSize_PaddedView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_SizedElement_VariableSize_PaddedView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_SizedElement_VariableSize_PaddedView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_SizedElement_VariableSize_PaddedView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<uint16_t> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<uint16_t> elements;
         while (span.size() > 0 && span.size() >= 2) {
@@ -3788,19 +3666,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_SizedElement_VariableSize_PaddedView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_SizedElement_VariableSize_PaddedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -3828,7 +3699,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
 
@@ -3874,12 +3744,17 @@ public:
 
 class Packet_Array_Field_UnsizedElement_VariableCount_PaddedView {
 public:
-    static Packet_Array_Field_UnsizedElement_VariableCount_PaddedView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_UnsizedElement_VariableCount_PaddedView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_UnsizedElement_VariableCount_PaddedView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_UnsizedElement_VariableCount_PaddedView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<UnsizedStruct> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<UnsizedStruct> elements;
         while (elements.size() < array_count_) {
@@ -3892,19 +3767,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_UnsizedElement_VariableCount_PaddedView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_UnsizedElement_VariableCount_PaddedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -3931,7 +3799,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
     pdl::packet::slice array_;
@@ -3979,12 +3846,17 @@ public:
 
 class Packet_Array_Field_VariableElementSize_ConstantSizeView {
 public:
-    static Packet_Array_Field_VariableElementSize_ConstantSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_VariableElementSize_ConstantSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_VariableElementSize_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_VariableElementSize_ConstantSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::array<UnknownSizeStruct, 4> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::array<UnknownSizeStruct, 4> elements;
         for (int n = 0; n < 4; n++) {
@@ -3997,19 +3869,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_VariableElementSize_ConstantSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_VariableElementSize_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -4032,7 +3897,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t array_element_size_ {0};
     pdl::packet::slice array_;
@@ -4079,12 +3943,17 @@ public:
 
 class Packet_Array_Field_VariableElementSize_VariableSizeView {
 public:
-    static Packet_Array_Field_VariableElementSize_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_VariableElementSize_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_VariableElementSize_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_VariableElementSize_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<UnknownSizeStruct> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<UnknownSizeStruct> elements;
         while (span.size() > 0) {
@@ -4098,7 +3967,6 @@ public:
     }
 
     std::vector<uint8_t> GetTail() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = tail_;
         std::vector<uint8_t> elements;
         while (span.size() > 0 && span.size() >= 1) {
@@ -4109,19 +3977,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_VariableElementSize_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_VariableElementSize_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -4151,7 +4012,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t array_element_size_ {0};
     pdl::packet::slice array_;
@@ -4211,12 +4071,17 @@ public:
 
 class Packet_Array_Field_VariableElementSize_VariableCountView {
 public:
-    static Packet_Array_Field_VariableElementSize_VariableCountView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_VariableElementSize_VariableCountView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_VariableElementSize_VariableCountView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_VariableElementSize_VariableCountView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<UnknownSizeStruct> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<UnknownSizeStruct> elements;
         while (elements.size() < array_count_) {
@@ -4230,7 +4095,6 @@ public:
     }
 
     std::vector<uint8_t> GetTail() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = tail_;
         std::vector<uint8_t> elements;
         while (span.size() > 0 && span.size() >= 1) {
@@ -4241,19 +4105,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_VariableElementSize_VariableCountView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_VariableElementSize_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -4283,7 +4140,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
     uint8_t array_element_size_ {0};
@@ -4340,12 +4196,17 @@ public:
 
 class Packet_Array_Field_VariableElementSize_UnknownSizeView {
 public:
-    static Packet_Array_Field_VariableElementSize_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Packet_Array_Field_VariableElementSize_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Array_Field_VariableElementSize_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Packet_Array_Field_VariableElementSize_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     std::vector<UnknownSizeStruct> GetArray() const {
-        _ASSERT_VALID(valid_);
         pdl::packet::slice span = array_;
         std::vector<UnknownSizeStruct> elements;
         while (span.size() > 0) {
@@ -4360,19 +4221,12 @@ public:
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Array_Field_VariableElementSize_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Array_Field_VariableElementSize_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -4392,7 +4246,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t array_element_size_ {0};
     pdl::packet::slice array_;
@@ -4439,29 +4292,28 @@ public:
 
 class Packet_Optional_Scalar_FieldView {
 public:
-    static Packet_Optional_Scalar_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_Optional_Scalar_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Optional_Scalar_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_Optional_Scalar_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    std::optional<uint32_t> GetA() const { _ASSERT_VALID(valid_); return a_; }
+    std::optional<uint32_t> GetA() const { return a_; }
 
-    std::optional<uint32_t> GetB() const { _ASSERT_VALID(valid_); return b_; }
+    std::optional<uint32_t> GetB() const { return b_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Optional_Scalar_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Optional_Scalar_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -4489,7 +4341,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     std::optional<uint32_t> a_;
     std::optional<uint32_t> b_;
@@ -4540,29 +4391,28 @@ public:
 
 class Packet_Optional_Enum_FieldView {
 public:
-    static Packet_Optional_Enum_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_Optional_Enum_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Optional_Enum_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_Optional_Enum_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    std::optional<Enum16> GetA() const { _ASSERT_VALID(valid_); return a_; }
+    std::optional<Enum16> GetA() const { return a_; }
 
-    std::optional<Enum16> GetB() const { _ASSERT_VALID(valid_); return b_; }
+    std::optional<Enum16> GetB() const { return b_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Optional_Enum_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Optional_Enum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -4598,7 +4448,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     std::optional<Enum16> a_;
     std::optional<Enum16> b_;
@@ -4646,29 +4495,28 @@ public:
 
 class Packet_Optional_Struct_FieldView {
 public:
-    static Packet_Optional_Struct_FieldView Create(pdl::packet::slice const& parent) {
-        return Packet_Optional_Struct_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Packet_Optional_Struct_FieldView> Decode(pdl::packet::slice const& parent) {
+        Packet_Optional_Struct_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    std::optional<SizedStruct> GetA() const { _ASSERT_VALID(valid_); return a_; }
+    std::optional<SizedStruct> GetA() const { return a_; }
 
-    std::optional<UnsizedStruct> GetB() const { _ASSERT_VALID(valid_); return b_; }
+    std::optional<UnsizedStruct> GetB() const { return b_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Packet_Optional_Struct_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Packet_Optional_Struct_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -4696,7 +4544,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     std::optional<SizedStruct> a_;
     std::optional<UnsizedStruct> b_;
@@ -4748,32 +4595,30 @@ public:
 
 class ScalarChild_AView {
 public:
-    static ScalarChild_AView Create(ScalarParentView const& parent) {
-        return ScalarChild_AView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<ScalarChild_AView> Decode(ScalarParentView const& parent) {
+        ScalarChild_AView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     uint8_t GetA() const { return 0; }
 
-    uint8_t GetB() const { _ASSERT_VALID(valid_); return b_; }
+    uint8_t GetB() const { return b_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit ScalarChild_AView(ScalarParentView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit ScalarChild_AView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(ScalarParentView const& parent) {
-        if (!parent.IsValid()) { return false; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return false;
@@ -4785,7 +4630,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t b_;
 
@@ -4823,32 +4667,30 @@ public:
 
 class ScalarChild_BView {
 public:
-    static ScalarChild_BView Create(ScalarParentView const& parent) {
-        return ScalarChild_BView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<ScalarChild_BView> Decode(ScalarParentView const& parent) {
+        ScalarChild_BView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     uint8_t GetA() const { return 1; }
 
-    uint16_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+    uint16_t GetC() const { return c_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit ScalarChild_BView(ScalarParentView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit ScalarChild_BView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(ScalarParentView const& parent) {
-        if (!parent.IsValid()) { return false; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 2) {
             return false;
@@ -4860,7 +4702,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint16_t c_;
 
@@ -4898,32 +4739,30 @@ public:
 
 class EnumChild_AView {
 public:
-    static EnumChild_AView Create(EnumParentView const& parent) {
-        return EnumChild_AView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<EnumChild_AView> Decode(EnumParentView const& parent) {
+        EnumChild_AView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     Enum16 GetA() const { return Enum16::A; }
 
-    uint8_t GetB() const { _ASSERT_VALID(valid_); return b_; }
+    uint8_t GetB() const { return b_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit EnumChild_AView(EnumParentView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit EnumChild_AView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(EnumParentView const& parent) {
-        if (!parent.IsValid()) { return false; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return false;
@@ -4935,7 +4774,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t b_;
 
@@ -4973,32 +4811,30 @@ public:
 
 class EnumChild_BView {
 public:
-    static EnumChild_BView Create(EnumParentView const& parent) {
-        return EnumChild_BView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<EnumChild_BView> Decode(EnumParentView const& parent) {
+        EnumChild_BView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     Enum16 GetA() const { return Enum16::B; }
 
-    uint16_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+    uint16_t GetC() const { return c_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit EnumChild_BView(EnumParentView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit EnumChild_BView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(EnumParentView const& parent) {
-        if (!parent.IsValid()) { return false; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 2) {
             return false;
@@ -5010,7 +4846,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint16_t c_;
 
@@ -5048,32 +4883,30 @@ public:
 
 class AliasedChild_AView {
 public:
-    static AliasedChild_AView Create(EmptyParentView const& parent) {
-        return AliasedChild_AView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<AliasedChild_AView> Decode(EmptyParentView const& parent) {
+        AliasedChild_AView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     uint8_t GetA() const { return 2; }
 
-    uint8_t GetB() const { _ASSERT_VALID(valid_); return b_; }
+    uint8_t GetB() const { return b_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit AliasedChild_AView(EmptyParentView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit AliasedChild_AView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(EmptyParentView const& parent) {
-        if (!parent.IsValid()) { return false; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return false;
@@ -5085,7 +4918,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t b_;
 
@@ -5123,32 +4955,30 @@ public:
 
 class AliasedChild_BView {
 public:
-    static AliasedChild_BView Create(EmptyParentView const& parent) {
-        return AliasedChild_BView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<AliasedChild_BView> Decode(EmptyParentView const& parent) {
+        AliasedChild_BView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     uint8_t GetA() const { return 3; }
 
-    uint16_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+    uint16_t GetC() const { return c_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit AliasedChild_BView(EmptyParentView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit AliasedChild_BView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(EmptyParentView const& parent) {
-        if (!parent.IsValid()) { return false; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 2) {
             return false;
@@ -5160,7 +4990,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint16_t c_;
 
@@ -5198,36 +5027,33 @@ public:
 
 class ScalarChild_CView {
 public:
-    static ScalarChild_CView Create(ScalarParentView const& parent) {
-        return ScalarChild_CView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<ScalarChild_CView> Decode(ScalarParentView const& parent) {
+        ScalarChild_CView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     uint8_t GetA() const { return 4; }
 
-    uint8_t GetB() const { _ASSERT_VALID(valid_); return b_; }
+    uint8_t GetB() const { return b_; }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit ScalarChild_CView(ScalarParentView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit ScalarChild_CView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(ScalarParentView const& parent) {
-        if (!parent.IsValid()) { return false; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return false;
@@ -5241,7 +5067,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t b_;
     pdl::packet::slice payload_;
@@ -5282,34 +5107,32 @@ public:
 
 class ScalarGrandChild_CView {
 public:
-    static ScalarGrandChild_CView Create(ScalarChild_CView const& parent) {
-        return ScalarGrandChild_CView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<ScalarGrandChild_CView> Decode(ScalarChild_CView const& parent) {
+        ScalarGrandChild_CView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     uint8_t GetA() const { return 4; }
 
     uint8_t GetB() const { return 1; }
 
-    uint16_t GetC() const { _ASSERT_VALID(valid_); return c_; }
+    uint16_t GetC() const { return c_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit ScalarGrandChild_CView(ScalarChild_CView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit ScalarGrandChild_CView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(ScalarChild_CView const& parent) {
-        if (!parent.IsValid()) { return false; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 2) {
             return false;
@@ -5321,7 +5144,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint16_t c_;
 
@@ -5360,34 +5182,31 @@ public:
 
 class ScalarChild_DView {
 public:
-    static ScalarChild_DView Create(ScalarParentView const& parent) {
-        return ScalarChild_DView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<ScalarChild_DView> Decode(ScalarParentView const& parent) {
+        ScalarChild_DView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     uint8_t GetA() const { return 5; }
 
     pdl::packet::slice GetPayload() const {
-        _ASSERT_VALID(valid_);
         return payload_;
     }
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit ScalarChild_DView(ScalarParentView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit ScalarChild_DView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(ScalarParentView const& parent) {
-        if (!parent.IsValid()) { return false; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return false;
@@ -5402,7 +5221,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
 
@@ -5445,27 +5263,26 @@ public:
 
 class ConstrainedParentView {
 public:
-    static ConstrainedParentView Create(pdl::packet::slice const& parent) {
-        return ConstrainedParentView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<ConstrainedParentView> Decode(pdl::packet::slice const& parent) {
+        ConstrainedParentView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    uint8_t GetA() const { _ASSERT_VALID(valid_); return a_; }
+    uint8_t GetA() const { return a_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit ConstrainedParentView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit ConstrainedParentView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -5479,7 +5296,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     uint8_t a_;
 
@@ -5512,34 +5328,31 @@ public:
 
 class ConstrainedChild_AView {
 public:
-    static ConstrainedChild_AView Create(ConstrainedParentView const& parent) {
-        return ConstrainedChild_AView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<ConstrainedChild_AView> Decode(ConstrainedParentView const& parent) {
+        ConstrainedChild_AView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     uint8_t GetA() const { return 1; }
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit ConstrainedChild_AView(ConstrainedParentView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit ConstrainedChild_AView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(ConstrainedParentView const& parent) {
-        if (!parent.IsValid()) { return false; }
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
 
 
@@ -5570,34 +5383,31 @@ public:
 
 class ConstrainedChild_BView {
 public:
-    static ConstrainedChild_BView Create(ConstrainedParentView const& parent) {
-        return ConstrainedChild_BView(parent);
+    // Decode the packet from the parent packet view.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<ConstrainedChild_BView> Decode(ConstrainedParentView const& parent) {
+        ConstrainedChild_BView view(parent.bytes_);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
     uint8_t GetA() const { return 2; }
 
     std::string ToString() const { return ""; }
 
-    bool IsValid() const {
-        return valid_;
-    }
-
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit ConstrainedChild_BView(ConstrainedParentView const& parent)
-          : bytes_(parent.bytes_) {
-        valid_ = Parse(parent);
-    }
+    explicit ConstrainedChild_BView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(ConstrainedParentView const& parent) {
-        if (!parent.IsValid()) { return false; }
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
 
 
@@ -5719,27 +5529,26 @@ public:
 
 class Struct_Enum_FieldView {
 public:
-    static Struct_Enum_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_Enum_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Enum_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_Enum_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Enum_Field_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Enum_Field_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Enum_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Enum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -5750,7 +5559,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Enum_Field_ s_;
 
@@ -5826,27 +5634,26 @@ public:
 
 class Struct_Reserved_FieldView {
 public:
-    static Struct_Reserved_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_Reserved_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Reserved_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_Reserved_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Reserved_Field_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Reserved_Field_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Reserved_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Reserved_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -5857,7 +5664,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Reserved_Field_ s_;
 
@@ -5947,27 +5753,26 @@ public:
 
 class Struct_Size_FieldView {
 public:
-    static Struct_Size_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_Size_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Size_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_Size_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Size_Field_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Size_Field_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Size_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Size_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -5978,7 +5783,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Size_Field_ s_;
 
@@ -6064,27 +5868,26 @@ public:
 
 class Struct_Count_FieldView {
 public:
-    static Struct_Count_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_Count_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Count_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_Count_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Count_Field_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Count_Field_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Count_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Count_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -6095,7 +5898,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Count_Field_ s_;
 
@@ -6169,27 +5971,26 @@ public:
 
 class Struct_FixedScalar_FieldView {
 public:
-    static Struct_FixedScalar_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_FixedScalar_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_FixedScalar_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_FixedScalar_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_FixedScalar_Field_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_FixedScalar_Field_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_FixedScalar_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_FixedScalar_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -6200,7 +6001,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_FixedScalar_Field_ s_;
 
@@ -6274,27 +6074,26 @@ public:
 
 class Struct_FixedEnum_FieldView {
 public:
-    static Struct_FixedEnum_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_FixedEnum_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_FixedEnum_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_FixedEnum_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_FixedEnum_Field_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_FixedEnum_Field_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_FixedEnum_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_FixedEnum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -6305,7 +6104,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_FixedEnum_Field_ s_;
 
@@ -6374,27 +6172,26 @@ public:
 
 class Struct_ScalarGroup_FieldView {
 public:
-    static Struct_ScalarGroup_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_ScalarGroup_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_ScalarGroup_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_ScalarGroup_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_ScalarGroup_Field_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_ScalarGroup_Field_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_ScalarGroup_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_ScalarGroup_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -6405,7 +6202,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_ScalarGroup_Field_ s_;
 
@@ -6474,27 +6270,26 @@ public:
 
 class Struct_EnumGroup_FieldView {
 public:
-    static Struct_EnumGroup_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_EnumGroup_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_EnumGroup_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_EnumGroup_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_EnumGroup_Field_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_EnumGroup_Field_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_EnumGroup_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_EnumGroup_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -6505,7 +6300,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_EnumGroup_Field_ s_;
 
@@ -6539,29 +6333,28 @@ public:
 
 class Struct_Struct_FieldView {
 public:
-    static Struct_Struct_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_Struct_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Struct_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_Struct_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    SizedStruct const& GetA() const { _ASSERT_VALID(valid_); return a_; }
+    SizedStruct const& GetA() const { return a_; }
 
-    UnsizedStruct const& GetB() const { _ASSERT_VALID(valid_); return b_; }
+    UnsizedStruct const& GetB() const { return b_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Struct_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Struct_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -6573,7 +6366,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     SizedStruct a_;
     UnsizedStruct b_;
@@ -6649,27 +6441,26 @@ public:
 
 class Struct_Array_Field_ByteElement_ConstantSizeView {
 public:
-    static Struct_Array_Field_ByteElement_ConstantSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_ByteElement_ConstantSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_ByteElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_ByteElement_ConstantSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_ByteElement_ConstantSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_ByteElement_ConstantSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_ByteElement_ConstantSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_ByteElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -6680,7 +6471,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_ByteElement_ConstantSize_ s_;
 
@@ -6765,27 +6555,26 @@ public:
 
 class Struct_Array_Field_ByteElement_VariableSizeView {
 public:
-    static Struct_Array_Field_ByteElement_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_ByteElement_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_ByteElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_ByteElement_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_ByteElement_VariableSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_ByteElement_VariableSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_ByteElement_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_ByteElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -6796,7 +6585,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_ByteElement_VariableSize_ s_;
 
@@ -6877,27 +6665,26 @@ public:
 
 class Struct_Array_Field_ByteElement_VariableCountView {
 public:
-    static Struct_Array_Field_ByteElement_VariableCountView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_ByteElement_VariableCountView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_ByteElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_ByteElement_VariableCountView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_ByteElement_VariableCount_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_ByteElement_VariableCount_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_ByteElement_VariableCountView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_ByteElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -6908,7 +6695,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_ByteElement_VariableCount_ s_;
 
@@ -6980,27 +6766,26 @@ public:
 
 class Struct_Array_Field_ByteElement_UnknownSizeView {
 public:
-    static Struct_Array_Field_ByteElement_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_ByteElement_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_ByteElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_ByteElement_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_ByteElement_UnknownSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_ByteElement_UnknownSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_ByteElement_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_ByteElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -7011,7 +6796,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_ByteElement_UnknownSize_ s_;
 
@@ -7082,27 +6866,26 @@ public:
 
 class Struct_Array_Field_ScalarElement_ConstantSizeView {
 public:
-    static Struct_Array_Field_ScalarElement_ConstantSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_ScalarElement_ConstantSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_ScalarElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_ScalarElement_ConstantSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_ScalarElement_ConstantSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_ScalarElement_ConstantSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_ScalarElement_ConstantSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_ScalarElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -7113,7 +6896,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_ScalarElement_ConstantSize_ s_;
 
@@ -7198,27 +6980,26 @@ public:
 
 class Struct_Array_Field_ScalarElement_VariableSizeView {
 public:
-    static Struct_Array_Field_ScalarElement_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_ScalarElement_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_ScalarElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_ScalarElement_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_ScalarElement_VariableSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_ScalarElement_VariableSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_ScalarElement_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_ScalarElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -7229,7 +7010,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_ScalarElement_VariableSize_ s_;
 
@@ -7310,27 +7090,26 @@ public:
 
 class Struct_Array_Field_ScalarElement_VariableCountView {
 public:
-    static Struct_Array_Field_ScalarElement_VariableCountView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_ScalarElement_VariableCountView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_ScalarElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_ScalarElement_VariableCountView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_ScalarElement_VariableCount_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_ScalarElement_VariableCount_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_ScalarElement_VariableCountView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_ScalarElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -7341,7 +7120,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_ScalarElement_VariableCount_ s_;
 
@@ -7413,27 +7191,26 @@ public:
 
 class Struct_Array_Field_ScalarElement_UnknownSizeView {
 public:
-    static Struct_Array_Field_ScalarElement_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_ScalarElement_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_ScalarElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_ScalarElement_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_ScalarElement_UnknownSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_ScalarElement_UnknownSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_ScalarElement_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_ScalarElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -7444,7 +7221,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_ScalarElement_UnknownSize_ s_;
 
@@ -7519,27 +7295,26 @@ public:
 
 class Struct_Array_Field_EnumElement_ConstantSizeView {
 public:
-    static Struct_Array_Field_EnumElement_ConstantSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_EnumElement_ConstantSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_EnumElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_EnumElement_ConstantSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_EnumElement_ConstantSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_EnumElement_ConstantSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_EnumElement_ConstantSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_EnumElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -7550,7 +7325,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_EnumElement_ConstantSize_ s_;
 
@@ -7639,27 +7413,26 @@ public:
 
 class Struct_Array_Field_EnumElement_VariableSizeView {
 public:
-    static Struct_Array_Field_EnumElement_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_EnumElement_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_EnumElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_EnumElement_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_EnumElement_VariableSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_EnumElement_VariableSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_EnumElement_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_EnumElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -7670,7 +7443,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_EnumElement_VariableSize_ s_;
 
@@ -7755,27 +7527,26 @@ public:
 
 class Struct_Array_Field_EnumElement_VariableCountView {
 public:
-    static Struct_Array_Field_EnumElement_VariableCountView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_EnumElement_VariableCountView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_EnumElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_EnumElement_VariableCountView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_EnumElement_VariableCount_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_EnumElement_VariableCount_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_EnumElement_VariableCountView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_EnumElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -7786,7 +7557,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_EnumElement_VariableCount_ s_;
 
@@ -7862,27 +7632,26 @@ public:
 
 class Struct_Array_Field_EnumElement_UnknownSizeView {
 public:
-    static Struct_Array_Field_EnumElement_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_EnumElement_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_EnumElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_EnumElement_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_EnumElement_UnknownSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_EnumElement_UnknownSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_EnumElement_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_EnumElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -7893,7 +7662,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_EnumElement_UnknownSize_ s_;
 
@@ -7970,27 +7738,26 @@ public:
 
 class Struct_Array_Field_SizedElement_ConstantSizeView {
 public:
-    static Struct_Array_Field_SizedElement_ConstantSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_SizedElement_ConstantSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_SizedElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_SizedElement_ConstantSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_SizedElement_ConstantSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_SizedElement_ConstantSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_SizedElement_ConstantSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_SizedElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -8001,7 +7768,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_SizedElement_ConstantSize_ s_;
 
@@ -8092,27 +7858,26 @@ public:
 
 class Struct_Array_Field_SizedElement_VariableSizeView {
 public:
-    static Struct_Array_Field_SizedElement_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_SizedElement_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_SizedElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_SizedElement_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_SizedElement_VariableSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_SizedElement_VariableSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_SizedElement_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_SizedElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -8123,7 +7888,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_SizedElement_VariableSize_ s_;
 
@@ -8210,27 +7974,26 @@ public:
 
 class Struct_Array_Field_SizedElement_VariableCountView {
 public:
-    static Struct_Array_Field_SizedElement_VariableCountView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_SizedElement_VariableCountView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_SizedElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_SizedElement_VariableCountView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_SizedElement_VariableCount_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_SizedElement_VariableCount_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_SizedElement_VariableCountView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_SizedElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -8241,7 +8004,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_SizedElement_VariableCount_ s_;
 
@@ -8319,27 +8081,26 @@ public:
 
 class Struct_Array_Field_SizedElement_UnknownSizeView {
 public:
-    static Struct_Array_Field_SizedElement_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_SizedElement_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_SizedElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_SizedElement_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_SizedElement_UnknownSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_SizedElement_UnknownSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_SizedElement_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_SizedElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -8350,7 +8111,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_SizedElement_UnknownSize_ s_;
 
@@ -8424,27 +8184,26 @@ public:
 
 class Struct_Array_Field_UnsizedElement_ConstantSizeView {
 public:
-    static Struct_Array_Field_UnsizedElement_ConstantSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_UnsizedElement_ConstantSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_UnsizedElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_UnsizedElement_ConstantSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_UnsizedElement_ConstantSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_UnsizedElement_ConstantSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_UnsizedElement_ConstantSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_UnsizedElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -8455,7 +8214,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_ConstantSize_ s_;
 
@@ -8547,27 +8305,26 @@ public:
 
 class Struct_Array_Field_UnsizedElement_VariableSizeView {
 public:
-    static Struct_Array_Field_UnsizedElement_VariableSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_UnsizedElement_VariableSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_UnsizedElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_UnsizedElement_VariableSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_UnsizedElement_VariableSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_UnsizedElement_VariableSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_UnsizedElement_VariableSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_UnsizedElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -8578,7 +8335,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_VariableSize_ s_;
 
@@ -8662,27 +8418,26 @@ public:
 
 class Struct_Array_Field_UnsizedElement_VariableCountView {
 public:
-    static Struct_Array_Field_UnsizedElement_VariableCountView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_UnsizedElement_VariableCountView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_UnsizedElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_UnsizedElement_VariableCountView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_UnsizedElement_VariableCount_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_UnsizedElement_VariableCount_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_UnsizedElement_VariableCountView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_UnsizedElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -8693,7 +8448,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_VariableCount_ s_;
 
@@ -8767,27 +8521,26 @@ public:
 
 class Struct_Array_Field_UnsizedElement_UnknownSizeView {
 public:
-    static Struct_Array_Field_UnsizedElement_UnknownSizeView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_UnsizedElement_UnknownSizeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_UnsizedElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_UnsizedElement_UnknownSizeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_UnsizedElement_UnknownSize_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_UnsizedElement_UnknownSize_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_UnsizedElement_UnknownSizeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_UnsizedElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -8798,7 +8551,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_UnknownSize_ s_;
 
@@ -8892,27 +8644,26 @@ public:
 
 class Struct_Array_Field_UnsizedElement_SizeModifierView {
 public:
-    static Struct_Array_Field_UnsizedElement_SizeModifierView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_UnsizedElement_SizeModifierView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_UnsizedElement_SizeModifierView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_UnsizedElement_SizeModifierView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_UnsizedElement_SizeModifier_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_UnsizedElement_SizeModifier_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_UnsizedElement_SizeModifierView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_UnsizedElement_SizeModifierView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -8923,7 +8674,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_SizeModifier_ s_;
 
@@ -9020,27 +8770,26 @@ public:
 
 class Struct_Array_Field_SizedElement_VariableSize_PaddedView {
 public:
-    static Struct_Array_Field_SizedElement_VariableSize_PaddedView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_SizedElement_VariableSize_PaddedView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_SizedElement_VariableSize_PaddedView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_SizedElement_VariableSize_PaddedView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_SizedElement_VariableSize_Padded_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_SizedElement_VariableSize_Padded_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_SizedElement_VariableSize_PaddedView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_SizedElement_VariableSize_PaddedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -9051,7 +8800,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_SizedElement_VariableSize_Padded_ s_;
 
@@ -9146,27 +8894,26 @@ public:
 
 class Struct_Array_Field_UnsizedElement_VariableCount_PaddedView {
 public:
-    static Struct_Array_Field_UnsizedElement_VariableCount_PaddedView Create(pdl::packet::slice const& parent) {
-        return Struct_Array_Field_UnsizedElement_VariableCount_PaddedView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Array_Field_UnsizedElement_VariableCount_PaddedView> Decode(pdl::packet::slice const& parent) {
+        Struct_Array_Field_UnsizedElement_VariableCount_PaddedView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Array_Field_UnsizedElement_VariableCount_Padded_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Array_Field_UnsizedElement_VariableCount_Padded_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Array_Field_UnsizedElement_VariableCount_PaddedView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Array_Field_UnsizedElement_VariableCount_PaddedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -9177,7 +8924,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_VariableCount_Padded_ s_;
 
@@ -9276,27 +9022,26 @@ public:
 
 class Struct_Optional_Scalar_FieldView {
 public:
-    static Struct_Optional_Scalar_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_Optional_Scalar_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Optional_Scalar_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_Optional_Scalar_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Optional_Scalar_Field_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Optional_Scalar_Field_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Optional_Scalar_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Optional_Scalar_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -9307,7 +9052,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Optional_Scalar_Field_ s_;
 
@@ -9411,27 +9155,26 @@ public:
 
 class Struct_Optional_Enum_FieldView {
 public:
-    static Struct_Optional_Enum_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_Optional_Enum_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Optional_Enum_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_Optional_Enum_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Optional_Enum_Field_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Optional_Enum_Field_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Optional_Enum_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Optional_Enum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -9442,7 +9185,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Optional_Enum_Field_ s_;
 
@@ -9542,27 +9284,26 @@ public:
 
 class Struct_Optional_Struct_FieldView {
 public:
-    static Struct_Optional_Struct_FieldView Create(pdl::packet::slice const& parent) {
-        return Struct_Optional_Struct_FieldView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Optional_Struct_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_Optional_Struct_FieldView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Struct_Optional_Struct_Field_ const& GetS() const { _ASSERT_VALID(valid_); return s_; }
+    Struct_Optional_Struct_Field_ const& GetS() const { return s_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Struct_Optional_Struct_FieldView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Struct_Optional_Struct_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -9573,7 +9314,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Struct_Optional_Struct_Field_ s_;
 
@@ -9634,27 +9374,26 @@ inline bool IsValidEnum_Incomplete_Truncated_Closed_(uint8_t value) {
 
 class Enum_Incomplete_Truncated_ClosedView {
 public:
-    static Enum_Incomplete_Truncated_ClosedView Create(pdl::packet::slice const& parent) {
-        return Enum_Incomplete_Truncated_ClosedView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Enum_Incomplete_Truncated_ClosedView> Decode(pdl::packet::slice const& parent) {
+        Enum_Incomplete_Truncated_ClosedView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Enum_Incomplete_Truncated_Closed_ GetE() const { _ASSERT_VALID(valid_); return e_; }
+    Enum_Incomplete_Truncated_Closed_ GetE() const { return e_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Enum_Incomplete_Truncated_ClosedView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Enum_Incomplete_Truncated_ClosedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -9673,7 +9412,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Enum_Incomplete_Truncated_Closed_ e_{Enum_Incomplete_Truncated_Closed_::A};
 
@@ -9728,27 +9466,26 @@ inline std::string Enum_Incomplete_Truncated_Open_ToString(Enum_Incomplete_Trunc
 
 class Enum_Incomplete_Truncated_OpenView {
 public:
-    static Enum_Incomplete_Truncated_OpenView Create(pdl::packet::slice const& parent) {
-        return Enum_Incomplete_Truncated_OpenView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Enum_Incomplete_Truncated_OpenView> Decode(pdl::packet::slice const& parent) {
+        Enum_Incomplete_Truncated_OpenView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Enum_Incomplete_Truncated_Open_ GetE() const { _ASSERT_VALID(valid_); return e_; }
+    Enum_Incomplete_Truncated_Open_ GetE() const { return e_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Enum_Incomplete_Truncated_OpenView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Enum_Incomplete_Truncated_OpenView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -9763,7 +9500,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Enum_Incomplete_Truncated_Open_ e_{Enum_Incomplete_Truncated_Open_::A};
 
@@ -9824,27 +9560,26 @@ inline bool IsValidEnum_Incomplete_Truncated_Closed_WithRange_(uint8_t value) {
 
 class Enum_Incomplete_Truncated_Closed_WithRangeView {
 public:
-    static Enum_Incomplete_Truncated_Closed_WithRangeView Create(pdl::packet::slice const& parent) {
-        return Enum_Incomplete_Truncated_Closed_WithRangeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Enum_Incomplete_Truncated_Closed_WithRangeView> Decode(pdl::packet::slice const& parent) {
+        Enum_Incomplete_Truncated_Closed_WithRangeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Enum_Incomplete_Truncated_Closed_WithRange_ GetE() const { _ASSERT_VALID(valid_); return e_; }
+    Enum_Incomplete_Truncated_Closed_WithRange_ GetE() const { return e_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Enum_Incomplete_Truncated_Closed_WithRangeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Enum_Incomplete_Truncated_Closed_WithRangeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -9863,7 +9598,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Enum_Incomplete_Truncated_Closed_WithRange_ e_{Enum_Incomplete_Truncated_Closed_WithRange_::A};
 
@@ -9922,27 +9656,26 @@ inline std::string Enum_Incomplete_Truncated_Open_WithRange_ToString(Enum_Incomp
 
 class Enum_Incomplete_Truncated_Open_WithRangeView {
 public:
-    static Enum_Incomplete_Truncated_Open_WithRangeView Create(pdl::packet::slice const& parent) {
-        return Enum_Incomplete_Truncated_Open_WithRangeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Enum_Incomplete_Truncated_Open_WithRangeView> Decode(pdl::packet::slice const& parent) {
+        Enum_Incomplete_Truncated_Open_WithRangeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Enum_Incomplete_Truncated_Open_WithRange_ GetE() const { _ASSERT_VALID(valid_); return e_; }
+    Enum_Incomplete_Truncated_Open_WithRange_ GetE() const { return e_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Enum_Incomplete_Truncated_Open_WithRangeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Enum_Incomplete_Truncated_Open_WithRangeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -9957,7 +9690,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Enum_Incomplete_Truncated_Open_WithRange_ e_{Enum_Incomplete_Truncated_Open_WithRange_::A};
 
@@ -10021,27 +9753,26 @@ inline std::string Enum_Complete_Truncated_ToString(Enum_Complete_Truncated_ tag
 
 class Enum_Complete_TruncatedView {
 public:
-    static Enum_Complete_TruncatedView Create(pdl::packet::slice const& parent) {
-        return Enum_Complete_TruncatedView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Enum_Complete_TruncatedView> Decode(pdl::packet::slice const& parent) {
+        Enum_Complete_TruncatedView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Enum_Complete_Truncated_ GetE() const { _ASSERT_VALID(valid_); return e_; }
+    Enum_Complete_Truncated_ GetE() const { return e_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Enum_Complete_TruncatedView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Enum_Complete_TruncatedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -10056,7 +9787,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Enum_Complete_Truncated_ e_{Enum_Complete_Truncated_::A};
 
@@ -10112,27 +9842,26 @@ inline std::string Enum_Complete_Truncated_WithRange_ToString(Enum_Complete_Trun
 
 class Enum_Complete_Truncated_WithRangeView {
 public:
-    static Enum_Complete_Truncated_WithRangeView Create(pdl::packet::slice const& parent) {
-        return Enum_Complete_Truncated_WithRangeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Enum_Complete_Truncated_WithRangeView> Decode(pdl::packet::slice const& parent) {
+        Enum_Complete_Truncated_WithRangeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Enum_Complete_Truncated_WithRange_ GetE() const { _ASSERT_VALID(valid_); return e_; }
+    Enum_Complete_Truncated_WithRange_ GetE() const { return e_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Enum_Complete_Truncated_WithRangeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Enum_Complete_Truncated_WithRangeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -10147,7 +9876,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Enum_Complete_Truncated_WithRange_ e_{Enum_Complete_Truncated_WithRange_::A};
 
@@ -10201,27 +9929,26 @@ inline std::string Enum_Complete_WithRange_ToString(Enum_Complete_WithRange_ tag
 
 class Enum_Complete_WithRangeView {
 public:
-    static Enum_Complete_WithRangeView Create(pdl::packet::slice const& parent) {
-        return Enum_Complete_WithRangeView(parent);
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Enum_Complete_WithRangeView> Decode(pdl::packet::slice const& parent) {
+        Enum_Complete_WithRangeView view(parent);
+        if (!view.Parse(parent)) {
+            return std::nullopt;
+        }
+        return view;
     }
 
-    Enum_Complete_WithRange_ GetE() const { _ASSERT_VALID(valid_); return e_; }
+    Enum_Complete_WithRange_ GetE() const { return e_; }
 
     std::string ToString() const { return ""; }
-
-    bool IsValid() const {
-        return valid_;
-    }
 
     pdl::packet::slice bytes() const {
         return bytes_;
     }
 
 protected:
-    explicit Enum_Complete_WithRangeView(pdl::packet::slice const& parent)
-          : bytes_(parent) {
-        valid_ = Parse(parent);
-    }
+    explicit Enum_Complete_WithRangeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
 
     bool Parse(pdl::packet::slice const& parent) {
         pdl::packet::slice span = parent;
@@ -10235,7 +9962,6 @@ protected:
         return true;
     }
 
-    bool valid_{false};
     pdl::packet::slice bytes_;
     Enum_Complete_WithRange_ e_{Enum_Complete_WithRange_::A};
 

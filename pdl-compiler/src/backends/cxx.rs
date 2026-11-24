@@ -91,19 +91,7 @@ pub fn generate(
         code.push('\n');
     }
 
-    code.push_str(
-        r#"
-#ifndef _ASSERT_VALID
-#ifdef ASSERT
-#define _ASSERT_VALID ASSERT
-#else
-#include <cassert>
-#define _ASSERT_VALID assert
-#endif  // ASSERT
-#endif  // !_ASSERT_VALID
-
-"#,
-    );
+    code.push('\n');
 
     if let Some(ns) = namespace {
         code.push_str(&format!("namespace {} {{\n", ns));
@@ -1812,7 +1800,10 @@ fn generate_packet_view(
         match &field.desc {
             ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
                 field_members.push("pdl::packet::slice payload_;".to_string());
-                field_accessors.push(indent("pdl::packet::slice GetPayload() const {\n    _ASSERT_VALID(valid_);\n    return payload_;\n}\n", 1));
+                field_accessors.push(indent(
+                    "pdl::packet::slice GetPayload() const {\n    return payload_;\n}\n",
+                    1,
+                ));
             }
             ast::FieldDesc::Array { id, type_id, width, size, .. } => {
                 field_members.push(format!("pdl::packet::slice {}_;", id));
@@ -1954,7 +1945,7 @@ fn generate_packet_view(
                 accessor_code.push("return elements;".to_string());
 
                 field_accessors.push(format!(
-                    "    {} Get{}() const {{\n        _ASSERT_VALID(valid_);\n{}\n    }}\n",
+                    "    {} Get{}() const {{\n{}\n    }}\n",
                     array_type,
                     accessor_name,
                     indent(&accessor_code.join("\n"), 2)
@@ -1965,11 +1956,14 @@ fn generate_packet_view(
                 let accessor_name = id.to_upper_camel_case();
                 if field.cond.is_some() {
                     field_members.push(format!("std::optional<{}> {}_;", ty, id));
-                    field_accessors.push(format!("    std::optional<{}> Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n", ty, accessor_name, id));
+                    field_accessors.push(format!(
+                        "    std::optional<{}> Get{}() const {{ return {}_; }}\n",
+                        ty, accessor_name, id
+                    ));
                 } else {
                     field_members.push(format!("{} {}_;", ty, id));
                     field_accessors.push(format!(
-                        "    {} Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n",
+                        "    {} Get{}() const {{ return {}_; }}\n",
                         ty, accessor_name, id
                     ));
                 }
@@ -1979,7 +1973,10 @@ fn generate_packet_view(
                 let accessor_name = id.to_upper_camel_case();
                 if field.cond.is_some() {
                     field_members.push(format!("std::optional<{}> {}_;", ty, id));
-                    field_accessors.push(format!("    std::optional<{}> Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n", ty, accessor_name, id));
+                    field_accessors.push(format!(
+                        "    std::optional<{}> Get{}() const {{ return {}_; }}\n",
+                        ty, accessor_name, id
+                    ));
                 } else {
                     let type_decl = scope.typedef.get(type_id).unwrap();
                     if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
@@ -1990,12 +1987,15 @@ fn generate_packet_view(
                             default_enum_value(ty, tags)
                         ));
                         field_accessors.push(format!(
-                            "    {} Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n",
+                            "    {} Get{}() const {{ return {}_; }}\n",
                             ty, accessor_name, id
                         ));
                     } else {
                         field_members.push(format!("{} {}_;", ty, id));
-                        field_accessors.push(format!("    {} const& Get{}() const {{ _ASSERT_VALID(valid_); return {}_; }}\n", ty, accessor_name, id));
+                        field_accessors.push(format!(
+                            "    {} const& Get{}() const {{ return {}_; }}\n",
+                            ty, accessor_name, id
+                        ));
                     }
                 }
             }
@@ -2021,7 +2021,6 @@ fn generate_packet_view(
 
     let mut field_parsers = Vec::new();
     if parent_id.is_some() {
-        field_parsers.push("if (!parent.IsValid()) { return false; }".to_string());
         let unconstrained_parent_fields = get_unconstrained_parent_fields(scope, decl);
         if !unconstrained_parent_fields.is_empty() {
             for f in unconstrained_parent_fields {
@@ -2089,32 +2088,30 @@ fn generate_packet_view(
         r#"
 class {id}View {{
 public:
-    static {id}View Create({parent_class} const& parent) {{
-        return {id}View(parent);
+    // Decode the packet from the {decode_input}.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<{id}View> Decode({parent_class} const& parent) {{
+        {id}View view({bytes_initializer});
+        if (!view.Parse(parent)) {{
+            return std::nullopt;
+        }}
+        return view;
     }}
 
 {field_accessors}
     std::string ToString() const {{ return ""; }}
-
-    bool IsValid() const {{
-        return valid_;
-    }}
 
     pdl::packet::slice bytes() const {{
         return bytes_;
     }}
 
 protected:
-    explicit {id}View({parent_class} const& parent)
-          : bytes_({bytes_initializer}) {{
-        valid_ = Parse(parent);
-    }}
+    explicit {id}View(pdl::packet::slice const& bytes) : bytes_(bytes) {{}}
 
     bool Parse({parent_class} const& parent) {{
 {field_parsers}
     }}
 
-    bool valid_{{false}};
     pdl::packet::slice bytes_;
 {field_members}
 
@@ -2124,6 +2121,7 @@ protected:
         id = id,
         parent_class = parent_class,
         bytes_initializer = bytes_initializer,
+        decode_input = if parent_id.is_some() { "parent packet view" } else { "packet bytes" },
         field_parsers = indent(&field_parsers.join("\n"), 2),
         field_members = indent(&field_members.join("\n"), 1),
         field_accessors = field_accessors.join("\n"),
