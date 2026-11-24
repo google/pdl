@@ -96,7 +96,7 @@ def generate_packet_parser_test(parser_test_suite: str, packet: ast.PacketDeclar
                 for i in range(0, len(value), 16):
                     checks.append('    ' + ' '.join([f"0x{v:x}," for v in value[i:i + 16]]))
                 checks.append("};")
-                checks.append(f"ASSERT_EQ({get_field(decl, var, id)}, expected_{field_var});")
+                checks.append(f"ASSERT_EQ({get_field(decl, var, id)}.bytes(), expected_{field_var});")
 
             elif isinstance(field, ast.ArrayField) and field.size and field.width:
                 checks.append(f"std::array<{get_cxx_scalar_type(field.width)}, {field.size}> expected_{field_var} {{")

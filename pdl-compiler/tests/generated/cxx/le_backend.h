@@ -314,9 +314,9 @@ public:
 
     uint8_t GetA() const { _ASSERT_VALID(valid_); return a_; }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     std::string ToString() const { return ""; }
 
@@ -400,9 +400,9 @@ public:
 
     Enum16 GetA() const { _ASSERT_VALID(valid_); return a_; }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     std::string ToString() const { return ""; }
 
@@ -490,9 +490,9 @@ public:
 
     uint8_t GetA() const { _ASSERT_VALID(valid_); return a_; }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     std::string ToString() const { return ""; }
 
@@ -1247,9 +1247,9 @@ public:
         return Packet_Payload_Field_VariableSizeView(parent);
     }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     std::string ToString() const { return ""; }
 
@@ -1324,9 +1324,9 @@ public:
         return Packet_Payload_Field_SizeModifierView(parent);
     }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     std::string ToString() const { return ""; }
 
@@ -1402,9 +1402,9 @@ public:
         return Packet_Payload_Field_UnknownSizeView(parent);
     }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     uint16_t GetA() const { _ASSERT_VALID(valid_); return a_; }
 
@@ -1481,9 +1481,9 @@ public:
 
     uint16_t GetA() const { _ASSERT_VALID(valid_); return a_; }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     std::string ToString() const { return ""; }
 
@@ -1554,9 +1554,9 @@ public:
         return Packet_Body_Field_VariableSizeView(parent);
     }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     std::string ToString() const { return ""; }
 
@@ -1631,9 +1631,9 @@ public:
         return Packet_Body_Field_UnknownSizeView(parent);
     }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     uint16_t GetA() const { _ASSERT_VALID(valid_); return a_; }
 
@@ -1710,9 +1710,9 @@ public:
 
     uint16_t GetA() const { _ASSERT_VALID(valid_); return a_; }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     std::string ToString() const { return ""; }
 
@@ -5206,9 +5206,9 @@ public:
 
     uint8_t GetB() const { _ASSERT_VALID(valid_); return b_; }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     std::string ToString() const { return ""; }
 
@@ -5366,9 +5366,9 @@ public:
 
     uint8_t GetA() const { return 5; }
 
-    std::vector<uint8_t> GetPayload() const {
+    pdl::packet::slice GetPayload() const {
         _ASSERT_VALID(valid_);
-        return payload_.bytes();
+        return payload_;
     }
     std::string ToString() const { return ""; }
 
