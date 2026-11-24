@@ -1420,7 +1420,7 @@ impl<'a> Encoder<'a> {
         self.values.clear();
     }
 
-    /// Encode an optional field `field` of the packet declaration `decl`.
+    /// Encode an optional field `field`.
     fn encode_optional_field(&mut self, field: &'a ast::Field) {
         let id = field.id().unwrap();
         let byteorder = self.byteorder();
@@ -1460,6 +1460,202 @@ impl<'a> Encoder<'a> {
 
         self.unindent();
         self.append("}");
+    }
+
+    /// Encode a bit field `field` of the packet declaration `decl`.
+    /// `children` lists the chosen specialization for the current packet.
+    fn encode_bit_field(
+        &mut self,
+        decl: &'a ast::Decl,
+        children: &[&'a ast::Decl],
+        field: &'a ast::Field,
+    ) {
+        let width = self.schema.field_size(field.key).static_().unwrap();
+        let shift = self.shift;
+
+        match &field.desc {
+            ast::FieldDesc::Scalar { id, .. } => {
+                if let Some(constraint) = self.constraints.get(id) {
+                    self.values.push((format!("{}", constraint.value.unwrap()), shift));
+                } else {
+                    if !matches!(width, 8 | 16 | 32 | 64) {
+                        self.append(&format!("if ({id}_ > {}) {{", mask(width)));
+                        self.append("    return false;");
+                        self.append("}");
+                    }
+                    self.values.push((format!("{id}_"), shift));
+                }
+            }
+            ast::FieldDesc::FixedScalar { value, .. } => {
+                self.values.push((format!("{:#x}", value), shift));
+            }
+            ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
+                self.values.push((format!("{}::{}", enum_id, tag_id), shift));
+            }
+            ast::FieldDesc::Typedef { id, type_id, .. } => {
+                let type_decl = self.scope.typedef.get(type_id).unwrap();
+                if let Some(constraint) = self.constraints.get(id) {
+                    self.values.push((
+                        format!("{type_id}::{}", constraint.tag_id.as_ref().unwrap()),
+                        shift,
+                    ));
+                } else if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
+                    // Verify that the proposed enum value is actually valid for the
+                    // given enum declaration. The caller could have cast any value into
+                    // the member.
+                    let ty = get_cxx_scalar_type(width);
+                    if !matches!(width, 8 | 16 | 32 | 64) {
+                        self.append(&format!("if ({ty}({id}_) > {}) {{", mask(width)));
+                        self.append("    return false;");
+                        self.append("}");
+                    }
+                    if !common::is_complete_enum(tags, scalar_max(width))
+                        && !common::is_open_enum(tags)
+                    {
+                        self.append(&format!("if (!IsValid{type_id}({ty}({id}_))) {{"));
+                        self.append("    return false;");
+                        self.append("}");
+                    }
+                    self.values.push((format!("{ty}({id}_)"), shift));
+                }
+            }
+            ast::FieldDesc::Size { field_id, width, .. }
+                if field_id == "_payload_" || field_id == "_body_" =>
+            {
+                let size_var = format!("{}_payload_size", decl.id().unwrap());
+                let size_expr = if children.is_empty() {
+                    "payload_.size()".to_owned()
+                } else {
+                    match self.compute_partial_packet_size(children[0], &children[1..]) {
+                        RuntimeSize { constant: 0, variable } if variable.is_empty() => {
+                            "0".to_owned()
+                        }
+                        RuntimeSize { constant, variable } if variable.is_empty() => {
+                            format!("{}", constant / 8)
+                        }
+                        RuntimeSize { constant: 0, variable } => variable.join(" + "),
+                        RuntimeSize { constant, variable } => {
+                            format!("{} + {}", constant / 8, variable.join(" + "))
+                        }
+                    }
+                };
+
+                self.append(&format!("size_t {size_var} = {size_expr};"));
+
+                let size_modifier = decl.fields().find_map(|f| match &f.desc {
+                    ast::FieldDesc::Payload { size_modifier, .. } => size_modifier.as_ref(),
+                    _ => None,
+                });
+
+                if let Some(modifier) = size_modifier {
+                    self.append(&format!("{size_var} = {size_var} {modifier};"))
+                }
+
+                if *width < 64 {
+                    self.append(&format!("if ({size_var} > {}) {{", mask(*width)));
+                    self.append("    return false;");
+                    self.append("}");
+                }
+
+                self.values.push((size_var, shift));
+            }
+            ast::FieldDesc::Size { field_id, width, .. } => {
+                let array_field = self
+                    .scope
+                    .iter_fields(decl)
+                    .find(|f| f.id() == Some(field_id))
+                    .expect("Field not found");
+
+                match analyzer::element_size(self.scope, self.schema, decl, array_field) {
+                    analyzer::ElementSize::Static(element_size) => {
+                        self.append(&format!(
+                            "size_t {field_id}_size = {element_size} * {field_id}_.size();"
+                        ));
+                    }
+
+                    analyzer::ElementSize::Dynamic | analyzer::ElementSize::Unknown => {
+                        self.append(&format!("size_t {field_id}_size = 0;"));
+                        self.append(&format!("for (auto const& elt : {field_id}_) {{"));
+                        self.append(&format!("    {field_id}_size += elt.GetSize();"));
+                        self.append("}");
+                    }
+                }
+
+                if let ast::FieldDesc::Array { size_modifier: Some(modifier), .. } =
+                    &array_field.desc
+                {
+                    self.append(&format!("{field_id}_size = {field_id}_size {modifier};"));
+                }
+
+                if *width < 64 {
+                    self.append(&format!("if ({field_id}_size > {}) {{", mask(*width)));
+                    self.append("    return false;");
+                    self.append("}");
+                }
+
+                self.values.push((format!("{field_id}_size"), shift));
+            }
+            ast::FieldDesc::Count { field_id, width, .. } => {
+                // The count field can only apply to an array field.
+                // The code is generated under this assumption.
+
+                if *width < 64 {
+                    self.append(&format!("if ({field_id}_.size() > {}) {{", mask(*width)));
+                    self.append("    return false;");
+                    self.append("}");
+                }
+
+                self.values.push((format!("{field_id}_.size()"), shift));
+            }
+            ast::FieldDesc::ElementSize { field_id, width, .. } => {
+                // The element_size field can only apply to an array field.
+                // The code is generated under this assumption.
+
+                self.append(&format!("size_t {field_id}_element_size = {field_id}_.empty() ? 0 : {field_id}_[0].GetSize();"));
+                self.append(&format!("for (auto const& elt : {field_id}_) {{"));
+                self.append(&format!("    if (elt.GetSize() != {field_id}_element_size) {{"));
+                self.append("        return false;");
+                self.append("    }");
+                self.append("}");
+
+                if *width < 64 {
+                    self.append(&format!("if ({field_id}_element_size > {}) {{", mask(*width)));
+                    self.append("    return false;");
+                    self.append("}");
+                }
+
+                self.values.push((format!("{field_id}_element_size"), shift));
+            }
+            ast::FieldDesc::Flag { id, .. } => {
+                let flag_value = |field: &'_ ast::Field| {
+                    let id = field.id().unwrap();
+                    let cond = field.cond.as_ref().unwrap().value.unwrap();
+                    format!("{id}_.has_value() ? {} : {}", cond, 1 - cond)
+                };
+
+                // Get a list of all fields that use this condition flag.
+                // Verify that the proposed encoding is consistent.
+                let ty = get_cxx_scalar_type(width);
+                let optional_fields = decl
+                    .fields()
+                    .filter(|f| matches!(f.cond, Some(ast::Constraint { id: ref cid, .. }) if cid == id))
+                    .collect::<Vec<_>>();
+                self.append(&format!("{ty} {id} = {};", flag_value(optional_fields[0])));
+                for optional_field in optional_fields.iter() {
+                    self.append(&format!("if ({id} != ({})) {{", flag_value(optional_field)));
+                    self.append("    return false;");
+                    self.append("}");
+                }
+                self.values.push((id.to_owned(), shift));
+            }
+            ast::FieldDesc::Reserved { .. } => (),
+            _ => unreachable!(),
+        }
+
+        self.shift += width;
+        if self.shift.is_multiple_of(8) {
+            self.pack_bit_fields();
+        }
     }
 
     /// Encoder a single field `field` of the packet declaration `decl`.
@@ -1505,155 +1701,7 @@ impl<'a> Encoder<'a> {
         if field.cond.is_some() {
             self.encode_optional_field(field);
         } else if self.scope.is_bitfield(field) {
-            let width = self.schema.field_size(field.key).static_().unwrap();
-            let shift = self.shift;
-            match &field.desc {
-                ast::FieldDesc::Scalar { id, .. } => {
-                    let var_expr = field_var.unwrap();
-                    if !self.constraints.contains_key(id) && !matches!(width, 8 | 16 | 32 | 64) {
-                        self.append(&format!("if ({} > {}) {{", var_expr, mask(width)));
-                        self.append("    return false;");
-                        self.append("}");
-                    }
-                    self.values.push((format!("{} & {}", var_expr, mask(width)), shift));
-                }
-                ast::FieldDesc::FixedScalar { value, .. } => {
-                    self.values.push((format!("{:#x}", value), shift));
-                }
-                ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
-                    self.values.push((format!("{}::{}", enum_id, tag_id), shift));
-                }
-                ast::FieldDesc::Typedef { id: _, type_id, .. } => {
-                    let type_decl = self.scope.typedef.get(type_id).unwrap();
-                    if matches!(type_decl.desc, ast::DeclDesc::Enum { .. }) {
-                        self.values.push((
-                            format!(
-                                "static_cast<{}>({})",
-                                get_cxx_scalar_type(width),
-                                field_var.unwrap()
-                            ),
-                            shift,
-                        ));
-                    } else {
-                        self.values.push((field_var.unwrap(), shift));
-                    }
-                }
-                ast::FieldDesc::Size { field_id, width, .. }
-                    if field_id == "_payload_" || field_id == "_body_" =>
-                {
-                    let size_var = format!("{}_payload_size", decl.id().unwrap());
-                    let size_expr = if children.is_empty() {
-                        "payload_.size()".to_owned()
-                    } else {
-                        match self.compute_partial_packet_size(children[0], &children[1..]) {
-                            RuntimeSize { constant: 0, variable } if variable.is_empty() => {
-                                "0".to_owned()
-                            }
-                            RuntimeSize { constant, variable } if variable.is_empty() => {
-                                format!("{}", constant / 8)
-                            }
-                            RuntimeSize { constant: 0, variable } => variable.join(" + "),
-                            RuntimeSize { constant, variable } => {
-                                format!("{} + {}", constant / 8, variable.join(" + "))
-                            }
-                        }
-                    };
-
-                    self.append(&format!("size_t {size_var} = {size_expr};"));
-
-                    let size_modifier = decl.fields().find_map(|f| match &f.desc {
-                        ast::FieldDesc::Payload { size_modifier, .. } => size_modifier.as_ref(),
-                        _ => None,
-                    });
-
-                    if let Some(modifier) = size_modifier {
-                        self.append(&format!("{size_var} = {size_var} {modifier};"))
-                    }
-
-                    if *width < 64 {
-                        self.append(&format!("if ({size_var} > {}) {{", mask(*width)));
-                        self.append("    return false;");
-                        self.append("}");
-                    }
-
-                    self.values.push((size_var, shift));
-                }
-                ast::FieldDesc::Size { field_id, width, .. } => {
-                    let array_field = self
-                        .scope
-                        .iter_fields(decl)
-                        .find(|f| f.id() == Some(field_id))
-                        .expect("Field not found");
-
-                    match analyzer::element_size(self.scope, self.schema, decl, array_field) {
-                        analyzer::ElementSize::Static(element_size) => {
-                            self.append(&format!(
-                                "size_t {field_id}_size = {element_size} * {field_id}_.size();"
-                            ));
-                        }
-
-                        analyzer::ElementSize::Dynamic | analyzer::ElementSize::Unknown => {
-                            self.append(&format!("size_t {field_id}_size = 0;"));
-                            self.append(&format!("for (auto const& elt : {field_id}_) {{"));
-                            self.append(&format!("    {field_id}_size += elt.GetSize();"));
-                            self.append("}");
-                        }
-                    }
-
-                    if let ast::FieldDesc::Array { size_modifier: Some(modifier), .. } =
-                        &array_field.desc
-                    {
-                        self.append(&format!("{field_id}_size = {field_id}_size {modifier};"));
-                    }
-
-                    if *width < 64 {
-                        self.append(&format!("if ({field_id}_size > {}) {{", mask(*width)));
-                        self.append("    return false;");
-                        self.append("}");
-                    }
-
-                    self.values.push((format!("{field_id}_size"), shift));
-                }
-                ast::FieldDesc::Count { field_id, width, .. } => {
-                    // The count field can only apply to an array field.
-                    // The code is generated under this assumption.
-
-                    if *width < 64 {
-                        self.append(&format!("if ({field_id}_.size() > {}) {{", mask(*width)));
-                        self.append("    return false;");
-                        self.append("}");
-                    }
-
-                    self.values.push((format!("{field_id}_.size()"), shift));
-                }
-                ast::FieldDesc::ElementSize { field_id, width, .. } => {
-                    // The element_size field can only apply to an array field.
-                    // The code is generated under this assumption.
-
-                    self.append(&format!("size_t {field_id}_element_size = {field_id}_.empty() ? 0 : {field_id}_[0].GetSize();"));
-                    self.append(&format!("for (auto const& elt : {field_id}_) {{"));
-                    self.append(&format!("    if (elt.GetSize() != {field_id}_element_size) {{"));
-                    self.append("        return false;");
-                    self.append("    }");
-                    self.append("}");
-
-                    if *width < 64 {
-                        self.append(&format!("if ({field_id}_element_size > {}) {{", mask(*width)));
-                        self.append("    return false;");
-                        self.append("}");
-                    }
-
-                    self.values.push((format!("{field_id}_element_size"), shift));
-                }
-                ast::FieldDesc::Flag { .. } => {
-                    self.values.push((field_var.unwrap(), shift));
-                }
-                _ => {}
-            }
-            self.shift += width;
-            if self.shift.is_multiple_of(8) {
-                self.pack_bit_fields();
-            }
+            self.encode_bit_field(decl, children, field);
         } else {
             match &field.desc {
                 ast::FieldDesc::Array { id, type_id, width, .. } => {
