@@ -542,7 +542,7 @@ fn generate_packet_size_property<'a>(
         }
 
         match &field.desc {
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+            ast::FieldDesc::Payload { .. } => {
                 variable_width.push("len(self.payload)".to_string());
             }
             ast::FieldDesc::Typedef { id: field_id, .. } => {
@@ -625,9 +625,7 @@ fn get_specialized_children<'a>(file: &'a ast::File, decl: &'a ast::Decl) -> Vec
     let mut children = Vec::new();
     for d in &file.declarations {
         if d.parent_id() == decl.id() {
-            let is_alias = d
-                .fields()
-                .all(|f| matches!(f.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body));
+            let is_alias = d.fields().all(|f| matches!(f.desc, ast::FieldDesc::Payload { .. }));
             if is_alias {
                 children.extend(get_specialized_children(file, d));
             } else {
@@ -1031,7 +1029,6 @@ fields['{id}'] = {id}
         self.consume_span(0);
         let id = match &field.desc {
             ast::FieldDesc::Payload { .. } => "_payload_",
-            ast::FieldDesc::Body => "_body_",
             _ => unreachable!(),
         };
 
@@ -1364,9 +1361,7 @@ span = span[-{offset_bytes}:]
                     _ => self.parse_typedef_field(field),
                 }
             }
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
-                self.parse_payload_field(field)
-            }
+            ast::FieldDesc::Payload { .. } => self.parse_payload_field(field),
             ast::FieldDesc::Array { .. } => self.parse_array_field(field),
             _ => {}
         }
@@ -1470,7 +1465,6 @@ impl<'a> FieldSerializer<'a> {
                     .iter_fields(decl)
                     .find(|field| match &field.desc {
                         ast::FieldDesc::Payload { .. } => field_id == "_payload_",
-                        ast::FieldDesc::Body => field_id == "_body_",
                         _ => field.id() == Some(field_id),
                     })
                     .unwrap();
@@ -1482,7 +1476,7 @@ impl<'a> FieldSerializer<'a> {
                         ));
                         "_payload_size".to_string()
                     }
-                    ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+                    ast::FieldDesc::Payload { .. } => {
                         self.append(
                             "_payload_size = len(payload or self.payload or [])".to_string(),
                         );
@@ -1682,9 +1676,7 @@ impl<'a> FieldSerializer<'a> {
                     _ => self.serialize_typedef_field(field),
                 }
             }
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
-                self.serialize_payload_field(field)
-            }
+            ast::FieldDesc::Payload { .. } => self.serialize_payload_field(field),
             ast::FieldDesc::Array { .. } => self.serialize_array_field(field),
             _ => {}
         }

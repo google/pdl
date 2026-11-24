@@ -318,8 +318,7 @@ fn get_unconstrained_parent_fields<'a>(
                         ast::FieldDesc::Scalar { .. }
                         | ast::FieldDesc::Array { .. }
                         | ast::FieldDesc::Typedef { .. }
-                        | ast::FieldDesc::Payload { .. }
-                        | ast::FieldDesc::Body => {
+                        | ast::FieldDesc::Payload { .. } => {
                             fields.push(field);
                         }
                         _ => {}
@@ -340,7 +339,7 @@ fn get_all_parent_fields<'a>(
     for parent in parents.into_iter().rev() {
         for field in parent.fields() {
             match &field.desc {
-                ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {}
+                ast::FieldDesc::Payload { .. } => {}
                 _ => {
                     fields.push(field);
                 }
@@ -523,11 +522,7 @@ impl<'a> FieldParser<'a> {
                     }
                 }
                 ast::FieldDesc::Size { field_id, .. } => {
-                    let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                        "payload"
-                    } else {
-                        field_id
-                    };
+                    let field_name = if field_id == "_payload_" { "payload" } else { field_id };
                     self.unchecked_append(format!("size_t {}_size_ = {};", field_name, v));
                 }
                 ast::FieldDesc::Count { field_id, .. } => {
@@ -537,11 +532,7 @@ impl<'a> FieldParser<'a> {
                     ));
                 }
                 ast::FieldDesc::ElementSize { field_id, .. } => {
-                    let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                        "payload"
-                    } else {
-                        field_id
-                    };
+                    let field_name = if field_id == "_payload_" { "payload" } else { field_id };
                     self.unchecked_append(format!(
                         "{}{}_element_size_ = {};",
                         self.target_prefix, field_name, v
@@ -828,7 +819,7 @@ impl<'a> FieldParser<'a> {
         let mut size_expr = "".to_string();
         for f in self.decl.fields() {
             if let ast::FieldDesc::Size { field_id, .. } = &f.desc {
-                if field_id == "_payload_" || field_id == "_body_" {
+                if field_id == "_payload_" {
                     size_expr = "payload_size_".to_owned();
                 }
             }
@@ -1118,7 +1109,7 @@ impl<'a> FieldParser<'a> {
                         self.append("}".to_string());
                     }
                 }
-                ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+                ast::FieldDesc::Payload { .. } => {
                     self.parse_payload_field_lite(field);
                 }
                 ast::FieldDesc::Scalar { id, width } => {
@@ -1136,11 +1127,7 @@ impl<'a> FieldParser<'a> {
                 }
                 ast::FieldDesc::Size { field_id, width, .. } => {
                     let ty = get_cxx_scalar_type(*width);
-                    let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                        "payload"
-                    } else {
-                        field_id
-                    };
+                    let field_name = if field_id == "_payload_" { "payload" } else { field_id };
                     let byteorder = match self.endianness {
                         ast::EndiannessValue::LittleEndian => "le",
                         ast::EndiannessValue::BigEndian => "be",
@@ -1167,11 +1154,7 @@ impl<'a> FieldParser<'a> {
                 }
                 ast::FieldDesc::ElementSize { field_id, width, .. } => {
                     let ty = get_cxx_scalar_type(*width);
-                    let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                        "payload"
-                    } else {
-                        field_id
-                    };
+                    let field_name = if field_id == "_payload_" { "payload" } else { field_id };
                     let byteorder = match self.endianness {
                         ast::EndiannessValue::LittleEndian => "le",
                         ast::EndiannessValue::BigEndian => "be",
@@ -1360,7 +1343,7 @@ impl<'a> Encoder<'a> {
                         }
                     }
                 }
-                ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+                ast::FieldDesc::Payload { .. } => {
                     if children.is_empty() {
                         packet_size += "payload_.size()".to_owned()
                     } else {
@@ -1510,9 +1493,7 @@ impl<'a> Encoder<'a> {
                     self.values.push((format!("{ty}({id}_)"), shift));
                 }
             }
-            ast::FieldDesc::Size { field_id, width, .. }
-                if field_id == "_payload_" || field_id == "_body_" =>
-            {
+            ast::FieldDesc::Size { field_id, width, .. } if field_id == "_payload_" => {
                 let size_var = format!("{}_payload_size", decl.id().unwrap());
                 let size_expr = if children.is_empty() {
                     "payload_.size()".to_owned()
@@ -1707,7 +1688,7 @@ impl<'a> Encoder<'a> {
                 self.append("    return false;");
                 self.append("}");
             }
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+            ast::FieldDesc::Payload { .. } => {
                 if children.is_empty() {
                     // The current declaration corresponds to the packet being generated.
                     // The payload is encoded as a builder field in this case.
@@ -1798,7 +1779,7 @@ fn generate_packet_view(
         }
 
         match &field.desc {
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+            ast::FieldDesc::Payload { .. } => {
                 field_members.push("pdl::packet::slice payload_;".to_string());
                 field_accessors.push(indent(
                     "pdl::packet::slice GetPayload() const {\n    return payload_;\n}\n",
@@ -2008,11 +1989,7 @@ fn generate_packet_view(
             }
             ast::FieldDesc::ElementSize { field_id, width, .. } => {
                 let ty = get_cxx_scalar_type(*width);
-                let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                    "payload"
-                } else {
-                    field_id
-                };
+                let field_name = if field_id == "_payload_" { "payload" } else { field_id };
                 field_members.push(format!("{} {}_element_size_ {{0}};", ty, field_name));
             }
             _ => {}
@@ -2033,9 +2010,7 @@ fn generate_packet_view(
         // fields, which are used by the array accessors.
         for f in get_all_parent_fields(scope, decl) {
             let member = match &f.desc {
-                ast::FieldDesc::Size { field_id, .. }
-                    if field_id != "_payload_" && field_id != "_body_" =>
-                {
+                ast::FieldDesc::Size { field_id, .. } if field_id != "_payload_" => {
                     format!("{field_id}_size_")
                 }
                 ast::FieldDesc::Count { field_id, .. } => format!("{field_id}_count_"),
@@ -2050,9 +2025,7 @@ fn generate_packet_view(
     // or the current packet is a root packet. In other cases there is no actual parsing
     // done in the method, just added field constraints.
     let trailing_size_check = match scope.get_parent(decl) {
-        Some(parent) => parent
-            .fields()
-            .any(|f| matches!(f.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body)),
+        Some(parent) => parent.fields().any(|f| matches!(f.desc, ast::FieldDesc::Payload { .. })),
         None => true,
     };
 
@@ -2158,7 +2131,7 @@ fn generate_packet_builder(
         }
 
         match &field.desc {
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+            ast::FieldDesc::Payload { .. } => {
                 field_members.push("std::vector<uint8_t> payload_;".to_string());
                 constructor_params.push("std::vector<uint8_t> payload".to_string());
                 constructor_inits.push("payload_(std::move(payload))".to_string());
@@ -2292,7 +2265,7 @@ fn generate_struct_declaration(
 
     for field in decl.fields() {
         match &field.desc {
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+            ast::FieldDesc::Payload { .. } => {
                 field_members.push("std::vector<uint8_t> payload_;".to_string());
                 constructor_params.push("std::vector<uint8_t> payload".to_string());
                 constructor_inits.push("payload_(std::move(payload))".to_string());
@@ -2352,11 +2325,7 @@ fn generate_struct_declaration(
             }
             ast::FieldDesc::ElementSize { field_id, width, .. } => {
                 let ty = get_cxx_scalar_type(*width);
-                let field_name = if field_id == "_payload_" || field_id == "_body_" {
-                    "payload"
-                } else {
-                    field_id
-                };
+                let field_name = if field_id == "_payload_" { "payload" } else { field_id };
                 field_members.push(format!("{} {}_element_size_ {{0}};", ty, field_name));
             }
             _ => {}

@@ -200,9 +200,7 @@ fn generate_classes(file: &ast::File) -> (HashMap<String, Class>, ClassHeirarchy
 }
 
 fn has_payload_or_body(fields: &[ast::Field]) -> bool {
-    fields
-        .iter()
-        .any(|field| matches!(&field.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body))
+    fields.iter().any(|field| matches!(&field.desc, ast::FieldDesc::Payload { .. }))
 }
 
 fn has_payload(fields: &[ast::Field]) -> bool {
@@ -366,18 +364,6 @@ impl PacketDef {
                     let member = Field::Reserved { width: *width };
                     members.push(member.clone());
                     aligner.add_bitfield(member, *width);
-                }
-                ast::FieldDesc::Body => {
-                    let member = Field::Payload {
-                        is_member: false,
-                        width_field_width: width_fields.get("payload").map(WidthField::width),
-                        size_modifier: width_fields.get("payload").and_then(WidthField::modifier),
-                    };
-                    members.push(member.clone());
-                    aligner.add_dyn_bytes(member);
-                    if let Some(width_field) = width_fields.get_mut("payload") {
-                        width_field.update_with_array_info(Some(8), None)
-                    }
                 }
                 ast::FieldDesc::Payload { size_modifier } => {
                     let member = Field::Payload {

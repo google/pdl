@@ -437,7 +437,7 @@ fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> 
                 let field_id = match children.next() {
                     Some(n) if n.as_rule() == Rule::identifier => n.as_string(),
                     Some(n) if n.as_rule() == Rule::payload_identifier => n.as_string(),
-                    Some(n) if n.as_rule() == Rule::body_identifier => n.as_string(),
+                    Some(n) if n.as_rule() == Rule::body_identifier => "_payload_".to_string(),
                     Some(n) => err_unexpected_rule(Rule::identifier, n.as_rule())?,
                     None => err_missing_rule(Rule::identifier)?,
                 };
@@ -454,7 +454,7 @@ fn parse_field(node: Node<'_>, context: &Context) -> Result<ast::Field, String> 
                 let width = parse_integer(&mut children)?;
                 ast::FieldDesc::ElementSize { field_id, width }
             }
-            Rule::body_field => ast::FieldDesc::Body,
+            Rule::body_field => ast::FieldDesc::Payload { size_modifier: None },
             Rule::payload_field => {
                 let size_modifier = parse_size_modifier_opt(&mut children);
                 ast::FieldDesc::Payload { size_modifier }

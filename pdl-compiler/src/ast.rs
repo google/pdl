@@ -121,8 +121,6 @@ pub enum FieldDesc {
     Count { field_id: String, width: usize },
     #[serde(rename = "elementsize_field")]
     ElementSize { field_id: String, width: usize },
-    #[serde(rename = "body_field")]
-    Body,
     #[serde(rename = "payload_field")]
     Payload { size_modifier: Option<String> },
     #[serde(rename = "fixed_field")]
@@ -442,15 +440,14 @@ impl Decl {
     /// Return the reference to the payload or body field in a declaration,
     /// if present.
     pub fn payload(&self) -> Option<&Field> {
-        self.fields()
-            .find(|field| matches!(&field.desc, FieldDesc::Payload { .. } | FieldDesc::Body))
+        self.fields().find(|field| matches!(&field.desc, FieldDesc::Payload { .. }))
     }
 
     /// Return the reference to the payload or body size field in a declaration,
     /// if present.
     pub fn payload_size(&self) -> Option<&Field> {
         self.fields().find(|field| match &field.desc {
-            FieldDesc::Size { field_id, .. } => field_id == "_payload_" || field_id == "_body_",
+            FieldDesc::Size { field_id, .. } => field_id == "_payload_",
             _ => false,
         })
     }
@@ -501,7 +498,6 @@ impl Field {
             | FieldDesc::Size { .. }
             | FieldDesc::Count { .. }
             | FieldDesc::ElementSize { .. }
-            | FieldDesc::Body
             | FieldDesc::Payload { .. }
             | FieldDesc::FixedScalar { .. }
             | FieldDesc::FixedEnum { .. }
@@ -521,7 +517,6 @@ impl Field {
             FieldDesc::Size { .. } => "size",
             FieldDesc::Count { .. } => "count",
             FieldDesc::ElementSize { .. } => "elementsize",
-            FieldDesc::Body => "body",
             FieldDesc::Payload { .. } => "payload",
             FieldDesc::FixedScalar { .. } | FieldDesc::FixedEnum { .. } => "fixed",
             FieldDesc::Reserved { .. } => "reserved",

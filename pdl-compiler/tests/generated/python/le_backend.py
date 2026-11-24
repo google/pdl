@@ -875,12 +875,12 @@ class Packet_Body_Field_VariableSize(Packet):
         fields = {'payload': None}
         if len(span) < 1:
             raise LengthError("Packet_Body_Field_VariableSize", 1, len(span))
-        _body__size = (span[0] >> 0) & 0x7
+        _payload__size = (span[0] >> 0) & 0x7
         span = span[1:]
-        if len(span) < _body__size:
-            raise LengthError("Packet_Body_Field_VariableSize", _body__size, len(span))
-        payload = span[:_body__size]
-        span = span[_body__size:]
+        if len(span) < _payload__size:
+            raise LengthError("Packet_Body_Field_VariableSize", _payload__size, len(span))
+        payload = span[:_payload__size]
+        span = span[_payload__size:]
         fields['payload'] = payload
         return Packet_Body_Field_VariableSize(**fields), span
 
@@ -888,7 +888,7 @@ class Packet_Body_Field_VariableSize(Packet):
         _span = bytearray()
         _payload_size = len(payload or self.payload or [])
         if _payload_size > 0x7:
-            raise ValueError("Invalid size value Packet_Body_Field_VariableSize::_body_: {_payload_size} > 0x7")
+            raise ValueError("Invalid size value Packet_Body_Field_VariableSize::_payload_: {_payload_size} > 0x7")
         _span.append((_payload_size << 0))
         _span.extend(payload or self.payload or [])
         return bytes(_span)

@@ -341,7 +341,6 @@ impl Encoder {
                     .iter_fields(decl)
                     .find(|field| match &field.desc {
                         ast::FieldDesc::Payload { .. } => field_id == "_payload_",
-                        ast::FieldDesc::Body => field_id == "_body_",
                         _ => field.id() == Some(field_id),
                     })
                     .unwrap();
@@ -362,7 +361,7 @@ impl Encoder {
                         let payload_size = &self.payload_size;
                         quote! { (#payload_size + #size_modifier) }
                     }
-                    (ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body, _) => {
+                    (ast::FieldDesc::Payload { .. }, _) => {
                         let payload_size = &self.payload_size;
                         quote! { #payload_size }
                     }
@@ -642,7 +641,7 @@ impl Encoder {
             ast::FieldDesc::Typedef { id, type_id } => {
                 self.encode_typedef_field(scope, schema, id, type_id)
             }
-            ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
+            ast::FieldDesc::Payload { .. } => {
                 self.tokens.extend(payload.clone());
                 self.packet_size += &self.payload_size
             }
