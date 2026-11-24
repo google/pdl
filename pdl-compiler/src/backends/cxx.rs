@@ -1812,7 +1812,7 @@ fn generate_packet_view(
         match &field.desc {
             ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
                 field_members.push("pdl::packet::slice payload_;".to_string());
-                field_accessors.push(indent("std::vector<uint8_t> GetPayload() const {\n    _ASSERT_VALID(valid_);\n    return payload_.bytes();\n}\n", 1));
+                field_accessors.push(indent("pdl::packet::slice GetPayload() const {\n    _ASSERT_VALID(valid_);\n    return payload_;\n}\n", 1));
             }
             ast::FieldDesc::Array { id, type_id, width, size, .. } => {
                 field_members.push(format!("pdl::packet::slice {}_;", id));
