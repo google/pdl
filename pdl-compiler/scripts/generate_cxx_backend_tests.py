@@ -39,8 +39,21 @@ def generate_packet_parser_test(parser_test_suite: str, packet: ast.PacketDeclar
     """Generate the implementation of unit tests for the selected packet."""
 
     def parse_packet(packet: ast.PacketDeclaration) -> str:
-        parent = parse_packet(packet.parent) if packet.parent else "input"
-        return f"{packet.id}View::Create({parent})"
+        """Return a lambda expression decoding the packet `packet` from the
+        `input` slice, through the chain of parent packet views."""
+        chain = []
+        while packet:
+            chain.insert(0, packet)
+            packet = packet.parent
+        lines = [f"[&]() -> std::optional<{chain[-1].id}View> {{"]
+        parent = "input"
+        for n, decl in enumerate(chain[:-1]):
+            lines.append(f"    auto view{n} = {decl.id}View::Decode({parent});")
+            lines.append(f"    if (!view{n}.has_value()) return std::nullopt;")
+            parent = f"*view{n}"
+        lines.append(f"    return {chain[-1].id}View::Decode({parent});")
+        lines.append("}()")
+        return '\n'.join(lines)
 
     def input_bytes(input: str) -> List[str]:
         input = bytes.fromhex(input)
@@ -165,15 +178,15 @@ def generate_packet_parser_test(parser_test_suite: str, packet: ast.PacketDeclar
                     pdl::packet::slice input(std::shared_ptr<std::vector<uint8_t>>(new std::vector<uint8_t> {{
                         {input_bytes}
                     }}));
-                    {child_packet_id}View packet = {parse_packet};
-                    ASSERT_FALSE(packet.IsValid());
+                    std::optional<{child_packet_id}View> packet = {parse_packet};
+                    ASSERT_FALSE(packet.has_value());
                 }}
                 """).format(parser_test_suite=parser_test_suite,
                             packet_id=packet.id,
                             child_packet_id=child_packet_id,
                             test_nr=test_nr,
                             input_bytes=indent(input_bytes(test['packed']), 2),
-                            parse_packet=parse_packet(child_packet)))
+                            parse_packet=indent(parse_packet(child_packet), 1)))
         else:
             generated_tests.append(
                 dedent("""\
@@ -182,8 +195,9 @@ def generate_packet_parser_test(parser_test_suite: str, packet: ast.PacketDeclar
                     pdl::packet::slice input(std::shared_ptr<std::vector<uint8_t>>(new std::vector<uint8_t> {{
                         {input_bytes}
                     }}));
-                    {child_packet_id}View packet = {parse_packet};
-                    ASSERT_TRUE(packet.IsValid());
+                    std::optional<{child_packet_id}View> view = {parse_packet};
+                    ASSERT_TRUE(view.has_value());
+                    {child_packet_id}View const& packet = *view;
                     {checks}
                 }}
                 """).format(parser_test_suite=parser_test_suite,
@@ -191,7 +205,7 @@ def generate_packet_parser_test(parser_test_suite: str, packet: ast.PacketDeclar
                             child_packet_id=child_packet_id,
                             test_nr=test_nr,
                             input_bytes=indent(input_bytes(test['packed']), 2),
-                            parse_packet=parse_packet(child_packet),
+                            parse_packet=indent(parse_packet(child_packet), 1),
                             checks=indent(check_members(packet, 'packet', test['unpacked']), 1)))
 
     return ''.join(generated_tests)
