@@ -30,7 +30,13 @@ namespace pdl::packet {
 class slice {
  public:
   slice() = default;
+  // The move operations are declared explicitly: the declaration of the
+  // copy constructor would otherwise suppress the implicit move constructor,
+  // and moving a slice would copy the shared pointer to the packet bytes.
   slice(slice const&) = default;
+  slice(slice&&) = default;
+  slice& operator=(slice const&) = default;
+  slice& operator=(slice&&) = default;
   slice(std::shared_ptr<const std::vector<uint8_t>> packet)
       : packet_(std::move(packet)), offset_(0), size_(packet_->size()) {}
 
@@ -55,10 +61,12 @@ class slice {
     static_assert(N <= sizeof(T));
     assert(N <= size_);
     T value = 0;
+    auto const* ptr = packet_->data() + offset_;
     for (size_t n = 0; n < N; n++) {
-      value |= (T)at(n) << (8 * n);
+      value |= (T)ptr[n] << (8 * n);
     }
-    skip(N);
+    offset_ += N;
+    size_ -= N;
     return value;
   }
 
@@ -71,18 +79,13 @@ class slice {
     static_assert(N <= sizeof(T));
     assert(N <= size_);
     T value = 0;
+    auto const* ptr = packet_->data() + offset_;
     for (size_t n = 0; n < N; n++) {
-      value = (value << 8) | (T)at(n);
+      value = (value << 8) | (T)ptr[n];
     }
-    skip(N);
+    offset_ += N;
+    size_ -= N;
     return value;
-  }
-
-  /// Return the value of the byte at the given offset.
-  /// `offset` must be within the bounds of the slice.
-  uint8_t at(size_t offset) const {
-    assert(offset <= size_);
-    return packet_->at(offset_ + offset);
   }
 
   /// Skip `size` bytes at the front of the slice.
