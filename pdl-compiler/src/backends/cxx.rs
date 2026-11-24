@@ -1237,7 +1237,8 @@ impl<'a> FieldParser<'a> {
     }
 }
 
-struct FieldSerializer<'a> {
+/// Keeps the necessary context for the encoder implementation.
+struct Encoder<'a> {
     scope: &'a analyzer::Scope<'a>,
     schema: &'a analyzer::Schema,
     endianness: ast::EndiannessValue,
@@ -1275,7 +1276,7 @@ impl std::ops::AddAssign<usize> for RuntimeSize {
     }
 }
 
-impl<'a> FieldSerializer<'a> {
+impl<'a> Encoder<'a> {
     fn new(
         scope: &'a analyzer::Scope<'a>,
         schema: &'a analyzer::Schema,
@@ -1294,6 +1295,13 @@ impl<'a> FieldSerializer<'a> {
         }
     }
 
+    fn byteorder(&self) -> &'static str {
+        match self.endianness {
+            ast::EndiannessValue::LittleEndian => "le",
+            ast::EndiannessValue::BigEndian => "be",
+        }
+    }
+
     fn indent(&mut self) {
         self.indent_level += 1;
     }
@@ -1309,9 +1317,9 @@ impl<'a> FieldSerializer<'a> {
         }
     }
 
-    fn serialize(&mut self, decl: &'a ast::Decl, children: &[&'a ast::Decl]) {
+    fn encode(&mut self, decl: &'a ast::Decl, children: &[&'a ast::Decl]) {
         for field in decl.fields() {
-            self.serialize_field(decl, children, field);
+            self.encode_field(decl, children, field);
         }
     }
 
@@ -1412,7 +1420,51 @@ impl<'a> FieldSerializer<'a> {
         self.values.clear();
     }
 
-    fn serialize_field(
+    /// Encode an optional field `field` of the packet declaration `decl`.
+    fn encode_optional_field(&mut self, field: &'a ast::Field) {
+        let id = field.id().unwrap();
+        let byteorder = self.byteorder();
+
+        self.append(&format!("if ({id}_.has_value()) {{"));
+        self.indent();
+
+        match &field.desc {
+            ast::FieldDesc::Scalar { width, .. } => {
+                let ty = get_cxx_scalar_type(*width);
+                if !matches!(*width, 8 | 16 | 32 | 64) {
+                    self.append(&format!("if (*{id}_ > {}) {{", mask(*width)));
+                    self.append("    return false;");
+                    self.append("}");
+                }
+                self.append(&format!(
+                    "pdl::packet::Builder::write_{byteorder}<{ty}, {}>(output, *{id}_);",
+                    width / 8,
+                ));
+            }
+            ast::FieldDesc::Typedef { type_id, .. } => {
+                let td = self.scope.typedef.get(type_id).unwrap();
+                if let ast::DeclDesc::Enum { width, .. } = &td.desc {
+                    let ty = get_cxx_scalar_type(*width);
+                    self.append(&format!(
+                        "pdl::packet::Builder::write_{byteorder}<{ty}, {}>(output, {ty}(*{id}_));",
+                        width / 8,
+                    ));
+                } else {
+                    self.append(&format!("if (!{id}_->Serialize(output)) {{"));
+                    self.append("    return false;");
+                    self.append("}");
+                }
+            }
+            _ => unreachable!(),
+        }
+
+        self.unindent();
+        self.append("}");
+    }
+
+    /// Encoder a single field `field` of the packet declaration `decl`.
+    /// `children` lists the chosen specialization for the current packet.
+    fn encode_field(
         &mut self,
         decl: &'a ast::Decl,
         children: &[&'a ast::Decl],
@@ -1450,58 +1502,8 @@ impl<'a> FieldSerializer<'a> {
             ast::EndiannessValue::BigEndian => "be",
         };
 
-        if let Some(cond) = &field.cond {
-            let cond_field = self
-                .scope
-                .iter_fields(decl)
-                .find(|f| f.id() == Some(&cond.id))
-                .expect("Cond field not found");
-            let cond_field_var = get_field_expr(cond_field);
-            let cond_val = cond.value.unwrap();
-            self.append(&format!("if ({} == {}) {{", cond_field_var, cond_val));
-            self.indent();
-            match &field.desc {
-                ast::FieldDesc::Scalar { width, .. } => {
-                    let ty = get_cxx_scalar_type(*width);
-                    let var_expr = field_var.as_ref().unwrap();
-                    if !matches!(*width, 8 | 16 | 32 | 64) {
-                        self.append(&format!("if (*{} > {}) {{", var_expr, mask(*width)));
-                        self.append("    return false;");
-                        self.append("}");
-                    }
-                    self.append(&format!(
-                        "pdl::packet::Builder::write_{}<{}, {}>(output, *{});",
-                        byteorder,
-                        ty,
-                        width / 8,
-                        var_expr
-                    ));
-                }
-                ast::FieldDesc::Typedef { type_id, .. } => {
-                    let td = self.scope.typedef.get(type_id).unwrap();
-                    if let ast::DeclDesc::Enum { width, .. } = &td.desc {
-                        let ty = get_cxx_scalar_type(*width);
-                        self.append(&format!(
-                            "pdl::packet::Builder::write_{}<{}, {}>(output, static_cast<{}>(*{}));",
-                            byteorder,
-                            ty,
-                            width / 8,
-                            ty,
-                            field_var.as_ref().unwrap()
-                        ));
-                    } else {
-                        self.append(&format!(
-                            "if (!{0}->Serialize(output)) {{",
-                            field_var.as_ref().unwrap()
-                        ));
-                        self.append("    return false;");
-                        self.append("}");
-                    }
-                }
-                _ => {}
-            }
-            self.unindent();
-            self.append("}");
+        if field.cond.is_some() {
+            self.encode_optional_field(field);
         } else if self.scope.is_bitfield(field) {
             let width = self.schema.field_size(field.key).static_().unwrap();
             let shift = self.shift;
@@ -1666,8 +1668,8 @@ impl<'a> FieldSerializer<'a> {
                             let td = self.scope.typedef.get(tid).unwrap();
                             match &td.desc {
                                 ast::DeclDesc::Enum { width, .. } => {
-                                    let backing_type = get_cxx_scalar_type(*width);
-                                    self.append(&format!("pdl::packet::Builder::write_{}<{}, {}>(output, static_cast<{}>(element));", byteorder, backing_type, width / 8, backing_type));
+                                    let ty = get_cxx_scalar_type(*width);
+                                    self.append(&format!("pdl::packet::Builder::write_{byteorder}<{ty}, {}>(output, {ty}(element));", width / 8));
                                 }
                                 _ => {
                                     self.append("if (!element.Serialize(output)) {");
@@ -1716,7 +1718,7 @@ impl<'a> FieldSerializer<'a> {
                         );
                     } else {
                         // Serialize the children fields in place of the parent payload.
-                        self.serialize(children[0], &children[1..])
+                        self.encode(children[0], &children[1..])
                     }
                 }
                 _ => {}
@@ -2205,9 +2207,8 @@ fn generate_packet_builder(
 
     let mut all_decls = scope.iter_parents_and_self(decl).collect::<Vec<_>>();
     all_decls.reverse();
-    let mut serializer =
-        FieldSerializer::new(scope, schema, endianness, parent_constraints.clone());
-    serializer.serialize(all_decls[0], &all_decls[1..]);
+    let mut serializer = Encoder::new(scope, schema, endianness, parent_constraints.clone());
+    serializer.encode(all_decls[0], &all_decls[1..]);
     serializer.append("return true;");
 
     let field_serializers = serializer.code;
@@ -2476,8 +2477,8 @@ fn generate_struct_declaration(
 
     let mut all_decls = scope.iter_parents_and_self(decl).collect::<Vec<_>>();
     all_decls.reverse();
-    let mut serializer = FieldSerializer::new(scope, schema, endianness, parent_constraints);
-    serializer.serialize(all_decls[0], &all_decls[1..]);
+    let mut serializer = Encoder::new(scope, schema, endianness, parent_constraints);
+    serializer.encode(all_decls[0], &all_decls[1..]);
     serializer.append("return true;");
 
     let field_serializers = serializer.code;
