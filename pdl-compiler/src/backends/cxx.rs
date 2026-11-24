@@ -831,10 +831,9 @@ impl<'a> FieldParser<'a> {
     }
 
     fn parse_payload_field_lite(&mut self, _field: &'a ast::Field) {
-        if self.shift != 0 {
-            panic!("Payload field does not start on an octet boundary");
-        }
+        assert_eq!(self.shift, 0, "Payload field does not start on an octet boundary");
         self.check_code();
+
         // Packet views store the payload as a slice, structs store the
         // payload as a byte vector.
         let bytes = if self.extract_arrays { ".bytes()" } else { "" };
@@ -842,7 +841,7 @@ impl<'a> FieldParser<'a> {
         for f in self.decl.fields() {
             if let ast::FieldDesc::Size { field_id, .. } = &f.desc {
                 if field_id == "_payload_" || field_id == "_body_" {
-                    size_expr = format!("{}{}_size_", self.target_prefix, "payload");
+                    size_expr = "payload_size_".to_owned();
                 }
             }
         }
@@ -1730,7 +1729,11 @@ impl<'a> Encoder<'a> {
                     self.encode(children[0], &children[1..])
                 }
             }
+            // Padding declarations are checked in array and payload code generation.
             ast::FieldDesc::Padding { .. } => (),
+            // Checksum fields are not supported by the C++ backend;
+            // the checksum start marker does not produce any output.
+            ast::FieldDesc::Checksum { .. } => (),
             _ => unreachable!(),
         }
     }
