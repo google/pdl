@@ -2686,7 +2686,7 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(element));
         }
         return true;
     }
@@ -2776,7 +2776,7 @@ public:
         }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(element));
         }
         return true;
     }
@@ -2863,7 +2863,7 @@ public:
         }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(element));
         }
         return true;
     }
@@ -2940,7 +2940,7 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(element));
         }
         return true;
     }
@@ -4487,13 +4487,13 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
-        if ((a_.has_value() ? 0 : 1) == 0) {
+        if (a_.has_value()) {
             if (*a_ > 0xffffff) {
                 return false;
             }
             pdl::packet::Builder::write_be<uint32_t, 3>(output, *a_);
         }
-        if ((b_.has_value() ? 1 : 0) == 1) {
+        if (b_.has_value()) {
             pdl::packet::Builder::write_be<uint32_t, 4>(output, *b_);
         }
         return true;
@@ -4588,11 +4588,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
-        if ((a_.has_value() ? 0 : 1) == 0) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(*a_));
+        if (a_.has_value()) {
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(*a_));
         }
-        if ((b_.has_value() ? 1 : 0) == 1) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(*b_));
+        if (b_.has_value()) {
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(*b_));
         }
         return true;
     }
@@ -4678,12 +4678,12 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
-        if ((a_.has_value() ? 0 : 1) == 0) {
+        if (a_.has_value()) {
             if (!a_->Serialize(output)) {
                 return false;
             }
         }
-        if ((b_.has_value() ? 1 : 0) == 1) {
+        if (b_.has_value()) {
             if (!b_->Serialize(output)) {
                 return false;
             }
@@ -7452,7 +7452,7 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(element));
         }
         return true;
     }
@@ -7572,7 +7572,7 @@ public:
         }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_size)));
         for (auto const& element : array_) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(element));
         }
         return true;
     }
@@ -7687,7 +7687,7 @@ public:
         }
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(array_.size())));
         for (auto const& element : array_) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(element));
         }
         return true;
     }
@@ -7795,7 +7795,7 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         for (auto const& element : array_) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(element));
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(element));
         }
         return true;
     }
@@ -9193,13 +9193,13 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
-        if ((a_.has_value() ? 0 : 1) == 0) {
+        if (a_.has_value()) {
             if (*a_ > 0xffffff) {
                 return false;
             }
             pdl::packet::Builder::write_be<uint32_t, 3>(output, *a_);
         }
-        if ((b_.has_value() ? 1 : 0) == 1) {
+        if (b_.has_value()) {
             pdl::packet::Builder::write_be<uint32_t, 4>(output, *b_);
         }
         return true;
@@ -9323,11 +9323,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
-        if ((a_.has_value() ? 0 : 1) == 0) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(*a_));
+        if (a_.has_value()) {
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(*a_));
         }
-        if ((b_.has_value() ? 1 : 0) == 1) {
-            pdl::packet::Builder::write_be<uint16_t, 2>(output, static_cast<uint16_t>(*b_));
+        if (b_.has_value()) {
+            pdl::packet::Builder::write_be<uint16_t, 2>(output, uint16_t(*b_));
         }
         return true;
     }
@@ -9442,12 +9442,12 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>((a_.has_value() ? 0 : 1))) | (static_cast<uint8_t>((b_.has_value() ? 1 : 0)) << 1));
-        if ((a_.has_value() ? 0 : 1) == 0) {
+        if (a_.has_value()) {
             if (!a_->Serialize(output)) {
                 return false;
             }
         }
-        if ((b_.has_value() ? 1 : 0) == 1) {
+        if (b_.has_value()) {
             if (!b_->Serialize(output)) {
                 return false;
             }
