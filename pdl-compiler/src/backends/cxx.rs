@@ -16,7 +16,7 @@
 
 use crate::{analyzer, ast, backends::common};
 use heck::ToUpperCamelCase;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 // Return the maximum value for the scalar type.
 fn scalar_max(width: usize) -> usize {
@@ -33,13 +33,6 @@ fn indent(s: &str, level: usize) -> String {
 
 fn mask(width: usize) -> String {
     format!("{:#x}", (1u128 << width) - 1)
-}
-
-fn deref(var: Option<&str>, id: &str) -> String {
-    match var {
-        Some(v) => format!("{}.{}", v, id),
-        None => id.to_string(),
-    }
 }
 
 fn get_cxx_scalar_type(width: usize) -> String {
@@ -1248,10 +1241,38 @@ struct FieldSerializer<'a> {
     scope: &'a analyzer::Scope<'a>,
     schema: &'a analyzer::Schema,
     endianness: ast::EndiannessValue,
+    constraints: HashMap<String, ast::Constraint>,
     shift: usize,
     values: Vec<(String, usize)>,
     code: Vec<String>,
     indent_level: usize,
+}
+
+/// Represents the computed size of a packet,
+/// composed of constant and variable size fields.
+#[derive(Default)]
+struct RuntimeSize {
+    constant: usize,
+    variable: Vec<String>,
+}
+
+impl std::ops::AddAssign<RuntimeSize> for RuntimeSize {
+    fn add_assign(&mut self, other: RuntimeSize) {
+        self.constant += other.constant;
+        self.variable.extend_from_slice(&other.variable)
+    }
+}
+
+impl std::ops::AddAssign<String> for RuntimeSize {
+    fn add_assign(&mut self, other: String) {
+        self.variable.push(other)
+    }
+}
+
+impl std::ops::AddAssign<usize> for RuntimeSize {
+    fn add_assign(&mut self, other: usize) {
+        self.constant += other
+    }
 }
 
 impl<'a> FieldSerializer<'a> {
@@ -1259,11 +1280,13 @@ impl<'a> FieldSerializer<'a> {
         scope: &'a analyzer::Scope<'a>,
         schema: &'a analyzer::Schema,
         endianness: ast::EndiannessValue,
+        constraints: HashMap<String, ast::Constraint>,
     ) -> Self {
         Self {
             scope,
             schema,
             endianness,
+            constraints,
             shift: 0,
             values: Vec::new(),
             code: Vec::new(),
@@ -1286,102 +1309,72 @@ impl<'a> FieldSerializer<'a> {
         }
     }
 
-    fn get_payload_field_size(&self, var: Option<&str>, decl: &'a ast::Decl) -> String {
-        let parent_constraints = self
-            .scope
-            .iter_parents_and_self(decl)
-            .flat_map(|d| d.constraints())
-            .collect::<Vec<_>>();
-        let get_field_size_expr = |f: &ast::Field| -> String {
-            let fid = f.id();
-            let is_constrained =
-                fid.map(|fid| parent_constraints.iter().any(|c| c.id == fid)).unwrap_or(false);
-            if is_constrained {
-                return format!("{}", self.schema.field_size(f.key).static_().unwrap() / 8);
-            }
+    fn serialize(&mut self, decl: &'a ast::Decl, children: &[&'a ast::Decl]) {
+        for field in decl.fields() {
+            self.serialize_field(decl, children, field);
+        }
+    }
 
+    /// Compute the partial size of the packet `decl` counting only the fields
+    /// immediatly in the declaration and children declarations.
+    fn compute_partial_packet_size(
+        &self,
+        decl: &'a ast::Decl,
+        children: &[&'a ast::Decl],
+    ) -> RuntimeSize {
+        // Accumulate the size of all fields in the packet declaration.
+        let mut packet_size = RuntimeSize::default();
+        for f in decl.fields() {
             match &f.desc {
-                ast::FieldDesc::Scalar { width, .. } => {
-                    if let Some(cond) = &f.cond {
-                        let cond_field = self
-                            .scope
-                            .iter_fields(decl)
-                            .find(|f| f.id() == Some(&cond.id))
-                            .expect("Cond field not found");
-                        let _cond_field_var =
-                            format!("{0}.has_value() ? ...", cond_field.id().unwrap()); // This is getting complex
-                        // Actually, I'll just use a simpler approach for now.
-                        format!("(({}_.has_value()) ? {} : 0)", f.id().unwrap(), width / 8)
-                    } else {
-                        format!("{}", width / 8)
-                    }
+                ast::FieldDesc::Scalar { id, width, .. } if f.cond.is_some() => {
+                    packet_size += format!("({id}_.has_value() ? {} : 0)", *width / 8)
                 }
                 ast::FieldDesc::Typedef { id, type_id, .. } => {
                     let type_decl = self.scope.typedef.get(type_id).unwrap();
-                    let width = match &type_decl.desc {
-                        ast::DeclDesc::Enum { width, .. } => *width,
-                        _ => 0,
-                    };
-                    if f.cond.is_some() {
-                        if width > 0 {
-                            format!("(({}_.has_value()) ? {} : 0)", id, width / 8)
-                        } else {
-                            format!("(({0}_.has_value()) ? {0}_->GetSize() : 0)", id)
+                    match (self.schema.decl_size(type_decl.key), &f.cond) {
+                        (analyzer::Size::Static(width), Some(_)) => {
+                            packet_size += format!("({id}_.has_value() ? {} : 0)", width / 8)
                         }
-                    } else if width > 0 {
-                        format!("{}", width / 8)
-                    } else {
-                        format!("{}_.GetSize()", id)
+                        (analyzer::Size::Static(width), None) => packet_size += width,
+                        (_, Some(_)) => {
+                            packet_size += format!("({id}_.has_value() ? {id}_->GetSize() : 0)")
+                        }
+                        (_, None) => packet_size += format!("({id}_.GetSize()"),
                     }
                 }
-                ast::FieldDesc::Array { id, width, type_id, .. } => {
-                    let element_size = if let Some(w) = width {
-                        format!("{}", w / 8)
-                    } else {
-                        let tid = type_id.as_ref().unwrap();
-                        let td = self.scope.typedef.get(tid).unwrap();
-                        match &td.desc {
-                            ast::DeclDesc::Enum { width, .. } => format!("{}", width / 8),
-                            _ => "element.GetSize()".to_string(),
-                        }
-                    };
+                ast::FieldDesc::Array { id, .. } => {
+                    let element_size = analyzer::element_size(self.scope, self.schema, decl, f);
+                    let array_size = analyzer::array_size(decl, f);
 
-                    if element_size.contains("GetSize") {
-                        format!(
-                            "std::accumulate({0}_.begin(), {0}_.end(), static_cast<size_t>(0), [](size_t s, auto const& element) {{ return s + {1}; }})",
-                            id, element_size
-                        )
-                    } else {
-                        format!("({id}_.size() * {element_size})")
+                    use analyzer::{ArraySize, ElementSize};
+                    match (element_size, array_size) {
+                        (ElementSize::Static(width), ArraySize::StaticCount(count)) => {
+                            packet_size += width * count
+                        }
+                        (ElementSize::Static(width), _) => {
+                            packet_size += format!("{} * {id}_.size()", width / 8)
+                        }
+                        _ => {
+                            packet_size += format!(
+                                "std::accumulate({id}_.begin(), {id}_.end(), size_t(0), [](size_t s, auto const& elt) {{ return s + elt.GetSize(); }})"
+                            )
+                        }
                     }
                 }
                 ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
-                    format!("{}.size()", deref(var, "payload_"))
+                    if children.is_empty() {
+                        packet_size += "payload_.size()".to_owned()
+                    } else {
+                        packet_size += self.compute_partial_packet_size(children[0], &children[1..])
+                    }
                 }
-                _ => format!("{}", self.schema.field_size(f.key).static_().unwrap_or(0) / 8),
+                // Remaining fields are all bitfields with a static bit size,
+                // or simply markers dropped during encoding.
+                _ => packet_size += self.schema.field_size(f.key).static_().unwrap_or(0),
             }
-        };
-
-        let size_modifier = self.scope.iter_fields(decl).find_map(|f| match &f.desc {
-            ast::FieldDesc::Payload { size_modifier, .. } => size_modifier.as_ref(),
-            _ => None,
-        });
-
-        let has_local_payload = decl
-            .fields()
-            .any(|f| matches!(f.desc, ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body));
-        let size_expr = if has_local_payload {
-            format!("{}.size()", deref(var, "payload_"))
-        } else {
-            let local_fields = decl.fields().map(get_field_size_expr).collect::<Vec<_>>();
-            if local_fields.is_empty() { "0".to_string() } else { local_fields.join(" + ") }
-        };
-
-        if let Some(m) = size_modifier {
-            return format!("({} {})", size_expr, m);
         }
 
-        size_expr
+        packet_size
     }
 
     fn pack_bit_fields(&mut self) {
@@ -1419,15 +1412,15 @@ impl<'a> FieldSerializer<'a> {
         self.values.clear();
     }
 
-    fn serialize(&mut self, field: &'a ast::Field, decl: &'a ast::Decl, var: Option<&str>) {
-        let parent_constraints = self
-            .scope
-            .iter_parents_and_self(decl)
-            .flat_map(|d| d.constraints())
-            .collect::<Vec<_>>();
+    fn serialize_field(
+        &mut self,
+        decl: &'a ast::Decl,
+        children: &[&'a ast::Decl],
+        field: &'a ast::Field,
+    ) {
         let get_field_expr = |f: &ast::Field| -> String {
             if let Some(fid) = f.id() {
-                if let Some(constraint) = parent_constraints.iter().find(|c| c.id == fid) {
+                if let Some(constraint) = self.constraints.get(fid) {
                     if let Some(tag_id) = &constraint.tag_id {
                         let type_id = match &f.desc {
                             ast::FieldDesc::Typedef { type_id, .. } => Some(type_id.as_str()),
@@ -1445,12 +1438,9 @@ impl<'a> FieldSerializer<'a> {
                 ast::FieldDesc::Flag { optional_field_ids, .. } => {
                     let (opt_id, val_present) = &optional_field_ids[0];
                     let val_absent = if *val_present == 0 { 1 } else { 0 };
-                    format!(
-                        "({0}.has_value() ? {val_present} : {val_absent})",
-                        deref(var, &format!("{}_", opt_id)),
-                    )
+                    format!("({opt_id}_.has_value() ? {val_present} : {val_absent})")
                 }
-                _ => deref(var, &format!("{}_", f.id().unwrap())),
+                _ => format!("{}_", f.id().unwrap()),
             }
         };
 
@@ -1518,9 +1508,7 @@ impl<'a> FieldSerializer<'a> {
             match &field.desc {
                 ast::FieldDesc::Scalar { id, .. } => {
                     let var_expr = field_var.unwrap();
-                    if !parent_constraints.iter().any(|c| c.id == *id)
-                        && !matches!(width, 8 | 16 | 32 | 64)
-                    {
+                    if !self.constraints.contains_key(id) && !matches!(width, 8 | 16 | 32 | 64) {
                         self.append(&format!("if ({} > {}) {{", var_expr, mask(width)));
                         self.append("    return false;");
                         self.append("}");
@@ -1551,15 +1539,42 @@ impl<'a> FieldSerializer<'a> {
                 ast::FieldDesc::Size { field_id, width, .. }
                     if field_id == "_payload_" || field_id == "_body_" =>
                 {
-                    let size_expr = self.get_payload_field_size(var, decl);
+                    let size_var = format!("{}_payload_size", decl.id().unwrap());
+                    let size_expr = if children.is_empty() {
+                        "payload_.size()".to_owned()
+                    } else {
+                        match self.compute_partial_packet_size(children[0], &children[1..]) {
+                            RuntimeSize { constant: 0, variable } if variable.is_empty() => {
+                                "0".to_owned()
+                            }
+                            RuntimeSize { constant, variable } if variable.is_empty() => {
+                                format!("{}", constant / 8)
+                            }
+                            RuntimeSize { constant: 0, variable } => variable.join(" + "),
+                            RuntimeSize { constant, variable } => {
+                                format!("{} + {}", constant / 8, variable.join(" + "))
+                            }
+                        }
+                    };
 
-                    self.append(&format!("size_t payload_size = {size_expr};"));
+                    self.append(&format!("size_t {size_var} = {size_expr};"));
+
+                    let size_modifier = decl.fields().find_map(|f| match &f.desc {
+                        ast::FieldDesc::Payload { size_modifier, .. } => size_modifier.as_ref(),
+                        _ => None,
+                    });
+
+                    if let Some(modifier) = size_modifier {
+                        self.append(&format!("{size_var} = {size_var} {modifier};"))
+                    }
+
                     if *width < 64 {
-                        self.append(&format!("if (payload_size > {}) {{", mask(*width)));
+                        self.append(&format!("if ({size_var} > {}) {{", mask(*width)));
                         self.append("    return false;");
                         self.append("}");
                     }
-                    self.values.push(("payload_size".to_owned(), shift));
+
+                    self.values.push((size_var, shift));
                 }
                 ast::FieldDesc::Size { field_id, width, .. } => {
                     let array_field = self
@@ -1693,10 +1708,16 @@ impl<'a> FieldSerializer<'a> {
                     self.append("}");
                 }
                 ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
-                    self.append(&format!(
-                        "output.insert(output.end(), {0}.begin(), {0}.end());",
-                        deref(var, "payload_")
-                    ));
+                    if children.is_empty() {
+                        // The current declaration corresponds to the packet being generated.
+                        // The payload is encoded as a builder field in this case.
+                        self.append(
+                            "output.insert(output.end(), payload_.begin(), payload_.end());",
+                        );
+                    } else {
+                        // Serialize the children fields in place of the parent payload.
+                        self.serialize(children[0], &children[1..])
+                    }
                 }
                 _ => {}
             }
@@ -2108,15 +2129,18 @@ fn generate_packet_builder(
     let mut constructor_params: Vec<String> = Vec::new();
     let mut constructor_inits = Vec::new();
 
-    let parent_constraints =
-        scope.iter_parents_and_self(decl).flat_map(|d| d.constraints()).collect::<Vec<_>>();
+    let parent_constraints = scope
+        .iter_parents_and_self(decl)
+        .flat_map(|d| d.constraints())
+        .map(|c| (c.id.to_string(), c.clone()))
+        .collect::<HashMap<_, _>>();
+
     let all_fields =
         get_all_parent_fields(scope, decl).into_iter().chain(decl.fields()).collect::<Vec<_>>();
 
     for field in &all_fields {
         let fid = field.id();
-        let is_constrained =
-            fid.map(|fid| parent_constraints.iter().any(|c| c.id == fid)).unwrap_or(false);
+        let is_constrained = fid.map(|fid| parent_constraints.contains_key(fid)).unwrap_or(false);
         if is_constrained {
             continue;
         }
@@ -2179,11 +2203,13 @@ fn generate_packet_builder(
         }
     }
 
-    let mut serializer = FieldSerializer::new(scope, schema, endianness);
-    for f in &all_fields {
-        serializer.serialize(f, decl, None);
-    }
+    let mut all_decls = scope.iter_parents_and_self(decl).collect::<Vec<_>>();
+    all_decls.reverse();
+    let mut serializer =
+        FieldSerializer::new(scope, schema, endianness, parent_constraints.clone());
+    serializer.serialize(all_decls[0], &all_decls[1..]);
     serializer.append("return true;");
+
     let field_serializers = serializer.code;
 
     let mut variable_widths = Vec::new();
@@ -2191,7 +2217,7 @@ fn generate_packet_builder(
 
     let get_field_expr = |f: &ast::Field| -> String {
         if let Some(fid) = f.id() {
-            if let Some(constraint) = parent_constraints.iter().find(|c| c.id == fid) {
+            if let Some(constraint) = parent_constraints.get(fid) {
                 return format!("{:#x}", constraint.value.unwrap());
             }
         }
@@ -2357,6 +2383,12 @@ fn generate_struct_declaration(
     let mut constructor_inits = Vec::new();
     let endianness = scope.file.endianness.value;
 
+    let parent_constraints = scope
+        .iter_parents_and_self(decl)
+        .flat_map(|d| d.constraints())
+        .map(|c| (c.id.to_string(), c.clone()))
+        .collect::<HashMap<_, _>>();
+
     for field in decl.fields() {
         match &field.desc {
             ast::FieldDesc::Payload { .. } | ast::FieldDesc::Body => {
@@ -2442,11 +2474,12 @@ fn generate_struct_declaration(
     field_parsers.push("parent_span = span;".to_string());
     field_parsers.push("return true;".to_string());
 
-    let mut serializer = FieldSerializer::new(scope, schema, endianness);
-    for f in decl.fields() {
-        serializer.serialize(f, decl, None);
-    }
+    let mut all_decls = scope.iter_parents_and_self(decl).collect::<Vec<_>>();
+    all_decls.reverse();
+    let mut serializer = FieldSerializer::new(scope, schema, endianness, parent_constraints);
+    serializer.serialize(all_decls[0], &all_decls[1..]);
     serializer.append("return true;");
+
     let field_serializers = serializer.code;
 
     let mut variable_widths = Vec::new();

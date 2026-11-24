@@ -364,11 +364,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(a_ & 0xff)));
-        size_t payload_size = payload_.size();
-        if (payload_size > 0xff) {
+        size_t ScalarParent_payload_size = payload_.size();
+        if (ScalarParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
         return true;
     }
@@ -451,11 +451,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(static_cast<uint16_t>(a_))));
-        size_t payload_size = payload_.size();
-        if (payload_size > 0xff) {
+        size_t EnumParent_payload_size = payload_.size();
+        if (EnumParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(EnumParent_payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
         return true;
     }
@@ -530,11 +530,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(a_ & 0xff)));
-        size_t payload_size = payload_.size();
-        if (payload_size > 0xff) {
+        size_t ScalarParent_payload_size = payload_.size();
+        if (ScalarParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
         return true;
     }
@@ -1182,11 +1182,11 @@ public:
     Packet_Payload_Field_VariableSizeBuilder& operator=(Packet_Payload_Field_VariableSizeBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t payload_size = payload_.size();
-        if (payload_size > 0x7) {
+        size_t Packet_Payload_Field_VariableSize_payload_size = payload_.size();
+        if (Packet_Payload_Field_VariableSize_payload_size > 0x7) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(Packet_Payload_Field_VariableSize_payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
         return true;
     }
@@ -1259,11 +1259,12 @@ public:
     Packet_Payload_Field_SizeModifierBuilder& operator=(Packet_Payload_Field_SizeModifierBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t payload_size = (payload_.size() +2);
-        if (payload_size > 0x7) {
+        size_t Packet_Payload_Field_SizeModifier_payload_size = payload_.size();
+        Packet_Payload_Field_SizeModifier_payload_size = Packet_Payload_Field_SizeModifier_payload_size +2;
+        if (Packet_Payload_Field_SizeModifier_payload_size > 0x7) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(Packet_Payload_Field_SizeModifier_payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
         return true;
     }
@@ -1488,11 +1489,11 @@ public:
     Packet_Body_Field_VariableSizeBuilder& operator=(Packet_Body_Field_VariableSizeBuilder const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {
-        size_t payload_size = payload_.size();
-        if (payload_size > 0x7) {
+        size_t Packet_Body_Field_VariableSize_payload_size = payload_.size();
+        if (Packet_Body_Field_VariableSize_payload_size > 0x7) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(Packet_Body_Field_VariableSize_payload_size)));
         output.insert(output.end(), payload_.begin(), payload_.end());
         return true;
     }
@@ -4660,11 +4661,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x0 & 0xff)));
-        size_t payload_size = 1;
-        if (payload_size > 0xff) {
+        size_t ScalarParent_payload_size = 1;
+        if (ScalarParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(b_ & 0xff)));
         return true;
     }
@@ -4735,11 +4736,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x1 & 0xff)));
-        size_t payload_size = 2;
-        if (payload_size > 0xff) {
+        size_t ScalarParent_payload_size = 2;
+        if (ScalarParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(c_ & 0xffff)));
         return true;
     }
@@ -4810,11 +4811,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(static_cast<uint16_t>(Enum16::A))));
-        size_t payload_size = 1;
-        if (payload_size > 0xff) {
+        size_t EnumParent_payload_size = 1;
+        if (EnumParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(EnumParent_payload_size)));
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(b_ & 0xff)));
         return true;
     }
@@ -4885,11 +4886,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(static_cast<uint16_t>(Enum16::B))));
-        size_t payload_size = 2;
-        if (payload_size > 0xff) {
+        size_t EnumParent_payload_size = 2;
+        if (EnumParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(EnumParent_payload_size)));
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(c_ & 0xffff)));
         return true;
     }
@@ -4960,11 +4961,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x2 & 0xff)));
-        size_t payload_size = 1;
-        if (payload_size > 0xff) {
+        size_t ScalarParent_payload_size = 1;
+        if (ScalarParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(b_ & 0xff)));
         return true;
     }
@@ -5035,11 +5036,11 @@ public:
 
     bool Serialize(std::vector<uint8_t>& output) const override {
         pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(0x3 & 0xff)));
-        size_t payload_size = 2;
-        if (payload_size > 0xff) {
+        size_t ScalarParent_payload_size = 2;
+        if (ScalarParent_payload_size > 0xff) {
             return false;
         }
-        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(payload_size)));
+        pdl::packet::Builder::write_be<uint8_t, 1>(output, (static_cast<uint8_t>(ScalarParent_payload_size)));
         pdl::packet::Builder::write_be<uint16_t, 2>(output, (static_cast<uint16_t>(c_ & 0xffff)));
         return true;
     }
