@@ -27,6 +27,7 @@ enum OutputFormat {
     JSON,
     Python,
     Rust,
+    RustNoStd,
 }
 
 impl std::str::FromStr for OutputFormat {
@@ -38,12 +39,13 @@ impl std::str::FromStr for OutputFormat {
             "json" => Ok(Self::JSON),
             "python" => Ok(Self::Python),
             "rust" => Ok(Self::Rust),
+            "rust_nostd" => Ok(Self::RustNoStd),
             "java" => Ok(Self::Java),
             "rust_legacy" => {
                 Err("'rust_legacy' is now deprecated. Use 'rust' format instead.".to_string())
             }
             _ => Err(format!(
-                "could not parse {input:?}, valid option are 'cxx', 'json', 'python', 'rust'."
+                "could not parse {input:?}, valid option are 'cxx', 'json', 'python', 'rust', 'rust_nostd'."
             )),
         }
     }
@@ -198,6 +200,13 @@ fn generate_backend(opt: &Opt, input_file: &str) -> Result<(), String> {
                     );
                     Ok(())
                 }
+                OutputFormat::RustNoStd => {
+                    println!(
+                        "{}",
+                        backends::rust_nostd::generate(&sources, &analyzed_file, &opt.custom_field)
+                    );
+                    Ok(())
+                }
                 #[cfg(feature = "java")]
                 OutputFormat::Java => {
                     let output_dir = opt.output_dir.as_ref().ok_or(String::from(
@@ -237,6 +246,10 @@ fn generate_tests(opt: &Opt, test_file: &str, _input_file: &str) -> Result<(), S
     match opt.output_format {
         OutputFormat::Rust => {
             println!("{}", backends::rust::test::generate_tests(test_file)?);
+            Ok(())
+        }
+        OutputFormat::RustNoStd => {
+            println!("{}", backends::rust_nostd::test::generate_tests(test_file)?);
             Ok(())
         }
         #[cfg(feature = "java")]

@@ -20,5 +20,6 @@ pub mod java;
 pub mod json;
 pub mod python;
 pub mod rust;
+pub mod rust_nostd;
 
 pub mod common;

@@ -19,7 +19,7 @@ use std::env;
 use std::path::Path;
 use syn::parse_macro_input;
 
-fn pdl_proc_macro(path: syn::LitStr, input: syn::ItemMod) -> TokenStream {
+fn pdl_proc_macro(path: syn::LitStr, input: syn::ItemMod, nostd: bool) -> TokenStream {
     // Locate the source grammar file.
     let root = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
     let relative_path = Path::new(&root).join(path.value());
@@ -53,7 +53,11 @@ fn pdl_proc_macro(path: syn::LitStr, input: syn::ItemMod) -> TokenStream {
     };
 
     // Generate the pdl backend implementation.
-    let parser = pdl_compiler::backends::rust::generate_tokens(&sources, &analyzed_file, &[]);
+    let parser = if nostd {
+        pdl_compiler::backends::rust_nostd::generate_tokens(&sources, &analyzed_file, &[])
+    } else {
+        pdl_compiler::backends::rust::generate_tokens(&sources, &analyzed_file, &[])
+    };
     let mod_ident = input.ident;
     let mod_attrs = input.attrs;
     let mod_vis = input.vis;
@@ -74,7 +78,7 @@ fn pdl_proc_macro(path: syn::LitStr, input: syn::ItemMod) -> TokenStream {
     }
 }
 
-fn pdl_inline_proc_macro(code: syn::LitStr, input: syn::ItemMod) -> TokenStream {
+fn pdl_inline_proc_macro(code: syn::LitStr, input: syn::ItemMod, nostd: bool) -> TokenStream {
     // Load and parse the grammar.
     let mut sources = pdl_compiler::ast::SourceDatabase::new();
     let file = match pdl_compiler::parser::parse_inline(&mut sources, "stdin", code.value()) {
@@ -100,7 +104,11 @@ fn pdl_inline_proc_macro(code: syn::LitStr, input: syn::ItemMod) -> TokenStream 
     };
 
     // Generate the pdl backend implementation.
-    let parser = pdl_compiler::backends::rust::generate_tokens(&sources, &analyzed_file, &[]);
+    let parser = if nostd {
+        pdl_compiler::backends::rust_nostd::generate_tokens(&sources, &analyzed_file, &[])
+    } else {
+        pdl_compiler::backends::rust::generate_tokens(&sources, &analyzed_file, &[])
+    };
     let mod_ident = input.ident;
     let mod_attrs = input.attrs;
     let mod_vis = input.vis;
@@ -124,7 +132,18 @@ pub fn pdl(
 ) -> proc_macro::TokenStream {
     let attr = parse_macro_input!(attr as syn::LitStr);
     let input = parse_macro_input!(input as syn::ItemMod);
-    pdl_proc_macro(attr, input).into()
+    pdl_proc_macro(attr, input, false).into()
+}
+
+/// The main method that's called by the proc macro for `rust_nostd`
+#[proc_macro_attribute]
+pub fn pdl_nostd(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let attr = parse_macro_input!(attr as syn::LitStr);
+    let input = parse_macro_input!(input as syn::ItemMod);
+    pdl_proc_macro(attr, input, true).into()
 }
 
 /// The main method that's called by the proc macro
@@ -136,7 +155,18 @@ pub fn pdl_inline(
 ) -> proc_macro::TokenStream {
     let attr = parse_macro_input!(attr as syn::LitStr);
     let input = parse_macro_input!(input as syn::ItemMod);
-    pdl_inline_proc_macro(attr, input).into()
+    pdl_inline_proc_macro(attr, input, false).into()
+}
+
+/// The main method that's called by the proc macro for `rust_nostd`
+#[proc_macro_attribute]
+pub fn pdl_inline_nostd(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let attr = parse_macro_input!(attr as syn::LitStr);
+    let input = parse_macro_input!(input as syn::ItemMod);
+    pdl_inline_proc_macro(attr, input, true).into()
 }
 
 #[cfg(test)]
@@ -180,96 +210,117 @@ mod test {
 
     #[test]
     fn test_derive_valid() {
-        assert!(!is_compile_error(
-            pdl_proc_macro(
-                make_attr(quote! { "src/test_valid.pdl" }),
-                make_input(quote! { mod Test {} }),
-            ),
-            None
-        ));
+        for nostd in [false, true] {
+            assert!(!is_compile_error(
+                pdl_proc_macro(
+                    make_attr(quote! { "src/test_valid.pdl" }),
+                    make_input(quote! { mod Test {} }),
+                    nostd,
+                ),
+                None
+            ));
+        }
     }
 
     #[test]
     fn test_derive_file_not_found() {
-        assert!(is_compile_error(
-            pdl_proc_macro(
-                make_attr(quote! { "src/test_not_found.pdl" }),
-                make_input(quote! { mod Test {} }),
-            ),
-            Some("error: unable to find file")
-        ));
+        for nostd in [false, true] {
+            assert!(is_compile_error(
+                pdl_proc_macro(
+                    make_attr(quote! { "src/test_not_found.pdl" }),
+                    make_input(quote! { mod Test {} }),
+                    nostd,
+                ),
+                Some("error: unable to find file")
+            ));
+        }
     }
 
     #[test]
     fn test_derive_parser_error() {
-        assert!(is_compile_error(
-            pdl_proc_macro(
-                make_attr(quote! { "src/test_parser_error.pdl" }),
-                make_input(quote! { mod Test {} }),
-            ),
-            Some("error: failed to parse input file")
-        ));
+        for nostd in [false, true] {
+            assert!(is_compile_error(
+                pdl_proc_macro(
+                    make_attr(quote! { "src/test_parser_error.pdl" }),
+                    make_input(quote! { mod Test {} }),
+                    nostd,
+                ),
+                Some("error: failed to parse input file")
+            ));
+        }
     }
 
     #[test]
     fn test_derive_analyzer_error() {
-        assert!(is_compile_error(
-            pdl_proc_macro(
-                make_attr(quote! { "src/test_analyzer_error.pdl" }),
-                make_input(quote! { mod Test {} }),
-            ),
-            Some("error[E")
-        ));
+        for nostd in [false, true] {
+            assert!(is_compile_error(
+                pdl_proc_macro(
+                    make_attr(quote! { "src/test_analyzer_error.pdl" }),
+                    make_input(quote! { mod Test {} }),
+                    nostd,
+                ),
+                Some("error[E")
+            ));
+        }
     }
 
     #[test]
     fn test_derive_valid_inline() {
-        assert!(!is_compile_error(
-            pdl_inline_proc_macro(
-                make_attr(quote! {
-                r#"
-                    little_endian_packets
-                    packet Prout {
-                        x: 8,
-                    }
-                "# }),
-                make_input(quote! { mod Test {} }),
-            ),
-            None
-        ));
+        for nostd in [false, true] {
+            assert!(!is_compile_error(
+                pdl_inline_proc_macro(
+                    make_attr(quote! {
+                    r#"
+                        little_endian_packets
+                        packet Prout {
+                            x: 8,
+                        }
+                    "# }),
+                    make_input(quote! { mod Test {} }),
+                    nostd,
+                ),
+                None
+            ));
+        }
     }
 
     #[test]
     fn test_derive_parser_error_inline() {
-        assert!(is_compile_error(
-            pdl_inline_proc_macro(
-                make_attr(quote! {
-                r#"
-                    little_endian_packets
-                    enum A {
-                        X = 0
-                    }
-                "# }),
-                make_input(quote! { mod Test {} }),
-            ),
-            Some("error: failed to parse input file")
-        ));
+        for nostd in [false, true] {
+            assert!(is_compile_error(
+                pdl_inline_proc_macro(
+                    make_attr(quote! {
+                    r#"
+                        little_endian_packets
+                        enum A {
+                            X = 0
+                        }
+                    "# }),
+                    make_input(quote! { mod Test {} }),
+                    nostd,
+                ),
+                Some("error: failed to parse input file")
+            ));
+        }
     }
 
     #[test]
     fn test_derive_analyzer_error_inline() {
-        assert!(is_compile_error(
-            pdl_inline_proc_macro(
-                make_attr(quote! {
-                r#"
-                    little_endian_packets
-                    packet A {
-                        x: Unknown,
-                    }
-                "# }),
-                make_input(quote! { mod Test {} }),
-            ),
-            Some("error[E")
-        ));
+        for nostd in [false, true] {
+            assert!(is_compile_error(
+                pdl_inline_proc_macro(
+                    make_attr(quote! {
+                    r#"
+                        little_endian_packets
+                        packet A {
+                            x: Unknown,
+                        }
+                    "# }),
+                    make_input(quote! { mod Test {} }),
+                    nostd,
+                ),
+                Some("error[E")
+            ));
+        }
     }
 }
