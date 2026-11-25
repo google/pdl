@@ -111,8 +111,9 @@ pub fn generate(
 
     // Packets and structs must be generated in dependency order: C++ types
     // must be defined before they are used. `analyzer::analyze` reorders
-    // declarations according to this constraint.
-    for decl in &file.declarations {
+    // declarations according to this constraint, except for the element types
+    // of variable size arrays, which are sorted here.
+    for decl in sort_declarations(&scope, file) {
         if let Some(id) = decl.id() {
             if exclude_declarations.contains(&id.to_string()) {
                 continue;
@@ -140,6 +141,45 @@ pub fn generate(
     }
 
     code
+}
+
+/// Return the declarations of the file sorted in dependency order:
+/// every declaration comes after its parent declaration and after the
+/// declarations used as field or array element types. The original order
+/// is preserved otherwise. Recursive declarations are emitted in the order
+/// of the first visit.
+fn sort_declarations<'a>(scope: &analyzer::Scope<'a>, file: &'a ast::File) -> Vec<&'a ast::Decl> {
+    fn visit<'a>(
+        scope: &analyzer::Scope<'a>,
+        decl: &'a ast::Decl,
+        visited: &mut HashSet<*const ast::Decl>,
+        sorted: &mut Vec<&'a ast::Decl>,
+    ) {
+        if !visited.insert(decl as *const _) {
+            return;
+        }
+        if let Some(parent) = scope.get_parent(decl) {
+            visit(scope, parent, visited, sorted);
+        }
+        for field in decl.fields() {
+            let type_id = match &field.desc {
+                ast::FieldDesc::Typedef { type_id, .. } => Some(type_id.as_str()),
+                ast::FieldDesc::Array { type_id, .. } => type_id.as_deref(),
+                _ => None,
+            };
+            if let Some(type_decl) = type_id.and_then(|type_id| scope.typedef.get(type_id)) {
+                visit(scope, type_decl, visited, sorted);
+            }
+        }
+        sorted.push(decl);
+    }
+
+    let mut visited = HashSet::new();
+    let mut sorted = Vec::new();
+    for decl in &file.declarations {
+        visit(scope, decl, &mut visited, &mut sorted);
+    }
+    sorted
 }
 
 // Generate the default enum value.
