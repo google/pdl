@@ -2254,6 +2254,7 @@ public:
     {class_name}& operator=({class_name} const&) = default;
 
     bool Serialize(std::vector<uint8_t>& output) const override {{
+        output.reserve(GetSize());
 {field_serializers}
     }}
 
