@@ -44,6 +44,18 @@ class slice {
         size_t size)
       : packet_(std::move(packet)), offset_(offset), size_(size) {}
 
+  using iterator = typename std::vector<uint8_t>::iterator;
+  using const_iterator = typename std::vector<uint8_t>::const_iterator;
+
+  const_iterator begin() const noexcept { return packet_->begin() + offset_; }
+  const_iterator end() const noexcept {
+    return packet_->end() + offset_ + size_;
+  }
+  const_iterator cbegin() const noexcept { return packet_->cbegin() + offset_; }
+  const_iterator cend() const noexcept {
+    return packet_->cend() + offset_ + size_;
+  }
+
   /// Return a new slice that contains the selected subrange within the
   /// current slice. The range ['offset', 'offset' + 'slice') must be
   /// contained within the bonuds of the current slice.
@@ -109,10 +121,7 @@ class slice {
   }
 
   bool operator==(slice const& other) const {
-    return size_ == other.size_ &&
-           std::equal(packet_->begin() + offset_,
-                      packet_->begin() + offset_ + size_,
-                      other.packet_->begin());
+    return size_ == other.size_ && std::equal(begin(), end(), other.begin());
   }
 
  private:
