@@ -359,10 +359,8 @@ struct Decoder<'a> {
     chunk_nr: usize,
     unchecked_code: Vec<String>,
     code: Vec<String>,
-    is_cond_for: HashSet<String>,
     target_prefix: String,
     extract_arrays: bool,
-    decl: &'a ast::Decl,
 }
 
 impl<'a> Decoder<'a> {
@@ -372,7 +370,6 @@ impl<'a> Decoder<'a> {
         endianness: ast::EndiannessValue,
         target_prefix: &str,
         extract_arrays: bool,
-        decl: &'a ast::Decl,
     ) -> Self {
         Self {
             scope,
@@ -384,10 +381,8 @@ impl<'a> Decoder<'a> {
             chunk_nr: 0,
             unchecked_code: Vec::new(),
             code: Vec::new(),
-            is_cond_for: HashSet::new(),
             target_prefix: target_prefix.to_string(),
             extract_arrays,
-            decl,
         }
     }
 
@@ -414,6 +409,12 @@ impl<'a> Decoder<'a> {
             self.check_size(&offset.to_string());
             self.code.extend(unchecked_code);
             self.offset = 0;
+        }
+    }
+
+    fn decode(&mut self, decl: &'a ast::Decl, children: &[&'a ast::Decl]) {
+        for field in decl.fields() {
+            self.decode_field(decl, children, field);
         }
     }
 
@@ -463,15 +464,9 @@ impl<'a> Decoder<'a> {
                 format!("({} >> {}) & {}", value, shift, mask(*width))
             };
 
-            let is_cond = field.id().map(|id| self.is_cond_for.contains(id)).unwrap_or(false);
-
             match &field.desc {
                 ast::FieldDesc::Scalar { id, .. } => {
-                    if is_cond {
-                        self.unchecked_append(format!("uint8_t {} = {};", id, v));
-                    } else {
-                        self.unchecked_append(format!("{}{}_ = {};", self.target_prefix, id, v));
-                    }
+                    self.unchecked_append(format!("{}{}_ = {};", self.target_prefix, id, v));
                 }
                 ast::FieldDesc::FixedScalar { value: fixed_value, .. } => {
                     self.unchecked_append(format!(
@@ -550,7 +545,13 @@ impl<'a> Decoder<'a> {
         self.shift = 0;
     }
 
-    fn decode_typedef_field(&mut self, field: &'a ast::Field, id: &str, type_id: &str) {
+    fn decode_typedef_field(
+        &mut self,
+        decl: &'a ast::Decl,
+        field: &'a ast::Field,
+        id: &str,
+        type_id: &str,
+    ) {
         if self.shift != 0 {
             panic!("Typedef field does not start on an octet boundary");
         }
@@ -559,7 +560,7 @@ impl<'a> Decoder<'a> {
 
         let field_size = self.schema.field_size(field.key);
         if let analyzer::Size::Unknown = field_size {
-            let trailing_size = self.get_trailing_size(field).unwrap_or(0);
+            let trailing_size = self.get_trailing_size(decl, field).unwrap_or(0);
             if trailing_size > 0 {
                 self.append(format!("if (span.size() < {}) return false;", trailing_size / 8));
                 self.append(format!("size_t {id}_size = span.size() - {};", trailing_size / 8));
@@ -659,6 +660,7 @@ impl<'a> Decoder<'a> {
 
     fn decode_array_field_lite(
         &mut self,
+        decl: &'a ast::Decl,
         field: &'a ast::Field,
         id: &str,
         type_id: Option<&str>,
@@ -666,8 +668,8 @@ impl<'a> Decoder<'a> {
     ) {
         self.check_code();
 
-        let element_size = analyzer::element_size(self.scope, self.schema, self.decl, field);
-        let array_size = analyzer::array_size(self.decl, field);
+        let element_size = analyzer::element_size(self.scope, self.schema, decl, field);
+        let array_size = analyzer::array_size(decl, field);
 
         // Apply the size modifier.
         if let Some(size_modifier) = size_modifier {
@@ -792,10 +794,10 @@ impl<'a> Decoder<'a> {
 
     /// Return the size in bits of the fields following `field`,
     /// or `None` if one of the following fields does not have a static size.
-    fn get_trailing_size(&self, field: &'a ast::Field) -> Option<usize> {
+    fn get_trailing_size(&self, decl: &'a ast::Decl, field: &'a ast::Field) -> Option<usize> {
         let mut trailing_size = 0;
         let mut found = false;
-        for f in self.decl.fields() {
+        for f in decl.fields() {
             if found {
                 match self.schema.field_size(f.key) {
                     analyzer::Size::Static(bits) => trailing_size += bits,
@@ -809,7 +811,7 @@ impl<'a> Decoder<'a> {
         Some(trailing_size)
     }
 
-    fn decode_payload_field_lite(&mut self, _field: &'a ast::Field) {
+    fn decode_payload_field_lite(&mut self, decl: &'a ast::Decl, field: &'a ast::Field) {
         assert_eq!(self.shift, 0, "Payload field does not start on an octet boundary");
         self.check_code();
 
@@ -817,7 +819,7 @@ impl<'a> Decoder<'a> {
         // payload as a byte vector.
         let bytes = if self.extract_arrays { ".bytes()" } else { "" };
         let mut size_expr = "".to_string();
-        for f in self.decl.fields() {
+        for f in decl.fields() {
             if let ast::FieldDesc::Size { field_id, .. } = &f.desc {
                 if field_id == "_payload_" {
                     size_expr = "payload_size_".to_owned();
@@ -826,7 +828,7 @@ impl<'a> Decoder<'a> {
         }
 
         if !size_expr.is_empty() {
-            let inverted_modifier = match &_field.desc {
+            let inverted_modifier = match &field.desc {
                 ast::FieldDesc::Payload { size_modifier: Some(m), .. } => {
                     if let Some(stripped) = m.strip_prefix('+') {
                         format!("- {}", stripped)
@@ -850,7 +852,7 @@ impl<'a> Decoder<'a> {
             ));
             self.append(format!("span.skip({});", actual_size));
         } else {
-            let trailing_size = self.get_trailing_size(_field).unwrap_or(0);
+            let trailing_size = self.get_trailing_size(decl, field).unwrap_or(0);
             if trailing_size > 0 {
                 self.append(format!("if (span.size() < {}) return false;", trailing_size / 8));
                 self.append(format!("size_t payload_size = span.size() - {};", trailing_size / 8));
@@ -868,6 +870,7 @@ impl<'a> Decoder<'a> {
 
     fn decode_array_field_full(
         &mut self,
+        decl: &'a ast::Decl,
         field: &'a ast::Field,
         id: &str,
         type_id: Option<&str>,
@@ -875,8 +878,8 @@ impl<'a> Decoder<'a> {
     ) {
         self.check_code();
 
-        let element_size = analyzer::element_size(self.scope, self.schema, self.decl, field);
-        let array_size = analyzer::array_size(self.decl, field);
+        let element_size = analyzer::element_size(self.scope, self.schema, decl, field);
+        let array_size = analyzer::array_size(decl, field);
 
         // Apply the size modifier.
         if let Some(size_modifier) = size_modifier {
@@ -1068,7 +1071,12 @@ impl<'a> Decoder<'a> {
         }
     }
 
-    fn decode_field(&mut self, field: &'a ast::Field) {
+    fn decode_field(
+        &mut self,
+        decl: &'a ast::Decl,
+        _children: &[&'a ast::Decl],
+        field: &'a ast::Field,
+    ) {
         if field.cond.is_some() {
             self.decode_optional_field(field);
         } else if self.scope.is_bitfield(field) {
@@ -1084,6 +1092,7 @@ impl<'a> Decoder<'a> {
                     }
                     if !self.extract_arrays {
                         self.decode_array_field_lite(
+                            decl,
                             field,
                             id,
                             type_id.as_deref(),
@@ -1091,6 +1100,7 @@ impl<'a> Decoder<'a> {
                         );
                     } else {
                         self.decode_array_field_full(
+                            decl,
                             field,
                             id,
                             type_id.as_deref(),
@@ -1110,7 +1120,7 @@ impl<'a> Decoder<'a> {
                     }
                 }
                 ast::FieldDesc::Payload { .. } => {
-                    self.decode_payload_field_lite(field);
+                    self.decode_payload_field_lite(decl, field);
                 }
                 ast::FieldDesc::Scalar { id, width } => {
                     let ty = get_cxx_scalar_type(*width);
@@ -1195,7 +1205,7 @@ impl<'a> Decoder<'a> {
                     ));
                 }
                 ast::FieldDesc::Typedef { id, type_id, .. } => {
-                    self.decode_typedef_field(field, id, type_id);
+                    self.decode_typedef_field(decl, field, id, type_id);
                 }
                 _ => {}
             }
@@ -1724,13 +1734,6 @@ fn generate_packet_view(
         ast::EndiannessValue::BigEndian => "be",
     };
 
-    let mut is_cond_for = HashSet::new();
-    for field in decl.fields() {
-        if let Some(cond) = &field.cond {
-            is_cond_for.insert(cond.id.clone());
-        }
-    }
-
     let mut field_members = Vec::new();
     let mut field_accessors = Vec::new();
     let all_fields =
@@ -1770,12 +1773,6 @@ fn generate_packet_view(
                 _ => {}
             }
             continue;
-        }
-
-        if let Some(fid) = field.id() {
-            if is_cond_for.contains(fid) {
-                continue;
-            }
         }
 
         match &field.desc {
@@ -2035,11 +2032,8 @@ fn generate_packet_view(
     }
 
     if decl.fields().next().is_some() {
-        let mut parser = Decoder::new(scope, schema, endianness, "", false, decl);
-        parser.is_cond_for = is_cond_for;
-        for f in decl.fields() {
-            parser.decode_field(f);
-        }
+        let mut parser = Decoder::new(scope, schema, endianness, "", false);
+        parser.decode(decl, &[]);
         parser.done();
         field_parsers.extend(parser.code);
     }
@@ -2335,10 +2329,8 @@ fn generate_struct_declaration(
     let mut field_parsers = Vec::new();
     field_parsers.push("pdl::packet::slice span = parent_span;".to_string());
 
-    let mut parser = Decoder::new(scope, schema, endianness, "output->", true, decl);
-    for f in decl.fields() {
-        parser.decode_field(f);
-    }
+    let mut parser = Decoder::new(scope, schema, endianness, "output->", true);
+    parser.decode(decl, &[]);
     parser.done();
     field_parsers.extend(parser.code);
     field_parsers.push("parent_span = span;".to_string());
