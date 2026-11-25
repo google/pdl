@@ -811,7 +811,12 @@ impl<'a> Decoder<'a> {
         Some(trailing_size)
     }
 
-    fn decode_payload_field_lite(&mut self, decl: &'a ast::Decl, field: &'a ast::Field) {
+    fn decode_payload_field(
+        &mut self,
+        decl: &'a ast::Decl,
+        _children: &[&'a ast::Decl],
+        field: &'a ast::Field,
+    ) {
         assert_eq!(self.shift, 0, "Payload field does not start on an octet boundary");
         self.check_code();
 
@@ -1074,141 +1079,60 @@ impl<'a> Decoder<'a> {
     fn decode_field(
         &mut self,
         decl: &'a ast::Decl,
-        _children: &[&'a ast::Decl],
+        children: &[&'a ast::Decl],
         field: &'a ast::Field,
     ) {
-        if field.cond.is_some() {
-            self.decode_optional_field(field);
-        } else if self.scope.is_bitfield(field) {
-            self.decode_bit_field(field);
-        } else {
-            self.check_code();
-            match &field.desc {
-                ast::FieldDesc::Padding { .. } => {}
-                ast::FieldDesc::Array { id, type_id, size_modifier, .. } => {
-                    let padded_size = self.schema.padded_size(field.key);
-                    if padded_size.is_some() {
-                        self.append(format!("size_t {id}_start_size = span.size();"));
-                    }
-                    if !self.extract_arrays {
-                        self.decode_array_field_lite(
-                            decl,
-                            field,
-                            id,
-                            type_id.as_deref(),
-                            size_modifier.as_deref(),
-                        );
-                    } else {
-                        self.decode_array_field_full(
-                            decl,
-                            field,
-                            id,
-                            type_id.as_deref(),
-                            size_modifier.as_deref(),
-                        );
-                    }
-                    if let Some(padded_size) = padded_size {
-                        let padding_bytes = padded_size / 8;
-                        self.append(format!(
-                            "if ({id}_start_size - span.size() < {padding_bytes}) {{",
-                        ));
-                        self.append(format!("    if (span.size() < {padding_bytes} - ({id}_start_size - span.size())) return false;"));
-                        self.append(format!(
-                            "    span.skip({padding_bytes} - ({id}_start_size - span.size()));",
-                        ));
-                        self.append("}".to_string());
-                    }
+        match &field.desc {
+            _ if field.cond.is_some() => self.decode_optional_field(field),
+            _ if self.scope.is_bitfield(field) => self.decode_bit_field(field),
+            ast::FieldDesc::Array { id, type_id, size_modifier, .. } => {
+                self.check_code();
+                let padded_size = self.schema.padded_size(field.key);
+                if padded_size.is_some() {
+                    self.append(format!("size_t {id}_start_size = span.size();"));
                 }
-                ast::FieldDesc::Payload { .. } => {
-                    self.decode_payload_field_lite(decl, field);
+                if self.extract_arrays {
+                    self.decode_array_field_full(
+                        decl,
+                        field,
+                        id,
+                        type_id.as_deref(),
+                        size_modifier.as_deref(),
+                    );
+                } else {
+                    self.decode_array_field_lite(
+                        decl,
+                        field,
+                        id,
+                        type_id.as_deref(),
+                        size_modifier.as_deref(),
+                    );
                 }
-                ast::FieldDesc::Scalar { id, width } => {
-                    let ty = get_cxx_scalar_type(*width);
-                    let byteorder = match self.endianness {
-                        ast::EndiannessValue::LittleEndian => "le",
-                        ast::EndiannessValue::BigEndian => "be",
-                    };
-                    self.append(format!("if (span.size() < {}) return false;", width / 8));
+                if let Some(padded_size) = padded_size {
+                    let padding_bytes = padded_size / 8;
+                    self.append(
+                        format!("if ({id}_start_size - span.size() < {padding_bytes}) {{",),
+                    );
+                    self.append(format!("    if (span.size() < {padding_bytes} - ({id}_start_size - span.size())) return false;"));
                     self.append(format!(
-                        "{}{id}_ = span.read_{byteorder}<{ty}, {}>();",
-                        self.target_prefix,
-                        width / 8
+                        "    span.skip({padding_bytes} - ({id}_start_size - span.size()));",
                     ));
+                    self.append("}".to_string());
                 }
-                ast::FieldDesc::Size { field_id, width, .. } => {
-                    let ty = get_cxx_scalar_type(*width);
-                    let field_name = if field_id == "_payload_" { "payload" } else { field_id };
-                    let byteorder = match self.endianness {
-                        ast::EndiannessValue::LittleEndian => "le",
-                        ast::EndiannessValue::BigEndian => "be",
-                    };
-                    self.append(format!("if (span.size() < {}) return false;", width / 8));
-                    self.append(format!(
-                        "{}{field_name}_size_ = span.read_{byteorder}<{ty}, {}>();",
-                        self.target_prefix,
-                        width / 8
-                    ));
-                }
-                ast::FieldDesc::Count { field_id, width, .. } => {
-                    let ty = get_cxx_scalar_type(*width);
-                    let byteorder = match self.endianness {
-                        ast::EndiannessValue::LittleEndian => "le",
-                        ast::EndiannessValue::BigEndian => "be",
-                    };
-                    self.append(format!("if (span.size() < {}) return false;", width / 8));
-                    self.append(format!(
-                        "{}{field_id}_count_ = span.read_{byteorder}<{ty}, {}>();",
-                        self.target_prefix,
-                        width / 8
-                    ));
-                }
-                ast::FieldDesc::ElementSize { field_id, width, .. } => {
-                    let ty = get_cxx_scalar_type(*width);
-                    let field_name = if field_id == "_payload_" { "payload" } else { field_id };
-                    let byteorder = match self.endianness {
-                        ast::EndiannessValue::LittleEndian => "le",
-                        ast::EndiannessValue::BigEndian => "be",
-                    };
-                    self.append(format!("if (span.size() < {}) return false;", width / 8));
-                    self.append(format!(
-                        "{}{field_name}_element_size_ = span.read_{byteorder}<{ty}, {}>();",
-                        self.target_prefix,
-                        width / 8
-                    ));
-                }
-                ast::FieldDesc::FixedScalar { width, value } => {
-                    let ty = get_cxx_scalar_type(*width);
-                    let byteorder = match self.endianness {
-                        ast::EndiannessValue::LittleEndian => "le",
-                        ast::EndiannessValue::BigEndian => "be",
-                    };
-                    self.append(format!("if (span.size() < {}) return false;", width / 8));
-                    self.append(format!(
-                        "if (span.read_{byteorder}<{ty}, {}>() != {value:#x}) return false;",
-                        width / 8,
-                    ));
-                }
-                ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
-                    let width = match &self.scope.typedef[enum_id].desc {
-                        ast::DeclDesc::Enum { width, .. } => *width,
-                        _ => unreachable!(),
-                    };
-                    let ty = get_cxx_scalar_type(width);
-                    let byteorder = match self.endianness {
-                        ast::EndiannessValue::LittleEndian => "le",
-                        ast::EndiannessValue::BigEndian => "be",
-                    };
-                    self.append(format!("if (span.size() < {}) return false;", width / 8));
-                    self.append(format!(
-                        "if (span.read_{byteorder}<{ty}, {}>() != static_cast<{ty}>( {enum_id}::{tag_id} )) return false;",
-                        width / 8,
-                    ));
-                }
-                ast::FieldDesc::Typedef { id, type_id, .. } => {
-                    self.decode_typedef_field(decl, field, id, type_id);
-                }
-                _ => {}
             }
+            ast::FieldDesc::Payload { .. } => {
+                self.decode_payload_field(decl, children, field);
+            }
+            ast::FieldDesc::Typedef { id, type_id, .. } => {
+                self.decode_typedef_field(decl, field, id, type_id);
+            }
+            // The padding size is recorded in the schema and referenced
+            // there when parsing arrays or payloads.
+            ast::FieldDesc::Padding { .. } => {}
+            // Checksums are not supported by the cxx backend and checksum
+            // start markers are simply ignored.
+            ast::FieldDesc::Checksum { .. } => {}
+            _ => unreachable!(),
         }
     }
 
