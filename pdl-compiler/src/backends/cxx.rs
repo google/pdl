@@ -349,7 +349,7 @@ fn get_all_parent_fields<'a>(
     fields
 }
 
-struct FieldParser<'a> {
+struct Decoder<'a> {
     scope: &'a analyzer::Scope<'a>,
     schema: &'a analyzer::Schema,
     endianness: ast::EndiannessValue,
@@ -365,7 +365,7 @@ struct FieldParser<'a> {
     decl: &'a ast::Decl,
 }
 
-impl<'a> FieldParser<'a> {
+impl<'a> Decoder<'a> {
     fn new(
         scope: &'a analyzer::Scope<'a>,
         schema: &'a analyzer::Schema,
@@ -417,7 +417,7 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    fn parse_bit_field(&mut self, field: &'a ast::Field) {
+    fn decode_bit_field(&mut self, field: &'a ast::Field) {
         let width = self.schema.field_size(field.key).static_().unwrap();
         self.chunk.push((self.shift, width, field));
         self.shift += width;
@@ -550,7 +550,7 @@ impl<'a> FieldParser<'a> {
         self.shift = 0;
     }
 
-    fn parse_typedef_field(&mut self, field: &'a ast::Field, id: &str, type_id: &str) {
+    fn decode_typedef_field(&mut self, field: &'a ast::Field, id: &str, type_id: &str) {
         if self.shift != 0 {
             panic!("Typedef field does not start on an octet boundary");
         }
@@ -587,7 +587,7 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    fn parse_optional_field(&mut self, field: &'a ast::Field) {
+    fn decode_optional_field(&mut self, field: &'a ast::Field) {
         self.check_code();
         let cond = field.cond.as_ref().unwrap();
         let byteorder = match self.endianness {
@@ -657,7 +657,7 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    fn parse_array_field_lite(
+    fn decode_array_field_lite(
         &mut self,
         field: &'a ast::Field,
         id: &str,
@@ -809,7 +809,7 @@ impl<'a> FieldParser<'a> {
         Some(trailing_size)
     }
 
-    fn parse_payload_field_lite(&mut self, _field: &'a ast::Field) {
+    fn decode_payload_field_lite(&mut self, _field: &'a ast::Field) {
         assert_eq!(self.shift, 0, "Payload field does not start on an octet boundary");
         self.check_code();
 
@@ -866,7 +866,7 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    fn parse_array_field_full(
+    fn decode_array_field_full(
         &mut self,
         field: &'a ast::Field,
         id: &str,
@@ -889,7 +889,7 @@ impl<'a> FieldParser<'a> {
                 let total_size = element_size * count;
                 self.check_size(&format!("{total_size}"));
                 self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
-                let out = self.parse_array_element(field, "span".to_string());
+                let out = self.decode_array_element(field, "span".to_string());
                 self.append(format!("    output->{id}_[n] = {out};"));
                 self.append("}".to_string());
             }
@@ -897,7 +897,7 @@ impl<'a> FieldParser<'a> {
             (ElementSize::Static(element_size), ArraySize::DynamicCount) => {
                 self.check_size(&format!("{element_size} * output->{id}_count_"));
                 self.append(format!("for (size_t n = 0; n < output->{id}_count_; n++) {{"));
-                let out = self.parse_array_element(field, "span".to_string());
+                let out = self.decode_array_element(field, "span".to_string());
                 self.append(format!("    output->{id}_.push_back({out});"));
                 self.append("}".to_string());
             }
@@ -909,7 +909,7 @@ impl<'a> FieldParser<'a> {
                 self.append("}".to_string());
                 self.append(format!("auto {id}_count_ = {id}_size_ / {element_size};"));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
-                let out = self.parse_array_element(field, "span".to_string());
+                let out = self.decode_array_element(field, "span".to_string());
                 self.append(format!("    output->{id}_.push_back({out});"));
                 self.append("}".to_string());
             }
@@ -920,7 +920,7 @@ impl<'a> FieldParser<'a> {
                 self.append("}".to_string());
                 self.append(format!("auto {id}_count_ = span.size() / {element_size};"));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
-                let out = self.parse_array_element(field, "span".to_string());
+                let out = self.decode_array_element(field, "span".to_string());
                 self.append(format!("    output->{id}_.push_back({out});"));
                 self.append("}".to_string());
             }
@@ -929,7 +929,7 @@ impl<'a> FieldParser<'a> {
                 self.check_size(&format!("output->{id}_element_size_ * {count}"));
                 self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
                 self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
-                let out = self.parse_array_element(field, "element_span".to_string());
+                let out = self.decode_array_element(field, "element_span".to_string());
                 self.append(format!("    output->{id}_[n] = {out};"));
                 self.append("}".to_string());
                 self.append(format!("span.skip(output->{id}_element_size_ * {count});"));
@@ -939,7 +939,7 @@ impl<'a> FieldParser<'a> {
                 self.check_size(&format!("output->{id}_element_size_ * output->{id}_count_"));
                 self.append(format!("for (size_t n = 0; n < output->{id}_count_; n++) {{"));
                 self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
-                let out = self.parse_array_element(field, "element_span".to_string());
+                let out = self.decode_array_element(field, "element_span".to_string());
                 self.append(format!("    output->{id}_[n] = {out};"));
                 self.append("}".to_string());
                 self.append(format!(
@@ -957,7 +957,7 @@ impl<'a> FieldParser<'a> {
                 self.append(format!("auto {id}_count_ = {id}_size_ / output->{id}_element_size_;"));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
-                let out = self.parse_array_element(field, "element_span".to_string());
+                let out = self.decode_array_element(field, "element_span".to_string());
                 self.append(format!("    output->{id}_[n] = {out};"));
                 self.append("}".to_string());
                 self.append(format!("span.skip({id}_size_);"));
@@ -972,7 +972,7 @@ impl<'a> FieldParser<'a> {
                 ));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
-                let out = self.parse_array_element(field, "element_span".to_string());
+                let out = self.decode_array_element(field, "element_span".to_string());
                 self.append(format!("    output->{id}_[n] = {out};"));
                 self.append("}".to_string());
                 self.append("span.clear();".to_string());
@@ -1027,7 +1027,7 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    fn parse_array_element(&mut self, field: &'a ast::Field, span: String) -> String {
+    fn decode_array_element(&mut self, field: &'a ast::Field, span: String) -> String {
         let byteorder = match self.endianness {
             ast::EndiannessValue::LittleEndian => "le",
             ast::EndiannessValue::BigEndian => "be",
@@ -1068,11 +1068,11 @@ impl<'a> FieldParser<'a> {
         }
     }
 
-    fn parse(&mut self, field: &'a ast::Field) {
+    fn decode_field(&mut self, field: &'a ast::Field) {
         if field.cond.is_some() {
-            self.parse_optional_field(field);
+            self.decode_optional_field(field);
         } else if self.scope.is_bitfield(field) {
-            self.parse_bit_field(field);
+            self.decode_bit_field(field);
         } else {
             self.check_code();
             match &field.desc {
@@ -1083,14 +1083,14 @@ impl<'a> FieldParser<'a> {
                         self.append(format!("size_t {id}_start_size = span.size();"));
                     }
                     if !self.extract_arrays {
-                        self.parse_array_field_lite(
+                        self.decode_array_field_lite(
                             field,
                             id,
                             type_id.as_deref(),
                             size_modifier.as_deref(),
                         );
                     } else {
-                        self.parse_array_field_full(
+                        self.decode_array_field_full(
                             field,
                             id,
                             type_id.as_deref(),
@@ -1110,7 +1110,7 @@ impl<'a> FieldParser<'a> {
                     }
                 }
                 ast::FieldDesc::Payload { .. } => {
-                    self.parse_payload_field_lite(field);
+                    self.decode_payload_field_lite(field);
                 }
                 ast::FieldDesc::Scalar { id, width } => {
                     let ty = get_cxx_scalar_type(*width);
@@ -1195,7 +1195,7 @@ impl<'a> FieldParser<'a> {
                     ));
                 }
                 ast::FieldDesc::Typedef { id, type_id, .. } => {
-                    self.parse_typedef_field(field, id, type_id);
+                    self.decode_typedef_field(field, id, type_id);
                 }
                 _ => {}
             }
@@ -2035,10 +2035,10 @@ fn generate_packet_view(
     }
 
     if decl.fields().next().is_some() {
-        let mut parser = FieldParser::new(scope, schema, endianness, "", false, decl);
+        let mut parser = Decoder::new(scope, schema, endianness, "", false, decl);
         parser.is_cond_for = is_cond_for;
         for f in decl.fields() {
-            parser.parse(f);
+            parser.decode_field(f);
         }
         parser.done();
         field_parsers.extend(parser.code);
@@ -2335,9 +2335,9 @@ fn generate_struct_declaration(
     let mut field_parsers = Vec::new();
     field_parsers.push("pdl::packet::slice span = parent_span;".to_string());
 
-    let mut parser = FieldParser::new(scope, schema, endianness, "output->", true, decl);
+    let mut parser = Decoder::new(scope, schema, endianness, "output->", true, decl);
     for f in decl.fields() {
-        parser.parse(f);
+        parser.decode_field(f);
     }
     parser.done();
     field_parsers.extend(parser.code);
