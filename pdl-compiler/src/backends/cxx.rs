@@ -437,7 +437,7 @@ impl<'a> Decoder<'a> {
 
     fn check_size(&mut self, size: &str) {
         self.append(format!("if (span.size() < {}) {{", size));
-        self.append("    return false;".to_string());
+        self.append("    return std::nullopt;".to_string());
         self.append("}".to_string());
     }
 
@@ -513,7 +513,7 @@ impl<'a> Decoder<'a> {
                         "if (static_cast<uint64_t>({}) != {:#x}) {{",
                         v, fixed_value
                     ));
-                    self.unchecked_append("    return false;".to_string());
+                    self.unchecked_append("    return std::nullopt;".to_string());
                     self.unchecked_append("}".to_string());
                 }
                 ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
@@ -521,7 +521,7 @@ impl<'a> Decoder<'a> {
                         "if ({}({}) != {}::{}) {{",
                         enum_id, v, enum_id, tag_id
                     ));
-                    self.unchecked_append("    return false;".to_string());
+                    self.unchecked_append("    return std::nullopt;".to_string());
                     self.unchecked_append("}".to_string());
                 }
                 ast::FieldDesc::Typedef { id, type_id, .. } => {
@@ -541,7 +541,7 @@ impl<'a> Decoder<'a> {
                             // fields can be extracted from the same chunk.
                             self.unchecked_append(format!("auto raw_{id} = {v};"));
                             self.unchecked_append(format!("if (!IsValid{type_id}(raw_{id})) {{"));
-                            self.unchecked_append("   return false;".to_string());
+                            self.unchecked_append("   return std::nullopt;".to_string());
                             self.unchecked_append("}".to_string());
                             self.unchecked_append(format!(
                                 "{}{}_ = {}(raw_{id});",
@@ -602,29 +602,32 @@ impl<'a> Decoder<'a> {
         if let analyzer::Size::Unknown = field_size {
             let trailing_size = self.get_trailing_size(decl, field).unwrap_or(0);
             if trailing_size > 0 {
-                self.append(format!("if (span.size() < {}) return false;", trailing_size / 8));
+                self.append(format!(
+                    "if (span.size() < {}) return std::nullopt;",
+                    trailing_size / 8
+                ));
                 self.append(format!("size_t {id}_size = span.size() - {};", trailing_size / 8));
                 self.append(
                     format!("pdl::packet::slice {id}_span = span.subrange(0, {id}_size);",),
                 );
-                self.append(format!(
-                    "if (!{type_id}::Parse({id}_span, &{}{id}_)) return false;",
-                    self.target_prefix
-                ));
+                let decode = format!("{type_id}::Decode({id}_span)");
+                self.append(format!("auto {id}_value = {decode};"));
+                self.append(format!("if (!{id}_value.has_value()) return std::nullopt;"));
+                self.append(format!("{}{id}_ = std::move(*{id}_value);", self.target_prefix));
                 // The bytes remaining after parsing the typedef field are added
                 // back to the input span.
                 self.append(format!("span.skip({id}_size - {id}_span.size());"));
             } else {
-                self.append(format!(
-                    "if (!{type_id}::Parse(span, &{}{id}_)) return false;",
-                    self.target_prefix
-                ));
+                let decode = format!("{type_id}::Decode(span)");
+                self.append(format!("auto {id}_value = {decode};"));
+                self.append(format!("if (!{id}_value.has_value()) return std::nullopt;"));
+                self.append(format!("{}{id}_ = std::move(*{id}_value);", self.target_prefix));
             }
         } else {
-            self.append(format!(
-                "if (!{type_id}::Parse(span, &{}{id}_)) return false;",
-                self.target_prefix,
-            ));
+            let decode = format!("{type_id}::Decode(span)");
+            self.append(format!("auto {id}_value = {decode};"));
+            self.append(format!("if (!{id}_value.has_value()) return std::nullopt;"));
+            self.append(format!("{}{id}_ = std::move(*{id}_value);", self.target_prefix));
         }
     }
 
@@ -643,7 +646,7 @@ impl<'a> Decoder<'a> {
                 let cond_value = cond.value.unwrap();
                 self.append(format!("if ({} == {}) {{", cond.id, cond_value));
                 self.append(format!("    if (span.size() < {}) {{", size));
-                self.append("        return false;".to_string());
+                self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
                 self.append(format!(
                     "    {}{}_ = span.read_{}<{}, {}>();",
@@ -660,7 +663,7 @@ impl<'a> Decoder<'a> {
                     let size = width / 8;
                     self.append(format!("if ({} == {}) {{", cond.id, cond_value));
                     self.append(format!("    if (span.size() < {}) {{", size));
-                    self.append("        return false;".to_string());
+                    self.append("        return std::nullopt;".to_string());
                     self.append("    }".to_string());
                     if is_open {
                         self.append(format!(
@@ -674,7 +677,7 @@ impl<'a> Decoder<'a> {
                             byteorder, backing_type, size
                         ));
                         self.append(format!("    if (!IsValid{type_id}(raw_value)) {{"));
-                        self.append("       return false;".to_string());
+                        self.append("       return std::nullopt;".to_string());
                         self.append("    }".to_string());
                         self.append(format!(
                             "    {}{}_ = {}(raw_value);",
@@ -684,12 +687,10 @@ impl<'a> Decoder<'a> {
                     }
                 } else {
                     self.append(format!("if ({} == {}) {{", cond.id, cond_value));
-                    self.append(format!(
-                        "    auto& opt_output = {}{}_.emplace();",
-                        self.target_prefix, id
-                    ));
-                    self.append(format!("    if (!{}::Parse(span, &opt_output)) {{", type_id));
-                    self.append("        return false;".to_string());
+                    let decode = format!("{type_id}::Decode(span)");
+                    self.append(format!("    {}{id}_ = {decode};", self.target_prefix));
+                    self.append(format!("    if (!{}{id}_.has_value()) {{", self.target_prefix));
+                    self.append("        return std::nullopt;".to_string());
                     self.append("    }".to_string());
                     self.append("}".to_string());
                 }
@@ -710,6 +711,7 @@ impl<'a> Decoder<'a> {
 
         let element_size = analyzer::element_size(self.scope, self.schema, decl, field);
         let array_size = analyzer::array_size(decl, field);
+        let out = self.target_prefix.clone();
 
         // Apply the size modifier.
         if let Some(size_modifier) = size_modifier {
@@ -722,112 +724,124 @@ impl<'a> Decoder<'a> {
             (ElementSize::Static(element_size), ArraySize::StaticCount(count)) => {
                 let total_size = element_size * count;
                 self.check_size(&format!("{total_size}"));
-                self.append(format!("{id}_ = span.subrange(0, {total_size});"));
+                self.append(format!("{out}{id}_ = span.subrange(0, {total_size});"));
                 self.append(format!("span.skip({total_size});"));
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicCount) => {
-                self.check_size(&format!("{element_size} * {id}_count_"));
-                self.append(format!("{id}_ = span.subrange(0, {element_size} * {id}_count_);"));
-                self.append(format!("span.skip({element_size} * {id}_count_);"));
+                self.check_size(&format!("{element_size} * {out}{id}_count_"));
+                self.append(format!(
+                    "{out}{id}_ = span.subrange(0, {element_size} * {out}{id}_count_);"
+                ));
+                self.append(format!("span.skip({element_size} * {out}{id}_count_);"));
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
                 self.append(format!("if (({id}_size_ % {element_size}) != 0) {{"));
-                self.append("    return false;".to_string());
+                self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("{id}_ = span.subrange(0, {id}_size_);"));
+                self.append(format!("{out}{id}_ = span.subrange(0, {id}_size_);"));
                 self.append(format!("span.skip({id}_size_);"));
             }
 
             (ElementSize::Static(element_size), ArraySize::Unknown) => {
                 self.append(format!("if ((span.size() % {element_size}) != 0) {{"));
-                self.append("    return false;".to_string());
+                self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("{id}_ = span;"));
+                self.append(format!("{out}{id}_ = span;"));
                 self.append("span.clear();".to_string());
             }
 
             (ElementSize::Dynamic, ArraySize::StaticCount(count)) => {
-                self.append(format!("if ({id}_element_size_ == 0) {{"));
-                self.append("    return false;".to_string());
+                self.append(format!("if ({out}{id}_element_size_ == 0) {{"));
+                self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.check_size(&format!("{id}_element_size_ * {count}"));
-                self.append(format!("{id}_ = span.subrange(0, {id}_element_size_ * {count});"));
-                self.append(format!("span.skip({id}_element_size_ * {count});"));
+                self.check_size(&format!("{out}{id}_element_size_ * {count}"));
+                self.append(format!(
+                    "{out}{id}_ = span.subrange(0, {out}{id}_element_size_ * {count});"
+                ));
+                self.append(format!("span.skip({out}{id}_element_size_ * {count});"));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicCount) => {
-                self.append(format!("if ({id}_element_size_ == 0) {{"));
-                self.append("    return false;".to_string());
+                self.append(format!("if ({out}{id}_element_size_ == 0) {{"));
+                self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.check_size(&format!("{id}_element_size_ * {id}_count_"));
-                self.append(format!("{id}_ = span.subrange(0, {id}_element_size_ * {id}_count_);"));
-                self.append(format!("span.skip({id}_element_size_ * {id}_count_);"));
+                self.check_size(&format!("{out}{id}_element_size_ * {out}{id}_count_"));
+                self.append(format!(
+                    "{out}{id}_ = span.subrange(0, {out}{id}_element_size_ * {out}{id}_count_);"
+                ));
+                self.append(format!("span.skip({out}{id}_element_size_ * {out}{id}_count_);"));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
                 self.append(format!(
-                    "if ({id}_element_size_ == 0 || ({id}_size_ % {id}_element_size_) != 0) {{"
+                    "if ({out}{id}_element_size_ == 0 || ({id}_size_ % {out}{id}_element_size_) != 0) {{"
                 ));
-                self.append("    return false;".to_string());
+                self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("{id}_ = span.subrange(0, {id}_size_);"));
+                self.append(format!("{out}{id}_ = span.subrange(0, {id}_size_);"));
                 self.append(format!("span.skip({id}_size_);"));
             }
 
             (ElementSize::Dynamic, ArraySize::Unknown) => {
                 self.append(format!(
-                    "if ({id}_element_size_ == 0 || (span.size() % {id}_element_size_) != 0) {{"
+                    "if ({out}{id}_element_size_ == 0 || (span.size() % {out}{id}_element_size_) != 0) {{"
                 ));
-                self.append("    return false;".to_string());
+                self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("{id}_ = span;"));
+                self.append(format!("{out}{id}_ = span;"));
                 self.append("span.clear();".to_string());
             }
 
             (ElementSize::Unknown, ArraySize::StaticCount(count)) => {
                 let tid = type_id.unwrap();
-                self.append(format!("{id}_ = span;"));
+                self.append(format!("{out}{id}_ = span;"));
                 self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
-                self.append(format!("    {tid} out;"));
-                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
-                self.append("        return false;".to_string());
+                let decode = format!("{tid}::Decode(span)");
+                self.append(format!("    if (!{decode}.has_value()) {{"));
+                self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
                 self.append("}".to_string());
-                self.append(format!("{id}_ = {id}_.subrange(0, {id}_.size() - span.size());"));
+                self.append(format!(
+                    "{out}{id}_ = {out}{id}_.subrange(0, {out}{id}_.size() - span.size());"
+                ));
             }
 
             (ElementSize::Unknown, ArraySize::DynamicCount) => {
                 let tid = type_id.unwrap();
-                self.append(format!("{id}_ = span;"));
-                self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
-                self.append(format!("    {tid} out;"));
-                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
-                self.append("        return false;".to_string());
+                self.append(format!("{out}{id}_ = span;"));
+                self.append(format!("for (size_t n = 0; n < {out}{id}_count_; n++) {{"));
+                let decode = format!("{tid}::Decode(span)");
+                self.append(format!("    if (!{decode}.has_value()) {{"));
+                self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
                 self.append("}".to_string());
-                self.append(format!("{id}_ = {id}_.subrange(0, {id}_.size() - span.size());"));
+                self.append(format!(
+                    "{out}{id}_ = {out}{id}_.subrange(0, {out}{id}_.size() - span.size());"
+                ));
             }
 
             (ElementSize::Unknown, ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
-                self.append(format!("{id}_ = span.subrange(0, {id}_size_);"));
+                self.append(format!("{out}{id}_ = span.subrange(0, {id}_size_);"));
                 self.append(format!("span.skip({id}_size_);"));
             }
 
             (ElementSize::Unknown, ArraySize::Unknown) => {
                 let tid = type_id.unwrap();
-                self.append(format!("{id}_ = span;"));
+                self.append(format!("{out}{id}_ = span;"));
                 self.append("while (span.size() > 0) {".to_string());
-                self.append(format!("    {tid} out;"));
-                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
-                self.append("        return false;".to_string());
+                let decode = format!("{tid}::Decode(span)");
+                self.append(format!("    if (!{decode}.has_value()) {{"));
+                self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
                 self.append("}".to_string());
-                self.append(format!("{id}_ = {id}_.subrange(0, {id}_.size() - span.size());"));
+                self.append(format!(
+                    "{out}{id}_ = {out}{id}_.subrange(0, {out}{id}_.size() - span.size());"
+                ));
             }
         }
     }
@@ -890,7 +904,7 @@ impl<'a> Decoder<'a> {
             } else {
                 format!("({} {})", size_expr, inverted_modifier)
             };
-            self.append(format!("if (span.size() < {}) return false;", actual_size));
+            self.append(format!("if (span.size() < {}) return std::nullopt;", actual_size));
             self.append(format!(
                 "{}payload_ = span.subrange(0, {}){};",
                 self.target_prefix, actual_size, bytes
@@ -899,7 +913,10 @@ impl<'a> Decoder<'a> {
         } else {
             let trailing_size = self.get_trailing_size(decl, field).unwrap_or(0);
             if trailing_size > 0 {
-                self.append(format!("if (span.size() < {}) return false;", trailing_size / 8));
+                self.append(format!(
+                    "if (span.size() < {}) return std::nullopt;",
+                    trailing_size / 8
+                ));
                 self.append(format!("size_t payload_size = span.size() - {};", trailing_size / 8));
                 self.append(format!(
                     "{}payload_ = span.subrange(0, payload_size){};",
@@ -938,90 +955,86 @@ impl<'a> Decoder<'a> {
                 self.check_size(&format!("{total_size}"));
                 self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
                 let out = self.decode_array_element(field, "span".to_string());
-                self.append(format!("    output->{id}_[n] = {out};"));
+                self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicCount) => {
-                self.check_size(&format!("{element_size} * output->{id}_count_"));
-                self.append(format!("for (size_t n = 0; n < output->{id}_count_; n++) {{"));
+                self.check_size(&format!("{element_size} * output.{id}_count_"));
+                self.append(format!("for (size_t n = 0; n < output.{id}_count_; n++) {{"));
                 let out = self.decode_array_element(field, "span".to_string());
-                self.append(format!("    output->{id}_.push_back({out});"));
+                self.append(format!("    output.{id}_.push_back({out});"));
                 self.append("}".to_string());
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
                 self.append(format!("if (({id}_size_ % {element_size}) != 0) {{"));
-                self.append("    return false;".to_string());
+                self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
                 self.append(format!("auto {id}_count_ = {id}_size_ / {element_size};"));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 let out = self.decode_array_element(field, "span".to_string());
-                self.append(format!("    output->{id}_.push_back({out});"));
+                self.append(format!("    output.{id}_.push_back({out});"));
                 self.append("}".to_string());
             }
 
             (ElementSize::Static(element_size), ArraySize::Unknown) => {
                 self.append(format!("if ((span.size() % {element_size}) != 0) {{"));
-                self.append("    return false;".to_string());
+                self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
                 self.append(format!("auto {id}_count_ = span.size() / {element_size};"));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 let out = self.decode_array_element(field, "span".to_string());
-                self.append(format!("    output->{id}_.push_back({out});"));
+                self.append(format!("    output.{id}_.push_back({out});"));
                 self.append("}".to_string());
             }
 
             (ElementSize::Dynamic, ArraySize::StaticCount(count)) => {
-                self.check_size(&format!("output->{id}_element_size_ * {count}"));
+                self.check_size(&format!("output.{id}_element_size_ * {count}"));
                 self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
-                self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
+                self.append(format!("    auto element_span = span.subrange(n * output.{id}_element_size_, output.{id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
-                self.append(format!("    output->{id}_[n] = {out};"));
+                self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
-                self.append(format!("span.skip(output->{id}_element_size_ * {count});"));
+                self.append(format!("span.skip(output.{id}_element_size_ * {count});"));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicCount) => {
-                self.check_size(&format!("output->{id}_element_size_ * output->{id}_count_"));
-                self.append(format!("for (size_t n = 0; n < output->{id}_count_; n++) {{"));
-                self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
+                self.check_size(&format!("output.{id}_element_size_ * output.{id}_count_"));
+                self.append(format!("for (size_t n = 0; n < output.{id}_count_; n++) {{"));
+                self.append(format!("    auto element_span = span.subrange(n * output.{id}_element_size_, output.{id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
-                self.append(format!("    output->{id}_[n] = {out};"));
+                self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
-                self.append(format!(
-                    "span.skip(output->{id}_element_size_ * output->{id}_count_);"
-                ));
+                self.append(format!("span.skip(output.{id}_element_size_ * output.{id}_count_);"));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
                 self.append(format!(
-                    "if (output->{id}_element_size_ == 0 || ({id}_size_ % output->{id}_element_size_) != 0) {{"
+                    "if (output.{id}_element_size_ == 0 || ({id}_size_ % output.{id}_element_size_) != 0) {{"
                 ));
-                self.append("    return false;".to_string());
+                self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("auto {id}_count_ = {id}_size_ / output->{id}_element_size_;"));
+                self.append(format!("auto {id}_count_ = {id}_size_ / output.{id}_element_size_;"));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
-                self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
+                self.append(format!("    auto element_span = span.subrange(n * output.{id}_element_size_, output.{id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
-                self.append(format!("    output->{id}_[n] = {out};"));
+                self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
                 self.append(format!("span.skip({id}_size_);"));
             }
 
             (ElementSize::Dynamic, ArraySize::Unknown) => {
-                self.append(format!("if (output->{id}_element_size_ == 0 || (span.size() % output->{id}_element_size_) != 0) {{"));
-                self.append("    return false;".to_string());
+                self.append(format!("if (output.{id}_element_size_ == 0 || (span.size() % output.{id}_element_size_) != 0) {{"));
+                self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!(
-                    "auto {id}_count_ = span.size() / output->{id}_element_size_;"
-                ));
+                self.append(format!("auto {id}_count_ = span.size() / output.{id}_element_size_;"));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
-                self.append(format!("    auto element_span = span.subrange(n * output->{id}_element_size_, output->{id}_element_size_);"));
+                self.append(format!("    auto element_span = span.subrange(n * output.{id}_element_size_, output.{id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
-                self.append(format!("    output->{id}_[n] = {out};"));
+                self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
                 self.append("span.clear();".to_string());
             }
@@ -1029,22 +1042,24 @@ impl<'a> Decoder<'a> {
             (ElementSize::Unknown, ArraySize::StaticCount(count)) => {
                 let tid = type_id.unwrap();
                 self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
-                self.append(format!("    {tid} out;"));
-                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
-                self.append("        return false;".to_string());
+                let decode = format!("{tid}::Decode(span)");
+                self.append(format!("    auto out = {decode};"));
+                self.append("    if (!out.has_value()) {".to_string());
+                self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
-                self.append(format!("    output->{id}_[n] = std::move(out);"));
+                self.append(format!("    output.{id}_[n] = std::move(*out);"));
                 self.append("}".to_string());
             }
 
             (ElementSize::Unknown, ArraySize::DynamicCount) => {
                 let tid = type_id.unwrap();
-                self.append(format!("for (size_t n = 0; n < output->{id}_count_; n++) {{"));
-                self.append(format!("    {tid} out;"));
-                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
-                self.append("        return false;".to_string());
+                self.append(format!("for (size_t n = 0; n < output.{id}_count_; n++) {{"));
+                let decode = format!("{tid}::Decode(span)");
+                self.append(format!("    auto out = {decode};"));
+                self.append("    if (!out.has_value()) {".to_string());
+                self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
-                self.append(format!("    output->{id}_.push_back(std::move(out));"));
+                self.append(format!("    output.{id}_.push_back(std::move(*out));"));
                 self.append("}".to_string());
             }
 
@@ -1053,11 +1068,12 @@ impl<'a> Decoder<'a> {
                 self.check_size(&format!("{id}_size_"));
                 self.append(format!("auto {id}_span = span.subrange(0, {id}_size_);"));
                 self.append(format!("while ({id}_span.size() > 0) {{"));
-                self.append(format!("    {tid} out;"));
-                self.append(format!("    if (!{tid}::Parse({id}_span, &out)) {{"));
-                self.append("        return false;".to_string());
+                let decode = format!("{tid}::Decode({id}_span)");
+                self.append(format!("    auto out = {decode};"));
+                self.append("    if (!out.has_value()) {".to_string());
+                self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
-                self.append(format!("    output->{id}_.push_back(std::move(out));"));
+                self.append(format!("    output.{id}_.push_back(std::move(*out));"));
                 self.append("}".to_string());
                 self.append(format!("span.skip({id}_size_);"));
             }
@@ -1065,11 +1081,12 @@ impl<'a> Decoder<'a> {
             (ElementSize::Unknown, ArraySize::Unknown) => {
                 let tid = type_id.unwrap();
                 self.append("while (span.size() > 0) {".to_string());
-                self.append(format!("    {tid} out;"));
-                self.append(format!("    if (!{tid}::Parse(span, &out)) {{"));
-                self.append("        return false;".to_string());
+                let decode = format!("{tid}::Decode(span)");
+                self.append(format!("    auto out = {decode};"));
+                self.append("    if (!out.has_value()) {".to_string());
+                self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
-                self.append(format!("    output->{id}_.push_back(std::move(out));"));
+                self.append(format!("    output.{id}_.push_back(std::move(*out));"));
                 self.append("}".to_string());
             }
         }
@@ -1098,17 +1115,18 @@ impl<'a> Decoder<'a> {
                         } else {
                             self.append(format!("    auto raw_value = {raw_value};"));
                             self.append(format!("    if (!IsValid{type_id}(raw_value)) {{"));
-                            self.append("        return false;".to_string());
+                            self.append("        return std::nullopt;".to_string());
                             self.append("    }".to_string());
                             format!("{type_id}(raw_value)")
                         }
                     }
                     _ => {
-                        self.append(format!("    {type_id} out;"));
-                        self.append(format!("    if (!{type_id}::Parse({span}, &out)) {{"));
-                        self.append("        return false;".to_string());
+                        let decode = format!("{type_id}::Decode({span})");
+                        self.append(format!("    auto out = {decode};"));
+                        self.append("    if (!out.has_value()) {".to_string());
+                        self.append("        return std::nullopt;".to_string());
                         self.append("    }".to_string());
-                        "out".to_string()
+                        "std::move(*out)".to_string()
                     }
                 }
             }
@@ -1153,7 +1171,7 @@ impl<'a> Decoder<'a> {
                     self.append(
                         format!("if ({id}_start_size - span.size() < {padding_bytes}) {{",),
                     );
-                    self.append(format!("    if (span.size() < {padding_bytes} - ({id}_start_size - span.size())) return false;"));
+                    self.append(format!("    if (span.size() < {padding_bytes} - ({id}_start_size - span.size())) return std::nullopt;"));
                     self.append(format!(
                         "    span.skip({padding_bytes} - ({id}_start_size - span.size()));",
                     ));
@@ -1775,8 +1793,10 @@ fn generate_packet_view(
                             "    auto element_span = span.subrange(0, {}_element_size_);",
                             id
                         ));
-                        accessor_code
-                            .push(format!("    {}::Parse(element_span, &elements[n]);", tid));
+                        let decode = format!("{tid}::Decode(element_span)");
+                        accessor_code.push(format!(
+                            "    if (auto element = {decode}) elements[n] = std::move(*element);"
+                        ));
                         accessor_code.push(format!("    span.skip({}_element_size_);", id));
                     } else if let Some(tid) = type_id {
                         let td = scope.typedef.get(tid).unwrap();
@@ -1792,8 +1812,10 @@ fn generate_packet_view(
                                 ));
                             }
                             _ => {
-                                accessor_code
-                                    .push(format!("    {}::Parse(span, &elements[n]);", tid));
+                                let decode = format!("{tid}::Decode(span)");
+                                accessor_code.push(format!(
+                                    "    if (auto element = {decode}) elements[n] = std::move(*element);"
+                                ));
                             }
                         }
                     } else {
@@ -1826,13 +1848,11 @@ fn generate_packet_view(
                             "    auto element_span = span.subrange(0, {}_element_size_);",
                             id
                         ));
-                        accessor_code.push(format!("    {} element;", tid));
-                        accessor_code.push(format!(
-                            "    if (!{}::Parse(element_span, &element)) break;",
-                            tid
-                        ));
+                        let decode = format!("{tid}::Decode(element_span)");
+                        accessor_code.push(format!("    auto element = {decode};"));
+                        accessor_code.push("    if (!element.has_value()) break;".to_string());
                         accessor_code
-                            .push("    elements.emplace_back(std::move(element));".to_string());
+                            .push("    elements.emplace_back(std::move(*element));".to_string());
                         accessor_code.push(format!("    span.skip({}_element_size_);", id));
                         accessor_code.push("}".to_string());
                     } else if let Some(tid) = type_id {
@@ -1856,13 +1876,12 @@ fn generate_packet_view(
                             }
                             _ => {
                                 accessor_code.push(format!("while ({}) {{", count_limit));
-                                accessor_code.push(format!("    {} element;", tid));
-                                accessor_code.push(format!(
-                                    "    if (!{}::Parse(span, &element)) break;",
-                                    tid
-                                ));
+                                let decode = format!("{tid}::Decode(span)");
+                                accessor_code.push(format!("    auto element = {decode};"));
+                                accessor_code
+                                    .push("    if (!element.has_value()) break;".to_string());
                                 accessor_code.push(
-                                    "    elements.emplace_back(std::move(element));".to_string(),
+                                    "    elements.emplace_back(std::move(*element));".to_string(),
                                 );
                                 accessor_code.push("}".to_string());
                             }
@@ -1963,7 +1982,7 @@ fn generate_packet_view(
         if !unconstrained_parent_fields.is_empty() {
             for f in unconstrained_parent_fields {
                 if let Some(id) = f.id() {
-                    field_parsers.push(format!("{}_ = parent.{}_;", id, id));
+                    field_parsers.push(format!("output.{}_ = parent.{}_;", id, id));
                 }
             }
         }
@@ -1978,7 +1997,7 @@ fn generate_packet_view(
                 ast::FieldDesc::ElementSize { field_id, .. } => format!("{field_id}_element_size_"),
                 _ => continue,
             };
-            field_parsers.push(format!("{member} = parent.{member};"));
+            field_parsers.push(format!("output.{member} = parent.{member};"));
         }
     }
 
@@ -1996,7 +2015,7 @@ fn generate_packet_view(
     }
 
     if decl.fields().next().is_some() {
-        let mut parser = Decoder::new(scope, schema, endianness, "", false);
+        let mut parser = Decoder::new(scope, schema, endianness, "output.", false);
         parser.decode(decl, &[]);
         parser.done();
         field_parsers.extend(parser.code);
@@ -2004,11 +2023,9 @@ fn generate_packet_view(
 
     if trailing_size_check {
         field_parsers.push("if (span.size() > 0) {".to_string());
-        field_parsers.push("    return false;".to_string());
+        field_parsers.push("    return std::nullopt;".to_string());
         field_parsers.push("}".to_string());
     }
-
-    field_parsers.push("return true;".to_string());
 
     let friend_classes = scope
         .iter_children(decl)
@@ -2022,11 +2039,9 @@ public:
     // Decode the packet from the {decode_input}.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<{id}View> Decode({parent_class} const& parent) {{
-        {id}View view({bytes_initializer});
-        if (!view.Parse(parent)) {{
-            return std::nullopt;
-        }}
-        return view;
+        {id}View output({bytes_initializer});
+{field_parsers}
+        return output;
     }}
 
 {field_accessors}
@@ -2038,10 +2053,6 @@ public:
 
 protected:
     explicit {id}View(pdl::packet::slice const& bytes) : bytes_(bytes) {{}}
-
-    bool Parse({parent_class} const& parent) {{
-{field_parsers}
-    }}
 
     pdl::packet::slice bytes_;
 {field_members}
@@ -2290,15 +2301,18 @@ fn generate_struct_declaration(
         }
     }
 
+    // The struct is decoded from the input span, which is updated to the
+    // remaining bytes on success.
     let mut field_parsers = Vec::new();
     field_parsers.push("pdl::packet::slice span = parent_span;".to_string());
+    field_parsers.push(format!("{id} output;"));
 
-    let mut parser = Decoder::new(scope, schema, endianness, "output->", true);
+    let mut parser = Decoder::new(scope, schema, endianness, "output.", true);
     parser.decode(decl, &[]);
     parser.done();
     field_parsers.extend(parser.code);
     field_parsers.push("parent_span = span;".to_string());
-    field_parsers.push("return true;".to_string());
+    field_parsers.push("return output;".to_string());
 
     let mut all_decls = scope.iter_parents_and_self(decl).collect::<Vec<_>>();
     all_decls.reverse();
@@ -2337,7 +2351,10 @@ public:
 {constructor}
     {id}& operator=({id} const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, {id}* output) {{
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<{id}> Decode(pdl::packet::slice& parent_span) {{
 {struct_parse_code}
     }}
 

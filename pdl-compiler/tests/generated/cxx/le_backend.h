@@ -184,14 +184,18 @@ public:
     explicit SizedStruct(uint8_t a) : a_(std::move(a)) {}
     SizedStruct& operator=(SizedStruct const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, SizedStruct* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<SizedStruct> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        SizedStruct output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
-        output->a_ = span.read_le<uint8_t, 1>();
+        output.a_ = span.read_le<uint8_t, 1>();
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -217,25 +221,29 @@ public:
     explicit UnsizedStruct(std::vector<uint8_t> array) : array_(std::move(array)) {}
     UnsizedStruct& operator=(UnsizedStruct const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, UnsizedStruct* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<UnsizedStruct> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        UnsizedStruct output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         size_t array_size_ = (chunk0 >> 0) & 0x3;
         if (span.size() < array_size_) {
-            return false;
+            return std::nullopt;
         }
         if ((array_size_ % 1) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto array_count_ = array_size_ / 1;
         for (size_t n = 0; n < array_count_; n++) {
-            output->array_.push_back(span.read_le<uint8_t, 1>());
+            output.array_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -268,17 +276,21 @@ public:
     explicit UnknownSizeStruct(std::vector<uint8_t> array) : array_(std::move(array)) {}
     UnknownSizeStruct& operator=(UnknownSizeStruct const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, UnknownSizeStruct* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<UnknownSizeStruct> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        UnknownSizeStruct output;
         if ((span.size() % 1) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto array_count_ = span.size() / 1;
         for (size_t n = 0; n < array_count_; n++) {
-            output->array_.push_back(span.read_le<uint8_t, 1>());
+            output.array_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -302,11 +314,20 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ScalarParentView> Decode(pdl::packet::slice const& parent) {
-        ScalarParentView view(parent);
-        if (!view.Parse(parent)) {
+        ScalarParentView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        output.a_ = span.read_le<uint8_t, 1>();
+        size_t payload_size_ = span.read_le<uint8_t, 1>();
+        if (span.size() < payload_size_) return std::nullopt;
+        output.payload_ = span.subrange(0, payload_size_);
+        span.skip(payload_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint8_t GetA() const { return a_; }
@@ -322,22 +343,6 @@ public:
 
 protected:
     explicit ScalarParentView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 2) {
-            return false;
-        }
-        a_ = span.read_le<uint8_t, 1>();
-        size_t payload_size_ = span.read_le<uint8_t, 1>();
-        if (span.size() < payload_size_) return false;
-        payload_ = span.subrange(0, payload_size_);
-        span.skip(payload_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t a_;
@@ -386,11 +391,24 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<EnumParentView> Decode(pdl::packet::slice const& parent) {
-        EnumParentView view(parent);
-        if (!view.Parse(parent)) {
+        EnumParentView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 3) {
             return std::nullopt;
         }
-        return view;
+        auto raw_a = span.read_le<uint16_t, 2>();
+        if (!IsValidEnum16(raw_a)) {
+           return std::nullopt;
+        }
+        output.a_ = Enum16(raw_a);
+        size_t payload_size_ = span.read_le<uint8_t, 1>();
+        if (span.size() < payload_size_) return std::nullopt;
+        output.payload_ = span.subrange(0, payload_size_);
+        span.skip(payload_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum16 GetA() const { return a_; }
@@ -406,26 +424,6 @@ public:
 
 protected:
     explicit EnumParentView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 3) {
-            return false;
-        }
-        auto raw_a = span.read_le<uint16_t, 2>();
-        if (!IsValidEnum16(raw_a)) {
-           return false;
-        }
-        a_ = Enum16(raw_a);
-        size_t payload_size_ = span.read_le<uint8_t, 1>();
-        if (span.size() < payload_size_) return false;
-        payload_ = span.subrange(0, payload_size_);
-        span.skip(payload_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Enum16 a_{Enum16::A};
@@ -474,11 +472,15 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<EmptyParentView> Decode(ScalarParentView const& parent) {
-        EmptyParentView view(parent.bytes_);
-        if (!view.Parse(parent)) {
+        EmptyParentView output(parent.bytes_);
+        output.a_ = parent.a_;
+        pdl::packet::slice span = parent.payload_;
+        output.payload_ = span;
+        span.clear();
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     uint8_t GetA() const { return a_; }
@@ -494,17 +496,6 @@ public:
 
 protected:
     explicit EmptyParentView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(ScalarParentView const& parent) {
-        a_ = parent.a_;
-        pdl::packet::slice span = parent.payload_;
-        payload_ = span;
-        span.clear();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t a_;
@@ -550,11 +541,18 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Scalar_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_Scalar_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Scalar_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 8) {
             return std::nullopt;
         }
-        return view;
+        uint64_t chunk0 = span.read_le<uint64_t, 8>();
+        output.a_ = (chunk0 >> 0) & 0x7f;
+        output.c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint8_t GetA() const { return a_; }
@@ -569,20 +567,6 @@ public:
 
 protected:
     explicit Packet_Scalar_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 8) {
-            return false;
-        }
-        uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        a_ = (chunk0 >> 0) & 0x7f;
-        c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t a_;
@@ -627,11 +611,22 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Enum_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_Enum_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Enum_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 8) {
             return std::nullopt;
         }
-        return view;
+        uint64_t chunk0 = span.read_le<uint64_t, 8>();
+        auto raw_a = (chunk0 >> 0) & 0x7f;
+        if (!IsValidEnum7(raw_a)) {
+           return std::nullopt;
+        }
+        output.a_ = Enum7(raw_a);
+        output.c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum7 GetA() const { return a_; }
@@ -646,24 +641,6 @@ public:
 
 protected:
     explicit Packet_Enum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 8) {
-            return false;
-        }
-        uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        auto raw_a = (chunk0 >> 0) & 0x7f;
-        if (!IsValidEnum7(raw_a)) {
-           return false;
-        }
-        a_ = Enum7(raw_a);
-        c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Enum7 a_{Enum7::A};
@@ -711,11 +688,18 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Reserved_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_Reserved_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Reserved_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 8) {
             return std::nullopt;
         }
-        return view;
+        uint64_t chunk0 = span.read_le<uint64_t, 8>();
+        output.a_ = (chunk0 >> 0) & 0x7f;
+        output.c_ = (chunk0 >> 9) & 0x7fffffffffffff;
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint8_t GetA() const { return a_; }
@@ -730,20 +714,6 @@ public:
 
 protected:
     explicit Packet_Reserved_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 8) {
-            return false;
-        }
-        uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        a_ = (chunk0 >> 0) & 0x7f;
-        c_ = (chunk0 >> 9) & 0x7fffffffffffff;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t a_;
@@ -788,11 +758,26 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Size_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_Size_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Size_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 8) {
             return std::nullopt;
         }
-        return view;
+        uint64_t chunk0 = span.read_le<uint64_t, 8>();
+        size_t b_size_ = (chunk0 >> 0) & 0x7;
+        output.a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
+        if (span.size() < b_size_) {
+            return std::nullopt;
+        }
+        if ((b_size_ % 1) != 0) {
+            return std::nullopt;
+        }
+        output.b_ = span.subrange(0, b_size_);
+        span.skip(b_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint64_t GetA() const { return a_; }
@@ -814,28 +799,6 @@ public:
 
 protected:
     explicit Packet_Size_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 8) {
-            return false;
-        }
-        uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        size_t b_size_ = (chunk0 >> 0) & 0x7;
-        a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
-        if (span.size() < b_size_) {
-            return false;
-        }
-        if ((b_size_ % 1) != 0) {
-            return false;
-        }
-        b_ = span.subrange(0, b_size_);
-        span.skip(b_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint64_t a_;
@@ -884,11 +847,23 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Count_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_Count_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Count_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 8) {
             return std::nullopt;
         }
-        return view;
+        uint64_t chunk0 = span.read_le<uint64_t, 8>();
+        output.b_count_ = (chunk0 >> 0) & 0x7;
+        output.a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
+        if (span.size() < 1 * output.b_count_) {
+            return std::nullopt;
+        }
+        output.b_ = span.subrange(0, 1 * output.b_count_);
+        span.skip(1 * output.b_count_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint64_t GetA() const { return a_; }
@@ -910,25 +885,6 @@ public:
 
 protected:
     explicit Packet_Count_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 8) {
-            return false;
-        }
-        uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        b_count_ = (chunk0 >> 0) & 0x7;
-        a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
-        if (span.size() < 1 * b_count_) {
-            return false;
-        }
-        b_ = span.subrange(0, 1 * b_count_);
-        span.skip(1 * b_count_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t b_count_ {0};
@@ -977,11 +933,20 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_FixedScalar_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_FixedScalar_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_FixedScalar_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 8) {
             return std::nullopt;
         }
-        return view;
+        uint64_t chunk0 = span.read_le<uint64_t, 8>();
+        if (static_cast<uint64_t>((chunk0 >> 0) & 0x7f) != 0x7) {
+            return std::nullopt;
+        }
+        output.b_ = (chunk0 >> 7) & 0x1ffffffffffffff;
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint64_t GetB() const { return b_; }
@@ -994,22 +959,6 @@ public:
 
 protected:
     explicit Packet_FixedScalar_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 8) {
-            return false;
-        }
-        uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        if (static_cast<uint64_t>((chunk0 >> 0) & 0x7f) != 0x7) {
-            return false;
-        }
-        b_ = (chunk0 >> 7) & 0x1ffffffffffffff;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint64_t b_;
@@ -1049,11 +998,20 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_FixedEnum_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_FixedEnum_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_FixedEnum_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 8) {
             return std::nullopt;
         }
-        return view;
+        uint64_t chunk0 = span.read_le<uint64_t, 8>();
+        if (Enum7((chunk0 >> 0) & 0x7f) != Enum7::A) {
+            return std::nullopt;
+        }
+        output.b_ = (chunk0 >> 7) & 0x1ffffffffffffff;
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint64_t GetB() const { return b_; }
@@ -1066,22 +1024,6 @@ public:
 
 protected:
     explicit Packet_FixedEnum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 8) {
-            return false;
-        }
-        uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        if (Enum7((chunk0 >> 0) & 0x7f) != Enum7::A) {
-            return false;
-        }
-        b_ = (chunk0 >> 7) & 0x1ffffffffffffff;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint64_t b_;
@@ -1121,11 +1063,27 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Enum_Field_PackedView> Decode(pdl::packet::slice const& parent) {
-        Packet_Enum_Field_PackedView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Enum_Field_PackedView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        uint16_t chunk0 = span.read_le<uint16_t, 2>();
+        auto raw_a = (chunk0 >> 0) & 0x7f;
+        if (!IsValidEnum7(raw_a)) {
+           return std::nullopt;
+        }
+        output.a_ = Enum7(raw_a);
+        auto raw_b = (chunk0 >> 7) & 0x7f;
+        if (!IsValidEnum7(raw_b)) {
+           return std::nullopt;
+        }
+        output.b_ = Enum7(raw_b);
+        output.c_ = (chunk0 >> 14) & 0x3;
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum7 GetA() const { return a_; }
@@ -1142,29 +1100,6 @@ public:
 
 protected:
     explicit Packet_Enum_Field_PackedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 2) {
-            return false;
-        }
-        uint16_t chunk0 = span.read_le<uint16_t, 2>();
-        auto raw_a = (chunk0 >> 0) & 0x7f;
-        if (!IsValidEnum7(raw_a)) {
-           return false;
-        }
-        a_ = Enum7(raw_a);
-        auto raw_b = (chunk0 >> 7) & 0x7f;
-        if (!IsValidEnum7(raw_b)) {
-           return false;
-        }
-        b_ = Enum7(raw_b);
-        c_ = (chunk0 >> 14) & 0x3;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Enum7 a_{Enum7::A};
@@ -1220,11 +1155,20 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Payload_Field_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Payload_Field_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Payload_Field_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        size_t payload_size_ = (chunk0 >> 0) & 0x7;
+        if (span.size() < payload_size_) return std::nullopt;
+        output.payload_ = span.subrange(0, payload_size_);
+        span.skip(payload_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     pdl::packet::slice GetPayload() const {
@@ -1238,22 +1182,6 @@ public:
 
 protected:
     explicit Packet_Payload_Field_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        size_t payload_size_ = (chunk0 >> 0) & 0x7;
-        if (span.size() < payload_size_) return false;
-        payload_ = span.subrange(0, payload_size_);
-        span.skip(payload_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
@@ -1295,11 +1223,20 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Payload_Field_SizeModifierView> Decode(pdl::packet::slice const& parent) {
-        Packet_Payload_Field_SizeModifierView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Payload_Field_SizeModifierView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        size_t payload_size_ = (chunk0 >> 0) & 0x7;
+        if (span.size() < (payload_size_ - 2)) return std::nullopt;
+        output.payload_ = span.subrange(0, (payload_size_ - 2));
+        span.skip((payload_size_ - 2));
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     pdl::packet::slice GetPayload() const {
@@ -1313,22 +1250,6 @@ public:
 
 protected:
     explicit Packet_Payload_Field_SizeModifierView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        size_t payload_size_ = (chunk0 >> 0) & 0x7;
-        if (span.size() < (payload_size_ - 2)) return false;
-        payload_ = span.subrange(0, (payload_size_ - 2));
-        span.skip((payload_size_ - 2));
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
@@ -1371,11 +1292,20 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Payload_Field_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Payload_Field_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Payload_Field_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) return std::nullopt;
+        size_t payload_size = span.size() - 2;
+        output.payload_ = span.subrange(0, payload_size);
+        span.skip(payload_size);
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        output.a_ = span.read_le<uint16_t, 2>();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     pdl::packet::slice GetPayload() const {
@@ -1391,22 +1321,6 @@ public:
 
 protected:
     explicit Packet_Payload_Field_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 2) return false;
-        size_t payload_size = span.size() - 2;
-        payload_ = span.subrange(0, payload_size);
-        span.skip(payload_size);
-        if (span.size() < 2) {
-            return false;
-        }
-        a_ = span.read_le<uint16_t, 2>();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
@@ -1446,11 +1360,18 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Payload_Field_UnknownSize_TerminalView> Decode(pdl::packet::slice const& parent) {
-        Packet_Payload_Field_UnknownSize_TerminalView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Payload_Field_UnknownSize_TerminalView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        output.a_ = span.read_le<uint16_t, 2>();
+        output.payload_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint16_t GetA() const { return a_; }
@@ -1466,20 +1387,6 @@ public:
 
 protected:
     explicit Packet_Payload_Field_UnknownSize_TerminalView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 2) {
-            return false;
-        }
-        a_ = span.read_le<uint16_t, 2>();
-        payload_ = span;
-        span.clear();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint16_t a_;
@@ -1519,11 +1426,20 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Body_Field_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Body_Field_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Body_Field_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        size_t payload_size_ = (chunk0 >> 0) & 0x7;
+        if (span.size() < payload_size_) return std::nullopt;
+        output.payload_ = span.subrange(0, payload_size_);
+        span.skip(payload_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     pdl::packet::slice GetPayload() const {
@@ -1537,22 +1453,6 @@ public:
 
 protected:
     explicit Packet_Body_Field_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        size_t payload_size_ = (chunk0 >> 0) & 0x7;
-        if (span.size() < payload_size_) return false;
-        payload_ = span.subrange(0, payload_size_);
-        span.skip(payload_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
@@ -1594,11 +1494,20 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Body_Field_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Body_Field_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Body_Field_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) return std::nullopt;
+        size_t payload_size = span.size() - 2;
+        output.payload_ = span.subrange(0, payload_size);
+        span.skip(payload_size);
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        output.a_ = span.read_le<uint16_t, 2>();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     pdl::packet::slice GetPayload() const {
@@ -1614,22 +1523,6 @@ public:
 
 protected:
     explicit Packet_Body_Field_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 2) return false;
-        size_t payload_size = span.size() - 2;
-        payload_ = span.subrange(0, payload_size);
-        span.skip(payload_size);
-        if (span.size() < 2) {
-            return false;
-        }
-        a_ = span.read_le<uint16_t, 2>();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
@@ -1669,11 +1562,18 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Body_Field_UnknownSize_TerminalView> Decode(pdl::packet::slice const& parent) {
-        Packet_Body_Field_UnknownSize_TerminalView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Body_Field_UnknownSize_TerminalView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        output.a_ = span.read_le<uint16_t, 2>();
+        output.payload_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint16_t GetA() const { return a_; }
@@ -1689,20 +1589,6 @@ public:
 
 protected:
     explicit Packet_Body_Field_UnknownSize_TerminalView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 2) {
-            return false;
-        }
-        a_ = span.read_le<uint16_t, 2>();
-        payload_ = span;
-        span.clear();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint16_t a_;
@@ -1742,11 +1628,18 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_ScalarGroup_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_ScalarGroup_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_ScalarGroup_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        if (static_cast<uint64_t>(span.read_le<uint16_t, 2>()) != 0x2a) {
+            return std::nullopt;
+        }
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
 
@@ -1758,20 +1651,6 @@ public:
 
 protected:
     explicit Packet_ScalarGroup_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 2) {
-            return false;
-        }
-        if (static_cast<uint64_t>(span.read_le<uint16_t, 2>()) != 0x2a) {
-            return false;
-        }
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
 
@@ -1807,11 +1686,18 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_EnumGroup_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_EnumGroup_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_EnumGroup_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        if (Enum16(span.read_le<uint16_t, 2>()) != Enum16::A) {
+            return std::nullopt;
+        }
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
 
@@ -1823,20 +1709,6 @@ public:
 
 protected:
     explicit Packet_EnumGroup_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 2) {
-            return false;
-        }
-        if (Enum16(span.read_le<uint16_t, 2>()) != Enum16::A) {
-            return false;
-        }
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
 
@@ -1872,11 +1744,18 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Struct_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_Struct_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Struct_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto a_value = SizedStruct::Decode(span);
+        if (!a_value.has_value()) return std::nullopt;
+        output.a_ = std::move(*a_value);
+        auto b_value = UnsizedStruct::Decode(span);
+        if (!b_value.has_value()) return std::nullopt;
+        output.b_ = std::move(*b_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     SizedStruct const& GetA() const { return a_; }
@@ -1891,16 +1770,6 @@ public:
 
 protected:
     explicit Packet_Struct_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!SizedStruct::Parse(span, &a_)) return false;
-        if (!UnsizedStruct::Parse(span, &b_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     SizedStruct a_;
@@ -1944,11 +1813,17 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_ByteElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_ByteElement_ConstantSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_ByteElement_ConstantSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 4) {
             return std::nullopt;
         }
-        return view;
+        output.array_ = span.subrange(0, 4);
+        span.skip(4);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::array<uint8_t, 4> GetArray() const {
@@ -1968,19 +1843,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_ByteElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 4) {
-            return false;
-        }
-        array_ = span.subrange(0, 4);
-        span.skip(4);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -2019,11 +1881,25 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_ByteElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_ByteElement_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_ByteElement_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < array_size_) {
+            return std::nullopt;
+        }
+        if ((array_size_ % 1) != 0) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, array_size_);
+        span.skip(array_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<uint8_t> GetArray() const {
@@ -2043,27 +1919,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_ByteElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        size_t array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_size_) {
-            return false;
-        }
-        if ((array_size_ % 1) != 0) {
-            return false;
-        }
-        array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -2107,11 +1962,22 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_ByteElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_ByteElement_VariableCountView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_ByteElement_VariableCountView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 1 * output.array_count_) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, 1 * output.array_count_);
+        span.skip(1 * output.array_count_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<uint8_t> GetArray() const {
@@ -2131,24 +1997,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_ByteElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 1 * array_count_) {
-            return false;
-        }
-        array_ = span.subrange(0, 1 * array_count_);
-        span.skip(1 * array_count_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
@@ -2192,11 +2040,17 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_ByteElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_ByteElement_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_ByteElement_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if ((span.size() % 1) != 0) {
             return std::nullopt;
         }
-        return view;
+        output.array_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<uint8_t> GetArray() const {
@@ -2216,19 +2070,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_ByteElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if ((span.size() % 1) != 0) {
-            return false;
-        }
-        array_ = span;
-        span.clear();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -2267,11 +2108,17 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_ScalarElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_ScalarElement_ConstantSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_ScalarElement_ConstantSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 8) {
             return std::nullopt;
         }
-        return view;
+        output.array_ = span.subrange(0, 8);
+        span.skip(8);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::array<uint16_t, 4> GetArray() const {
@@ -2291,19 +2138,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_ScalarElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 8) {
-            return false;
-        }
-        array_ = span.subrange(0, 8);
-        span.skip(8);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -2342,11 +2176,25 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_ScalarElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_ScalarElement_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_ScalarElement_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < array_size_) {
+            return std::nullopt;
+        }
+        if ((array_size_ % 2) != 0) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, array_size_);
+        span.skip(array_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<uint16_t> GetArray() const {
@@ -2366,27 +2214,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_ScalarElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        size_t array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_size_) {
-            return false;
-        }
-        if ((array_size_ % 2) != 0) {
-            return false;
-        }
-        array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -2430,11 +2257,22 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_ScalarElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_ScalarElement_VariableCountView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_ScalarElement_VariableCountView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 2 * output.array_count_) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, 2 * output.array_count_);
+        span.skip(2 * output.array_count_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<uint16_t> GetArray() const {
@@ -2454,24 +2292,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_ScalarElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 2 * array_count_) {
-            return false;
-        }
-        array_ = span.subrange(0, 2 * array_count_);
-        span.skip(2 * array_count_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
@@ -2515,11 +2335,17 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_ScalarElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_ScalarElement_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_ScalarElement_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if ((span.size() % 2) != 0) {
             return std::nullopt;
         }
-        return view;
+        output.array_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<uint16_t> GetArray() const {
@@ -2539,19 +2365,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_ScalarElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if ((span.size() % 2) != 0) {
-            return false;
-        }
-        array_ = span;
-        span.clear();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -2590,11 +2403,17 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_EnumElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_EnumElement_ConstantSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_EnumElement_ConstantSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 8) {
             return std::nullopt;
         }
-        return view;
+        output.array_ = span.subrange(0, 8);
+        span.skip(8);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::array<Enum16, 4> GetArray() const {
@@ -2614,19 +2433,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_EnumElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 8) {
-            return false;
-        }
-        array_ = span.subrange(0, 8);
-        span.skip(8);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -2665,11 +2471,25 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_EnumElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_EnumElement_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_EnumElement_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < array_size_) {
+            return std::nullopt;
+        }
+        if ((array_size_ % 2) != 0) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, array_size_);
+        span.skip(array_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<Enum16> GetArray() const {
@@ -2689,27 +2509,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_EnumElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        size_t array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_size_) {
-            return false;
-        }
-        if ((array_size_ % 2) != 0) {
-            return false;
-        }
-        array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -2753,11 +2552,22 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_EnumElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_EnumElement_VariableCountView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_EnumElement_VariableCountView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 2 * output.array_count_) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, 2 * output.array_count_);
+        span.skip(2 * output.array_count_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<Enum16> GetArray() const {
@@ -2777,24 +2587,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_EnumElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 2 * array_count_) {
-            return false;
-        }
-        array_ = span.subrange(0, 2 * array_count_);
-        span.skip(2 * array_count_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
@@ -2838,11 +2630,17 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_EnumElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_EnumElement_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_EnumElement_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if ((span.size() % 2) != 0) {
             return std::nullopt;
         }
-        return view;
+        output.array_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<Enum16> GetArray() const {
@@ -2862,19 +2660,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_EnumElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if ((span.size() % 2) != 0) {
-            return false;
-        }
-        array_ = span;
-        span.clear();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -2913,18 +2698,24 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_SizedElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_SizedElement_ConstantSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_SizedElement_ConstantSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 4) {
             return std::nullopt;
         }
-        return view;
+        output.array_ = span.subrange(0, 4);
+        span.skip(4);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::array<SizedStruct, 4> GetArray() const {
         pdl::packet::slice span = array_;
         std::array<SizedStruct, 4> elements;
         for (int n = 0; n < 4; n++) {
-            SizedStruct::Parse(span, &elements[n]);
+            if (auto element = SizedStruct::Decode(span)) elements[n] = std::move(*element);
         }
         return elements;
     }
@@ -2937,19 +2728,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_SizedElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 4) {
-            return false;
-        }
-        array_ = span.subrange(0, 4);
-        span.skip(4);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -2990,20 +2768,34 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_SizedElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_SizedElement_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_SizedElement_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < array_size_) {
+            return std::nullopt;
+        }
+        if ((array_size_ % 1) != 0) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, array_size_);
+        span.skip(array_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<SizedStruct> GetArray() const {
         pdl::packet::slice span = array_;
         std::vector<SizedStruct> elements;
         while (span.size() > 0) {
-            SizedStruct element;
-            if (!SizedStruct::Parse(span, &element)) break;
-            elements.emplace_back(std::move(element));
+            auto element = SizedStruct::Decode(span);
+            if (!element.has_value()) break;
+            elements.emplace_back(std::move(*element));
         }
         return elements;
     }
@@ -3016,27 +2808,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_SizedElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        size_t array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_size_) {
-            return false;
-        }
-        if ((array_size_ % 1) != 0) {
-            return false;
-        }
-        array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -3082,20 +2853,31 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_SizedElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_SizedElement_VariableCountView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_SizedElement_VariableCountView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 1 * output.array_count_) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, 1 * output.array_count_);
+        span.skip(1 * output.array_count_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<SizedStruct> GetArray() const {
         pdl::packet::slice span = array_;
         std::vector<SizedStruct> elements;
         while (elements.size() < array_count_) {
-            SizedStruct element;
-            if (!SizedStruct::Parse(span, &element)) break;
-            elements.emplace_back(std::move(element));
+            auto element = SizedStruct::Decode(span);
+            if (!element.has_value()) break;
+            elements.emplace_back(std::move(*element));
         }
         return elements;
     }
@@ -3108,24 +2890,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_SizedElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 1 * array_count_) {
-            return false;
-        }
-        array_ = span.subrange(0, 1 * array_count_);
-        span.skip(1 * array_count_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
@@ -3171,20 +2935,26 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_SizedElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_SizedElement_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_SizedElement_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if ((span.size() % 1) != 0) {
             return std::nullopt;
         }
-        return view;
+        output.array_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<SizedStruct> GetArray() const {
         pdl::packet::slice span = array_;
         std::vector<SizedStruct> elements;
         while (span.size() > 0) {
-            SizedStruct element;
-            if (!SizedStruct::Parse(span, &element)) break;
-            elements.emplace_back(std::move(element));
+            auto element = SizedStruct::Decode(span);
+            if (!element.has_value()) break;
+            elements.emplace_back(std::move(*element));
         }
         return elements;
     }
@@ -3197,19 +2967,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_SizedElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if ((span.size() % 1) != 0) {
-            return false;
-        }
-        array_ = span;
-        span.clear();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -3250,18 +3007,26 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_UnsizedElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_UnsizedElement_ConstantSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_UnsizedElement_ConstantSizeView output(parent);
+        pdl::packet::slice span = parent;
+        output.array_ = span;
+        for (size_t n = 0; n < 4; n++) {
+            if (!UnsizedStruct::Decode(span).has_value()) {
+                return std::nullopt;
+            }
+        }
+        output.array_ = output.array_.subrange(0, output.array_.size() - span.size());
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     std::array<UnsizedStruct, 4> GetArray() const {
         pdl::packet::slice span = array_;
         std::array<UnsizedStruct, 4> elements;
         for (int n = 0; n < 4; n++) {
-            UnsizedStruct::Parse(span, &elements[n]);
+            if (auto element = UnsizedStruct::Decode(span)) elements[n] = std::move(*element);
         }
         return elements;
     }
@@ -3274,22 +3039,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_UnsizedElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        array_ = span;
-        for (size_t n = 0; n < 4; n++) {
-            UnsizedStruct out;
-            if (!UnsizedStruct::Parse(span, &out)) {
-                return false;
-            }
-        }
-        array_ = array_.subrange(0, array_.size() - span.size());
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -3330,20 +3079,31 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_UnsizedElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_UnsizedElement_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_UnsizedElement_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < array_size_) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, array_size_);
+        span.skip(array_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<UnsizedStruct> GetArray() const {
         pdl::packet::slice span = array_;
         std::vector<UnsizedStruct> elements;
         while (span.size() > 0) {
-            UnsizedStruct element;
-            if (!UnsizedStruct::Parse(span, &element)) break;
-            elements.emplace_back(std::move(element));
+            auto element = UnsizedStruct::Decode(span);
+            if (!element.has_value()) break;
+            elements.emplace_back(std::move(*element));
         }
         return elements;
     }
@@ -3356,24 +3116,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_UnsizedElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        size_t array_size_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < array_size_) {
-            return false;
-        }
-        array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -3422,20 +3164,33 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_UnsizedElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_UnsizedElement_VariableCountView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_UnsizedElement_VariableCountView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.array_count_ = (chunk0 >> 0) & 0xf;
+        output.array_ = span;
+        for (size_t n = 0; n < output.array_count_; n++) {
+            if (!UnsizedStruct::Decode(span).has_value()) {
+                return std::nullopt;
+            }
+        }
+        output.array_ = output.array_.subrange(0, output.array_.size() - span.size());
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<UnsizedStruct> GetArray() const {
         pdl::packet::slice span = array_;
         std::vector<UnsizedStruct> elements;
         while (elements.size() < array_count_) {
-            UnsizedStruct element;
-            if (!UnsizedStruct::Parse(span, &element)) break;
-            elements.emplace_back(std::move(element));
+            auto element = UnsizedStruct::Decode(span);
+            if (!element.has_value()) break;
+            elements.emplace_back(std::move(*element));
         }
         return elements;
     }
@@ -3448,27 +3203,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_UnsizedElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_count_ = (chunk0 >> 0) & 0xf;
-        array_ = span;
-        for (size_t n = 0; n < array_count_; n++) {
-            UnsizedStruct out;
-            if (!UnsizedStruct::Parse(span, &out)) {
-                return false;
-            }
-        }
-        array_ = array_.subrange(0, array_.size() - span.size());
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
@@ -3514,20 +3248,28 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_UnsizedElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_UnsizedElement_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_UnsizedElement_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        output.array_ = span;
+        while (span.size() > 0) {
+            if (!UnsizedStruct::Decode(span).has_value()) {
+                return std::nullopt;
+            }
+        }
+        output.array_ = output.array_.subrange(0, output.array_.size() - span.size());
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     std::vector<UnsizedStruct> GetArray() const {
         pdl::packet::slice span = array_;
         std::vector<UnsizedStruct> elements;
         while (span.size() > 0) {
-            UnsizedStruct element;
-            if (!UnsizedStruct::Parse(span, &element)) break;
-            elements.emplace_back(std::move(element));
+            auto element = UnsizedStruct::Decode(span);
+            if (!element.has_value()) break;
+            elements.emplace_back(std::move(*element));
         }
         return elements;
     }
@@ -3540,22 +3282,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_UnsizedElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        array_ = span;
-        while (span.size() > 0) {
-            UnsizedStruct out;
-            if (!UnsizedStruct::Parse(span, &out)) {
-                return false;
-            }
-        }
-        array_ = array_.subrange(0, array_.size() - span.size());
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -3596,20 +3322,32 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_UnsizedElement_SizeModifierView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_UnsizedElement_SizeModifierView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_UnsizedElement_SizeModifierView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        array_size_ = array_size_ - +2;
+        if (span.size() < array_size_) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, array_size_);
+        span.skip(array_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<UnsizedStruct> GetArray() const {
         pdl::packet::slice span = array_;
         std::vector<UnsizedStruct> elements;
         while (span.size() > 0) {
-            UnsizedStruct element;
-            if (!UnsizedStruct::Parse(span, &element)) break;
-            elements.emplace_back(std::move(element));
+            auto element = UnsizedStruct::Decode(span);
+            if (!element.has_value()) break;
+            elements.emplace_back(std::move(*element));
         }
         return elements;
     }
@@ -3622,25 +3360,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_UnsizedElement_SizeModifierView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        size_t array_size_ = (chunk0 >> 0) & 0xf;
-        array_size_ = array_size_ - +2;
-        if (span.size() < array_size_) {
-            return false;
-        }
-        array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -3690,11 +3409,30 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_SizedElement_VariableSize_PaddedView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_SizedElement_VariableSize_PaddedView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_SizedElement_VariableSize_PaddedView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        size_t array_start_size = span.size();
+        if (span.size() < array_size_) {
+            return std::nullopt;
+        }
+        if ((array_size_ % 2) != 0) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, array_size_);
+        span.skip(array_size_);
+        if (array_start_size - span.size() < 16) {
+            if (span.size() < 16 - (array_start_size - span.size())) return std::nullopt;
+            span.skip(16 - (array_start_size - span.size()));
+        }
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<uint16_t> GetArray() const {
@@ -3714,32 +3452,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_SizedElement_VariableSize_PaddedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        size_t array_size_ = (chunk0 >> 0) & 0xf;
-        size_t array_start_size = span.size();
-        if (span.size() < array_size_) {
-            return false;
-        }
-        if ((array_size_ % 2) != 0) {
-            return false;
-        }
-        array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
-        if (array_start_size - span.size() < 16) {
-            if (span.size() < 16 - (array_start_size - span.size())) return false;
-            span.skip(16 - (array_start_size - span.size()));
-        }
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice array_;
@@ -3790,20 +3502,37 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_UnsizedElement_VariableCount_PaddedView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_UnsizedElement_VariableCount_PaddedView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_UnsizedElement_VariableCount_PaddedView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        output.array_count_ = span.read_le<uint8_t, 1>();
+        size_t array_start_size = span.size();
+        output.array_ = span;
+        for (size_t n = 0; n < output.array_count_; n++) {
+            if (!UnsizedStruct::Decode(span).has_value()) {
+                return std::nullopt;
+            }
+        }
+        output.array_ = output.array_.subrange(0, output.array_.size() - span.size());
+        if (array_start_size - span.size() < 16) {
+            if (span.size() < 16 - (array_start_size - span.size())) return std::nullopt;
+            span.skip(16 - (array_start_size - span.size()));
+        }
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<UnsizedStruct> GetArray() const {
         pdl::packet::slice span = array_;
         std::vector<UnsizedStruct> elements;
         while (elements.size() < array_count_) {
-            UnsizedStruct element;
-            if (!UnsizedStruct::Parse(span, &element)) break;
-            elements.emplace_back(std::move(element));
+            auto element = UnsizedStruct::Decode(span);
+            if (!element.has_value()) break;
+            elements.emplace_back(std::move(*element));
         }
         return elements;
     }
@@ -3816,31 +3545,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_UnsizedElement_VariableCount_PaddedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        array_count_ = span.read_le<uint8_t, 1>();
-        size_t array_start_size = span.size();
-        array_ = span;
-        for (size_t n = 0; n < array_count_; n++) {
-            UnsizedStruct out;
-            if (!UnsizedStruct::Parse(span, &out)) {
-                return false;
-            }
-        }
-        array_ = array_.subrange(0, array_.size() - span.size());
-        if (array_start_size - span.size() < 16) {
-            if (span.size() < 16 - (array_start_size - span.size())) return false;
-            span.skip(16 - (array_start_size - span.size()));
-        }
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
@@ -3893,11 +3597,25 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_VariableElementSize_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_VariableElementSize_ConstantSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_VariableElementSize_ConstantSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.array_element_size_ = (chunk0 >> 0) & 0xf;
+        if (output.array_element_size_ == 0) {
+            return std::nullopt;
+        }
+        if (span.size() < output.array_element_size_ * 4) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, output.array_element_size_ * 4);
+        span.skip(output.array_element_size_ * 4);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::array<UnknownSizeStruct, 4> GetArray() const {
@@ -3905,7 +3623,7 @@ public:
         std::array<UnknownSizeStruct, 4> elements;
         for (int n = 0; n < 4; n++) {
             auto element_span = span.subrange(0, array_element_size_);
-            UnknownSizeStruct::Parse(element_span, &elements[n]);
+            if (auto element = UnknownSizeStruct::Decode(element_span)) elements[n] = std::move(*element);
             span.skip(array_element_size_);
         }
         return elements;
@@ -3919,27 +3637,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_VariableElementSize_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_element_size_ = (chunk0 >> 0) & 0xf;
-        if (array_element_size_ == 0) {
-            return false;
-        }
-        if (span.size() < array_element_size_ * 4) {
-            return false;
-        }
-        array_ = span.subrange(0, array_element_size_ * 4);
-        span.skip(array_element_size_ * 4);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t array_element_size_ {0};
@@ -3991,11 +3688,32 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_VariableElementSize_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_VariableElementSize_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_VariableElementSize_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        size_t array_size_ = (chunk0 >> 0) & 0xf;
+        uint8_t chunk1 = span.read_le<uint8_t, 1>();
+        output.array_element_size_ = (chunk1 >> 0) & 0xf;
+        if (span.size() < array_size_) {
+            return std::nullopt;
+        }
+        if (output.array_element_size_ == 0 || (array_size_ % output.array_element_size_) != 0) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, array_size_);
+        span.skip(array_size_);
+        if ((span.size() % 1) != 0) {
+            return std::nullopt;
+        }
+        output.tail_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<UnknownSizeStruct> GetArray() const {
@@ -4003,9 +3721,9 @@ public:
         std::vector<UnknownSizeStruct> elements;
         while (span.size() > 0) {
             auto element_span = span.subrange(0, array_element_size_);
-            UnknownSizeStruct element;
-            if (!UnknownSizeStruct::Parse(element_span, &element)) break;
-            elements.emplace_back(std::move(element));
+            auto element = UnknownSizeStruct::Decode(element_span);
+            if (!element.has_value()) break;
+            elements.emplace_back(std::move(*element));
             span.skip(array_element_size_);
         }
         return elements;
@@ -4028,34 +3746,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_VariableElementSize_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 2) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        size_t array_size_ = (chunk0 >> 0) & 0xf;
-        uint8_t chunk1 = span.read_le<uint8_t, 1>();
-        array_element_size_ = (chunk1 >> 0) & 0xf;
-        if (span.size() < array_size_) {
-            return false;
-        }
-        if (array_element_size_ == 0 || (array_size_ % array_element_size_) != 0) {
-            return false;
-        }
-        array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
-        if ((span.size() % 1) != 0) {
-            return false;
-        }
-        tail_ = span;
-        span.clear();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t array_element_size_ {0};
@@ -4120,11 +3810,32 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_VariableElementSize_VariableCountView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_VariableElementSize_VariableCountView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_VariableElementSize_VariableCountView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.array_count_ = (chunk0 >> 0) & 0xf;
+        uint8_t chunk1 = span.read_le<uint8_t, 1>();
+        output.array_element_size_ = (chunk1 >> 0) & 0xf;
+        if (output.array_element_size_ == 0) {
+            return std::nullopt;
+        }
+        if (span.size() < output.array_element_size_ * output.array_count_) {
+            return std::nullopt;
+        }
+        output.array_ = span.subrange(0, output.array_element_size_ * output.array_count_);
+        span.skip(output.array_element_size_ * output.array_count_);
+        if ((span.size() % 1) != 0) {
+            return std::nullopt;
+        }
+        output.tail_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<UnknownSizeStruct> GetArray() const {
@@ -4132,9 +3843,9 @@ public:
         std::vector<UnknownSizeStruct> elements;
         while (elements.size() < array_count_) {
             auto element_span = span.subrange(0, array_element_size_);
-            UnknownSizeStruct element;
-            if (!UnknownSizeStruct::Parse(element_span, &element)) break;
-            elements.emplace_back(std::move(element));
+            auto element = UnknownSizeStruct::Decode(element_span);
+            if (!element.has_value()) break;
+            elements.emplace_back(std::move(*element));
             span.skip(array_element_size_);
         }
         return elements;
@@ -4157,34 +3868,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_VariableElementSize_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 2) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_count_ = (chunk0 >> 0) & 0xf;
-        uint8_t chunk1 = span.read_le<uint8_t, 1>();
-        array_element_size_ = (chunk1 >> 0) & 0xf;
-        if (array_element_size_ == 0) {
-            return false;
-        }
-        if (span.size() < array_element_size_ * array_count_) {
-            return false;
-        }
-        array_ = span.subrange(0, array_element_size_ * array_count_);
-        span.skip(array_element_size_ * array_count_);
-        if ((span.size() % 1) != 0) {
-            return false;
-        }
-        tail_ = span;
-        span.clear();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t array_count_ {0};
@@ -4246,11 +3929,22 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Array_Field_VariableElementSize_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Packet_Array_Field_VariableElementSize_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Array_Field_VariableElementSize_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.array_element_size_ = (chunk0 >> 0) & 0xf;
+        if (output.array_element_size_ == 0 || (span.size() % output.array_element_size_) != 0) {
+            return std::nullopt;
+        }
+        output.array_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::vector<UnknownSizeStruct> GetArray() const {
@@ -4258,9 +3952,9 @@ public:
         std::vector<UnknownSizeStruct> elements;
         while (span.size() > 0) {
             auto element_span = span.subrange(0, array_element_size_);
-            UnknownSizeStruct element;
-            if (!UnknownSizeStruct::Parse(element_span, &element)) break;
-            elements.emplace_back(std::move(element));
+            auto element = UnknownSizeStruct::Decode(element_span);
+            if (!element.has_value()) break;
+            elements.emplace_back(std::move(*element));
             span.skip(array_element_size_);
         }
         return elements;
@@ -4274,24 +3968,6 @@ public:
 
 protected:
     explicit Packet_Array_Field_VariableElementSize_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        array_element_size_ = (chunk0 >> 0) & 0xf;
-        if (array_element_size_ == 0 || (span.size() % array_element_size_) != 0) {
-            return false;
-        }
-        array_ = span;
-        span.clear();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t array_element_size_ {0};
@@ -4343,11 +4019,30 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Optional_Scalar_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_Optional_Scalar_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Optional_Scalar_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        uint8_t c0 = (chunk0 >> 0) & 0x1;
+        uint8_t c1 = (chunk0 >> 1) & 0x1;
+        if (c0 == 0) {
+            if (span.size() < 3) {
+                return std::nullopt;
+            }
+            output.a_ = span.read_le<uint32_t, 3>();
+        }
+        if (c1 == 1) {
+            if (span.size() < 4) {
+                return std::nullopt;
+            }
+            output.b_ = span.read_le<uint32_t, 4>();
+        }
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::optional<uint32_t> GetA() const { return a_; }
@@ -4362,32 +4057,6 @@ public:
 
 protected:
     explicit Packet_Optional_Scalar_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        uint8_t c0 = (chunk0 >> 0) & 0x1;
-        uint8_t c1 = (chunk0 >> 1) & 0x1;
-        if (c0 == 0) {
-            if (span.size() < 3) {
-                return false;
-            }
-            a_ = span.read_le<uint32_t, 3>();
-        }
-        if (c1 == 1) {
-            if (span.size() < 4) {
-                return false;
-            }
-            b_ = span.read_le<uint32_t, 4>();
-        }
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     std::optional<uint32_t> a_;
@@ -4443,11 +4112,38 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Optional_Enum_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_Optional_Enum_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Optional_Enum_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        uint8_t c0 = (chunk0 >> 0) & 0x1;
+        uint8_t c1 = (chunk0 >> 1) & 0x1;
+        if (c0 == 0) {
+            if (span.size() < 2) {
+                return std::nullopt;
+            }
+            auto raw_value = span.read_le<uint16_t, 2>();
+            if (!IsValidEnum16(raw_value)) {
+               return std::nullopt;
+            }
+            output.a_ = Enum16(raw_value);
+        }
+        if (c1 == 1) {
+            if (span.size() < 2) {
+                return std::nullopt;
+            }
+            auto raw_value = span.read_le<uint16_t, 2>();
+            if (!IsValidEnum16(raw_value)) {
+               return std::nullopt;
+            }
+            output.b_ = Enum16(raw_value);
+        }
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::optional<Enum16> GetA() const { return a_; }
@@ -4462,40 +4158,6 @@ public:
 
 protected:
     explicit Packet_Optional_Enum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        uint8_t c0 = (chunk0 >> 0) & 0x1;
-        uint8_t c1 = (chunk0 >> 1) & 0x1;
-        if (c0 == 0) {
-            if (span.size() < 2) {
-                return false;
-            }
-            auto raw_value = span.read_le<uint16_t, 2>();
-            if (!IsValidEnum16(raw_value)) {
-               return false;
-            }
-            a_ = Enum16(raw_value);
-        }
-        if (c1 == 1) {
-            if (span.size() < 2) {
-                return false;
-            }
-            auto raw_value = span.read_le<uint16_t, 2>();
-            if (!IsValidEnum16(raw_value)) {
-               return false;
-            }
-            b_ = Enum16(raw_value);
-        }
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     std::optional<Enum16> a_;
@@ -4548,11 +4210,30 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Packet_Optional_Struct_FieldView> Decode(pdl::packet::slice const& parent) {
-        Packet_Optional_Struct_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Packet_Optional_Struct_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        uint8_t c0 = (chunk0 >> 0) & 0x1;
+        uint8_t c1 = (chunk0 >> 1) & 0x1;
+        if (c0 == 0) {
+            output.a_ = SizedStruct::Decode(span);
+            if (!output.a_.has_value()) {
+                return std::nullopt;
+            }
+        }
+        if (c1 == 1) {
+            output.b_ = UnsizedStruct::Decode(span);
+            if (!output.b_.has_value()) {
+                return std::nullopt;
+            }
+        }
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     std::optional<SizedStruct> GetA() const { return a_; }
@@ -4567,32 +4248,6 @@ public:
 
 protected:
     explicit Packet_Optional_Struct_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        uint8_t c0 = (chunk0 >> 0) & 0x1;
-        uint8_t c1 = (chunk0 >> 1) & 0x1;
-        if (c0 == 0) {
-            auto& opt_output = a_.emplace();
-            if (!SizedStruct::Parse(span, &opt_output)) {
-                return false;
-            }
-        }
-        if (c1 == 1) {
-            auto& opt_output = b_.emplace();
-            if (!UnsizedStruct::Parse(span, &opt_output)) {
-                return false;
-            }
-        }
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     std::optional<SizedStruct> a_;
@@ -4649,11 +4304,16 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ScalarChild_AView> Decode(ScalarParentView const& parent) {
-        ScalarChild_AView view(parent.bytes_);
-        if (!view.Parse(parent)) {
+        ScalarChild_AView output(parent.bytes_);
+        pdl::packet::slice span = parent.payload_;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        output.b_ = span.read_le<uint8_t, 1>();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint8_t GetA() const { return 0; }
@@ -4668,18 +4328,6 @@ public:
 
 protected:
     explicit ScalarChild_AView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(ScalarParentView const& parent) {
-        pdl::packet::slice span = parent.payload_;
-        if (span.size() < 1) {
-            return false;
-        }
-        b_ = span.read_le<uint8_t, 1>();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t b_;
@@ -4722,11 +4370,16 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ScalarChild_BView> Decode(ScalarParentView const& parent) {
-        ScalarChild_BView view(parent.bytes_);
-        if (!view.Parse(parent)) {
+        ScalarChild_BView output(parent.bytes_);
+        pdl::packet::slice span = parent.payload_;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        output.c_ = span.read_le<uint16_t, 2>();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint8_t GetA() const { return 1; }
@@ -4741,18 +4394,6 @@ public:
 
 protected:
     explicit ScalarChild_BView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(ScalarParentView const& parent) {
-        pdl::packet::slice span = parent.payload_;
-        if (span.size() < 2) {
-            return false;
-        }
-        c_ = span.read_le<uint16_t, 2>();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint16_t c_;
@@ -4795,11 +4436,16 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<EnumChild_AView> Decode(EnumParentView const& parent) {
-        EnumChild_AView view(parent.bytes_);
-        if (!view.Parse(parent)) {
+        EnumChild_AView output(parent.bytes_);
+        pdl::packet::slice span = parent.payload_;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        output.b_ = span.read_le<uint8_t, 1>();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum16 GetA() const { return Enum16::A; }
@@ -4814,18 +4460,6 @@ public:
 
 protected:
     explicit EnumChild_AView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(EnumParentView const& parent) {
-        pdl::packet::slice span = parent.payload_;
-        if (span.size() < 1) {
-            return false;
-        }
-        b_ = span.read_le<uint8_t, 1>();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t b_;
@@ -4868,11 +4502,16 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<EnumChild_BView> Decode(EnumParentView const& parent) {
-        EnumChild_BView view(parent.bytes_);
-        if (!view.Parse(parent)) {
+        EnumChild_BView output(parent.bytes_);
+        pdl::packet::slice span = parent.payload_;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        output.c_ = span.read_le<uint16_t, 2>();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum16 GetA() const { return Enum16::B; }
@@ -4887,18 +4526,6 @@ public:
 
 protected:
     explicit EnumChild_BView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(EnumParentView const& parent) {
-        pdl::packet::slice span = parent.payload_;
-        if (span.size() < 2) {
-            return false;
-        }
-        c_ = span.read_le<uint16_t, 2>();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint16_t c_;
@@ -4941,11 +4568,16 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<AliasedChild_AView> Decode(EmptyParentView const& parent) {
-        AliasedChild_AView view(parent.bytes_);
-        if (!view.Parse(parent)) {
+        AliasedChild_AView output(parent.bytes_);
+        pdl::packet::slice span = parent.payload_;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        output.b_ = span.read_le<uint8_t, 1>();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint8_t GetA() const { return 2; }
@@ -4960,18 +4592,6 @@ public:
 
 protected:
     explicit AliasedChild_AView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(EmptyParentView const& parent) {
-        pdl::packet::slice span = parent.payload_;
-        if (span.size() < 1) {
-            return false;
-        }
-        b_ = span.read_le<uint8_t, 1>();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t b_;
@@ -5014,11 +4634,16 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<AliasedChild_BView> Decode(EmptyParentView const& parent) {
-        AliasedChild_BView view(parent.bytes_);
-        if (!view.Parse(parent)) {
+        AliasedChild_BView output(parent.bytes_);
+        pdl::packet::slice span = parent.payload_;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        output.c_ = span.read_le<uint16_t, 2>();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint8_t GetA() const { return 3; }
@@ -5033,18 +4658,6 @@ public:
 
 protected:
     explicit AliasedChild_BView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(EmptyParentView const& parent) {
-        pdl::packet::slice span = parent.payload_;
-        if (span.size() < 2) {
-            return false;
-        }
-        c_ = span.read_le<uint16_t, 2>();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint16_t c_;
@@ -5087,11 +4700,18 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ScalarChild_CView> Decode(ScalarParentView const& parent) {
-        ScalarChild_CView view(parent.bytes_);
-        if (!view.Parse(parent)) {
+        ScalarChild_CView output(parent.bytes_);
+        pdl::packet::slice span = parent.payload_;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        output.b_ = span.read_le<uint8_t, 1>();
+        output.payload_ = span;
+        span.clear();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint8_t GetA() const { return 4; }
@@ -5109,20 +4729,6 @@ public:
 
 protected:
     explicit ScalarChild_CView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(ScalarParentView const& parent) {
-        pdl::packet::slice span = parent.payload_;
-        if (span.size() < 1) {
-            return false;
-        }
-        b_ = span.read_le<uint8_t, 1>();
-        payload_ = span;
-        span.clear();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t b_;
@@ -5168,11 +4774,16 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ScalarGrandChild_CView> Decode(ScalarChild_CView const& parent) {
-        ScalarGrandChild_CView view(parent.bytes_);
-        if (!view.Parse(parent)) {
+        ScalarGrandChild_CView output(parent.bytes_);
+        pdl::packet::slice span = parent.payload_;
+        if (span.size() < 2) {
             return std::nullopt;
         }
-        return view;
+        output.c_ = span.read_le<uint16_t, 2>();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint8_t GetA() const { return 4; }
@@ -5189,18 +4800,6 @@ public:
 
 protected:
     explicit ScalarGrandChild_CView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(ScalarChild_CView const& parent) {
-        pdl::packet::slice span = parent.payload_;
-        if (span.size() < 2) {
-            return false;
-        }
-        c_ = span.read_le<uint16_t, 2>();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint16_t c_;
@@ -5244,11 +4843,19 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ScalarChild_DView> Decode(ScalarParentView const& parent) {
-        ScalarChild_DView view(parent.bytes_);
-        if (!view.Parse(parent)) {
+        ScalarChild_DView output(parent.bytes_);
+        pdl::packet::slice span = parent.payload_;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        size_t payload_size_ = span.read_le<uint8_t, 1>();
+        if (span.size() < payload_size_) return std::nullopt;
+        output.payload_ = span.subrange(0, payload_size_);
+        span.skip(payload_size_);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint8_t GetA() const { return 5; }
@@ -5264,21 +4871,6 @@ public:
 
 protected:
     explicit ScalarChild_DView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(ScalarParentView const& parent) {
-        pdl::packet::slice span = parent.payload_;
-        if (span.size() < 1) {
-            return false;
-        }
-        size_t payload_size_ = span.read_le<uint8_t, 1>();
-        if (span.size() < payload_size_) return false;
-        payload_ = span.subrange(0, payload_size_);
-        span.skip(payload_size_);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     pdl::packet::slice payload_;
@@ -5326,11 +4918,16 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ConstrainedParentView> Decode(pdl::packet::slice const& parent) {
-        ConstrainedParentView view(parent);
-        if (!view.Parse(parent)) {
+        ConstrainedParentView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        output.a_ = span.read_le<uint8_t, 1>();
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     uint8_t GetA() const { return a_; }
@@ -5343,18 +4940,6 @@ public:
 
 protected:
     explicit ConstrainedParentView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        a_ = span.read_le<uint8_t, 1>();
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     uint8_t a_;
@@ -5392,11 +4977,9 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ConstrainedChild_AView> Decode(ConstrainedParentView const& parent) {
-        ConstrainedChild_AView view(parent.bytes_);
-        if (!view.Parse(parent)) {
-            return std::nullopt;
-        }
-        return view;
+        ConstrainedChild_AView output(parent.bytes_);
+
+        return output;
     }
 
     uint8_t GetA() const { return 1; }
@@ -5409,10 +4992,6 @@ public:
 
 protected:
     explicit ConstrainedChild_AView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(ConstrainedParentView const& parent) {
-        return true;
-    }
 
     pdl::packet::slice bytes_;
 
@@ -5448,11 +5027,9 @@ public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ConstrainedChild_BView> Decode(ConstrainedParentView const& parent) {
-        ConstrainedChild_BView view(parent.bytes_);
-        if (!view.Parse(parent)) {
-            return std::nullopt;
-        }
-        return view;
+        ConstrainedChild_BView output(parent.bytes_);
+
+        return output;
     }
 
     uint8_t GetA() const { return 2; }
@@ -5465,10 +5042,6 @@ public:
 
 protected:
     explicit ConstrainedChild_BView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(ConstrainedParentView const& parent) {
-        return true;
-    }
 
     pdl::packet::slice bytes_;
 
@@ -5508,16 +5081,20 @@ public:
     explicit Struct_Scalar_Field(uint8_t a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
     Struct_Scalar_Field& operator=(Struct_Scalar_Field const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Scalar_Field* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Scalar_Field> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Scalar_Field output;
         if (span.size() < 8) {
-            return false;
+            return std::nullopt;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        output->a_ = (chunk0 >> 0) & 0x7f;
-        output->c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
+        output.a_ = (chunk0 >> 0) & 0x7f;
+        output.c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -5550,20 +5127,24 @@ public:
     explicit Struct_Enum_Field_(Enum7 a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
     Struct_Enum_Field_& operator=(Struct_Enum_Field_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Enum_Field_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Enum_Field_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Enum_Field_ output;
         if (span.size() < 8) {
-            return false;
+            return std::nullopt;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
         auto raw_a = (chunk0 >> 0) & 0x7f;
         if (!IsValidEnum7(raw_a)) {
-           return false;
+           return std::nullopt;
         }
-        output->a_ = Enum7(raw_a);
-        output->c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
+        output.a_ = Enum7(raw_a);
+        output.c_ = (chunk0 >> 7) & 0x1ffffffffffffff;
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -5595,11 +5176,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Enum_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_Enum_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Enum_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Enum_Field_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Enum_Field_ const& GetS() const { return s_; }
@@ -5612,15 +5197,6 @@ public:
 
 protected:
     explicit Struct_Enum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Enum_Field_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Enum_Field_ s_;
@@ -5663,16 +5239,20 @@ public:
     explicit Struct_Reserved_Field_(uint8_t a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
     Struct_Reserved_Field_& operator=(Struct_Reserved_Field_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Reserved_Field_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Reserved_Field_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Reserved_Field_ output;
         if (span.size() < 8) {
-            return false;
+            return std::nullopt;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        output->a_ = (chunk0 >> 0) & 0x7f;
-        output->c_ = (chunk0 >> 9) & 0x7fffffffffffff;
+        output.a_ = (chunk0 >> 0) & 0x7f;
+        output.c_ = (chunk0 >> 9) & 0x7fffffffffffff;
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -5701,11 +5281,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Reserved_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_Reserved_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Reserved_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Reserved_Field_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Reserved_Field_ const& GetS() const { return s_; }
@@ -5718,15 +5302,6 @@ public:
 
 protected:
     explicit Struct_Reserved_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Reserved_Field_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Reserved_Field_ s_;
@@ -5769,26 +5344,30 @@ public:
     explicit Struct_Size_Field_(uint64_t a, std::vector<uint8_t> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Size_Field_& operator=(Struct_Size_Field_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Size_Field_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Size_Field_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Size_Field_ output;
         if (span.size() < 8) {
-            return false;
+            return std::nullopt;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
         size_t b_size_ = (chunk0 >> 0) & 0x7;
-        output->a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
+        output.a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
         if (span.size() < b_size_) {
-            return false;
+            return std::nullopt;
         }
         if ((b_size_ % 1) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto b_count_ = b_size_ / 1;
         for (size_t n = 0; n < b_count_; n++) {
-            output->b_.push_back(span.read_le<uint8_t, 1>());
+            output.b_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -5821,11 +5400,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Size_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_Size_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Size_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Size_Field_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Size_Field_ const& GetS() const { return s_; }
@@ -5838,15 +5421,6 @@ public:
 
 protected:
     explicit Struct_Size_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Size_Field_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Size_Field_ s_;
@@ -5889,22 +5463,26 @@ public:
     explicit Struct_Count_Field_(uint64_t a, std::vector<uint8_t> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Count_Field_& operator=(Struct_Count_Field_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Count_Field_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Count_Field_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Count_Field_ output;
         if (span.size() < 8) {
-            return false;
+            return std::nullopt;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        output->b_count_ = (chunk0 >> 0) & 0x7;
-        output->a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
-        if (span.size() < 1 * output->b_count_) {
-            return false;
+        output.b_count_ = (chunk0 >> 0) & 0x7;
+        output.a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
+        if (span.size() < 1 * output.b_count_) {
+            return std::nullopt;
         }
-        for (size_t n = 0; n < output->b_count_; n++) {
-            output->b_.push_back(span.read_le<uint8_t, 1>());
+        for (size_t n = 0; n < output.b_count_; n++) {
+            output.b_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -5937,11 +5515,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Count_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_Count_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Count_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Count_Field_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Count_Field_ const& GetS() const { return s_; }
@@ -5954,15 +5536,6 @@ public:
 
 protected:
     explicit Struct_Count_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Count_Field_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Count_Field_ s_;
@@ -6005,18 +5578,22 @@ public:
     explicit Struct_FixedScalar_Field_(uint64_t b) : b_(std::move(b)) {}
     Struct_FixedScalar_Field_& operator=(Struct_FixedScalar_Field_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_FixedScalar_Field_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_FixedScalar_Field_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_FixedScalar_Field_ output;
         if (span.size() < 8) {
-            return false;
+            return std::nullopt;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
         if (static_cast<uint64_t>((chunk0 >> 0) & 0x7f) != 0x7) {
-            return false;
+            return std::nullopt;
         }
-        output->b_ = (chunk0 >> 7) & 0x1ffffffffffffff;
+        output.b_ = (chunk0 >> 7) & 0x1ffffffffffffff;
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -6041,11 +5618,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_FixedScalar_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_FixedScalar_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_FixedScalar_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_FixedScalar_Field_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_FixedScalar_Field_ const& GetS() const { return s_; }
@@ -6058,15 +5639,6 @@ public:
 
 protected:
     explicit Struct_FixedScalar_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_FixedScalar_Field_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_FixedScalar_Field_ s_;
@@ -6109,18 +5681,22 @@ public:
     explicit Struct_FixedEnum_Field_(uint64_t b) : b_(std::move(b)) {}
     Struct_FixedEnum_Field_& operator=(Struct_FixedEnum_Field_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_FixedEnum_Field_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_FixedEnum_Field_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_FixedEnum_Field_ output;
         if (span.size() < 8) {
-            return false;
+            return std::nullopt;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
         if (Enum7((chunk0 >> 0) & 0x7f) != Enum7::A) {
-            return false;
+            return std::nullopt;
         }
-        output->b_ = (chunk0 >> 7) & 0x1ffffffffffffff;
+        output.b_ = (chunk0 >> 7) & 0x1ffffffffffffff;
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -6145,11 +5721,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_FixedEnum_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_FixedEnum_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_FixedEnum_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_FixedEnum_Field_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_FixedEnum_Field_ const& GetS() const { return s_; }
@@ -6162,15 +5742,6 @@ public:
 
 protected:
     explicit Struct_FixedEnum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_FixedEnum_Field_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_FixedEnum_Field_ s_;
@@ -6213,16 +5784,20 @@ public:
 
     Struct_ScalarGroup_Field_& operator=(Struct_ScalarGroup_Field_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_ScalarGroup_Field_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_ScalarGroup_Field_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_ScalarGroup_Field_ output;
         if (span.size() < 2) {
-            return false;
+            return std::nullopt;
         }
         if (static_cast<uint64_t>(span.read_le<uint16_t, 2>()) != 0x2a) {
-            return false;
+            return std::nullopt;
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -6244,11 +5819,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_ScalarGroup_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_ScalarGroup_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_ScalarGroup_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_ScalarGroup_Field_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_ScalarGroup_Field_ const& GetS() const { return s_; }
@@ -6261,15 +5840,6 @@ public:
 
 protected:
     explicit Struct_ScalarGroup_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_ScalarGroup_Field_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_ScalarGroup_Field_ s_;
@@ -6312,16 +5882,20 @@ public:
 
     Struct_EnumGroup_Field_& operator=(Struct_EnumGroup_Field_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_EnumGroup_Field_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_EnumGroup_Field_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_EnumGroup_Field_ output;
         if (span.size() < 2) {
-            return false;
+            return std::nullopt;
         }
         if (Enum16(span.read_le<uint16_t, 2>()) != Enum16::A) {
-            return false;
+            return std::nullopt;
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -6343,11 +5917,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_EnumGroup_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_EnumGroup_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_EnumGroup_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_EnumGroup_Field_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_EnumGroup_Field_ const& GetS() const { return s_; }
@@ -6360,15 +5938,6 @@ public:
 
 protected:
     explicit Struct_EnumGroup_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_EnumGroup_Field_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_EnumGroup_Field_ s_;
@@ -6407,11 +5976,18 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Struct_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_Struct_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Struct_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto a_value = SizedStruct::Decode(span);
+        if (!a_value.has_value()) return std::nullopt;
+        output.a_ = std::move(*a_value);
+        auto b_value = UnsizedStruct::Decode(span);
+        if (!b_value.has_value()) return std::nullopt;
+        output.b_ = std::move(*b_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     SizedStruct const& GetA() const { return a_; }
@@ -6426,16 +6002,6 @@ public:
 
 protected:
     explicit Struct_Struct_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!SizedStruct::Parse(span, &a_)) return false;
-        if (!UnsizedStruct::Parse(span, &b_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     SizedStruct a_;
@@ -6483,16 +6049,20 @@ public:
     explicit Struct_Array_Field_ByteElement_ConstantSize_(std::array<uint8_t, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_ConstantSize_& operator=(Struct_Array_Field_ByteElement_ConstantSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ByteElement_ConstantSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_ByteElement_ConstantSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_ByteElement_ConstantSize_ output;
         if (span.size() < 4) {
-            return false;
+            return std::nullopt;
         }
         for (size_t n = 0; n < 4; n++) {
-            output->array_[n] = span.read_le<uint8_t, 1>();
+            output.array_[n] = span.read_le<uint8_t, 1>();
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -6516,11 +6086,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_ByteElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_ByteElement_ConstantSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_ByteElement_ConstantSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_ByteElement_ConstantSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_ByteElement_ConstantSize_ const& GetS() const { return s_; }
@@ -6533,15 +6107,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_ByteElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_ByteElement_ConstantSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_ByteElement_ConstantSize_ s_;
@@ -6584,25 +6149,29 @@ public:
     explicit Struct_Array_Field_ByteElement_VariableSize_(std::vector<uint8_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_VariableSize_& operator=(Struct_Array_Field_ByteElement_VariableSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ByteElement_VariableSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_ByteElement_VariableSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_ByteElement_VariableSize_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         size_t array_size_ = (chunk0 >> 0) & 0xf;
         if (span.size() < array_size_) {
-            return false;
+            return std::nullopt;
         }
         if ((array_size_ % 1) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto array_count_ = array_size_ / 1;
         for (size_t n = 0; n < array_count_; n++) {
-            output->array_.push_back(span.read_le<uint8_t, 1>());
+            output.array_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -6631,11 +6200,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_ByteElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_ByteElement_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_ByteElement_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_ByteElement_VariableSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_ByteElement_VariableSize_ const& GetS() const { return s_; }
@@ -6648,15 +6221,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_ByteElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_ByteElement_VariableSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_ByteElement_VariableSize_ s_;
@@ -6699,21 +6263,25 @@ public:
     explicit Struct_Array_Field_ByteElement_VariableCount_(std::vector<uint8_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_VariableCount_& operator=(Struct_Array_Field_ByteElement_VariableCount_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ByteElement_VariableCount_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_ByteElement_VariableCount_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_ByteElement_VariableCount_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 1 * output->array_count_) {
-            return false;
+        output.array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 1 * output.array_count_) {
+            return std::nullopt;
         }
-        for (size_t n = 0; n < output->array_count_; n++) {
-            output->array_.push_back(span.read_le<uint8_t, 1>());
+        for (size_t n = 0; n < output.array_count_; n++) {
+            output.array_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -6742,11 +6310,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_ByteElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_ByteElement_VariableCountView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_ByteElement_VariableCountView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_ByteElement_VariableCount_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_ByteElement_VariableCount_ const& GetS() const { return s_; }
@@ -6759,15 +6331,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_ByteElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_ByteElement_VariableCount_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_ByteElement_VariableCount_ s_;
@@ -6810,17 +6373,21 @@ public:
     explicit Struct_Array_Field_ByteElement_UnknownSize_(std::vector<uint8_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ByteElement_UnknownSize_& operator=(Struct_Array_Field_ByteElement_UnknownSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ByteElement_UnknownSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_ByteElement_UnknownSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_ByteElement_UnknownSize_ output;
         if ((span.size() % 1) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto array_count_ = span.size() / 1;
         for (size_t n = 0; n < array_count_; n++) {
-            output->array_.push_back(span.read_le<uint8_t, 1>());
+            output.array_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -6844,11 +6411,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_ByteElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_ByteElement_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_ByteElement_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_ByteElement_UnknownSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_ByteElement_UnknownSize_ const& GetS() const { return s_; }
@@ -6861,15 +6432,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_ByteElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_ByteElement_UnknownSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_ByteElement_UnknownSize_ s_;
@@ -6912,16 +6474,20 @@ public:
     explicit Struct_Array_Field_ScalarElement_ConstantSize_(std::array<uint16_t, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_ConstantSize_& operator=(Struct_Array_Field_ScalarElement_ConstantSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ScalarElement_ConstantSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_ScalarElement_ConstantSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_ScalarElement_ConstantSize_ output;
         if (span.size() < 8) {
-            return false;
+            return std::nullopt;
         }
         for (size_t n = 0; n < 4; n++) {
-            output->array_[n] = span.read_le<uint16_t, 2>();
+            output.array_[n] = span.read_le<uint16_t, 2>();
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -6945,11 +6511,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_ScalarElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_ScalarElement_ConstantSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_ScalarElement_ConstantSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_ScalarElement_ConstantSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_ScalarElement_ConstantSize_ const& GetS() const { return s_; }
@@ -6962,15 +6532,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_ScalarElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_ScalarElement_ConstantSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_ScalarElement_ConstantSize_ s_;
@@ -7013,25 +6574,29 @@ public:
     explicit Struct_Array_Field_ScalarElement_VariableSize_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_VariableSize_& operator=(Struct_Array_Field_ScalarElement_VariableSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ScalarElement_VariableSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_ScalarElement_VariableSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_ScalarElement_VariableSize_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         size_t array_size_ = (chunk0 >> 0) & 0xf;
         if (span.size() < array_size_) {
-            return false;
+            return std::nullopt;
         }
         if ((array_size_ % 2) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto array_count_ = array_size_ / 2;
         for (size_t n = 0; n < array_count_; n++) {
-            output->array_.push_back(span.read_le<uint16_t, 2>());
+            output.array_.push_back(span.read_le<uint16_t, 2>());
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -7060,11 +6625,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_ScalarElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_ScalarElement_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_ScalarElement_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_ScalarElement_VariableSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_ScalarElement_VariableSize_ const& GetS() const { return s_; }
@@ -7077,15 +6646,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_ScalarElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_ScalarElement_VariableSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_ScalarElement_VariableSize_ s_;
@@ -7128,21 +6688,25 @@ public:
     explicit Struct_Array_Field_ScalarElement_VariableCount_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_VariableCount_& operator=(Struct_Array_Field_ScalarElement_VariableCount_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ScalarElement_VariableCount_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_ScalarElement_VariableCount_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_ScalarElement_VariableCount_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 2 * output->array_count_) {
-            return false;
+        output.array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 2 * output.array_count_) {
+            return std::nullopt;
         }
-        for (size_t n = 0; n < output->array_count_; n++) {
-            output->array_.push_back(span.read_le<uint16_t, 2>());
+        for (size_t n = 0; n < output.array_count_; n++) {
+            output.array_.push_back(span.read_le<uint16_t, 2>());
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -7171,11 +6735,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_ScalarElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_ScalarElement_VariableCountView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_ScalarElement_VariableCountView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_ScalarElement_VariableCount_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_ScalarElement_VariableCount_ const& GetS() const { return s_; }
@@ -7188,15 +6756,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_ScalarElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_ScalarElement_VariableCount_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_ScalarElement_VariableCount_ s_;
@@ -7239,17 +6798,21 @@ public:
     explicit Struct_Array_Field_ScalarElement_UnknownSize_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_ScalarElement_UnknownSize_& operator=(Struct_Array_Field_ScalarElement_UnknownSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_ScalarElement_UnknownSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_ScalarElement_UnknownSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_ScalarElement_UnknownSize_ output;
         if ((span.size() % 2) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto array_count_ = span.size() / 2;
         for (size_t n = 0; n < array_count_; n++) {
-            output->array_.push_back(span.read_le<uint16_t, 2>());
+            output.array_.push_back(span.read_le<uint16_t, 2>());
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -7273,11 +6836,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_ScalarElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_ScalarElement_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_ScalarElement_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_ScalarElement_UnknownSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_ScalarElement_UnknownSize_ const& GetS() const { return s_; }
@@ -7290,15 +6857,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_ScalarElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_ScalarElement_UnknownSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_ScalarElement_UnknownSize_ s_;
@@ -7341,20 +6899,24 @@ public:
     explicit Struct_Array_Field_EnumElement_ConstantSize_(std::array<Enum16, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_ConstantSize_& operator=(Struct_Array_Field_EnumElement_ConstantSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_EnumElement_ConstantSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_EnumElement_ConstantSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_EnumElement_ConstantSize_ output;
         if (span.size() < 8) {
-            return false;
+            return std::nullopt;
         }
         for (size_t n = 0; n < 4; n++) {
             auto raw_value = span.read_le<uint16_t, 2>();
             if (!IsValidEnum16(raw_value)) {
-                return false;
+                return std::nullopt;
             }
-            output->array_[n] = Enum16(raw_value);
+            output.array_[n] = Enum16(raw_value);
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -7378,11 +6940,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_EnumElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_EnumElement_ConstantSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_EnumElement_ConstantSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_EnumElement_ConstantSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_EnumElement_ConstantSize_ const& GetS() const { return s_; }
@@ -7395,15 +6961,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_EnumElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_EnumElement_ConstantSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_EnumElement_ConstantSize_ s_;
@@ -7446,29 +7003,33 @@ public:
     explicit Struct_Array_Field_EnumElement_VariableSize_(std::vector<Enum16> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_VariableSize_& operator=(Struct_Array_Field_EnumElement_VariableSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_EnumElement_VariableSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_EnumElement_VariableSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_EnumElement_VariableSize_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         size_t array_size_ = (chunk0 >> 0) & 0xf;
         if (span.size() < array_size_) {
-            return false;
+            return std::nullopt;
         }
         if ((array_size_ % 2) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto array_count_ = array_size_ / 2;
         for (size_t n = 0; n < array_count_; n++) {
             auto raw_value = span.read_le<uint16_t, 2>();
             if (!IsValidEnum16(raw_value)) {
-                return false;
+                return std::nullopt;
             }
-            output->array_.push_back(Enum16(raw_value));
+            output.array_.push_back(Enum16(raw_value));
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -7497,11 +7058,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_EnumElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_EnumElement_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_EnumElement_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_EnumElement_VariableSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_EnumElement_VariableSize_ const& GetS() const { return s_; }
@@ -7514,15 +7079,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_EnumElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_EnumElement_VariableSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_EnumElement_VariableSize_ s_;
@@ -7565,25 +7121,29 @@ public:
     explicit Struct_Array_Field_EnumElement_VariableCount_(std::vector<Enum16> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_VariableCount_& operator=(Struct_Array_Field_EnumElement_VariableCount_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_EnumElement_VariableCount_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_EnumElement_VariableCount_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_EnumElement_VariableCount_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 2 * output->array_count_) {
-            return false;
+        output.array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 2 * output.array_count_) {
+            return std::nullopt;
         }
-        for (size_t n = 0; n < output->array_count_; n++) {
+        for (size_t n = 0; n < output.array_count_; n++) {
             auto raw_value = span.read_le<uint16_t, 2>();
             if (!IsValidEnum16(raw_value)) {
-                return false;
+                return std::nullopt;
             }
-            output->array_.push_back(Enum16(raw_value));
+            output.array_.push_back(Enum16(raw_value));
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -7612,11 +7172,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_EnumElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_EnumElement_VariableCountView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_EnumElement_VariableCountView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_EnumElement_VariableCount_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_EnumElement_VariableCount_ const& GetS() const { return s_; }
@@ -7629,15 +7193,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_EnumElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_EnumElement_VariableCount_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_EnumElement_VariableCount_ s_;
@@ -7680,21 +7235,25 @@ public:
     explicit Struct_Array_Field_EnumElement_UnknownSize_(std::vector<Enum16> array) : array_(std::move(array)) {}
     Struct_Array_Field_EnumElement_UnknownSize_& operator=(Struct_Array_Field_EnumElement_UnknownSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_EnumElement_UnknownSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_EnumElement_UnknownSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_EnumElement_UnknownSize_ output;
         if ((span.size() % 2) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto array_count_ = span.size() / 2;
         for (size_t n = 0; n < array_count_; n++) {
             auto raw_value = span.read_le<uint16_t, 2>();
             if (!IsValidEnum16(raw_value)) {
-                return false;
+                return std::nullopt;
             }
-            output->array_.push_back(Enum16(raw_value));
+            output.array_.push_back(Enum16(raw_value));
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -7718,11 +7277,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_EnumElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_EnumElement_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_EnumElement_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_EnumElement_UnknownSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_EnumElement_UnknownSize_ const& GetS() const { return s_; }
@@ -7735,15 +7298,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_EnumElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_EnumElement_UnknownSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_EnumElement_UnknownSize_ s_;
@@ -7786,20 +7340,24 @@ public:
     explicit Struct_Array_Field_SizedElement_ConstantSize_(std::array<SizedStruct, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_ConstantSize_& operator=(Struct_Array_Field_SizedElement_ConstantSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_SizedElement_ConstantSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_SizedElement_ConstantSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_SizedElement_ConstantSize_ output;
         if (span.size() < 4) {
-            return false;
+            return std::nullopt;
         }
         for (size_t n = 0; n < 4; n++) {
-            SizedStruct out;
-            if (!SizedStruct::Parse(span, &out)) {
-                return false;
+            auto out = SizedStruct::Decode(span);
+            if (!out.has_value()) {
+                return std::nullopt;
             }
-            output->array_[n] = out;
+            output.array_[n] = std::move(*out);
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -7825,11 +7383,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_SizedElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_SizedElement_ConstantSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_SizedElement_ConstantSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_SizedElement_ConstantSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_SizedElement_ConstantSize_ const& GetS() const { return s_; }
@@ -7842,15 +7404,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_SizedElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_SizedElement_ConstantSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_SizedElement_ConstantSize_ s_;
@@ -7893,29 +7446,33 @@ public:
     explicit Struct_Array_Field_SizedElement_VariableSize_(std::vector<SizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_VariableSize_& operator=(Struct_Array_Field_SizedElement_VariableSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_SizedElement_VariableSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_SizedElement_VariableSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_SizedElement_VariableSize_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         size_t array_size_ = (chunk0 >> 0) & 0xf;
         if (span.size() < array_size_) {
-            return false;
+            return std::nullopt;
         }
         if ((array_size_ % 1) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto array_count_ = array_size_ / 1;
         for (size_t n = 0; n < array_count_; n++) {
-            SizedStruct out;
-            if (!SizedStruct::Parse(span, &out)) {
-                return false;
+            auto out = SizedStruct::Decode(span);
+            if (!out.has_value()) {
+                return std::nullopt;
             }
-            output->array_.push_back(out);
+            output.array_.push_back(std::move(*out));
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -7946,11 +7503,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_SizedElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_SizedElement_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_SizedElement_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_SizedElement_VariableSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_SizedElement_VariableSize_ const& GetS() const { return s_; }
@@ -7963,15 +7524,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_SizedElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_SizedElement_VariableSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_SizedElement_VariableSize_ s_;
@@ -8014,25 +7566,29 @@ public:
     explicit Struct_Array_Field_SizedElement_VariableCount_(std::vector<SizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_VariableCount_& operator=(Struct_Array_Field_SizedElement_VariableCount_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_SizedElement_VariableCount_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_SizedElement_VariableCount_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_SizedElement_VariableCount_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 1 * output->array_count_) {
-            return false;
+        output.array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 1 * output.array_count_) {
+            return std::nullopt;
         }
-        for (size_t n = 0; n < output->array_count_; n++) {
-            SizedStruct out;
-            if (!SizedStruct::Parse(span, &out)) {
-                return false;
+        for (size_t n = 0; n < output.array_count_; n++) {
+            auto out = SizedStruct::Decode(span);
+            if (!out.has_value()) {
+                return std::nullopt;
             }
-            output->array_.push_back(out);
+            output.array_.push_back(std::move(*out));
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -8063,11 +7619,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_SizedElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_SizedElement_VariableCountView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_SizedElement_VariableCountView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_SizedElement_VariableCount_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_SizedElement_VariableCount_ const& GetS() const { return s_; }
@@ -8080,15 +7640,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_SizedElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_SizedElement_VariableCount_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_SizedElement_VariableCount_ s_;
@@ -8131,21 +7682,25 @@ public:
     explicit Struct_Array_Field_SizedElement_UnknownSize_(std::vector<SizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_UnknownSize_& operator=(Struct_Array_Field_SizedElement_UnknownSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_SizedElement_UnknownSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_SizedElement_UnknownSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_SizedElement_UnknownSize_ output;
         if ((span.size() % 1) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto array_count_ = span.size() / 1;
         for (size_t n = 0; n < array_count_; n++) {
-            SizedStruct out;
-            if (!SizedStruct::Parse(span, &out)) {
-                return false;
+            auto out = SizedStruct::Decode(span);
+            if (!out.has_value()) {
+                return std::nullopt;
             }
-            output->array_.push_back(out);
+            output.array_.push_back(std::move(*out));
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -8171,11 +7726,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_SizedElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_SizedElement_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_SizedElement_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_SizedElement_UnknownSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_SizedElement_UnknownSize_ const& GetS() const { return s_; }
@@ -8188,15 +7747,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_SizedElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_SizedElement_UnknownSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_SizedElement_UnknownSize_ s_;
@@ -8239,17 +7789,21 @@ public:
     explicit Struct_Array_Field_UnsizedElement_ConstantSize_(std::array<UnsizedStruct, 4> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_ConstantSize_& operator=(Struct_Array_Field_UnsizedElement_ConstantSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_ConstantSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_UnsizedElement_ConstantSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_UnsizedElement_ConstantSize_ output;
         for (size_t n = 0; n < 4; n++) {
-            UnsizedStruct out;
-            if (!UnsizedStruct::Parse(span, &out)) {
-                return false;
+            auto out = UnsizedStruct::Decode(span);
+            if (!out.has_value()) {
+                return std::nullopt;
             }
-            output->array_[n] = std::move(out);
+            output.array_[n] = std::move(*out);
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -8275,11 +7829,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_UnsizedElement_ConstantSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_UnsizedElement_ConstantSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_UnsizedElement_ConstantSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_UnsizedElement_ConstantSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_UnsizedElement_ConstantSize_ const& GetS() const { return s_; }
@@ -8292,15 +7850,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_UnsizedElement_ConstantSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_UnsizedElement_ConstantSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_ConstantSize_ s_;
@@ -8343,27 +7892,31 @@ public:
     explicit Struct_Array_Field_UnsizedElement_VariableSize_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_VariableSize_& operator=(Struct_Array_Field_UnsizedElement_VariableSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_VariableSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_UnsizedElement_VariableSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_UnsizedElement_VariableSize_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         size_t array_size_ = (chunk0 >> 0) & 0xf;
         if (span.size() < array_size_) {
-            return false;
+            return std::nullopt;
         }
         auto array_span = span.subrange(0, array_size_);
         while (array_span.size() > 0) {
-            UnsizedStruct out;
-            if (!UnsizedStruct::Parse(array_span, &out)) {
-                return false;
+            auto out = UnsizedStruct::Decode(array_span);
+            if (!out.has_value()) {
+                return std::nullopt;
             }
-            output->array_.push_back(std::move(out));
+            output.array_.push_back(std::move(*out));
         }
         span.skip(array_size_);
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -8397,11 +7950,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_UnsizedElement_VariableSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_UnsizedElement_VariableSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_UnsizedElement_VariableSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_UnsizedElement_VariableSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_UnsizedElement_VariableSize_ const& GetS() const { return s_; }
@@ -8414,15 +7971,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_UnsizedElement_VariableSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_UnsizedElement_VariableSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_VariableSize_ s_;
@@ -8465,22 +8013,26 @@ public:
     explicit Struct_Array_Field_UnsizedElement_VariableCount_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_VariableCount_& operator=(Struct_Array_Field_UnsizedElement_VariableCount_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_VariableCount_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_UnsizedElement_VariableCount_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_UnsizedElement_VariableCount_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output->array_count_ = (chunk0 >> 0) & 0xf;
-        for (size_t n = 0; n < output->array_count_; n++) {
-            UnsizedStruct out;
-            if (!UnsizedStruct::Parse(span, &out)) {
-                return false;
+        output.array_count_ = (chunk0 >> 0) & 0xf;
+        for (size_t n = 0; n < output.array_count_; n++) {
+            auto out = UnsizedStruct::Decode(span);
+            if (!out.has_value()) {
+                return std::nullopt;
             }
-            output->array_.push_back(std::move(out));
+            output.array_.push_back(std::move(*out));
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -8511,11 +8063,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_UnsizedElement_VariableCountView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_UnsizedElement_VariableCountView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_UnsizedElement_VariableCountView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_UnsizedElement_VariableCount_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_UnsizedElement_VariableCount_ const& GetS() const { return s_; }
@@ -8528,15 +8084,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_UnsizedElement_VariableCountView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_UnsizedElement_VariableCount_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_VariableCount_ s_;
@@ -8579,17 +8126,21 @@ public:
     explicit Struct_Array_Field_UnsizedElement_UnknownSize_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_UnknownSize_& operator=(Struct_Array_Field_UnsizedElement_UnknownSize_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_UnknownSize_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_UnsizedElement_UnknownSize_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_UnsizedElement_UnknownSize_ output;
         while (span.size() > 0) {
-            UnsizedStruct out;
-            if (!UnsizedStruct::Parse(span, &out)) {
-                return false;
+            auto out = UnsizedStruct::Decode(span);
+            if (!out.has_value()) {
+                return std::nullopt;
             }
-            output->array_.push_back(std::move(out));
+            output.array_.push_back(std::move(*out));
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -8615,11 +8166,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_UnsizedElement_UnknownSizeView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_UnsizedElement_UnknownSizeView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_UnsizedElement_UnknownSizeView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_UnsizedElement_UnknownSize_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_UnsizedElement_UnknownSize_ const& GetS() const { return s_; }
@@ -8632,15 +8187,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_UnsizedElement_UnknownSizeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_UnsizedElement_UnknownSize_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_UnknownSize_ s_;
@@ -8683,28 +8229,32 @@ public:
     explicit Struct_Array_Field_UnsizedElement_SizeModifier_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_SizeModifier_& operator=(Struct_Array_Field_UnsizedElement_SizeModifier_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_SizeModifier_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_UnsizedElement_SizeModifier_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_UnsizedElement_SizeModifier_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         size_t array_size_ = (chunk0 >> 0) & 0xf;
         array_size_ = array_size_ - +2;
         if (span.size() < array_size_) {
-            return false;
+            return std::nullopt;
         }
         auto array_span = span.subrange(0, array_size_);
         while (array_span.size() > 0) {
-            UnsizedStruct out;
-            if (!UnsizedStruct::Parse(array_span, &out)) {
-                return false;
+            auto out = UnsizedStruct::Decode(array_span);
+            if (!out.has_value()) {
+                return std::nullopt;
             }
-            output->array_.push_back(std::move(out));
+            output.array_.push_back(std::move(*out));
         }
         span.skip(array_size_);
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -8739,11 +8289,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_UnsizedElement_SizeModifierView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_UnsizedElement_SizeModifierView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_UnsizedElement_SizeModifierView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_UnsizedElement_SizeModifier_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_UnsizedElement_SizeModifier_ const& GetS() const { return s_; }
@@ -8756,15 +8310,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_UnsizedElement_SizeModifierView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_UnsizedElement_SizeModifier_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_SizeModifier_ s_;
@@ -8807,30 +8352,34 @@ public:
     explicit Struct_Array_Field_SizedElement_VariableSize_Padded_(std::vector<uint16_t> array) : array_(std::move(array)) {}
     Struct_Array_Field_SizedElement_VariableSize_Padded_& operator=(Struct_Array_Field_SizedElement_VariableSize_Padded_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_SizedElement_VariableSize_Padded_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_SizedElement_VariableSize_Padded_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_SizedElement_VariableSize_Padded_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         size_t array_size_ = (chunk0 >> 0) & 0xf;
         size_t array_start_size = span.size();
         if (span.size() < array_size_) {
-            return false;
+            return std::nullopt;
         }
         if ((array_size_ % 2) != 0) {
-            return false;
+            return std::nullopt;
         }
         auto array_count_ = array_size_ / 2;
         for (size_t n = 0; n < array_count_; n++) {
-            output->array_.push_back(span.read_le<uint16_t, 2>());
+            output.array_.push_back(span.read_le<uint16_t, 2>());
         }
         if (array_start_size - span.size() < 16) {
-            if (span.size() < 16 - (array_start_size - span.size())) return false;
+            if (span.size() < 16 - (array_start_size - span.size())) return std::nullopt;
             span.skip(16 - (array_start_size - span.size()));
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -8866,11 +8415,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_SizedElement_VariableSize_PaddedView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_SizedElement_VariableSize_PaddedView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_SizedElement_VariableSize_PaddedView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_SizedElement_VariableSize_Padded_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_SizedElement_VariableSize_Padded_ const& GetS() const { return s_; }
@@ -8883,15 +8436,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_SizedElement_VariableSize_PaddedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_SizedElement_VariableSize_Padded_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_SizedElement_VariableSize_Padded_ s_;
@@ -8934,26 +8478,30 @@ public:
     explicit Struct_Array_Field_UnsizedElement_VariableCount_Padded_(std::vector<UnsizedStruct> array) : array_(std::move(array)) {}
     Struct_Array_Field_UnsizedElement_VariableCount_Padded_& operator=(Struct_Array_Field_UnsizedElement_VariableCount_Padded_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Array_Field_UnsizedElement_VariableCount_Padded_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Array_Field_UnsizedElement_VariableCount_Padded_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Array_Field_UnsizedElement_VariableCount_Padded_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
-        output->array_count_ = span.read_le<uint8_t, 1>();
+        output.array_count_ = span.read_le<uint8_t, 1>();
         size_t array_start_size = span.size();
-        for (size_t n = 0; n < output->array_count_; n++) {
-            UnsizedStruct out;
-            if (!UnsizedStruct::Parse(span, &out)) {
-                return false;
+        for (size_t n = 0; n < output.array_count_; n++) {
+            auto out = UnsizedStruct::Decode(span);
+            if (!out.has_value()) {
+                return std::nullopt;
             }
-            output->array_.push_back(std::move(out));
+            output.array_.push_back(std::move(*out));
         }
         if (array_start_size - span.size() < 16) {
-            if (span.size() < 16 - (array_start_size - span.size())) return false;
+            if (span.size() < 16 - (array_start_size - span.size())) return std::nullopt;
             span.skip(16 - (array_start_size - span.size()));
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -8991,11 +8539,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Array_Field_UnsizedElement_VariableCount_PaddedView> Decode(pdl::packet::slice const& parent) {
-        Struct_Array_Field_UnsizedElement_VariableCount_PaddedView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Array_Field_UnsizedElement_VariableCount_PaddedView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Array_Field_UnsizedElement_VariableCount_Padded_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Array_Field_UnsizedElement_VariableCount_Padded_ const& GetS() const { return s_; }
@@ -9008,15 +8560,6 @@ public:
 
 protected:
     explicit Struct_Array_Field_UnsizedElement_VariableCount_PaddedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Array_Field_UnsizedElement_VariableCount_Padded_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Array_Field_UnsizedElement_VariableCount_Padded_ s_;
@@ -9059,28 +8602,32 @@ public:
     explicit Struct_Optional_Scalar_Field_(std::optional<uint32_t> a, std::optional<uint32_t> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Optional_Scalar_Field_& operator=(Struct_Optional_Scalar_Field_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Optional_Scalar_Field_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Optional_Scalar_Field_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Optional_Scalar_Field_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         uint8_t c0 = (chunk0 >> 0) & 0x1;
         uint8_t c1 = (chunk0 >> 1) & 0x1;
         if (c0 == 0) {
             if (span.size() < 3) {
-                return false;
+                return std::nullopt;
             }
-            output->a_ = span.read_le<uint32_t, 3>();
+            output.a_ = span.read_le<uint32_t, 3>();
         }
         if (c1 == 1) {
             if (span.size() < 4) {
-                return false;
+                return std::nullopt;
             }
-            output->b_ = span.read_le<uint32_t, 4>();
+            output.b_ = span.read_le<uint32_t, 4>();
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -9120,11 +8667,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Optional_Scalar_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_Optional_Scalar_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Optional_Scalar_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Optional_Scalar_Field_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Optional_Scalar_Field_ const& GetS() const { return s_; }
@@ -9137,15 +8688,6 @@ public:
 
 protected:
     explicit Struct_Optional_Scalar_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Optional_Scalar_Field_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Optional_Scalar_Field_ s_;
@@ -9188,36 +8730,40 @@ public:
     explicit Struct_Optional_Enum_Field_(std::optional<Enum16> a, std::optional<Enum16> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Optional_Enum_Field_& operator=(Struct_Optional_Enum_Field_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Optional_Enum_Field_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Optional_Enum_Field_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Optional_Enum_Field_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         uint8_t c0 = (chunk0 >> 0) & 0x1;
         uint8_t c1 = (chunk0 >> 1) & 0x1;
         if (c0 == 0) {
             if (span.size() < 2) {
-                return false;
+                return std::nullopt;
             }
             auto raw_value = span.read_le<uint16_t, 2>();
             if (!IsValidEnum16(raw_value)) {
-               return false;
+               return std::nullopt;
             }
-            output->a_ = Enum16(raw_value);
+            output.a_ = Enum16(raw_value);
         }
         if (c1 == 1) {
             if (span.size() < 2) {
-                return false;
+                return std::nullopt;
             }
             auto raw_value = span.read_le<uint16_t, 2>();
             if (!IsValidEnum16(raw_value)) {
-               return false;
+               return std::nullopt;
             }
-            output->b_ = Enum16(raw_value);
+            output.b_ = Enum16(raw_value);
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -9254,11 +8800,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Optional_Enum_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_Optional_Enum_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Optional_Enum_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Optional_Enum_Field_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Optional_Enum_Field_ const& GetS() const { return s_; }
@@ -9271,15 +8821,6 @@ public:
 
 protected:
     explicit Struct_Optional_Enum_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Optional_Enum_Field_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Optional_Enum_Field_ s_;
@@ -9322,28 +8863,32 @@ public:
     explicit Struct_Optional_Struct_Field_(std::optional<SizedStruct> a, std::optional<UnsizedStruct> b) : a_(std::move(a)), b_(std::move(b)) {}
     Struct_Optional_Struct_Field_& operator=(Struct_Optional_Struct_Field_ const&) = default;
 
-    static bool Parse(pdl::packet::slice& parent_span, Struct_Optional_Struct_Field_* output) {
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Optional_Struct_Field_> Decode(pdl::packet::slice& parent_span) {
         pdl::packet::slice span = parent_span;
+        Struct_Optional_Struct_Field_ output;
         if (span.size() < 1) {
-            return false;
+            return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
         uint8_t c0 = (chunk0 >> 0) & 0x1;
         uint8_t c1 = (chunk0 >> 1) & 0x1;
         if (c0 == 0) {
-            auto& opt_output = output->a_.emplace();
-            if (!SizedStruct::Parse(span, &opt_output)) {
-                return false;
+            output.a_ = SizedStruct::Decode(span);
+            if (!output.a_.has_value()) {
+                return std::nullopt;
             }
         }
         if (c1 == 1) {
-            auto& opt_output = output->b_.emplace();
-            if (!UnsizedStruct::Parse(span, &opt_output)) {
-                return false;
+            output.b_ = UnsizedStruct::Decode(span);
+            if (!output.b_.has_value()) {
+                return std::nullopt;
             }
         }
         parent_span = span;
-        return true;
+        return output;
     }
 
     bool Serialize(std::vector<uint8_t>& output) const override {
@@ -9384,11 +8929,15 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Struct_Optional_Struct_FieldView> Decode(pdl::packet::slice const& parent) {
-        Struct_Optional_Struct_FieldView view(parent);
-        if (!view.Parse(parent)) {
+        Struct_Optional_Struct_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Optional_Struct_Field_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
             return std::nullopt;
         }
-        return view;
+        return output;
     }
 
     Struct_Optional_Struct_Field_ const& GetS() const { return s_; }
@@ -9401,15 +8950,6 @@ public:
 
 protected:
     explicit Struct_Optional_Struct_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (!Struct_Optional_Struct_Field_::Parse(span, &s_)) return false;
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Struct_Optional_Struct_Field_ s_;
@@ -9475,11 +9015,21 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Enum_Incomplete_Truncated_ClosedView> Decode(pdl::packet::slice const& parent) {
-        Enum_Incomplete_Truncated_ClosedView view(parent);
-        if (!view.Parse(parent)) {
+        Enum_Incomplete_Truncated_ClosedView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        auto raw_e = (chunk0 >> 0) & 0x7;
+        if (!IsValidEnum_Incomplete_Truncated_Closed_(raw_e)) {
+           return std::nullopt;
+        }
+        output.e_ = Enum_Incomplete_Truncated_Closed_(raw_e);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum_Incomplete_Truncated_Closed_ GetE() const { return e_; }
@@ -9492,23 +9042,6 @@ public:
 
 protected:
     explicit Enum_Incomplete_Truncated_ClosedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        auto raw_e = (chunk0 >> 0) & 0x7;
-        if (!IsValidEnum_Incomplete_Truncated_Closed_(raw_e)) {
-           return false;
-        }
-        e_ = Enum_Incomplete_Truncated_Closed_(raw_e);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Enum_Incomplete_Truncated_Closed_ e_{Enum_Incomplete_Truncated_Closed_::A};
@@ -9568,11 +9101,17 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Enum_Incomplete_Truncated_OpenView> Decode(pdl::packet::slice const& parent) {
-        Enum_Incomplete_Truncated_OpenView view(parent);
-        if (!view.Parse(parent)) {
+        Enum_Incomplete_Truncated_OpenView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.e_ = Enum_Incomplete_Truncated_Open_((chunk0 >> 0) & 0x7);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum_Incomplete_Truncated_Open_ GetE() const { return e_; }
@@ -9585,19 +9124,6 @@ public:
 
 protected:
     explicit Enum_Incomplete_Truncated_OpenView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        e_ = Enum_Incomplete_Truncated_Open_((chunk0 >> 0) & 0x7);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Enum_Incomplete_Truncated_Open_ e_{Enum_Incomplete_Truncated_Open_::A};
@@ -9663,11 +9189,21 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Enum_Incomplete_Truncated_Closed_WithRangeView> Decode(pdl::packet::slice const& parent) {
-        Enum_Incomplete_Truncated_Closed_WithRangeView view(parent);
-        if (!view.Parse(parent)) {
+        Enum_Incomplete_Truncated_Closed_WithRangeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        auto raw_e = (chunk0 >> 0) & 0x7;
+        if (!IsValidEnum_Incomplete_Truncated_Closed_WithRange_(raw_e)) {
+           return std::nullopt;
+        }
+        output.e_ = Enum_Incomplete_Truncated_Closed_WithRange_(raw_e);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum_Incomplete_Truncated_Closed_WithRange_ GetE() const { return e_; }
@@ -9680,23 +9216,6 @@ public:
 
 protected:
     explicit Enum_Incomplete_Truncated_Closed_WithRangeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        auto raw_e = (chunk0 >> 0) & 0x7;
-        if (!IsValidEnum_Incomplete_Truncated_Closed_WithRange_(raw_e)) {
-           return false;
-        }
-        e_ = Enum_Incomplete_Truncated_Closed_WithRange_(raw_e);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Enum_Incomplete_Truncated_Closed_WithRange_ e_{Enum_Incomplete_Truncated_Closed_WithRange_::A};
@@ -9760,11 +9279,17 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Enum_Incomplete_Truncated_Open_WithRangeView> Decode(pdl::packet::slice const& parent) {
-        Enum_Incomplete_Truncated_Open_WithRangeView view(parent);
-        if (!view.Parse(parent)) {
+        Enum_Incomplete_Truncated_Open_WithRangeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.e_ = Enum_Incomplete_Truncated_Open_WithRange_((chunk0 >> 0) & 0x7);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum_Incomplete_Truncated_Open_WithRange_ GetE() const { return e_; }
@@ -9777,19 +9302,6 @@ public:
 
 protected:
     explicit Enum_Incomplete_Truncated_Open_WithRangeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        e_ = Enum_Incomplete_Truncated_Open_WithRange_((chunk0 >> 0) & 0x7);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Enum_Incomplete_Truncated_Open_WithRange_ e_{Enum_Incomplete_Truncated_Open_WithRange_::A};
@@ -9858,11 +9370,17 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Enum_Complete_TruncatedView> Decode(pdl::packet::slice const& parent) {
-        Enum_Complete_TruncatedView view(parent);
-        if (!view.Parse(parent)) {
+        Enum_Complete_TruncatedView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.e_ = Enum_Complete_Truncated_((chunk0 >> 0) & 0x7);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum_Complete_Truncated_ GetE() const { return e_; }
@@ -9875,19 +9393,6 @@ public:
 
 protected:
     explicit Enum_Complete_TruncatedView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        e_ = Enum_Complete_Truncated_((chunk0 >> 0) & 0x7);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Enum_Complete_Truncated_ e_{Enum_Complete_Truncated_::A};
@@ -9948,11 +9453,17 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Enum_Complete_Truncated_WithRangeView> Decode(pdl::packet::slice const& parent) {
-        Enum_Complete_Truncated_WithRangeView view(parent);
-        if (!view.Parse(parent)) {
+        Enum_Complete_Truncated_WithRangeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        uint8_t chunk0 = span.read_le<uint8_t, 1>();
+        output.e_ = Enum_Complete_Truncated_WithRange_((chunk0 >> 0) & 0x7);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum_Complete_Truncated_WithRange_ GetE() const { return e_; }
@@ -9965,19 +9476,6 @@ public:
 
 protected:
     explicit Enum_Complete_Truncated_WithRangeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        e_ = Enum_Complete_Truncated_WithRange_((chunk0 >> 0) & 0x7);
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Enum_Complete_Truncated_WithRange_ e_{Enum_Complete_Truncated_WithRange_::A};
@@ -10036,11 +9534,16 @@ public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
     static std::optional<Enum_Complete_WithRangeView> Decode(pdl::packet::slice const& parent) {
-        Enum_Complete_WithRangeView view(parent);
-        if (!view.Parse(parent)) {
+        Enum_Complete_WithRangeView output(parent);
+        pdl::packet::slice span = parent;
+        if (span.size() < 1) {
             return std::nullopt;
         }
-        return view;
+        output.e_ = Enum_Complete_WithRange_(span.read_le<uint8_t, 1>());
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
     }
 
     Enum_Complete_WithRange_ GetE() const { return e_; }
@@ -10053,18 +9556,6 @@ public:
 
 protected:
     explicit Enum_Complete_WithRangeView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
-
-    bool Parse(pdl::packet::slice const& parent) {
-        pdl::packet::slice span = parent;
-        if (span.size() < 1) {
-            return false;
-        }
-        e_ = Enum_Complete_WithRange_(span.read_le<uint8_t, 1>());
-        if (span.size() > 0) {
-            return false;
-        }
-        return true;
-    }
 
     pdl::packet::slice bytes_;
     Enum_Complete_WithRange_ e_{Enum_Complete_WithRange_::A};
