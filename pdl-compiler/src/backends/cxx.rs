@@ -1210,6 +1210,22 @@ impl std::ops::AddAssign<usize> for RuntimeSize {
     }
 }
 
+impl RuntimeSize {
+    #[allow(clippy::inherent_to_string)]
+    fn to_string(&self) -> String {
+        match self {
+            RuntimeSize { constant: 0, variable } if variable.is_empty() => "0".to_owned(),
+            RuntimeSize { constant: 0, variable } => variable.join(" + "),
+            RuntimeSize { constant, variable } if variable.is_empty() => {
+                format!("{}", constant / 8)
+            }
+            RuntimeSize { constant, variable } => {
+                format!("{} + {}", constant / 8, variable.join(" + "))
+            }
+        }
+    }
+}
+
 impl<'a> Encoder<'a> {
     fn new(
         scope: &'a analyzer::Scope<'a>,
@@ -1462,18 +1478,7 @@ impl<'a> Encoder<'a> {
                 let size_expr = if children.is_empty() {
                     "payload_.size()".to_owned()
                 } else {
-                    match self.compute_partial_packet_size(children[0], &children[1..]) {
-                        RuntimeSize { constant: 0, variable } if variable.is_empty() => {
-                            "0".to_owned()
-                        }
-                        RuntimeSize { constant, variable } if variable.is_empty() => {
-                            format!("{}", constant / 8)
-                        }
-                        RuntimeSize { constant: 0, variable } => variable.join(" + "),
-                        RuntimeSize { constant, variable } => {
-                            format!("{} + {}", constant / 8, variable.join(" + "))
-                        }
-                    }
+                    self.compute_partial_packet_size(children[0], &children[1..]).to_string()
                 };
 
                 self.append(&format!("size_t {size_var} = {size_expr};"));
@@ -2136,14 +2141,8 @@ fn generate_packet_builder(
     serializer.encode(all_decls[0], &all_decls[1..]);
     serializer.append("return true;");
 
-    let encoded_size = match serializer.compute_partial_packet_size(all_decls[0], &all_decls[1..]) {
-        RuntimeSize { constant: 0, variable } if variable.is_empty() => "0".to_owned(),
-        RuntimeSize { constant: 0, variable } => variable.join(" + "),
-        RuntimeSize { constant, variable } if variable.is_empty() => format!("{}", constant / 8),
-        RuntimeSize { constant, variable } => {
-            format!("{} + {}", constant / 8, variable.join(" + "))
-        }
-    };
+    let encoded_size =
+        serializer.compute_partial_packet_size(all_decls[0], &all_decls[1..]).to_string();
 
     let field_serializers = serializer.code;
     let constructor = if constructor_params.is_empty() {
@@ -2198,6 +2197,8 @@ fn generate_struct_declaration(
 
     let all_constraints =
         HashMap::from_iter(scope.iter_constraints(decl).map(|c| (c.id.to_string(), c.clone())));
+    let mut all_decls = scope.iter_parents_and_self(decl).collect::<Vec<_>>();
+    all_decls.reverse();
 
     // Iterate over all named fields that are not under a constraint.
     for field in scope
@@ -2265,24 +2266,16 @@ fn generate_struct_declaration(
     // remaining bytes on success.
     let field_parsers = {
         let mut decoder = Decoder::new(scope, schema, scope.file.endianness.value, true);
-        decoder.decode(decl, &[]);
+        decoder.decode(all_decls[0], &all_decls[1..]);
         decoder.code
     };
 
-    let mut all_decls = scope.iter_parents_and_self(decl).collect::<Vec<_>>();
-    all_decls.reverse();
     let mut serializer = Encoder::new(scope, schema, scope.file.endianness.value, all_constraints);
     serializer.encode(all_decls[0], &all_decls[1..]);
     serializer.append("return true;");
 
-    let encoded_size = match serializer.compute_partial_packet_size(all_decls[0], &all_decls[1..]) {
-        RuntimeSize { constant: 0, variable } if variable.is_empty() => "0".to_owned(),
-        RuntimeSize { constant: 0, variable } => variable.join(" + "),
-        RuntimeSize { constant, variable } if variable.is_empty() => format!("{}", constant / 8),
-        RuntimeSize { constant, variable } => {
-            format!("{} + {}", constant / 8, variable.join(" + "))
-        }
-    };
+    let encoded_size =
+        serializer.compute_partial_packet_size(all_decls[0], &all_decls[1..]).to_string();
 
     let field_serializers = serializer.code;
     let constructor = if !constructor_parameters.is_empty() {
