@@ -472,6 +472,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<EmptyParentView> Decode(ScalarParentView const& parent) {
         EmptyParentView output(parent.bytes_);
+
         output.a_ = parent.a_;
         pdl::packet::slice span = parent.payload_;
         output.payload_ = span;
@@ -4299,6 +4300,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ScalarChild_AView> Decode(ScalarParentView const& parent) {
         ScalarChild_AView output(parent.bytes_);
+        if (parent.a_ != 0x0) { return std::nullopt; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return std::nullopt;
@@ -4365,6 +4367,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ScalarChild_BView> Decode(ScalarParentView const& parent) {
         ScalarChild_BView output(parent.bytes_);
+        if (parent.a_ != 0x1) { return std::nullopt; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 2) {
             return std::nullopt;
@@ -4431,6 +4434,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<EnumChild_AView> Decode(EnumParentView const& parent) {
         EnumChild_AView output(parent.bytes_);
+        if (parent.a_ != Enum16::A) { return std::nullopt; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return std::nullopt;
@@ -4497,6 +4501,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<EnumChild_BView> Decode(EnumParentView const& parent) {
         EnumChild_BView output(parent.bytes_);
+        if (parent.a_ != Enum16::B) { return std::nullopt; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 2) {
             return std::nullopt;
@@ -4563,6 +4568,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<AliasedChild_AView> Decode(EmptyParentView const& parent) {
         AliasedChild_AView output(parent.bytes_);
+        if (parent.a_ != 0x2) { return std::nullopt; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return std::nullopt;
@@ -4629,6 +4635,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<AliasedChild_BView> Decode(EmptyParentView const& parent) {
         AliasedChild_BView output(parent.bytes_);
+        if (parent.a_ != 0x3) { return std::nullopt; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 2) {
             return std::nullopt;
@@ -4695,6 +4702,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ScalarChild_CView> Decode(ScalarParentView const& parent) {
         ScalarChild_CView output(parent.bytes_);
+        if (parent.a_ != 0x4) { return std::nullopt; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return std::nullopt;
@@ -4769,6 +4777,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ScalarGrandChild_CView> Decode(ScalarChild_CView const& parent) {
         ScalarGrandChild_CView output(parent.bytes_);
+        if (parent.b_ != 0x1) { return std::nullopt; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 2) {
             return std::nullopt;
@@ -4838,6 +4847,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ScalarChild_DView> Decode(ScalarParentView const& parent) {
         ScalarChild_DView output(parent.bytes_);
+        if (parent.a_ != 0x5) { return std::nullopt; }
         pdl::packet::slice span = parent.payload_;
         if (span.size() < 1) {
             return std::nullopt;
@@ -4971,6 +4981,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ConstrainedChild_AView> Decode(ConstrainedParentView const& parent) {
         ConstrainedChild_AView output(parent.bytes_);
+        if (parent.a_ != 0x1) { return std::nullopt; }
 
         return output;
     }
@@ -5021,6 +5032,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<ConstrainedChild_BView> Decode(ConstrainedParentView const& parent) {
         ConstrainedChild_BView output(parent.bytes_);
+        if (parent.a_ != 0x2) { return std::nullopt; }
 
         return output;
     }

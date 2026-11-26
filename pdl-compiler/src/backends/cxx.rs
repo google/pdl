@@ -2014,6 +2014,27 @@ fn generate_packet_view(
         }
     }
 
+    // Generate checks for parent constrained fields.
+    // Only the immediate constraints need to be checked.
+    let mut constraint_checks = Vec::new();
+    for constraint in decl.constraints() {
+        match constraint {
+            ast::Constraint { id, tag_id: Some(tag_id), .. } => {
+                let Some(ast::Field { desc: ast::FieldDesc::Typedef { type_id, .. }, .. }) =
+                    scope.iter_fields(decl).find(|f| f.id() == Some(id))
+                else {
+                    unreachable!()
+                };
+                constraint_checks.push(format!(
+                    "if (parent.{id}_ != {type_id}::{tag_id}) {{ return std::nullopt; }}"
+                ))
+            }
+            ast::Constraint { id, value: Some(value), .. } => constraint_checks
+                .push(format!("if (parent.{id}_ != {value:#x}) {{ return std::nullopt; }}")),
+            _ => unreachable!(),
+        }
+    }
+
     // The trailing byte check is only added when the parent packet has a payload field,
     // or the current packet is a root packet. In other cases there is no actual parsing
     // done in the method, just added field constraints.
@@ -2053,6 +2074,7 @@ public:
     // Returns std::nullopt if the packet is invalid.
     static std::optional<{id}View> Decode({parent_id}View const& parent) {{
         {id}View output(parent.bytes_);
+{constraint_checks}
 {field_parsers}
         return output;
     }}
@@ -2073,6 +2095,7 @@ protected:
 {friend_classes}
 }};
 "#,
+            constraint_checks = indent(&constraint_checks.join("\n"), 2),
             field_parsers = indent(&field_parsers.join("\n"), 2),
             field_members = indent(&field_members.join("\n"), 1),
             field_accessors = field_accessors.join("\n"),
