@@ -49,11 +49,11 @@ class slice {
 
   const_iterator begin() const noexcept { return packet_->begin() + offset_; }
   const_iterator end() const noexcept {
-    return packet_->end() + offset_ + size_;
+    return packet_->begin() + offset_ + size_;
   }
   const_iterator cbegin() const noexcept { return packet_->cbegin() + offset_; }
   const_iterator cend() const noexcept {
-    return packet_->cend() + offset_ + size_;
+    return packet_->cbegin() + offset_ + size_;
   }
 
   /// Return a new slice that contains the selected subrange within the
