@@ -399,7 +399,6 @@ struct Decoder<'a> {
     chunk_nr: usize,
     unchecked_code: Vec<String>,
     code: Vec<String>,
-    target_prefix: String,
     extract_arrays: bool,
 }
 
@@ -408,7 +407,6 @@ impl<'a> Decoder<'a> {
         scope: &'a analyzer::Scope<'a>,
         schema: &'a analyzer::Schema,
         endianness: ast::EndiannessValue,
-        target_prefix: &str,
         extract_arrays: bool,
     ) -> Self {
         Self {
@@ -421,7 +419,6 @@ impl<'a> Decoder<'a> {
             chunk_nr: 0,
             unchecked_code: Vec::new(),
             code: Vec::new(),
-            target_prefix: target_prefix.to_string(),
             extract_arrays,
         }
     }
@@ -506,7 +503,7 @@ impl<'a> Decoder<'a> {
 
             match &field.desc {
                 ast::FieldDesc::Scalar { id, .. } => {
-                    self.unchecked_append(format!("{}{}_ = {};", self.target_prefix, id, v));
+                    self.unchecked_append(format!("output.{id}_ = {v};"));
                 }
                 ast::FieldDesc::FixedScalar { value: fixed_value, .. } => {
                     self.unchecked_append(format!(
@@ -531,10 +528,7 @@ impl<'a> Decoder<'a> {
                             if common::is_open_enum(tags)
                                 || common::is_complete_enum(tags, scalar_max(*width)) =>
                         {
-                            self.unchecked_append(format!(
-                                "{}{}_ = {}({});",
-                                self.target_prefix, id, type_id, v
-                            ));
+                            self.unchecked_append(format!("output.{id}_ = {type_id}({v});"));
                         }
                         ast::DeclDesc::Enum { .. } => {
                             // The raw value is named after the field: multiple enum
@@ -543,16 +537,10 @@ impl<'a> Decoder<'a> {
                             self.unchecked_append(format!("if (!IsValid{type_id}(raw_{id})) {{"));
                             self.unchecked_append("   return std::nullopt;".to_string());
                             self.unchecked_append("}".to_string());
-                            self.unchecked_append(format!(
-                                "{}{}_ = {}(raw_{id});",
-                                self.target_prefix, id, type_id
-                            ));
+                            self.unchecked_append(format!("output.{id}_ = {type_id}(raw_{id});",));
                         }
                         _ => {
-                            self.unchecked_append(format!(
-                                "{}{}_ = {};",
-                                self.target_prefix, id, v
-                            ));
+                            self.unchecked_append(format!("output.{id}_ = {v};",));
                         }
                     }
                 }
@@ -561,20 +549,14 @@ impl<'a> Decoder<'a> {
                     self.unchecked_append(format!("size_t {}_size_ = {};", field_name, v));
                 }
                 ast::FieldDesc::Count { field_id, .. } => {
-                    self.unchecked_append(format!(
-                        "{}{}_count_ = {};",
-                        self.target_prefix, field_id, v
-                    ));
+                    self.unchecked_append(format!("output.{field_id}_count_ = {v};",));
                 }
                 ast::FieldDesc::ElementSize { field_id, .. } => {
                     let field_name = if field_id == "_payload_" { "payload" } else { field_id };
-                    self.unchecked_append(format!(
-                        "{}{}_element_size_ = {};",
-                        self.target_prefix, field_name, v
-                    ));
+                    self.unchecked_append(format!("output.{field_name}_element_size_ = {v};",));
                 }
                 ast::FieldDesc::Flag { id, .. } => {
-                    self.unchecked_append(format!("uint8_t {} = {};", id, v));
+                    self.unchecked_append(format!("uint8_t {id} = {v};"));
                 }
                 ast::FieldDesc::Reserved { .. } => {}
                 _ => panic!("Unsupported bit field type: {:?}", field.desc),
@@ -613,7 +595,7 @@ impl<'a> Decoder<'a> {
                 let decode = format!("{type_id}::Decode({id}_span)");
                 self.append(format!("auto {id}_value = {decode};"));
                 self.append(format!("if (!{id}_value.has_value()) return std::nullopt;"));
-                self.append(format!("{}{id}_ = std::move(*{id}_value);", self.target_prefix));
+                self.append(format!("output.{id}_ = std::move(*{id}_value);"));
                 // The bytes remaining after parsing the typedef field are added
                 // back to the input span.
                 self.append(format!("span.skip({id}_size - {id}_span.size());"));
@@ -621,13 +603,13 @@ impl<'a> Decoder<'a> {
                 let decode = format!("{type_id}::Decode(span)");
                 self.append(format!("auto {id}_value = {decode};"));
                 self.append(format!("if (!{id}_value.has_value()) return std::nullopt;"));
-                self.append(format!("{}{id}_ = std::move(*{id}_value);", self.target_prefix));
+                self.append(format!("output.{id}_ = std::move(*{id}_value);"));
             }
         } else {
             let decode = format!("{type_id}::Decode(span)");
             self.append(format!("auto {id}_value = {decode};"));
             self.append(format!("if (!{id}_value.has_value()) return std::nullopt;"));
-            self.append(format!("{}{id}_ = std::move(*{id}_value);", self.target_prefix));
+            self.append(format!("output.{id}_ = std::move(*{id}_value);"));
         }
     }
 
@@ -649,8 +631,8 @@ impl<'a> Decoder<'a> {
                 self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
                 self.append(format!(
-                    "    {}{}_ = span.read_{}<{}, {}>();",
-                    self.target_prefix, id, byteorder, backing_type, size
+                    "    output.{id}_ = span.read_{byteorder}<{}, {}>();",
+                    backing_type, size
                 ));
                 self.append("}".to_string());
             }
@@ -667,8 +649,8 @@ impl<'a> Decoder<'a> {
                     self.append("    }".to_string());
                     if is_open {
                         self.append(format!(
-                            "    {}{}_ = {}(span.read_{}<{}, {}>());",
-                            self.target_prefix, id, type_id, byteorder, backing_type, size
+                            "    output.{id}_ = {}(span.read_{}<{}, {}>());",
+                            type_id, byteorder, backing_type, size
                         ));
                         self.append("}".to_string());
                     } else {
@@ -679,17 +661,13 @@ impl<'a> Decoder<'a> {
                         self.append(format!("    if (!IsValid{type_id}(raw_value)) {{"));
                         self.append("       return std::nullopt;".to_string());
                         self.append("    }".to_string());
-                        self.append(format!(
-                            "    {}{}_ = {}(raw_value);",
-                            self.target_prefix, id, type_id
-                        ));
+                        self.append(format!("    output.{id}_ = {type_id}(raw_value);",));
                         self.append("}".to_string());
                     }
                 } else {
                     self.append(format!("if ({} == {}) {{", cond.id, cond_value));
-                    let decode = format!("{type_id}::Decode(span)");
-                    self.append(format!("    {}{id}_ = {decode};", self.target_prefix));
-                    self.append(format!("    if (!{}{id}_.has_value()) {{", self.target_prefix));
+                    self.append(format!("    output.{id}_ = {type_id}::Decode(span);"));
+                    self.append(format!("    if (!output.{id}_.has_value()) {{"));
                     self.append("        return std::nullopt;".to_string());
                     self.append("    }".to_string());
                     self.append("}".to_string());
@@ -711,7 +689,6 @@ impl<'a> Decoder<'a> {
 
         let element_size = analyzer::element_size(self.scope, self.schema, decl, field);
         let array_size = analyzer::array_size(decl, field);
-        let out = self.target_prefix.clone();
 
         // Apply the size modifier.
         if let Some(size_modifier) = size_modifier {
@@ -724,16 +701,16 @@ impl<'a> Decoder<'a> {
             (ElementSize::Static(element_size), ArraySize::StaticCount(count)) => {
                 let total_size = element_size * count;
                 self.check_size(&format!("{total_size}"));
-                self.append(format!("{out}{id}_ = span.subrange(0, {total_size});"));
+                self.append(format!("output.{id}_ = span.subrange(0, {total_size});"));
                 self.append(format!("span.skip({total_size});"));
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicCount) => {
-                self.check_size(&format!("{element_size} * {out}{id}_count_"));
+                self.check_size(&format!("{element_size} * output.{id}_count_"));
                 self.append(format!(
-                    "{out}{id}_ = span.subrange(0, {element_size} * {out}{id}_count_);"
+                    "output.{id}_ = span.subrange(0, {element_size} * output.{id}_count_);"
                 ));
-                self.append(format!("span.skip({element_size} * {out}{id}_count_);"));
+                self.append(format!("span.skip({element_size} * output.{id}_count_);"));
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicSize) => {
@@ -741,7 +718,7 @@ impl<'a> Decoder<'a> {
                 self.append(format!("if (({id}_size_ % {element_size}) != 0) {{"));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("{out}{id}_ = span.subrange(0, {id}_size_);"));
+                self.append(format!("output.{id}_ = span.subrange(0, {id}_size_);"));
                 self.append(format!("span.skip({id}_size_);"));
             }
 
@@ -749,56 +726,56 @@ impl<'a> Decoder<'a> {
                 self.append(format!("if ((span.size() % {element_size}) != 0) {{"));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("{out}{id}_ = span;"));
+                self.append(format!("output.{id}_ = span;"));
                 self.append("span.clear();".to_string());
             }
 
             (ElementSize::Dynamic, ArraySize::StaticCount(count)) => {
-                self.append(format!("if ({out}{id}_element_size_ == 0) {{"));
+                self.append(format!("if (output.{id}_element_size_ == 0) {{"));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.check_size(&format!("{out}{id}_element_size_ * {count}"));
+                self.check_size(&format!("output.{id}_element_size_ * {count}"));
                 self.append(format!(
-                    "{out}{id}_ = span.subrange(0, {out}{id}_element_size_ * {count});"
+                    "output.{id}_ = span.subrange(0, output.{id}_element_size_ * {count});"
                 ));
-                self.append(format!("span.skip({out}{id}_element_size_ * {count});"));
+                self.append(format!("span.skip(output.{id}_element_size_ * {count});"));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicCount) => {
-                self.append(format!("if ({out}{id}_element_size_ == 0) {{"));
+                self.append(format!("if (output.{id}_element_size_ == 0) {{"));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.check_size(&format!("{out}{id}_element_size_ * {out}{id}_count_"));
+                self.check_size(&format!("output.{id}_element_size_ * output.{id}_count_"));
                 self.append(format!(
-                    "{out}{id}_ = span.subrange(0, {out}{id}_element_size_ * {out}{id}_count_);"
+                    "output.{id}_ = span.subrange(0, output.{id}_element_size_ * output.{id}_count_);"
                 ));
-                self.append(format!("span.skip({out}{id}_element_size_ * {out}{id}_count_);"));
+                self.append(format!("span.skip(output.{id}_element_size_ * output.{id}_count_);"));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
                 self.append(format!(
-                    "if ({out}{id}_element_size_ == 0 || ({id}_size_ % {out}{id}_element_size_) != 0) {{"
+                    "if (output.{id}_element_size_ == 0 || ({id}_size_ % output.{id}_element_size_) != 0) {{"
                 ));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("{out}{id}_ = span.subrange(0, {id}_size_);"));
+                self.append(format!("output.{id}_ = span.subrange(0, {id}_size_);"));
                 self.append(format!("span.skip({id}_size_);"));
             }
 
             (ElementSize::Dynamic, ArraySize::Unknown) => {
                 self.append(format!(
-                    "if ({out}{id}_element_size_ == 0 || (span.size() % {out}{id}_element_size_) != 0) {{"
+                    "if (output.{id}_element_size_ == 0 || (span.size() % output.{id}_element_size_) != 0) {{"
                 ));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("{out}{id}_ = span;"));
+                self.append(format!("output.{id}_ = span;"));
                 self.append("span.clear();".to_string());
             }
 
             (ElementSize::Unknown, ArraySize::StaticCount(count)) => {
                 let tid = type_id.unwrap();
-                self.append(format!("{out}{id}_ = span;"));
+                self.append(format!("output.{id}_ = span;"));
                 self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
                 let decode = format!("{tid}::Decode(span)");
                 self.append(format!("    if (!{decode}.has_value()) {{"));
@@ -806,33 +783,33 @@ impl<'a> Decoder<'a> {
                 self.append("    }".to_string());
                 self.append("}".to_string());
                 self.append(format!(
-                    "{out}{id}_ = {out}{id}_.subrange(0, {out}{id}_.size() - span.size());"
+                    "output.{id}_ = output.{id}_.subrange(0, output.{id}_.size() - span.size());"
                 ));
             }
 
             (ElementSize::Unknown, ArraySize::DynamicCount) => {
                 let tid = type_id.unwrap();
-                self.append(format!("{out}{id}_ = span;"));
-                self.append(format!("for (size_t n = 0; n < {out}{id}_count_; n++) {{"));
+                self.append(format!("output.{id}_ = span;"));
+                self.append(format!("for (size_t n = 0; n < output.{id}_count_; n++) {{"));
                 let decode = format!("{tid}::Decode(span)");
                 self.append(format!("    if (!{decode}.has_value()) {{"));
                 self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
                 self.append("}".to_string());
                 self.append(format!(
-                    "{out}{id}_ = {out}{id}_.subrange(0, {out}{id}_.size() - span.size());"
+                    "output.{id}_ = output.{id}_.subrange(0, output.{id}_.size() - span.size());"
                 ));
             }
 
             (ElementSize::Unknown, ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
-                self.append(format!("{out}{id}_ = span.subrange(0, {id}_size_);"));
+                self.append(format!("output.{id}_ = span.subrange(0, {id}_size_);"));
                 self.append(format!("span.skip({id}_size_);"));
             }
 
             (ElementSize::Unknown, ArraySize::Unknown) => {
                 let tid = type_id.unwrap();
-                self.append(format!("{out}{id}_ = span;"));
+                self.append(format!("output.{id}_ = span;"));
                 self.append("while (span.size() > 0) {".to_string());
                 let decode = format!("{tid}::Decode(span)");
                 self.append(format!("    if (!{decode}.has_value()) {{"));
@@ -840,7 +817,7 @@ impl<'a> Decoder<'a> {
                 self.append("    }".to_string());
                 self.append("}".to_string());
                 self.append(format!(
-                    "{out}{id}_ = {out}{id}_.subrange(0, {out}{id}_.size() - span.size());"
+                    "output.{id}_ = output.{id}_.subrange(0, output.{id}_.size() - span.size());"
                 ));
             }
         }
@@ -905,10 +882,7 @@ impl<'a> Decoder<'a> {
                 format!("({} {})", size_expr, inverted_modifier)
             };
             self.append(format!("if (span.size() < {}) return std::nullopt;", actual_size));
-            self.append(format!(
-                "{}payload_ = span.subrange(0, {}){};",
-                self.target_prefix, actual_size, bytes
-            ));
+            self.append(format!("output.payload_ = span.subrange(0, {}){};", actual_size, bytes));
             self.append(format!("span.skip({});", actual_size));
         } else {
             let trailing_size = self.get_trailing_size(decl, field).unwrap_or(0);
@@ -918,13 +892,10 @@ impl<'a> Decoder<'a> {
                     trailing_size / 8
                 ));
                 self.append(format!("size_t payload_size = span.size() - {};", trailing_size / 8));
-                self.append(format!(
-                    "{}payload_ = span.subrange(0, payload_size){};",
-                    self.target_prefix, bytes
-                ));
+                self.append(format!("output.payload_ = span.subrange(0, payload_size){};", bytes));
                 self.append("span.skip(payload_size);".to_string());
             } else {
-                self.append(format!("{}payload_ = span{};", self.target_prefix, bytes));
+                self.append(format!("output.payload_ = span{};", bytes));
                 self.append("span.clear();".to_string());
             }
         }
@@ -2015,7 +1986,7 @@ fn generate_packet_view(
     }
 
     if decl.fields().next().is_some() {
-        let mut parser = Decoder::new(scope, schema, endianness, "output.", false);
+        let mut parser = Decoder::new(scope, schema, endianness, false);
         parser.decode(decl, &[]);
         parser.done();
         field_parsers.extend(parser.code);
@@ -2307,7 +2278,7 @@ fn generate_struct_declaration(
     field_parsers.push("pdl::packet::slice span = parent_span;".to_string());
     field_parsers.push(format!("{id} output;"));
 
-    let mut parser = Decoder::new(scope, schema, endianness, "output.", true);
+    let mut parser = Decoder::new(scope, schema, endianness, true);
     parser.decode(decl, &[]);
     parser.done();
     field_parsers.extend(parser.code);
