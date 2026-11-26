@@ -848,58 +848,96 @@ impl<'a> Decoder<'a> {
     fn decode_payload_field(
         &mut self,
         decl: &'a ast::Decl,
-        _children: &[&'a ast::Decl],
+        children: &[&'a ast::Decl],
         field: &'a ast::Field,
+        size_modifier: Option<&str>,
     ) {
         assert_eq!(self.shift, 0, "Payload field does not start on an octet boundary");
         self.check_code();
 
-        // Packet views store the payload as a slice, structs store the
-        // payload as a byte vector.
-        let bytes = if self.extract_arrays { ".bytes()" } else { "" };
-        let mut size_expr = "".to_string();
-        for f in decl.fields() {
-            if let ast::FieldDesc::Size { field_id, .. } = &f.desc {
-                if field_id == "_payload_" {
-                    size_expr = "payload_size_".to_owned();
-                }
-            }
-        }
-
-        if !size_expr.is_empty() {
-            let inverted_modifier = match &field.desc {
-                ast::FieldDesc::Payload { size_modifier: Some(m), .. } => {
-                    if let Some(stripped) = m.strip_prefix('+') {
-                        format!("- {}", stripped)
-                    } else if let Some(stripped) = m.strip_prefix('-') {
-                        format!("+ {}", stripped)
-                    } else {
-                        m.clone()
-                    }
-                }
-                _ => String::new(),
-            };
-            let actual_size = if inverted_modifier.is_empty() {
-                size_expr
-            } else {
-                format!("({} {})", size_expr, inverted_modifier)
-            };
-            self.append(format!("if (span.size() < {actual_size}) return std::nullopt;"));
-            self.append(format!("output.payload_ = span.subrange(0, {actual_size}){};", bytes));
-            self.append(format!("span.skip({actual_size});"));
-        } else {
-            let trailing_size = self.get_trailing_size(decl, field).unwrap_or(0);
-            if trailing_size > 0 {
+        if decl.payload_size().is_some() {
+            // The payload has a matching size field.
+            // Apply the modifier if present, after checking that the parsed size is large enough.
+            if let Some(size_modifier) = size_modifier {
+                let size_modifier =
+                    size_modifier.parse::<usize>().expect("failed to parse the size modifier");
                 self.append(format!(
-                    "if (span.size() < {}) return std::nullopt;",
-                    trailing_size / 8
+                    "if (payload_size_ < {size_modifier}) {{ return std::nullopt; }}"
                 ));
-                self.append(format!("size_t payload_size = span.size() - {};", trailing_size / 8));
-                self.append(format!("output.payload_ = span.subrange(0, payload_size){};", bytes));
-                self.append("span.skip(payload_size);".to_string());
+                self.append(format!("payload_size_ -= {size_modifier};"));
+            }
+
+            // Length check for the payload.
+            self.append("if (span.size() < payload_size_) { return std::nullopt; }".to_owned());
+
+            if children.is_empty() {
+                // Arrived at a leaf packet. Save the payload to the output.
+                self.append(format!(
+                    "output.payload_ = span.take(payload_size_){};",
+                    if self.extract_arrays { ".bytes()" } else { "" }
+                ));
             } else {
-                self.append(format!("output.payload_ = span{};", bytes));
-                self.append("span.clear();".to_string());
+                // Extract the payload span.
+                self.append(
+                    "pdl::packet::slice payload_span = span.take(payload_size_);".to_owned(),
+                );
+                // Create a new scope to allow shadowing the input span and
+                // payload size fields.
+                self.append("{".to_owned());
+                self.append("pdl::packet::slice span = payload_span;".to_owned());
+                // Parse the fields of the child packet.
+                self.decode(children[0], &children[1..]);
+                // Generate a check for trailing bytes to verify that all payload
+                // bytes are consumed.
+                self.append("if (span.size() > 0) { return std::nullopt; }".to_owned());
+                self.append("}".to_owned());
+            }
+        } else {
+            // The payload has no matching size field.
+            // The decoder will greedily consume all available bytes in this case.
+            // Check for trailing fields placed after the payload and reserve the space
+            // to decode them.
+            let trailing_size = self.get_trailing_size(decl, field).unwrap_or(0) / 8;
+
+            if trailing_size == 0 && children.is_empty() {
+                // No trailing fields and leaf packet; consume everything.
+                self.append(format!(
+                    "output.payload_ = span{};",
+                    if self.extract_arrays { ".bytes()" } else { "" }
+                ));
+                self.append("span.clear();".to_owned());
+            } else if children.is_empty() {
+                // Trailing fields and leaf packet; check that the span contains
+                // enough bytes to parse the remaiing fields.
+                self.append(format!("if (span.size() < {trailing_size}) return std::nullopt;",));
+                // Consume everything _but_ the space reserved for the trailing fields.
+                self.append(format!(
+                    "output.payload_ = span.take(span.size() - {trailing_size}){};",
+                    if self.extract_arrays { ".bytes()" } else { "" }
+                ));
+            } else if trailing_size == 0 {
+                // No trailing fields. Continue parsing fields from the child packet
+                // without creating a new scope. There is no risk of name shadowing.
+                self.decode(children[0], &children[1..]);
+                self.append("if (span.size() > 0) { return std::nullopt; }".to_owned());
+            } else {
+                // Trailing fields and leaf packet; check that the span contains
+                // enough bytes to parse the remaiing fields.
+                self.append(format!("if (span.size() < {trailing_size}) return std::nullopt;",));
+                // Extract the payload span.
+                self.append(format!(
+                    "pdl::packet::slice payload_span = span.take(span.size() - {trailing_size});"
+                ));
+                // Create a new scope to allow shadowing the input span and
+                // payload size fields.
+                self.append("{".to_owned());
+                self.append("pdl::packet::slice span = payload_span;".to_owned());
+                // Parse the fields of the child packet.
+                self.decode(children[0], &children[1..]);
+                // Generate a check for trailing bytes to verify that all payload
+                // bytes are consumed.
+                self.append("if (span.size() > 0) { return std::nullopt; }".to_owned());
+                self.append("}".to_owned());
             }
         }
     }
@@ -1154,8 +1192,8 @@ impl<'a> Decoder<'a> {
                     self.append("}".to_string());
                 }
             }
-            ast::FieldDesc::Payload { .. } => {
-                self.decode_payload_field(decl, children, field);
+            ast::FieldDesc::Payload { size_modifier, .. } => {
+                self.decode_payload_field(decl, children, field, size_modifier.as_deref());
             }
             ast::FieldDesc::Typedef { id, type_id, .. } => {
                 self.decode_typedef_field(decl, field, id, type_id);
@@ -2201,8 +2239,10 @@ fn generate_struct_declaration(
     all_decls.reverse();
 
     // Iterate over all named fields that are not under a constraint.
-    for field in scope
-        .iter_fields(decl)
+    for field in all_decls
+        .iter()
+        .copied()
+        .flat_map(ast::Decl::fields)
         .filter(|f| f.id().is_some())
         .filter(|f| !all_constraints.contains_key(f.id().unwrap()))
     {

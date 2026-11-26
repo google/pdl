@@ -321,9 +321,8 @@ public:
         }
         output.a_ = span.read_be<uint8_t, 1>();
         size_t payload_size_ = span.read_be<uint8_t, 1>();
-        if (span.size() < payload_size_) return std::nullopt;
-        output.payload_ = span.subrange(0, payload_size_);
-        span.skip(payload_size_);
+        if (span.size() < payload_size_) { return std::nullopt; }
+        output.payload_ = span.take(payload_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -402,9 +401,8 @@ public:
         }
         output.a_ = Enum16(raw_a);
         size_t payload_size_ = span.read_be<uint8_t, 1>();
-        if (span.size() < payload_size_) return std::nullopt;
-        output.payload_ = span.subrange(0, payload_size_);
-        span.skip(payload_size_);
+        if (span.size() < payload_size_) { return std::nullopt; }
+        output.payload_ = span.take(payload_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -1162,9 +1160,8 @@ public:
         }
         uint8_t chunk0 = span.read_be<uint8_t, 1>();
         size_t payload_size_ = (chunk0 >> 0) & 0x7;
-        if (span.size() < payload_size_) return std::nullopt;
-        output.payload_ = span.subrange(0, payload_size_);
-        span.skip(payload_size_);
+        if (span.size() < payload_size_) { return std::nullopt; }
+        output.payload_ = span.take(payload_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -1230,9 +1227,10 @@ public:
         }
         uint8_t chunk0 = span.read_be<uint8_t, 1>();
         size_t payload_size_ = (chunk0 >> 0) & 0x7;
-        if (span.size() < (payload_size_ - 2)) return std::nullopt;
-        output.payload_ = span.subrange(0, (payload_size_ - 2));
-        span.skip((payload_size_ - 2));
+        if (payload_size_ < 2) { return std::nullopt; }
+        payload_size_ -= 2;
+        if (span.size() < payload_size_) { return std::nullopt; }
+        output.payload_ = span.take(payload_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -1295,9 +1293,7 @@ public:
         Packet_Payload_Field_UnknownSizeView output(parent);
         pdl::packet::slice span = parent;
         if (span.size() < 2) return std::nullopt;
-        size_t payload_size = span.size() - 2;
-        output.payload_ = span.subrange(0, payload_size);
-        span.skip(payload_size);
+        output.payload_ = span.take(span.size() - 2);
         if (span.size() < 2) {
             return std::nullopt;
         }
@@ -1433,9 +1429,8 @@ public:
         }
         uint8_t chunk0 = span.read_be<uint8_t, 1>();
         size_t payload_size_ = (chunk0 >> 0) & 0x7;
-        if (span.size() < payload_size_) return std::nullopt;
-        output.payload_ = span.subrange(0, payload_size_);
-        span.skip(payload_size_);
+        if (span.size() < payload_size_) { return std::nullopt; }
+        output.payload_ = span.take(payload_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -1497,9 +1492,7 @@ public:
         Packet_Body_Field_UnknownSizeView output(parent);
         pdl::packet::slice span = parent;
         if (span.size() < 2) return std::nullopt;
-        size_t payload_size = span.size() - 2;
-        output.payload_ = span.subrange(0, payload_size);
-        span.skip(payload_size);
+        output.payload_ = span.take(span.size() - 2);
         if (span.size() < 2) {
             return std::nullopt;
         }
@@ -4849,9 +4842,8 @@ public:
             return std::nullopt;
         }
         size_t payload_size_ = span.read_be<uint8_t, 1>();
-        if (span.size() < payload_size_) return std::nullopt;
-        output.payload_ = span.subrange(0, payload_size_);
-        span.skip(payload_size_);
+        if (span.size() < payload_size_) { return std::nullopt; }
+        output.payload_ = span.take(payload_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }

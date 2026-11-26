@@ -64,6 +64,15 @@ class slice {
     return slice(packet_, offset_ + offset, size);
   }
 
+  /// Return a new slice that contains the first N bytes of the slice.
+  slice take(size_t size) {
+    assert(size <= size_);
+    slice out(packet_, offset_, size);
+    offset_ += size;
+    size_ -= size;
+    return out;
+  }
+
   /// Read a scalar value encoded in little-endian.
   /// The bytes that are read from calling this function are consumed.
   /// This function can be used to iterativaly extract values from a packet
