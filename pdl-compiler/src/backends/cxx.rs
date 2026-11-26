@@ -26,7 +26,7 @@ fn scalar_max(width: usize) -> usize {
 fn indent(s: &str, level: usize) -> String {
     let prefix = "    ".repeat(level);
     s.lines()
-        .map(|line| if line.is_empty() { line.to_string() } else { format!("{}{}", prefix, line) })
+        .map(|line| if line.is_empty() { line.to_string() } else { format!("{prefix}{line}") })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -78,14 +78,14 @@ pub fn generate(
     ));
 
     for header in include_headers {
-        code.push_str(&format!("#include <{}>\n", header));
+        code.push_str(&format!("#include <{header}>\n"));
     }
     if !include_headers.is_empty() {
         code.push('\n');
     }
 
-    for ns in using_namespaces {
-        code.push_str(&format!("using namespace {};\n", ns));
+    for namespace in using_namespaces {
+        code.push_str(&format!("using namespace {namespace};\n"));
     }
     if !using_namespaces.is_empty() {
         code.push('\n');
@@ -93,8 +93,8 @@ pub fn generate(
 
     code.push('\n');
 
-    if let Some(ns) = namespace {
-        code.push_str(&format!("namespace {} {{\n", ns));
+    if let Some(namespace) = namespace {
+        code.push_str(&format!("namespace {namespace} {{\n"));
     }
 
     // Forward declarations
@@ -104,7 +104,7 @@ pub fn generate(
                 continue;
             }
             if matches!(decl.desc, ast::DeclDesc::Packet { .. }) {
-                code.push_str(&format!("class {}View;\n", id));
+                code.push_str(&format!("class {id}View;\n"));
             }
         }
     }
@@ -136,8 +136,8 @@ pub fn generate(
         }
     }
 
-    if let Some(ns) = namespace {
-        code.push_str(&format!("}}  // {}\n", ns));
+    if let Some(namespace) = namespace {
+        code.push_str(&format!("}}  // {namespace}\n"));
     }
 
     code
@@ -239,11 +239,11 @@ fn generate_enum_to_string(id: &str, tags: &[ast::Tag], width: usize) -> String 
     for tag in tags {
         match tag {
             ast::Tag::Value(t) => {
-                tag_cases.push(format!("case {}::{}: return \"{}\";", id, t.id, t.id))
+                tag_cases.push(format!("case {id}::{}: return \"{}\";", t.id, t.id))
             }
             ast::Tag::Range(t) => {
                 tag_cases.extend(
-                    t.tags.iter().map(|t| format!("case {}::{}: return \"{}\";", id, t.id, t.id)),
+                    t.tags.iter().map(|t| format!("case {id}::{}: return \"{}\";", t.id, t.id)),
                 );
                 if !common::is_complete_enum_range(t) {
                     range_matches.push(format!(
@@ -433,7 +433,7 @@ impl<'a> Decoder<'a> {
     }
 
     fn check_size(&mut self, size: &str) {
-        self.append(format!("if (span.size() < {}) {{", size));
+        self.append(format!("if (span.size() < {size}) {{"));
         self.append("    return std::nullopt;".to_string());
         self.append("}".to_string());
     }
@@ -484,13 +484,12 @@ impl<'a> Decoder<'a> {
         let value = if self.chunk.len() > 1 {
             let v = format!("chunk{}", self.chunk_nr);
             self.unchecked_append(format!(
-                "{} {} = span.read_{}<{}, {}>();",
-                backing_type, v, byteorder, backing_type, size
+                "{backing_type} {v} = span.read_{byteorder}<{backing_type}, {size}>();",
             ));
             self.chunk_nr += 1;
             v
         } else {
-            format!("span.read_{}<{}, {}>()", byteorder, backing_type, size)
+            format!("span.read_{byteorder}<{backing_type}, {size}>()")
         };
 
         let chunk = std::mem::take(&mut self.chunk);
@@ -498,7 +497,7 @@ impl<'a> Decoder<'a> {
             let v = if chunk.len() == 1 && *shift == 0 {
                 value.clone()
             } else {
-                format!("({} >> {}) & {}", value, shift, mask(*width))
+                format!("({value} >> {shift}) & {}", mask(*width))
             };
 
             match &field.desc {
@@ -507,17 +506,15 @@ impl<'a> Decoder<'a> {
                 }
                 ast::FieldDesc::FixedScalar { value: fixed_value, .. } => {
                     self.unchecked_append(format!(
-                        "if (static_cast<uint64_t>({}) != {:#x}) {{",
-                        v, fixed_value
+                        "if (static_cast<uint64_t>({v}) != {fixed_value:#x}) {{",
                     ));
                     self.unchecked_append("    return std::nullopt;".to_string());
                     self.unchecked_append("}".to_string());
                 }
                 ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
-                    self.unchecked_append(format!(
-                        "if ({}({}) != {}::{}) {{",
-                        enum_id, v, enum_id, tag_id
-                    ));
+                    self.unchecked_append(
+                        format!("if ({enum_id}({v}) != {enum_id}::{tag_id}) {{",),
+                    );
                     self.unchecked_append("    return std::nullopt;".to_string());
                     self.unchecked_append("}".to_string());
                 }
@@ -537,23 +534,22 @@ impl<'a> Decoder<'a> {
                             self.unchecked_append(format!("if (!IsValid{type_id}(raw_{id})) {{"));
                             self.unchecked_append("   return std::nullopt;".to_string());
                             self.unchecked_append("}".to_string());
-                            self.unchecked_append(format!("output.{id}_ = {type_id}(raw_{id});",));
+                            self.unchecked_append(format!("output.{id}_ = {type_id}(raw_{id});"));
                         }
                         _ => {
-                            self.unchecked_append(format!("output.{id}_ = {v};",));
+                            self.unchecked_append(format!("output.{id}_ = {v};"));
                         }
                     }
                 }
                 ast::FieldDesc::Size { field_id, .. } => {
                     let field_name = if field_id == "_payload_" { "payload" } else { field_id };
-                    self.unchecked_append(format!("size_t {}_size_ = {};", field_name, v));
+                    self.unchecked_append(format!("size_t {field_name}_size_ = {v};"));
                 }
                 ast::FieldDesc::Count { field_id, .. } => {
-                    self.unchecked_append(format!("output.{field_id}_count_ = {v};",));
+                    self.unchecked_append(format!("output.{field_id}_count_ = {v};"));
                 }
                 ast::FieldDesc::ElementSize { field_id, .. } => {
-                    let field_name = if field_id == "_payload_" { "payload" } else { field_id };
-                    self.unchecked_append(format!("output.{field_name}_element_size_ = {v};",));
+                    self.unchecked_append(format!("output.{field_id}_element_size_ = {v};"));
                 }
                 ast::FieldDesc::Flag { id, .. } => {
                     self.unchecked_append(format!("uint8_t {id} = {v};"));
@@ -649,14 +645,14 @@ impl<'a> Decoder<'a> {
                     self.append("    }".to_string());
                     if is_open {
                         self.append(format!(
-                            "    output.{id}_ = {}(span.read_{}<{}, {}>());",
-                            type_id, byteorder, backing_type, size
+                            "    output.{id}_ = {type_id}(span.read_{byteorder}<{}, {}>());",
+                            backing_type, size
                         ));
                         self.append("}".to_string());
                     } else {
                         self.append(format!(
-                            "    auto raw_value = span.read_{}<{}, {}>();",
-                            byteorder, backing_type, size
+                            "    auto raw_value = span.read_{byteorder}<{}, {}>();",
+                            backing_type, size
                         ));
                         self.append(format!("    if (!IsValid{type_id}(raw_value)) {{"));
                         self.append("       return std::nullopt;".to_string());
@@ -881,9 +877,9 @@ impl<'a> Decoder<'a> {
             } else {
                 format!("({} {})", size_expr, inverted_modifier)
             };
-            self.append(format!("if (span.size() < {}) return std::nullopt;", actual_size));
-            self.append(format!("output.payload_ = span.subrange(0, {}){};", actual_size, bytes));
-            self.append(format!("span.skip({});", actual_size));
+            self.append(format!("if (span.size() < {actual_size}) return std::nullopt;"));
+            self.append(format!("output.payload_ = span.subrange(0, {actual_size}){};", bytes));
+            self.append(format!("span.skip({actual_size});"));
         } else {
             let trailing_size = self.get_trailing_size(decl, field).unwrap_or(0);
             if trailing_size > 0 {
@@ -1246,7 +1242,7 @@ impl<'a> Encoder<'a> {
     fn append(&mut self, line: &str) {
         let prefix = "    ".repeat(self.indent_level);
         for l in line.lines() {
-            self.code.push(format!("{}{}", prefix, l));
+            self.code.push(format!("{prefix}{l}"));
         }
     }
 
@@ -1427,7 +1423,7 @@ impl<'a> Encoder<'a> {
                 self.values.push((format!("{:#x}", value), shift));
             }
             ast::FieldDesc::FixedEnum { enum_id, tag_id, .. } => {
-                self.values.push((format!("{}::{}", enum_id, tag_id), shift));
+                self.values.push((format!("{enum_id}::{tag_id}"), shift));
             }
             ast::FieldDesc::Typedef { id, type_id, .. } => {
                 let type_decl = self.scope.typedef.get(type_id).unwrap();
@@ -1619,7 +1615,8 @@ impl<'a> Encoder<'a> {
                     match &td.desc {
                         ast::DeclDesc::Enum { width, .. } => {
                             let ty = get_cxx_scalar_type(*width);
-                            self.append(&format!("pdl::packet::Builder::write_{byteorder}<{ty}, {}>(output, {ty}(element));", width / 8));
+                            let size = width / 8;
+                            self.append(&format!("pdl::packet::Builder::write_{byteorder}<{ty}, {size}>(output, {ty}(element));"));
                         }
                         _ => {
                             self.append("if (!element.Serialize(output)) {");
@@ -1629,8 +1626,9 @@ impl<'a> Encoder<'a> {
                     }
                 } else {
                     let element_width = width.unwrap();
-                    let backing_type = get_cxx_scalar_type(element_width);
-                    self.append(&format!("pdl::packet::Builder::write_{byteorder}<{}, {}>(output, static_cast<{}>(element));", backing_type, element_width / 8, backing_type));
+                    let ty = get_cxx_scalar_type(element_width);
+                    let size = element_width / 8;
+                    self.append(&format!("pdl::packet::Builder::write_{byteorder}<{ty}, {size}>(output, {ty}(element));"));
                 }
 
                 self.unindent();
@@ -1679,7 +1677,7 @@ fn generate_packet_view(
     let id = decl.id().unwrap();
     let parent_id = decl.parent_id();
     let parent_class =
-        parent_id.map(|p| format!("{}View", p)).unwrap_or_else(|| "pdl::packet::slice".to_string());
+        parent_id.map(|p| format!("{p}View")).unwrap_or_else(|| "pdl::packet::slice".to_string());
     let bytes_initializer = if parent_id.is_some() { "parent.bytes_" } else { "parent" };
     let endianness = scope.file.endianness.value;
     let byteorder = match endianness {
@@ -1707,19 +1705,14 @@ fn generate_packet_view(
             match &field.desc {
                 ast::FieldDesc::Typedef { type_id, .. } => {
                     field_accessors.push(format!(
-                        "    {} Get{}() const {{ return {}::{}; }}\n",
-                        type_id,
-                        accessor_name,
-                        type_id,
+                        "    {type_id} Get{accessor_name}() const {{ return {type_id}::{}; }}\n",
                         constraint.tag_id.as_ref().unwrap()
                     ));
                 }
                 ast::FieldDesc::Scalar { width, .. } => {
                     let ty = get_cxx_scalar_type(*width);
                     field_accessors.push(format!(
-                        "    {} Get{}() const {{ return {}; }}\n",
-                        ty,
-                        accessor_name,
+                        "    {ty} Get{accessor_name}() const {{ return {}; }}\n",
                         constraint.value.unwrap()
                     ));
                 }
@@ -1737,16 +1730,16 @@ fn generate_packet_view(
                 ));
             }
             ast::FieldDesc::Array { id, type_id, width, size, .. } => {
-                field_members.push(format!("pdl::packet::slice {}_;", id));
+                field_members.push(format!("pdl::packet::slice {id}_;"));
                 let accessor_name = id.to_upper_camel_case();
                 let element_type = type_id
                     .as_deref()
                     .map(|t| t.to_string())
                     .unwrap_or_else(|| get_cxx_scalar_type(width.unwrap()));
                 let array_type = if let Some(s) = size {
-                    format!("std::array<{}, {}>", element_type, s)
+                    format!("std::array<{element_type}, {s}>")
                 } else {
-                    format!("std::vector<{}>", element_type)
+                    format!("std::vector<{element_type}>")
                 };
 
                 let is_dynamic_element_size = matches!(
@@ -1754,59 +1747,52 @@ fn generate_packet_view(
                     analyzer::ElementSize::Dynamic
                 );
                 let mut accessor_code = Vec::new();
-                accessor_code.push(format!("pdl::packet::slice span = {}_;", id));
+                accessor_code.push(format!("pdl::packet::slice span = {id}_;"));
                 if let Some(s) = size {
-                    accessor_code.push(format!("{} elements;", array_type));
-                    accessor_code.push(format!("for (int n = 0; n < {}; n++) {{", s));
+                    accessor_code.push(format!("{array_type} elements;"));
+                    accessor_code.push(format!("for (int n = 0; n < {s}; n++) {{"));
                     if is_dynamic_element_size {
                         let tid = type_id.as_deref().unwrap();
                         accessor_code.push(format!(
-                            "    auto element_span = span.subrange(0, {}_element_size_);",
-                            id
+                            "    auto element_span = span.subrange(0, {id}_element_size_);",
                         ));
                         let decode = format!("{tid}::Decode(element_span)");
                         accessor_code.push(format!(
                             "    if (auto element = {decode}) elements[n] = std::move(*element);"
                         ));
-                        accessor_code.push(format!("    span.skip({}_element_size_);", id));
+                        accessor_code.push(format!("    span.skip({id}_element_size_);"));
                     } else if let Some(tid) = type_id {
                         let td = scope.typedef.get(tid).unwrap();
                         match &td.desc {
                             ast::DeclDesc::Enum { width, .. } => {
-                                let backing_type = get_cxx_scalar_type(*width);
+                                let ty = get_cxx_scalar_type(*width);
                                 accessor_code.push(format!(
-                                    "    elements[n] = {}(span.read_{}<{}, {}>());",
-                                    tid,
-                                    byteorder,
-                                    backing_type,
+                                    "    elements[n] = {tid}(span.read_{byteorder}<{ty}, {}>());",
                                     width / 8
                                 ));
                             }
                             _ => {
-                                let decode = format!("{tid}::Decode(span)");
                                 accessor_code.push(format!(
-                                    "    if (auto element = {decode}) elements[n] = std::move(*element);"
+                                    "    if (auto element = {tid}::Decode(span)) elements[n] = std::move(*element);"
                                 ));
                             }
                         }
                     } else {
                         let element_width = width.unwrap();
-                        let backing_type = get_cxx_scalar_type(element_width);
+                        let ty = get_cxx_scalar_type(element_width);
                         accessor_code.push(format!(
-                            "    elements[n] = span.read_{}<{}, {}>();",
-                            byteorder,
-                            backing_type,
+                            "    elements[n] = span.read_{byteorder}<{ty}, {}>();",
                             element_width / 8
                         ));
                     }
                     accessor_code.push("}".to_string());
                 } else {
-                    accessor_code.push(format!("{} elements;", array_type));
+                    accessor_code.push(format!("{array_type} elements;"));
                     let mut count_limit = "span.size() > 0".to_string();
                     for f in &all_fields {
                         if let ast::FieldDesc::Count { field_id, .. } = &f.desc {
                             if field_id == id {
-                                count_limit = format!("elements.size() < {}_count_", id);
+                                count_limit = format!("elements.size() < {id}_count_");
                                 break;
                             }
                         }
@@ -1824,7 +1810,7 @@ fn generate_packet_view(
                         accessor_code.push("    if (!element.has_value()) break;".to_string());
                         accessor_code
                             .push("    elements.emplace_back(std::move(*element));".to_string());
-                        accessor_code.push(format!("    span.skip({}_element_size_);", id));
+                        accessor_code.push(format!("    span.skip({id}_element_size_);"));
                         accessor_code.push("}".to_string());
                     } else if let Some(tid) = type_id {
                         let td = scope.typedef.get(tid).unwrap();
@@ -1832,13 +1818,11 @@ fn generate_packet_view(
                             ast::DeclDesc::Enum { width, .. } => {
                                 let backing_type = get_cxx_scalar_type(*width);
                                 accessor_code.push(format!(
-                                    "while ({} && span.size() >= {}) {{",
-                                    count_limit,
+                                    "while ({count_limit} && span.size() >= {}) {{",
                                     width / 8
                                 ));
                                 accessor_code.push(format!(
-                                    "    elements.push_back({}(span.read_{}<{}, {}>()));",
-                                    tid,
+                                    "    elements.push_back({tid}(span.read_{}<{}, {}>()));",
                                     byteorder,
                                     backing_type,
                                     width / 8
@@ -1846,9 +1830,9 @@ fn generate_packet_view(
                                 accessor_code.push("}".to_string());
                             }
                             _ => {
-                                accessor_code.push(format!("while ({}) {{", count_limit));
-                                let decode = format!("{tid}::Decode(span)");
-                                accessor_code.push(format!("    auto element = {decode};"));
+                                accessor_code.push(format!("while ({count_limit}) {{"));
+                                accessor_code
+                                    .push(format!("    auto element = {tid}::Decode(span);"));
                                 accessor_code
                                     .push("    if (!element.has_value()) break;".to_string());
                                 accessor_code.push(
@@ -1861,8 +1845,7 @@ fn generate_packet_view(
                         let element_width = width.unwrap();
                         let backing_type = get_cxx_scalar_type(element_width);
                         accessor_code.push(format!(
-                            "while ({} && span.size() >= {}) {{",
-                            count_limit,
+                            "while ({count_limit} && span.size() >= {}) {{",
                             element_width / 8
                         ));
                         accessor_code.push(format!(
@@ -1877,9 +1860,7 @@ fn generate_packet_view(
                 accessor_code.push("return elements;".to_string());
 
                 field_accessors.push(format!(
-                    "    {} Get{}() const {{\n{}\n    }}\n",
-                    array_type,
-                    accessor_name,
+                    "    {array_type} Get{accessor_name}() const {{\n{}\n    }}\n",
                     indent(&accessor_code.join("\n"), 2)
                 ));
             }
@@ -1887,16 +1868,14 @@ fn generate_packet_view(
                 let ty = get_cxx_scalar_type(*width);
                 let accessor_name = id.to_upper_camel_case();
                 if field.cond.is_some() {
-                    field_members.push(format!("std::optional<{}> {}_;", ty, id));
+                    field_members.push(format!("std::optional<{ty}> {id}_;"));
                     field_accessors.push(format!(
-                        "    std::optional<{}> Get{}() const {{ return {}_; }}\n",
-                        ty, accessor_name, id
+                        "    std::optional<{ty}> Get{accessor_name}() const {{ return {id}_; }}\n",
                     ));
                 } else {
-                    field_members.push(format!("{} {}_;", ty, id));
+                    field_members.push(format!("{ty} {id}_;"));
                     field_accessors.push(format!(
-                        "    {} Get{}() const {{ return {}_; }}\n",
-                        ty, accessor_name, id
+                        "    {ty} Get{accessor_name}() const {{ return {id}_; }}\n",
                     ));
                 }
             }
@@ -1904,29 +1883,22 @@ fn generate_packet_view(
                 let ty = type_id;
                 let accessor_name = id.to_upper_camel_case();
                 if field.cond.is_some() {
-                    field_members.push(format!("std::optional<{}> {}_;", ty, id));
+                    field_members.push(format!("std::optional<{ty}> {id}_;"));
                     field_accessors.push(format!(
-                        "    std::optional<{}> Get{}() const {{ return {}_; }}\n",
-                        ty, accessor_name, id
+                        "    std::optional<{ty}> Get{accessor_name}() const {{ return {id}_; }}\n",
                     ));
                 } else {
                     let type_decl = scope.typedef.get(type_id).unwrap();
                     if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
-                        field_members.push(format!(
-                            "{} {}_{{{}}};",
-                            ty,
-                            id,
-                            default_enum_value(ty, tags)
-                        ));
+                        field_members
+                            .push(format!("{ty} {id}_{{{}}};", default_enum_value(ty, tags)));
                         field_accessors.push(format!(
-                            "    {} Get{}() const {{ return {}_; }}\n",
-                            ty, accessor_name, id
+                            "    {ty} Get{accessor_name}() const {{ return {id}_; }}\n",
                         ));
                     } else {
-                        field_members.push(format!("{} {}_;", ty, id));
+                        field_members.push(format!("{ty} {id}_;"));
                         field_accessors.push(format!(
-                            "    {} const& Get{}() const {{ return {}_; }}\n",
-                            ty, accessor_name, id
+                            "    {ty} const& Get{accessor_name}() const {{ return {id}_; }}\n",
                         ));
                     }
                 }
@@ -1936,12 +1908,11 @@ fn generate_packet_view(
             ast::FieldDesc::Size { .. } => {}
             ast::FieldDesc::Count { field_id, width, .. } => {
                 let ty = get_cxx_scalar_type(*width);
-                field_members.push(format!("{} {}_count_ {{0}};", ty, field_id));
+                field_members.push(format!("{ty} {field_id}_count_ {{0}};"));
             }
             ast::FieldDesc::ElementSize { field_id, width, .. } => {
                 let ty = get_cxx_scalar_type(*width);
-                let field_name = if field_id == "_payload_" { "payload" } else { field_id };
-                field_members.push(format!("{} {}_element_size_ {{0}};", ty, field_name));
+                field_members.push(format!("{ty} {field_id}_element_size_ {{0}};"));
             }
             _ => {}
         }
@@ -1953,7 +1924,7 @@ fn generate_packet_view(
         if !unconstrained_parent_fields.is_empty() {
             for f in unconstrained_parent_fields {
                 if let Some(id) = f.id() {
-                    field_parsers.push(format!("output.{}_ = parent.{}_;", id, id));
+                    field_parsers.push(format!("output.{id}_ = parent.{id}_;"));
                 }
             }
         }
@@ -1982,7 +1953,7 @@ fn generate_packet_view(
 
     if trailing_size_check {
         let span = if parent_id.is_some() { "parent.payload_" } else { "parent" };
-        field_parsers.push(format!("pdl::packet::slice span = {};", span));
+        field_parsers.push(format!("pdl::packet::slice span = {span};"));
     }
 
     if decl.fields().next().is_some() {
@@ -2000,7 +1971,7 @@ fn generate_packet_view(
 
     let friend_classes = scope
         .iter_children(decl)
-        .filter_map(|child| child.id().map(|id| format!("friend class {}View;", id)))
+        .filter_map(|child| child.id().map(|id| format!("friend class {id}View;")))
         .collect::<Vec<_>>();
 
     format!(
@@ -2047,7 +2018,7 @@ fn generate_packet_builder(
     decl: &ast::Decl,
 ) -> String {
     let id = decl.id().unwrap();
-    let class_name = format!("{}Builder", id);
+    let class_name = format!("{id}Builder");
     let endianness = scope.file.endianness.value;
 
     let mut field_members = Vec::new();
@@ -2082,45 +2053,41 @@ fn generate_packet_builder(
                     .map(|t| t.to_string())
                     .unwrap_or_else(|| get_cxx_scalar_type(width.unwrap()));
                 if let Some(s) = size {
-                    field_members.push(format!("std::array<{}, {}> {}_;", element_type, s, id));
-                    constructor_params.push(format!("std::array<{}, {}> {}", element_type, s, id));
+                    field_members.push(format!("std::array<{element_type}, {s}> {id}_;"));
+                    constructor_params.push(format!("std::array<{element_type}, {s}> {id}"));
                 } else {
-                    field_members.push(format!("std::vector<{}> {}_;", element_type, id));
-                    constructor_params.push(format!("std::vector<{}> {}", element_type, id));
+                    field_members.push(format!("std::vector<{element_type}> {id}_;"));
+                    constructor_params.push(format!("std::vector<{element_type}> {id}"));
                 }
-                constructor_inits.push(format!("{0}_(std::move({0}))", id));
+                constructor_inits.push(format!("{id}_(std::move({id}))"));
             }
             ast::FieldDesc::Scalar { id, width } => {
                 let ty = get_cxx_scalar_type(*width);
                 if field.cond.is_some() {
-                    field_members.push(format!("std::optional<{}> {}_;", ty, id));
-                    constructor_params.push(format!("std::optional<{}> {}", ty, id));
+                    field_members.push(format!("std::optional<{ty}> {id}_;"));
+                    constructor_params.push(format!("std::optional<{ty}> {id}"));
                 } else {
-                    field_members.push(format!("{} {}_{{0}};", ty, id));
-                    constructor_params.push(format!("{} {}", ty, id));
+                    field_members.push(format!("{ty} {id}_{{0}};"));
+                    constructor_params.push(format!("{ty} {id}"));
                 }
-                constructor_inits.push(format!("{0}_(std::move({0}))", id));
+                constructor_inits.push(format!("{id}_(std::move({id}))"));
             }
             ast::FieldDesc::Typedef { id, type_id, .. } => {
                 let ty = type_id;
                 if field.cond.is_some() {
-                    field_members.push(format!("std::optional<{}> {}_;", ty, id));
-                    constructor_params.push(format!("std::optional<{}> {}", ty, id));
+                    field_members.push(format!("std::optional<{ty}> {id}_;"));
+                    constructor_params.push(format!("std::optional<{ty}> {id}"));
                 } else {
                     let type_decl = scope.typedef.get(type_id).unwrap();
                     if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
-                        field_members.push(format!(
-                            "{} {}_{{{}}};",
-                            ty,
-                            id,
-                            default_enum_value(ty, tags)
-                        ));
+                        field_members
+                            .push(format!("{ty} {id}_{{{}}};", default_enum_value(ty, tags)));
                     } else {
-                        field_members.push(format!("{} {}_;", ty, id));
+                        field_members.push(format!("{ty} {id}_;"));
                     }
-                    constructor_params.push(format!("{} {}", ty, id));
+                    constructor_params.push(format!("{ty} {id}"));
                 }
-                constructor_inits.push(format!("{0}_(std::move({0}))", id));
+                constructor_inits.push(format!("{id}_(std::move({id}))"));
             }
             // Size, count, and element size values are computed
             // when serializing the packet.
@@ -2146,11 +2113,10 @@ fn generate_packet_builder(
 
     let field_serializers = serializer.code;
     let constructor = if constructor_params.is_empty() {
-        format!("    {0}() = default;", class_name)
+        format!("    {class_name}() = default;")
     } else {
         format!(
-            "    {0}() = default;\n    explicit {0}({1}) : {2} {{}}",
-            class_name,
+            "    {class_name}() = default;\n    explicit {class_name}({}) : {} {{}}",
             constructor_params.join(", "),
             constructor_inits.join(", ")
         )
@@ -2216,57 +2182,52 @@ fn generate_struct_declaration(
                     .map(|t| t.to_string())
                     .unwrap_or_else(|| get_cxx_scalar_type(width.unwrap()));
                 if let Some(s) = size {
-                    field_members.push(format!("std::array<{}, {}> {}_;", element_type, s, id));
-                    constructor_params.push(format!("std::array<{}, {}> {}", element_type, s, id));
+                    field_members.push(format!("std::array<{element_type}, {s}> {id}_;"));
+                    constructor_params.push(format!("std::array<{element_type}, {s}> {id}"));
                 } else {
-                    field_members.push(format!("std::vector<{}> {}_;", element_type, id));
-                    constructor_params.push(format!("std::vector<{}> {}", element_type, id));
+                    field_members.push(format!("std::vector<{element_type}> {id}_;"));
+                    constructor_params.push(format!("std::vector<{element_type}> {id}"));
                 }
-                constructor_inits.push(format!("{0}_(std::move({0}))", id));
+                constructor_inits.push(format!("{id}_(std::move({id}))"));
             }
             ast::FieldDesc::Scalar { id, width } => {
                 let ty = get_cxx_scalar_type(*width);
                 if field.cond.is_some() {
-                    field_members.push(format!("std::optional<{}> {}_;", ty, id));
-                    constructor_params.push(format!("std::optional<{}> {}", ty, id));
+                    field_members.push(format!("std::optional<{ty}> {id}_;"));
+                    constructor_params.push(format!("std::optional<{ty}> {id}"));
                 } else {
-                    field_members.push(format!("{} {}_{{0}};", ty, id));
-                    constructor_params.push(format!("{} {}", ty, id));
+                    field_members.push(format!("{ty} {id}_{{0}};"));
+                    constructor_params.push(format!("{ty} {id}"));
                 }
-                constructor_inits.push(format!("{0}_(std::move({0}))", id));
+                constructor_inits.push(format!("{id}_(std::move({id}))"));
             }
             ast::FieldDesc::Typedef { id, type_id, .. } => {
                 let ty = type_id;
                 if field.cond.is_some() {
-                    field_members.push(format!("std::optional<{}> {}_;", ty, id));
-                    constructor_params.push(format!("std::optional<{}> {}", ty, id));
+                    field_members.push(format!("std::optional<{ty}> {id}_;"));
+                    constructor_params.push(format!("std::optional<{ty}> {id}"));
                 } else {
                     let type_decl = scope.typedef.get(type_id).unwrap();
                     if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
-                        field_members.push(format!(
-                            "{} {}_{{{}}};",
-                            ty,
-                            id,
-                            default_enum_value(ty, tags)
-                        ));
+                        field_members
+                            .push(format!("{ty} {id}_{{{}}};", default_enum_value(ty, tags)));
                     } else {
-                        field_members.push(format!("{} {}_;", ty, id));
+                        field_members.push(format!("{ty} {id}_;"));
                     }
-                    constructor_params.push(format!("{} {}", ty, id));
+                    constructor_params.push(format!("{ty} {id}"));
                 }
-                constructor_inits.push(format!("{0}_(std::move({0}))", id));
+                constructor_inits.push(format!("{id}_(std::move({id}))"));
             }
             // Size fields are never required in the generated views.
             // The slice already contains the length indication.
             ast::FieldDesc::Size { .. } => {}
             ast::FieldDesc::Count { field_id, width, .. } => {
                 let ty = get_cxx_scalar_type(*width);
-                field_members.push(format!("{} {}_count_ {{0}};", ty, field_id));
+                field_members.push(format!("{ty} {field_id}_count_ {{0}};"));
             }
             ast::FieldDesc::ElementSize { field_id, width, .. } => {
                 let ty = get_cxx_scalar_type(*width);
-                let field_name = if field_id == "_payload_" { "payload" } else { field_id };
-                field_members.push(format!("{} {}_element_size_ {{0}};", ty, field_name));
+                field_members.push(format!("{ty} {field_id}_element_size_ {{0}};"));
             }
             _ => {}
         }
