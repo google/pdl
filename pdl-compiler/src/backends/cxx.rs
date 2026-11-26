@@ -389,6 +389,21 @@ fn get_all_parent_fields<'a>(
     fields
 }
 
+/// Return the condition under which the value `v` of the field `field`
+/// violates a constraint of the child declarations `children`,
+/// or None if the field is not constrained.
+fn constraint_violation(children: &[&ast::Decl], field: &ast::Field, v: &str) -> Option<String> {
+    let id = field.id()?;
+    let constraint = children.iter().flat_map(|c| c.constraints()).find(|c| c.id == id)?;
+    match (&field.desc, &constraint.tag_id, constraint.value) {
+        (ast::FieldDesc::Typedef { type_id, .. }, Some(tag_id), _) => {
+            Some(format!("{type_id}({v}) != {type_id}::{tag_id}"))
+        }
+        (_, _, Some(value)) => Some(format!("static_cast<uint64_t>({v}) != {value:#x}")),
+        _ => None,
+    }
+}
+
 struct Decoder<'a> {
     scope: &'a analyzer::Scope<'a>,
     schema: &'a analyzer::Schema,
@@ -456,7 +471,7 @@ impl<'a> Decoder<'a> {
         self.check_code();
     }
 
-    fn decode_bit_field(&mut self, field: &'a ast::Field) {
+    fn decode_bit_field(&mut self, children: &[&'a ast::Decl], field: &'a ast::Field) {
         let width = self.schema.field_size(field.key).static_().unwrap();
         self.chunk.push((self.shift, width, field));
         self.shift += width;
@@ -500,6 +515,15 @@ impl<'a> Decoder<'a> {
             } else {
                 format!("({value} >> {shift}) & {}", mask(*width))
             };
+
+            // Fields constrained by a child declaration are checked
+            // against the constraint value instead of being stored.
+            if let Some(violation) = constraint_violation(children, field, &v) {
+                self.unchecked_append(format!("if ({violation}) {{"));
+                self.unchecked_append("    return std::nullopt;".to_string());
+                self.unchecked_append("}".to_string());
+                continue;
+            }
 
             match &field.desc {
                 ast::FieldDesc::Scalar { id, .. } => {
@@ -1156,7 +1180,7 @@ impl<'a> Decoder<'a> {
     ) {
         match &field.desc {
             _ if field.cond.is_some() => self.decode_optional_field(field),
-            _ if self.scope.is_bitfield(field) => self.decode_bit_field(field),
+            _ if self.scope.is_bitfield(field) => self.decode_bit_field(children, field),
             ast::FieldDesc::Array { id, type_id, size_modifier, .. } => {
                 self.check_code();
                 let padded_size = self.schema.padded_size(field.key);
@@ -1331,7 +1355,9 @@ impl<'a> Encoder<'a> {
                 }
                 ast::FieldDesc::Typedef { id, type_id, .. } => {
                     let type_decl = self.scope.typedef.get(type_id).unwrap();
-                    match (self.schema.decl_size(type_decl.key), &f.cond) {
+                    // The total size includes the fields of the parent declarations
+                    // of child structs.
+                    match (self.schema.total_size(type_decl.key), &f.cond) {
                         (analyzer::Size::Static(width), Some(_)) => {
                             packet_size += format!("({id}_.has_value() ? {} : 0)", width / 8)
                         }
