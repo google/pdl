@@ -453,6 +453,7 @@ impl<'a> Decoder<'a> {
         for field in decl.fields() {
             self.decode_field(decl, children, field);
         }
+        self.check_code();
     }
 
     fn decode_bit_field(&mut self, field: &'a ast::Field) {
@@ -545,8 +546,14 @@ impl<'a> Decoder<'a> {
                     let field_name = if field_id == "_payload_" { "payload" } else { field_id };
                     self.unchecked_append(format!("size_t {field_name}_size_ = {v};"));
                 }
+                ast::FieldDesc::Count { field_id, .. } if self.extract_arrays => {
+                    self.unchecked_append(format!("size_t {field_id}_count_ = {v};"));
+                }
                 ast::FieldDesc::Count { field_id, .. } => {
                     self.unchecked_append(format!("output.{field_id}_count_ = {v};"));
+                }
+                ast::FieldDesc::ElementSize { field_id, .. } if self.extract_arrays => {
+                    self.unchecked_append(format!("size_t {field_id}_element_size_ = {v};"));
                 }
                 ast::FieldDesc::ElementSize { field_id, .. } => {
                     self.unchecked_append(format!("output.{field_id}_element_size_ = {v};"));
@@ -927,8 +934,8 @@ impl<'a> Decoder<'a> {
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicCount) => {
-                self.check_size(&format!("{element_size} * output.{id}_count_"));
-                self.append(format!("for (size_t n = 0; n < output.{id}_count_; n++) {{"));
+                self.check_size(&format!("{element_size} * {id}_count_"));
+                self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 let out = self.decode_array_element(field, "span".to_string());
                 self.append(format!("    output.{id}_.push_back({out});"));
                 self.append("}".to_string());
@@ -958,35 +965,35 @@ impl<'a> Decoder<'a> {
             }
 
             (ElementSize::Dynamic, ArraySize::StaticCount(count)) => {
-                self.check_size(&format!("output.{id}_element_size_ * {count}"));
+                self.check_size(&format!("{id}_element_size_ * {count}"));
                 self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
-                self.append(format!("    auto element_span = span.subrange(n * output.{id}_element_size_, output.{id}_element_size_);"));
+                self.append(format!("    auto element_span = span.subrange(n * {id}_element_size_, {id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
                 self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
-                self.append(format!("span.skip(output.{id}_element_size_ * {count});"));
+                self.append(format!("span.skip({id}_element_size_ * {count});"));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicCount) => {
-                self.check_size(&format!("output.{id}_element_size_ * output.{id}_count_"));
-                self.append(format!("for (size_t n = 0; n < output.{id}_count_; n++) {{"));
-                self.append(format!("    auto element_span = span.subrange(n * output.{id}_element_size_, output.{id}_element_size_);"));
+                self.check_size(&format!("{id}_element_size_ * {id}_count_"));
+                self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
+                self.append(format!("    auto element_span = span.subrange(n * {id}_element_size_, {id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
                 self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
-                self.append(format!("span.skip(output.{id}_element_size_ * output.{id}_count_);"));
+                self.append(format!("span.skip({id}_element_size_ * {id}_count_);"));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
                 self.append(format!(
-                    "if (output.{id}_element_size_ == 0 || ({id}_size_ % output.{id}_element_size_) != 0) {{"
+                    "if ({id}_element_size_ == 0 || ({id}_size_ % {id}_element_size_) != 0) {{"
                 ));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("auto {id}_count_ = {id}_size_ / output.{id}_element_size_;"));
+                self.append(format!("auto {id}_count_ = {id}_size_ / {id}_element_size_;"));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
-                self.append(format!("    auto element_span = span.subrange(n * output.{id}_element_size_, output.{id}_element_size_);"));
+                self.append(format!("    auto element_span = span.subrange(n * {id}_element_size_, {id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
                 self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
@@ -994,12 +1001,14 @@ impl<'a> Decoder<'a> {
             }
 
             (ElementSize::Dynamic, ArraySize::Unknown) => {
-                self.append(format!("if (output.{id}_element_size_ == 0 || (span.size() % output.{id}_element_size_) != 0) {{"));
+                self.append(format!(
+                    "if ({id}_element_size_ == 0 || (span.size() % {id}_element_size_) != 0) {{"
+                ));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("auto {id}_count_ = span.size() / output.{id}_element_size_;"));
+                self.append(format!("auto {id}_count_ = span.size() / {id}_element_size_;"));
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
-                self.append(format!("    auto element_span = span.subrange(n * output.{id}_element_size_, output.{id}_element_size_);"));
+                self.append(format!("    auto element_span = span.subrange(n * {id}_element_size_, {id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
                 self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
@@ -1020,7 +1029,7 @@ impl<'a> Decoder<'a> {
 
             (ElementSize::Unknown, ArraySize::DynamicCount) => {
                 let tid = type_id.unwrap();
-                self.append(format!("for (size_t n = 0; n < output.{id}_count_; n++) {{"));
+                self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 let decode = format!("{tid}::Decode(span)");
                 self.append(format!("    auto out = {decode};"));
                 self.append("    if (!out.has_value()) {".to_string());
@@ -1159,10 +1168,6 @@ impl<'a> Decoder<'a> {
             ast::FieldDesc::Checksum { .. } => {}
             _ => unreachable!(),
         }
-    }
-
-    fn done(&mut self) {
-        self.check_code();
     }
 }
 
@@ -1676,9 +1681,6 @@ fn generate_packet_view(
 ) -> String {
     let id = decl.id().unwrap();
     let parent_id = decl.parent_id();
-    let parent_class =
-        parent_id.map(|p| format!("{p}View")).unwrap_or_else(|| "pdl::packet::slice".to_string());
-    let bytes_initializer = if parent_id.is_some() { "parent.bytes_" } else { "parent" };
     let endianness = scope.file.endianness.value;
     let byteorder = match endianness {
         ast::EndiannessValue::LittleEndian => "le",
@@ -1957,10 +1959,9 @@ fn generate_packet_view(
     }
 
     if decl.fields().next().is_some() {
-        let mut parser = Decoder::new(scope, schema, endianness, false);
-        parser.decode(decl, &[]);
-        parser.done();
-        field_parsers.extend(parser.code);
+        let mut decoder = Decoder::new(scope, schema, endianness, false);
+        decoder.decode(decl, &[]);
+        field_parsers.extend(decoder.code);
     }
 
     if trailing_size_check {
@@ -1974,14 +1975,15 @@ fn generate_packet_view(
         .filter_map(|child| child.id().map(|id| format!("friend class {id}View;")))
         .collect::<Vec<_>>();
 
-    format!(
-        r#"
+    if let Some(parent_id) = parent_id {
+        format!(
+            r#"
 class {id}View {{
 public:
-    // Decode the packet from the {decode_input}.
+    // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
-    static std::optional<{id}View> Decode({parent_class} const& parent) {{
-        {id}View output({bytes_initializer});
+    static std::optional<{id}View> Decode({parent_id}View const& parent) {{
+        {id}View output(parent.bytes_);
 {field_parsers}
         return output;
     }}
@@ -2002,16 +2004,48 @@ protected:
 {friend_classes}
 }};
 "#,
-        id = id,
-        parent_class = parent_class,
-        bytes_initializer = bytes_initializer,
-        decode_input = if parent_id.is_some() { "parent packet view" } else { "packet bytes" },
-        field_parsers = indent(&field_parsers.join("\n"), 2),
-        field_members = indent(&field_members.join("\n"), 1),
-        field_accessors = field_accessors.join("\n"),
-        friend_classes = indent(&friend_classes.join("\n"), 1)
-    )
+            field_parsers = indent(&field_parsers.join("\n"), 2),
+            field_members = indent(&field_members.join("\n"), 1),
+            field_accessors = field_accessors.join("\n"),
+            friend_classes = indent(&friend_classes.join("\n"), 1)
+        )
+    } else {
+        format!(
+            r#"
+class {id}View {{
+public:
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<{id}View> Decode(pdl::packet::slice const& parent) {{
+        {id}View output(parent);
+{field_parsers}
+        return output;
+    }}
+
+{field_accessors}
+    std::string ToString() const {{ return ""; }}
+
+    pdl::packet::slice bytes() const {{
+        return bytes_;
+    }}
+
+protected:
+    explicit {id}View(pdl::packet::slice const& bytes) : bytes_(bytes) {{}}
+
+    pdl::packet::slice bytes_;
+{field_members}
+
+{friend_classes}
+}};
+"#,
+            field_parsers = indent(&field_parsers.join("\n"), 2),
+            field_members = indent(&field_members.join("\n"), 1),
+            field_accessors = field_accessors.join("\n"),
+            friend_classes = indent(&friend_classes.join("\n"), 1)
+        )
+    }
 }
+
 fn generate_packet_builder(
     scope: &analyzer::Scope,
     schema: &analyzer::Schema,
@@ -2158,97 +2192,86 @@ fn generate_struct_declaration(
     decl: &ast::Decl,
 ) -> String {
     let id = decl.id().unwrap();
-    let mut field_members = Vec::new();
-    let mut constructor_params: Vec<String> = Vec::new();
-    let mut constructor_inits = Vec::new();
-    let endianness = scope.file.endianness.value;
+    let mut class_members = Vec::new();
+    let mut constructor_parameters: Vec<String> = Vec::new();
+    let mut constructor_init_list = Vec::new();
 
-    let parent_constraints = scope
-        .iter_parents_and_self(decl)
-        .flat_map(|d| d.constraints())
-        .map(|c| (c.id.to_string(), c.clone()))
-        .collect::<HashMap<_, _>>();
+    let all_constraints =
+        HashMap::from_iter(scope.iter_constraints(decl).map(|c| (c.id.to_string(), c.clone())));
 
-    for field in decl.fields() {
+    // Iterate over all named fields that are not under a constraint.
+    for field in scope
+        .iter_fields(decl)
+        .filter(|f| f.id().is_some())
+        .filter(|f| !all_constraints.contains_key(f.id().unwrap()))
+    {
         match &field.desc {
-            ast::FieldDesc::Payload { .. } => {
-                field_members.push("std::vector<uint8_t> payload_;".to_string());
-                constructor_params.push("std::vector<uint8_t> payload".to_string());
-                constructor_inits.push("payload_(std::move(payload))".to_string());
-            }
             ast::FieldDesc::Array { id, width, type_id, size, .. } => {
                 let element_type = type_id
                     .as_deref()
                     .map(|t| t.to_string())
                     .unwrap_or_else(|| get_cxx_scalar_type(width.unwrap()));
                 if let Some(s) = size {
-                    field_members.push(format!("std::array<{element_type}, {s}> {id}_;"));
-                    constructor_params.push(format!("std::array<{element_type}, {s}> {id}"));
+                    class_members.push(format!("std::array<{element_type}, {s}> {id}_;"));
+                    constructor_parameters.push(format!("std::array<{element_type}, {s}> {id}"));
                 } else {
-                    field_members.push(format!("std::vector<{element_type}> {id}_;"));
-                    constructor_params.push(format!("std::vector<{element_type}> {id}"));
+                    class_members.push(format!("std::vector<{element_type}> {id}_;"));
+                    constructor_parameters.push(format!("std::vector<{element_type}> {id}"));
                 }
-                constructor_inits.push(format!("{id}_(std::move({id}))"));
+                constructor_init_list.push(format!("{id}_(std::move({id}))"));
             }
             ast::FieldDesc::Scalar { id, width } => {
                 let ty = get_cxx_scalar_type(*width);
                 if field.cond.is_some() {
-                    field_members.push(format!("std::optional<{ty}> {id}_;"));
-                    constructor_params.push(format!("std::optional<{ty}> {id}"));
+                    class_members.push(format!("std::optional<{ty}> {id}_;"));
+                    constructor_parameters.push(format!("std::optional<{ty}> {id}"));
                 } else {
-                    field_members.push(format!("{ty} {id}_{{0}};"));
-                    constructor_params.push(format!("{ty} {id}"));
+                    class_members.push(format!("{ty} {id}_{{0}};"));
+                    constructor_parameters.push(format!("{ty} {id}"));
                 }
-                constructor_inits.push(format!("{id}_(std::move({id}))"));
+                constructor_init_list.push(format!("{id}_({id})"));
             }
             ast::FieldDesc::Typedef { id, type_id, .. } => {
                 let ty = type_id;
                 if field.cond.is_some() {
-                    field_members.push(format!("std::optional<{ty}> {id}_;"));
-                    constructor_params.push(format!("std::optional<{ty}> {id}"));
+                    class_members.push(format!("std::optional<{ty}> {id}_;"));
+                    constructor_parameters.push(format!("std::optional<{ty}> {id}"));
                 } else {
                     let type_decl = scope.typedef.get(type_id).unwrap();
                     if let ast::DeclDesc::Enum { tags, .. } = &type_decl.desc {
-                        field_members
+                        class_members
                             .push(format!("{ty} {id}_{{{}}};", default_enum_value(ty, tags)));
                     } else {
-                        field_members.push(format!("{ty} {id}_;"));
+                        class_members.push(format!("{ty} {id}_;"));
                     }
-                    constructor_params.push(format!("{ty} {id}"));
+                    constructor_parameters.push(format!("{ty} {id}"));
                 }
-                constructor_inits.push(format!("{id}_(std::move({id}))"));
+                constructor_init_list.push(format!("{id}_(std::move({id}))"));
             }
-            // Size fields are never required in the generated views.
-            // The slice already contains the length indication.
-            ast::FieldDesc::Size { .. } => {}
-            ast::FieldDesc::Count { field_id, width, .. } => {
-                let ty = get_cxx_scalar_type(*width);
-                field_members.push(format!("{ty} {field_id}_count_ {{0}};"));
-            }
-            ast::FieldDesc::ElementSize { field_id, width, .. } => {
-                let ty = get_cxx_scalar_type(*width);
-                field_members.push(format!("{ty} {field_id}_element_size_ {{0}};"));
-            }
-            _ => {}
+            // Flags have no concrete representation.
+            ast::FieldDesc::Flag { .. } => {}
+            _ => unreachable!(),
         }
+    }
+
+    // Add a concrete payload field only if the current struct declaration has one.
+    if decl.payload().is_some() {
+        class_members.push("std::vector<uint8_t> payload_;".to_string());
+        constructor_parameters.push("std::vector<uint8_t> payload".to_string());
+        constructor_init_list.push("payload_(std::move(payload))".to_string());
     }
 
     // The struct is decoded from the input span, which is updated to the
     // remaining bytes on success.
-    let mut field_parsers = Vec::new();
-    field_parsers.push("pdl::packet::slice span = parent_span;".to_string());
-    field_parsers.push(format!("{id} output;"));
-
-    let mut parser = Decoder::new(scope, schema, endianness, true);
-    parser.decode(decl, &[]);
-    parser.done();
-    field_parsers.extend(parser.code);
-    field_parsers.push("parent_span = span;".to_string());
-    field_parsers.push("return output;".to_string());
+    let field_parsers = {
+        let mut decoder = Decoder::new(scope, schema, scope.file.endianness.value, true);
+        decoder.decode(decl, &[]);
+        decoder.code
+    };
 
     let mut all_decls = scope.iter_parents_and_self(decl).collect::<Vec<_>>();
     all_decls.reverse();
-    let mut serializer = Encoder::new(scope, schema, endianness, parent_constraints);
+    let mut serializer = Encoder::new(scope, schema, scope.file.endianness.value, all_constraints);
     serializer.encode(all_decls[0], &all_decls[1..]);
     serializer.append("return true;");
 
@@ -2262,11 +2285,11 @@ fn generate_struct_declaration(
     };
 
     let field_serializers = serializer.code;
-    let constructor = if !constructor_params.is_empty() {
+    let constructor = if !constructor_parameters.is_empty() {
         format!(
-            "    explicit {id}({constructor_parameters}) : {initializer_list} {{}}",
-            constructor_parameters = constructor_params.join(", "),
-            initializer_list = constructor_inits.join(", ")
+            "    explicit {id}({constructor_parametersters}) : {constructor_init_list} {{}}",
+            constructor_parametersters = constructor_parameters.join(", "),
+            constructor_init_list = constructor_init_list.join(", ")
         )
     } else {
         String::new()
@@ -2287,7 +2310,11 @@ public:
     // Returns std::nullopt if the struct is invalid, otherwise the input
     // span is updated to the remaining bytes.
     static std::optional<{id}> Decode(pdl::packet::slice& parent_span) {{
-{struct_parse_code}
+        pdl::packet::slice span = parent_span;
+        {id} output;
+{field_parsers}
+        parent_span = span;
+        return output;
     }}
 
     bool Serialize(std::vector<uint8_t>& output) const override {{
@@ -2300,12 +2327,12 @@ public:
 
     std::string ToString() const {{ return ""; }}
 
-{field_members}
+{class_members}
 }};
 "#,
-        struct_parse_code = indent(&field_parsers.join("\n"), 2),
+        field_parsers = indent(&field_parsers.join("\n"), 2),
         field_serializers = indent(&field_serializers.join("\n"), 2),
-        field_members = indent(&field_members.join("\n"), 1)
+        class_members = indent(&class_members.join("\n"), 1)
     )
 }
 

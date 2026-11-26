@@ -181,7 +181,7 @@ public:
     SizedStruct() = default;
     SizedStruct(SizedStruct const&) = default;
     SizedStruct(SizedStruct&&) = default;
-    explicit SizedStruct(uint8_t a) : a_(std::move(a)) {}
+    explicit SizedStruct(uint8_t a) : a_(a) {}
     SizedStruct& operator=(SizedStruct const&) = default;
 
     // Decode the struct from the input span.
@@ -5078,7 +5078,7 @@ public:
     Struct_Scalar_Field() = default;
     Struct_Scalar_Field(Struct_Scalar_Field const&) = default;
     Struct_Scalar_Field(Struct_Scalar_Field&&) = default;
-    explicit Struct_Scalar_Field(uint8_t a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
+    explicit Struct_Scalar_Field(uint8_t a, uint64_t c) : a_(a), c_(c) {}
     Struct_Scalar_Field& operator=(Struct_Scalar_Field const&) = default;
 
     // Decode the struct from the input span.
@@ -5124,7 +5124,7 @@ public:
     Struct_Enum_Field_() = default;
     Struct_Enum_Field_(Struct_Enum_Field_ const&) = default;
     Struct_Enum_Field_(Struct_Enum_Field_&&) = default;
-    explicit Struct_Enum_Field_(Enum7 a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
+    explicit Struct_Enum_Field_(Enum7 a, uint64_t c) : a_(std::move(a)), c_(c) {}
     Struct_Enum_Field_& operator=(Struct_Enum_Field_ const&) = default;
 
     // Decode the struct from the input span.
@@ -5236,7 +5236,7 @@ public:
     Struct_Reserved_Field_() = default;
     Struct_Reserved_Field_(Struct_Reserved_Field_ const&) = default;
     Struct_Reserved_Field_(Struct_Reserved_Field_&&) = default;
-    explicit Struct_Reserved_Field_(uint8_t a, uint64_t c) : a_(std::move(a)), c_(std::move(c)) {}
+    explicit Struct_Reserved_Field_(uint8_t a, uint64_t c) : a_(a), c_(c) {}
     Struct_Reserved_Field_& operator=(Struct_Reserved_Field_ const&) = default;
 
     // Decode the struct from the input span.
@@ -5341,7 +5341,7 @@ public:
     Struct_Size_Field_() = default;
     Struct_Size_Field_(Struct_Size_Field_ const&) = default;
     Struct_Size_Field_(Struct_Size_Field_&&) = default;
-    explicit Struct_Size_Field_(uint64_t a, std::vector<uint8_t> b) : a_(std::move(a)), b_(std::move(b)) {}
+    explicit Struct_Size_Field_(uint64_t a, std::vector<uint8_t> b) : a_(a), b_(std::move(b)) {}
     Struct_Size_Field_& operator=(Struct_Size_Field_ const&) = default;
 
     // Decode the struct from the input span.
@@ -5460,7 +5460,7 @@ public:
     Struct_Count_Field_() = default;
     Struct_Count_Field_(Struct_Count_Field_ const&) = default;
     Struct_Count_Field_(Struct_Count_Field_&&) = default;
-    explicit Struct_Count_Field_(uint64_t a, std::vector<uint8_t> b) : a_(std::move(a)), b_(std::move(b)) {}
+    explicit Struct_Count_Field_(uint64_t a, std::vector<uint8_t> b) : a_(a), b_(std::move(b)) {}
     Struct_Count_Field_& operator=(Struct_Count_Field_ const&) = default;
 
     // Decode the struct from the input span.
@@ -5473,12 +5473,12 @@ public:
             return std::nullopt;
         }
         uint64_t chunk0 = span.read_le<uint64_t, 8>();
-        output.b_count_ = (chunk0 >> 0) & 0x7;
+        size_t b_count_ = (chunk0 >> 0) & 0x7;
         output.a_ = (chunk0 >> 3) & 0x1fffffffffffffff;
-        if (span.size() < 1 * output.b_count_) {
+        if (span.size() < 1 * b_count_) {
             return std::nullopt;
         }
-        for (size_t n = 0; n < output.b_count_; n++) {
+        for (size_t n = 0; n < b_count_; n++) {
             output.b_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
@@ -5505,7 +5505,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t b_count_ {0};
     uint64_t a_{0};
     std::vector<uint8_t> b_;
 };
@@ -5575,7 +5574,7 @@ public:
     Struct_FixedScalar_Field_() = default;
     Struct_FixedScalar_Field_(Struct_FixedScalar_Field_ const&) = default;
     Struct_FixedScalar_Field_(Struct_FixedScalar_Field_&&) = default;
-    explicit Struct_FixedScalar_Field_(uint64_t b) : b_(std::move(b)) {}
+    explicit Struct_FixedScalar_Field_(uint64_t b) : b_(b) {}
     Struct_FixedScalar_Field_& operator=(Struct_FixedScalar_Field_ const&) = default;
 
     // Decode the struct from the input span.
@@ -5678,7 +5677,7 @@ public:
     Struct_FixedEnum_Field_() = default;
     Struct_FixedEnum_Field_(Struct_FixedEnum_Field_ const&) = default;
     Struct_FixedEnum_Field_(Struct_FixedEnum_Field_&&) = default;
-    explicit Struct_FixedEnum_Field_(uint64_t b) : b_(std::move(b)) {}
+    explicit Struct_FixedEnum_Field_(uint64_t b) : b_(b) {}
     Struct_FixedEnum_Field_& operator=(Struct_FixedEnum_Field_ const&) = default;
 
     // Decode the struct from the input span.
@@ -6273,11 +6272,11 @@ public:
             return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output.array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 1 * output.array_count_) {
+        size_t array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 1 * array_count_) {
             return std::nullopt;
         }
-        for (size_t n = 0; n < output.array_count_; n++) {
+        for (size_t n = 0; n < array_count_; n++) {
             output.array_.push_back(span.read_le<uint8_t, 1>());
         }
         parent_span = span;
@@ -6301,7 +6300,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<uint8_t> array_;
 };
 
@@ -6698,11 +6696,11 @@ public:
             return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output.array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 2 * output.array_count_) {
+        size_t array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 2 * array_count_) {
             return std::nullopt;
         }
-        for (size_t n = 0; n < output.array_count_; n++) {
+        for (size_t n = 0; n < array_count_; n++) {
             output.array_.push_back(span.read_le<uint16_t, 2>());
         }
         parent_span = span;
@@ -6726,7 +6724,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<uint16_t> array_;
 };
 
@@ -7131,11 +7128,11 @@ public:
             return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output.array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 2 * output.array_count_) {
+        size_t array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 2 * array_count_) {
             return std::nullopt;
         }
-        for (size_t n = 0; n < output.array_count_; n++) {
+        for (size_t n = 0; n < array_count_; n++) {
             auto raw_value = span.read_le<uint16_t, 2>();
             if (!IsValidEnum16(raw_value)) {
                 return std::nullopt;
@@ -7163,7 +7160,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<Enum16> array_;
 };
 
@@ -7576,11 +7572,11 @@ public:
             return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output.array_count_ = (chunk0 >> 0) & 0xf;
-        if (span.size() < 1 * output.array_count_) {
+        size_t array_count_ = (chunk0 >> 0) & 0xf;
+        if (span.size() < 1 * array_count_) {
             return std::nullopt;
         }
-        for (size_t n = 0; n < output.array_count_; n++) {
+        for (size_t n = 0; n < array_count_; n++) {
             auto out = SizedStruct::Decode(span);
             if (!out.has_value()) {
                 return std::nullopt;
@@ -7610,7 +7606,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<SizedStruct> array_;
 };
 
@@ -8023,8 +8018,8 @@ public:
             return std::nullopt;
         }
         uint8_t chunk0 = span.read_le<uint8_t, 1>();
-        output.array_count_ = (chunk0 >> 0) & 0xf;
-        for (size_t n = 0; n < output.array_count_; n++) {
+        size_t array_count_ = (chunk0 >> 0) & 0xf;
+        for (size_t n = 0; n < array_count_; n++) {
             auto out = UnsizedStruct::Decode(span);
             if (!out.has_value()) {
                 return std::nullopt;
@@ -8054,7 +8049,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -8487,9 +8481,9 @@ public:
         if (span.size() < 1) {
             return std::nullopt;
         }
-        output.array_count_ = span.read_le<uint8_t, 1>();
+        size_t array_count_ = span.read_le<uint8_t, 1>();
         size_t array_start_size = span.size();
-        for (size_t n = 0; n < output.array_count_; n++) {
+        for (size_t n = 0; n < array_count_; n++) {
             auto out = UnsizedStruct::Decode(span);
             if (!out.has_value()) {
                 return std::nullopt;
@@ -8530,7 +8524,6 @@ public:
 
     std::string ToString() const { return ""; }
 
-    uint8_t array_count_ {0};
     std::vector<UnsizedStruct> array_;
 };
 
@@ -8599,7 +8592,7 @@ public:
     Struct_Optional_Scalar_Field_() = default;
     Struct_Optional_Scalar_Field_(Struct_Optional_Scalar_Field_ const&) = default;
     Struct_Optional_Scalar_Field_(Struct_Optional_Scalar_Field_&&) = default;
-    explicit Struct_Optional_Scalar_Field_(std::optional<uint32_t> a, std::optional<uint32_t> b) : a_(std::move(a)), b_(std::move(b)) {}
+    explicit Struct_Optional_Scalar_Field_(std::optional<uint32_t> a, std::optional<uint32_t> b) : a_(a), b_(b) {}
     Struct_Optional_Scalar_Field_& operator=(Struct_Optional_Scalar_Field_ const&) = default;
 
     // Decode the struct from the input span.
