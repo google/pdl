@@ -37,6 +37,8 @@ SKIPPED_TESTS = [
     "Packet_Array_Field_VariableElementSize_VariableSize",
     "Packet_Array_Field_VariableElementSize_VariableCount",
     "Packet_Array_Field_VariableElementSize_UnknownSize",
+    # Struct inheritance is not supported by the Python backend.
+    "Struct_Child_Field",
 ]
 
 

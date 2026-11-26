@@ -3146,6 +3146,110 @@ class Struct_Struct_Field(Packet):
         return self.b.size + 1
 
 @dataclass
+class Struct_Parent_(Packet):
+    a: int = field(kw_only=True, default=0)
+    b: int = field(kw_only=True, default=0)
+
+    def __post_init__(self) -> None:
+        pass
+
+    @staticmethod
+    def parse(span: bytes) -> Tuple['Struct_Parent_', bytes]:
+        fields = {'payload': None}
+        if len(span) < 3:
+            raise LengthError("Struct_Parent_", 3, len(span))
+        fields['a'] = span[0]
+        fields['b'] = span[1]
+        _payload__size = span[2]
+        span = span[3:]
+        if len(span) < _payload__size:
+            raise LengthError("Struct_Parent_", _payload__size, len(span))
+        payload = span[:_payload__size]
+        span = span[_payload__size:]
+        fields['payload'] = payload
+        try:
+            child, remainder = Struct_Child_.parse(fields.copy(), payload)
+            if remainder:
+                raise TrailingBytesError("Struct_Child_", len(remainder))
+            return child, span
+        except Exception:
+            pass
+        return Struct_Parent_(**fields), span
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+        _span = bytearray()
+        if self.a > 0xff:
+            raise ValueError("Invalid scalar value Struct_Parent_::a: {self.a} > 0xff")
+        _span.append((self.a << 0))
+        if self.b > 0xff:
+            raise ValueError("Invalid scalar value Struct_Parent_::b: {self.b} > 0xff")
+        _span.append((self.b << 0))
+        _payload_size = len(payload or self.payload or [])
+        if _payload_size > 0xff:
+            raise ValueError("Invalid size value Struct_Parent_::_payload_: {_payload_size} > 0xff")
+        _span.append((_payload_size << 0))
+        _span.extend(payload or self.payload or [])
+        return bytes(_span)
+
+    @property
+    def size(self) -> int:
+        return len(self.payload) + 3
+
+@dataclass
+class Struct_Child_(Struct_Parent_):
+    c: int = field(kw_only=True, default=0)
+
+    def __post_init__(self) -> None:
+        self.a = 1
+
+    @staticmethod
+    def parse(fields: dict, span: bytes) -> Tuple['Struct_Child_', bytes]:
+        if fields['a'] != 1:
+            raise ConstraintValueError("Struct_Child_", "a", 1, fields['a'])
+        if len(span) < 2:
+            raise LengthError("Struct_Child_", 2, len(span))
+        value_ = int.from_bytes(span[0:2], byteorder='little')
+        fields['c'] = value_
+        span = span[2:]
+        return Struct_Child_(**fields), span
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+        _span = bytearray()
+        if self.c > 0xffff:
+            raise ValueError("Invalid scalar value Struct_Child_::c: {self.c} > 0xffff")
+        _span.extend(int.to_bytes((self.c << 0), length=2, byteorder='little'))
+        return Struct_Parent_.serialize(self, payload = bytes(_span))
+
+    @property
+    def size(self) -> int:
+        return 2
+
+@dataclass
+class Struct_Child_Field(Packet):
+    s: Struct_Child_ = field(kw_only=True, default_factory=Struct_Child_)
+
+    def __post_init__(self) -> None:
+        pass
+
+    @staticmethod
+    def parse(span: bytes) -> Tuple['Struct_Child_Field', bytes]:
+        fields = {'payload': None}
+        if len(span) < 5:
+            raise LengthError("Struct_Child_Field", 5, len(span))
+        fields['s'] = Struct_Child_.parse_all(span[0:5])
+        span = span[5:]
+        return Struct_Child_Field(**fields), span
+
+    def serialize(self, payload: Optional[bytes] = None) -> bytes:
+        _span = bytearray()
+        _span.extend(self.s.serialize())
+        return bytes(_span)
+
+    @property
+    def size(self) -> int:
+        return 5
+
+@dataclass
 class Struct_Custom_Field_ConstantSize_(Packet):
     a: SizedCustomField = field(kw_only=True, default_factory=SizedCustomField)
 

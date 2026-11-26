@@ -617,6 +617,21 @@ packet Struct_Struct_Field {
     b: UnsizedStruct,
 }
 
+// The parser must be able to handle struct fields with a child struct type.
+// The struct field is parsed with the fields of the parent struct.
+struct Struct_Parent_ {
+    a: 8,
+    b: 8,
+    _size_(_payload_): 8,
+    _payload_,
+}
+struct Struct_Child_ : Struct_Parent_ (a = 1) {
+    c: 16,
+}
+packet Struct_Child_Field {
+    s: Struct_Child_,
+}
+
 // The parser must be able to handle custom fields of constant size.
 // The parser should generate a static size guard.
 struct Struct_Custom_Field_ConstantSize_ {

@@ -3775,6 +3775,38 @@
     ]
   },
   {
+    "packet": "Struct_Child_Field",
+    "tests": [
+      {
+        "packed": "0100020000",
+        "unpacked": {
+          "s": {
+            "b": 0,
+            "c": 0
+          }
+        }
+      },
+      {
+        "packed": "01ff02ffff",
+        "unpacked": {
+          "s": {
+            "b": 255,
+            "c": 65535
+          }
+        }
+      },
+      {
+        "packed": "012a023412",
+        "unpacked": {
+          "s": {
+            "b": 42,
+            "c": 4660
+          }
+        }
+      }
+    ]
+  },
+  {
     "packet": "Struct_Array_Field_ByteElement_ConstantSize",
     "tests": [
       {

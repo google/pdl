@@ -87,6 +87,7 @@ class Struct_FixedEnum_FieldView;
 class Struct_ScalarGroup_FieldView;
 class Struct_EnumGroup_FieldView;
 class Struct_Struct_FieldView;
+class Struct_Child_FieldView;
 class Struct_Array_Field_ByteElement_ConstantSizeView;
 class Struct_Array_Field_ByteElement_VariableSizeView;
 class Struct_Array_Field_ByteElement_VariableCountView;
@@ -6029,6 +6030,174 @@ public:
 
     SizedStruct a_;
     UnsizedStruct b_;
+};
+
+class Struct_Parent_ : public pdl::packet::Builder {
+public:
+    ~Struct_Parent_() override = default;
+    Struct_Parent_() = default;
+    Struct_Parent_(Struct_Parent_ const&) = default;
+    Struct_Parent_(Struct_Parent_&&) = default;
+    explicit Struct_Parent_(uint8_t a, uint8_t b, std::vector<uint8_t> payload) : a_(a), b_(b), payload_(std::move(payload)) {}
+    Struct_Parent_& operator=(Struct_Parent_ const&) = default;
+
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Parent_> Decode(pdl::packet::slice& parent_span) {
+        pdl::packet::slice span = parent_span;
+        Struct_Parent_ output;
+        if (span.size() < 3) {
+            return std::nullopt;
+        }
+        output.a_ = span.read_le<uint8_t, 1>();
+        output.b_ = span.read_le<uint8_t, 1>();
+        size_t payload_size_ = span.read_le<uint8_t, 1>();
+        if (span.size() < payload_size_) { return std::nullopt; }
+        output.payload_ = span.take(payload_size_).bytes();
+        parent_span = span;
+        return output;
+    }
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(a_)));
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(b_)));
+        size_t Struct_Parent__payload_size = payload_.size();
+        if (Struct_Parent__payload_size > 0xff) {
+            return false;
+        }
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(Struct_Parent__payload_size)));
+        output.insert(output.end(), payload_.begin(), payload_.end());
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 3 + payload_.size();
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint8_t a_{0};
+    uint8_t b_{0};
+    std::vector<uint8_t> payload_;
+};
+
+class Struct_Child_ : public pdl::packet::Builder {
+public:
+    ~Struct_Child_() override = default;
+    Struct_Child_() = default;
+    Struct_Child_(Struct_Child_ const&) = default;
+    Struct_Child_(Struct_Child_&&) = default;
+    explicit Struct_Child_(uint8_t b, uint16_t c) : b_(b), c_(c) {}
+    Struct_Child_& operator=(Struct_Child_ const&) = default;
+
+    // Decode the struct from the input span.
+    // Returns std::nullopt if the struct is invalid, otherwise the input
+    // span is updated to the remaining bytes.
+    static std::optional<Struct_Child_> Decode(pdl::packet::slice& parent_span) {
+        pdl::packet::slice span = parent_span;
+        Struct_Child_ output;
+        if (span.size() < 3) {
+            return std::nullopt;
+        }
+        if (static_cast<uint64_t>(span.read_le<uint8_t, 1>()) != 0x1) {
+            return std::nullopt;
+        }
+        output.b_ = span.read_le<uint8_t, 1>();
+        size_t payload_size_ = span.read_le<uint8_t, 1>();
+        if (span.size() < payload_size_) { return std::nullopt; }
+        pdl::packet::slice payload_span = span.take(payload_size_);
+        {
+        pdl::packet::slice span = payload_span;
+        if (span.size() < 2) {
+            return std::nullopt;
+        }
+        output.c_ = span.read_le<uint16_t, 2>();
+        if (span.size() > 0) { return std::nullopt; }
+        }
+        parent_span = span;
+        return output;
+    }
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(1)));
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(b_)));
+        size_t Struct_Parent__payload_size = 2;
+        if (Struct_Parent__payload_size > 0xff) {
+            return false;
+        }
+        pdl::packet::Builder::write_le<uint8_t, 1>(output, (static_cast<uint8_t>(Struct_Parent__payload_size)));
+        pdl::packet::Builder::write_le<uint16_t, 2>(output, (static_cast<uint16_t>(c_)));
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 5;
+    }
+
+    std::string ToString() const { return ""; }
+
+    uint8_t b_{0};
+    uint16_t c_{0};
+};
+
+class Struct_Child_FieldView {
+public:
+    // Decode the packet from the packet bytes.
+    // Returns std::nullopt if the packet is invalid.
+    static std::optional<Struct_Child_FieldView> Decode(pdl::packet::slice const& parent) {
+        Struct_Child_FieldView output(parent);
+        pdl::packet::slice span = parent;
+        auto s_value = Struct_Child_::Decode(span);
+        if (!s_value.has_value()) return std::nullopt;
+        output.s_ = std::move(*s_value);
+        if (span.size() > 0) {
+            return std::nullopt;
+        }
+        return output;
+    }
+
+    Struct_Child_ const& GetS() const { return s_; }
+
+    std::string ToString() const { return ""; }
+
+    pdl::packet::slice bytes() const {
+        return bytes_;
+    }
+
+protected:
+    explicit Struct_Child_FieldView(pdl::packet::slice const& bytes) : bytes_(bytes) {}
+
+    pdl::packet::slice bytes_;
+    Struct_Child_ s_;
+
+
+};
+
+class Struct_Child_FieldBuilder : public pdl::packet::Builder {
+public:
+    ~Struct_Child_FieldBuilder() override = default;
+    Struct_Child_FieldBuilder() = default;
+    explicit Struct_Child_FieldBuilder(Struct_Child_ s) : s_(std::move(s)) {}
+    Struct_Child_FieldBuilder(Struct_Child_FieldBuilder const&) = default;
+    Struct_Child_FieldBuilder(Struct_Child_FieldBuilder&&) = default;
+    Struct_Child_FieldBuilder& operator=(Struct_Child_FieldBuilder const&) = default;
+
+    bool Serialize(std::vector<uint8_t>& output) const override {
+        output.reserve(GetSize());
+        if (!s_.Serialize(output)) {
+            return false;
+        }
+        return true;
+    }
+
+    size_t GetSize() const override {
+        return 5;
+    }
+
+    std::string ToString() const { return ""; }
+
+    Struct_Child_ s_;
 };
 
 class Struct_Array_Field_ByteElement_ConstantSize_ : public pdl::packet::Builder {
