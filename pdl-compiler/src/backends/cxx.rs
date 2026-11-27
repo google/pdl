@@ -728,16 +728,14 @@ impl<'a> Decoder<'a> {
             (ElementSize::Static(element_size), ArraySize::StaticCount(count)) => {
                 let total_size = element_size * count;
                 self.check_size(&format!("{total_size}"));
-                self.append(format!("output.{id}_ = span.subrange(0, {total_size});"));
-                self.append(format!("span.skip({total_size});"));
+                self.append(format!("output.{id}_ = span.take({total_size});"));
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicCount) => {
                 self.check_size(&format!("{element_size} * output.{id}_count_"));
                 self.append(format!(
-                    "output.{id}_ = span.subrange(0, {element_size} * output.{id}_count_);"
+                    "output.{id}_ = span.take({element_size} * output.{id}_count_);"
                 ));
-                self.append(format!("span.skip({element_size} * output.{id}_count_);"));
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicSize) => {
@@ -745,8 +743,7 @@ impl<'a> Decoder<'a> {
                 self.append(format!("if (({id}_size_ % {element_size}) != 0) {{"));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("output.{id}_ = span.subrange(0, {id}_size_);"));
-                self.append(format!("span.skip({id}_size_);"));
+                self.append(format!("output.{id}_ = span.take({id}_size_);"));
             }
 
             (ElementSize::Static(element_size), ArraySize::Unknown) => {
@@ -763,9 +760,8 @@ impl<'a> Decoder<'a> {
                 self.append("}".to_string());
                 self.check_size(&format!("output.{id}_element_size_ * {count}"));
                 self.append(format!(
-                    "output.{id}_ = span.subrange(0, output.{id}_element_size_ * {count});"
+                    "output.{id}_ = span.take(output.{id}_element_size_ * {count});"
                 ));
-                self.append(format!("span.skip(output.{id}_element_size_ * {count});"));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicCount) => {
@@ -774,9 +770,8 @@ impl<'a> Decoder<'a> {
                 self.append("}".to_string());
                 self.check_size(&format!("output.{id}_element_size_ * output.{id}_count_"));
                 self.append(format!(
-                    "output.{id}_ = span.subrange(0, output.{id}_element_size_ * output.{id}_count_);"
+                    "output.{id}_ = span.take(output.{id}_element_size_ * output.{id}_count_);"
                 ));
-                self.append(format!("span.skip(output.{id}_element_size_ * output.{id}_count_);"));
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicSize) => {
@@ -786,8 +781,7 @@ impl<'a> Decoder<'a> {
                 ));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("output.{id}_ = span.subrange(0, {id}_size_);"));
-                self.append(format!("span.skip({id}_size_);"));
+                self.append(format!("output.{id}_ = span.take({id}_size_);"));
             }
 
             (ElementSize::Dynamic, ArraySize::Unknown) => {
@@ -830,8 +824,7 @@ impl<'a> Decoder<'a> {
 
             (ElementSize::Unknown, ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
-                self.append(format!("output.{id}_ = span.subrange(0, {id}_size_);"));
-                self.append(format!("span.skip({id}_size_);"));
+                self.append(format!("output.{id}_ = span.take({id}_size_);"));
             }
 
             (ElementSize::Unknown, ArraySize::Unknown) => {
@@ -1080,8 +1073,7 @@ impl<'a> Decoder<'a> {
             (ElementSize::Unknown, ArraySize::StaticCount(count)) => {
                 let tid = type_id.unwrap();
                 self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
-                let decode = format!("{tid}::Decode(span)");
-                self.append(format!("    auto out = {decode};"));
+                self.append(format!("    auto out = {tid}::Decode(span);"));
                 self.append("    if (!out.has_value()) {".to_string());
                 self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
@@ -1092,8 +1084,7 @@ impl<'a> Decoder<'a> {
             (ElementSize::Unknown, ArraySize::DynamicCount) => {
                 let tid = type_id.unwrap();
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
-                let decode = format!("{tid}::Decode(span)");
-                self.append(format!("    auto out = {decode};"));
+                self.append(format!("    auto out = {tid}::Decode(span);"));
                 self.append("    if (!out.has_value()) {".to_string());
                 self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
@@ -1104,23 +1095,20 @@ impl<'a> Decoder<'a> {
             (ElementSize::Unknown, ArraySize::DynamicSize) => {
                 let tid = type_id.unwrap();
                 self.check_size(&format!("{id}_size_"));
-                self.append(format!("auto {id}_span = span.subrange(0, {id}_size_);"));
+                self.append(format!("auto {id}_span = span.take({id}_size_);"));
                 self.append(format!("while ({id}_span.size() > 0) {{"));
-                let decode = format!("{tid}::Decode({id}_span)");
-                self.append(format!("    auto out = {decode};"));
+                self.append(format!("    auto out = {tid}::Decode({id}_span);"));
                 self.append("    if (!out.has_value()) {".to_string());
                 self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
                 self.append(format!("    output.{id}_.push_back(std::move(*out));"));
                 self.append("}".to_string());
-                self.append(format!("span.skip({id}_size_);"));
             }
 
             (ElementSize::Unknown, ArraySize::Unknown) => {
                 let tid = type_id.unwrap();
                 self.append("while (span.size() > 0) {".to_string());
-                let decode = format!("{tid}::Decode(span)");
-                self.append(format!("    auto out = {decode};"));
+                self.append(format!("    auto out = {tid}::Decode(span);"));
                 self.append("    if (!out.has_value()) {".to_string());
                 self.append("        return std::nullopt;".to_string());
                 self.append("    }".to_string());
@@ -1825,13 +1813,12 @@ fn generate_packet_view(
                     if is_dynamic_element_size {
                         let tid = type_id.as_deref().unwrap();
                         accessor_code.push(format!(
-                            "    auto element_span = span.subrange(0, {id}_element_size_);",
+                            "    auto element_span = span.take({id}_element_size_);",
                         ));
                         let decode = format!("{tid}::Decode(element_span)");
                         accessor_code.push(format!(
                             "    if (auto element = {decode}) elements[n] = std::move(*element);"
                         ));
-                        accessor_code.push(format!("    span.skip({id}_element_size_);"));
                     } else if let Some(tid) = type_id {
                         let td = scope.typedef.get(tid).unwrap();
                         match &td.desc {
@@ -1873,15 +1860,13 @@ fn generate_packet_view(
                         let tid = type_id.as_deref().unwrap();
                         accessor_code.push(format!("while ({}) {{", count_limit));
                         accessor_code.push(format!(
-                            "    auto element_span = span.subrange(0, {}_element_size_);",
-                            id
+                            "    auto element_span = span.take({id}_element_size_);"
                         ));
-                        let decode = format!("{tid}::Decode(element_span)");
-                        accessor_code.push(format!("    auto element = {decode};"));
+                        accessor_code
+                            .push(format!("    auto element = {tid}::Decode(element_span);"));
                         accessor_code.push("    if (!element.has_value()) break;".to_string());
                         accessor_code
                             .push("    elements.emplace_back(std::move(*element));".to_string());
-                        accessor_code.push(format!("    span.skip({id}_element_size_);"));
                         accessor_code.push("}".to_string());
                     } else if let Some(tid) = type_id {
                         let td = scope.typedef.get(tid).unwrap();
