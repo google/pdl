@@ -2029,7 +2029,7 @@ fn generate_packet_view(
     };
 
     if trailing_size_check {
-        let span = if parent_id.is_some() { "parent.payload_" } else { "parent" };
+        let span = if parent_id.is_some() { "parent.payload_" } else { "output.bytes_" };
         field_parsers.push(format!("pdl::packet::slice span = {span};"));
     }
 
@@ -2057,8 +2057,8 @@ class {id}View {{
 public:
     // Decode the packet from the parent packet view.
     // Returns std::nullopt if the packet is invalid.
-    static std::optional<{id}View> Decode({parent_id}View const& parent) {{
-        {id}View output(parent.bytes_);
+    static std::optional<{id}View> Decode({parent_id}View parent) {{
+        {id}View output(std::move(parent.bytes_));
 {constraint_checks}
 {field_parsers}
         return output;
@@ -2072,7 +2072,7 @@ public:
     }}
 
 protected:
-    explicit {id}View(pdl::packet::slice const& bytes) : bytes_(bytes) {{}}
+    explicit {id}View(pdl::packet::slice bytes) : bytes_(std::move(bytes)) {{}}
 
     pdl::packet::slice bytes_;
 {field_members}
@@ -2093,8 +2093,8 @@ class {id}View {{
 public:
     // Decode the packet from the packet bytes.
     // Returns std::nullopt if the packet is invalid.
-    static std::optional<{id}View> Decode(pdl::packet::slice const& parent) {{
-        {id}View output(parent);
+    static std::optional<{id}View> Decode(pdl::packet::slice parent) {{
+        {id}View output(std::move(parent));
 {field_parsers}
         return output;
     }}
@@ -2107,7 +2107,7 @@ public:
     }}
 
 protected:
-    explicit {id}View(pdl::packet::slice const& bytes) : bytes_(bytes) {{}}
+    explicit {id}View(pdl::packet::slice bytes) : bytes_(std::move(bytes)) {{}}
 
     pdl::packet::slice bytes_;
 {field_members}
