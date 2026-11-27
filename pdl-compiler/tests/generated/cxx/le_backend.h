@@ -772,8 +772,7 @@ public:
         if ((b_size_ % 1) != 0) {
             return std::nullopt;
         }
-        output.b_ = span.subrange(0, b_size_);
-        span.skip(b_size_);
+        output.b_ = span.take(b_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -858,8 +857,7 @@ public:
         if (span.size() < 1 * output.b_count_) {
             return std::nullopt;
         }
-        output.b_ = span.subrange(0, 1 * output.b_count_);
-        span.skip(1 * output.b_count_);
+        output.b_ = span.take(1 * output.b_count_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -1813,8 +1811,7 @@ public:
         if (span.size() < 4) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, 4);
-        span.skip(4);
+        output.array_ = span.take(4);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -1889,8 +1886,7 @@ public:
         if ((array_size_ % 1) != 0) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
+        output.array_ = span.take(array_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -1967,8 +1963,7 @@ public:
         if (span.size() < 1 * output.array_count_) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, 1 * output.array_count_);
-        span.skip(1 * output.array_count_);
+        output.array_ = span.take(1 * output.array_count_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2108,8 +2103,7 @@ public:
         if (span.size() < 8) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, 8);
-        span.skip(8);
+        output.array_ = span.take(8);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2184,8 +2178,7 @@ public:
         if ((array_size_ % 2) != 0) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
+        output.array_ = span.take(array_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2262,8 +2255,7 @@ public:
         if (span.size() < 2 * output.array_count_) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, 2 * output.array_count_);
-        span.skip(2 * output.array_count_);
+        output.array_ = span.take(2 * output.array_count_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2403,8 +2395,7 @@ public:
         if (span.size() < 8) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, 8);
-        span.skip(8);
+        output.array_ = span.take(8);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2479,8 +2470,7 @@ public:
         if ((array_size_ % 2) != 0) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
+        output.array_ = span.take(array_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2557,8 +2547,7 @@ public:
         if (span.size() < 2 * output.array_count_) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, 2 * output.array_count_);
-        span.skip(2 * output.array_count_);
+        output.array_ = span.take(2 * output.array_count_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2698,8 +2687,7 @@ public:
         if (span.size() < 4) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, 4);
-        span.skip(4);
+        output.array_ = span.take(4);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2776,8 +2764,7 @@ public:
         if ((array_size_ % 1) != 0) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
+        output.array_ = span.take(array_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2858,8 +2845,7 @@ public:
         if (span.size() < 1 * output.array_count_) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, 1 * output.array_count_);
-        span.skip(1 * output.array_count_);
+        output.array_ = span.take(1 * output.array_count_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -3084,8 +3070,7 @@ public:
         if (span.size() < array_size_) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
+        output.array_ = span.take(array_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -3328,8 +3313,7 @@ public:
         if (span.size() < array_size_) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
+        output.array_ = span.take(array_size_);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -3418,8 +3402,7 @@ public:
         if ((array_size_ % 2) != 0) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
+        output.array_ = span.take(array_size_);
         if (array_start_size - span.size() < 16) {
             if (span.size() < 16 - (array_start_size - span.size())) return std::nullopt;
             span.skip(16 - (array_start_size - span.size()));
@@ -3605,8 +3588,7 @@ public:
         if (span.size() < output.array_element_size_ * 4) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, output.array_element_size_ * 4);
-        span.skip(output.array_element_size_ * 4);
+        output.array_ = span.take(output.array_element_size_ * 4);
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -3617,9 +3599,8 @@ public:
         pdl::packet::slice span = array_;
         std::array<UnknownSizeStruct, 4> elements;
         for (int n = 0; n < 4; n++) {
-            auto element_span = span.subrange(0, array_element_size_);
+            auto element_span = span.take(array_element_size_);
             if (auto element = UnknownSizeStruct::Decode(element_span)) elements[n] = std::move(*element);
-            span.skip(array_element_size_);
         }
         return elements;
     }
@@ -3698,8 +3679,7 @@ public:
         if (output.array_element_size_ == 0 || (array_size_ % output.array_element_size_) != 0) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, array_size_);
-        span.skip(array_size_);
+        output.array_ = span.take(array_size_);
         if ((span.size() % 1) != 0) {
             return std::nullopt;
         }
@@ -3715,11 +3695,10 @@ public:
         pdl::packet::slice span = array_;
         std::vector<UnknownSizeStruct> elements;
         while (span.size() > 0) {
-            auto element_span = span.subrange(0, array_element_size_);
+            auto element_span = span.take(array_element_size_);
             auto element = UnknownSizeStruct::Decode(element_span);
             if (!element.has_value()) break;
             elements.emplace_back(std::move(*element));
-            span.skip(array_element_size_);
         }
         return elements;
     }
@@ -3820,8 +3799,7 @@ public:
         if (span.size() < output.array_element_size_ * output.array_count_) {
             return std::nullopt;
         }
-        output.array_ = span.subrange(0, output.array_element_size_ * output.array_count_);
-        span.skip(output.array_element_size_ * output.array_count_);
+        output.array_ = span.take(output.array_element_size_ * output.array_count_);
         if ((span.size() % 1) != 0) {
             return std::nullopt;
         }
@@ -3837,11 +3815,10 @@ public:
         pdl::packet::slice span = array_;
         std::vector<UnknownSizeStruct> elements;
         while (elements.size() < array_count_) {
-            auto element_span = span.subrange(0, array_element_size_);
+            auto element_span = span.take(array_element_size_);
             auto element = UnknownSizeStruct::Decode(element_span);
             if (!element.has_value()) break;
             elements.emplace_back(std::move(*element));
-            span.skip(array_element_size_);
         }
         return elements;
     }
@@ -3946,11 +3923,10 @@ public:
         pdl::packet::slice span = array_;
         std::vector<UnknownSizeStruct> elements;
         while (span.size() > 0) {
-            auto element_span = span.subrange(0, array_element_size_);
+            auto element_span = span.take(array_element_size_);
             auto element = UnknownSizeStruct::Decode(element_span);
             if (!element.has_value()) break;
             elements.emplace_back(std::move(*element));
-            span.skip(array_element_size_);
         }
         return elements;
     }
@@ -8074,7 +8050,7 @@ public:
         if (span.size() < array_size_) {
             return std::nullopt;
         }
-        auto array_span = span.subrange(0, array_size_);
+        auto array_span = span.take(array_size_);
         while (array_span.size() > 0) {
             auto out = UnsizedStruct::Decode(array_span);
             if (!out.has_value()) {
@@ -8082,7 +8058,6 @@ public:
             }
             output.array_.push_back(std::move(*out));
         }
-        span.skip(array_size_);
         parent_span = span;
         return output;
     }
@@ -8411,7 +8386,7 @@ public:
         if (span.size() < array_size_) {
             return std::nullopt;
         }
-        auto array_span = span.subrange(0, array_size_);
+        auto array_span = span.take(array_size_);
         while (array_span.size() > 0) {
             auto out = UnsizedStruct::Decode(array_span);
             if (!out.has_value()) {
@@ -8419,7 +8394,6 @@ public:
             }
             output.array_.push_back(std::move(*out));
         }
-        span.skip(array_size_);
         parent_span = span;
         return output;
     }
