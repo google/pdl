@@ -55,31 +55,31 @@ class weak_slice {
   // The move operations are declared explicitly: the declaration of the
   // copy constructor would otherwise suppress the implicit move constructor,
   // and moving a slice would copy the shared pointer to the packet bytes.
-  weak_slice(uint8_t const* data, size_t offset, size_t size)
-      : data_(data), offset_(offset), size_(size) {}
+  weak_slice(uint8_t const* data, size_t size)
+      : data_(data), size_(size) {}
   weak_slice(slice const& slice)
-      : weak_slice(slice.packet_->data(), slice.offset_, slice.size_) {}
+      : weak_slice(slice.packet_->data() + slice.offset_, slice.size_) {}
   weak_slice(weak_slice const&) = default;
   weak_slice& operator=(weak_slice const&) = default;
 
   using const_iterator = uint8_t const*;
 
-  const_iterator cbegin() const noexcept { return data_ + offset_; }
-  const_iterator cend() const noexcept { return data_ + offset_ + size_; }
+  const_iterator cbegin() const noexcept { return data_; }
+  const_iterator cend() const noexcept { return data_ + size_; }
 
   /// Return a new slice that contains the selected subrange within the
   /// current slice. The range ['offset', 'offset' + 'slice') must be
   /// contained within the bonuds of the current slice.
   weak_slice subrange(size_t offset, size_t size) const {
     assert((offset + size) <= size_);
-    return weak_slice(data_, offset_ + offset, size);
+    return weak_slice(data_ + offset, size);
   }
 
   /// Return a new slice that contains the first N bytes of the slice.
   weak_slice take(size_t size) {
     assert(size <= size_);
-    weak_slice out(data_, offset_, size);
-    offset_ += size;
+    weak_slice out(data_, size);
+    data_ += size;
     size_ -= size;
     return out;
   }
@@ -93,11 +93,10 @@ class weak_slice {
     static_assert(N <= sizeof(T));
     assert(N <= size_);
     T value = 0;
-    auto const* ptr = data_ + offset_;
     for (size_t n = 0; n < N; n++) {
-      value |= (T)ptr[n] << (8 * n);
+      value |= (T)data_[n] << (8 * n);
     }
-    offset_ += N;
+    data_ += N;
     size_ -= N;
     return value;
   }
@@ -111,11 +110,10 @@ class weak_slice {
     static_assert(N <= sizeof(T));
     assert(N <= size_);
     T value = 0;
-    auto const* ptr = data_ + offset_;
     for (size_t n = 0; n < N; n++) {
-      value = (value << 8) | (T)ptr[n];
+      value = (value << 8) | (T)data_[n];
     }
-    offset_ += N;
+    data_ += N;
     size_ -= N;
     return value;
   }
@@ -124,7 +122,7 @@ class weak_slice {
   /// `size` must be lower than or equal to the slice size.
   void skip(size_t size) {
     assert(size <= size_);
-    offset_ += size;
+    data_ += size;
     size_ -= size;
   }
 
@@ -145,7 +143,6 @@ class weak_slice {
 
  private:
   uint8_t const* data_{nullptr};
-  size_t offset_{0};
   size_t size_{0};
 };
 
