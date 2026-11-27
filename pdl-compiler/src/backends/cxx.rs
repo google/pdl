@@ -616,9 +616,7 @@ impl<'a> Decoder<'a> {
                     trailing_size / 8
                 ));
                 self.append(format!("size_t {id}_size = span.size() - {};", trailing_size / 8));
-                self.append(
-                    format!("pdl::packet::slice {id}_span = span.subrange(0, {id}_size);",),
-                );
+                self.append(format!("auto {id}_span = span.subrange(0, {id}_size);",));
                 let decode = format!("{type_id}::Decode({id}_span)");
                 self.append(format!("auto {id}_value = {decode};"));
                 self.append(format!("if (!{id}_value.has_value()) return std::nullopt;"));
@@ -895,13 +893,11 @@ impl<'a> Decoder<'a> {
                 ));
             } else {
                 // Extract the payload span.
-                self.append(
-                    "pdl::packet::slice payload_span = span.take(payload_size_);".to_owned(),
-                );
+                self.append("auto payload_span = span.take(payload_size_);".to_owned());
                 // Create a new scope to allow shadowing the input span and
                 // payload size fields.
                 self.append("{".to_owned());
-                self.append("pdl::packet::slice span = payload_span;".to_owned());
+                self.append("auto span = payload_span;".to_owned());
                 // Parse the fields of the child packet.
                 self.decode(children[0], &children[1..]);
                 // Generate a check for trailing bytes to verify that all payload
@@ -943,12 +939,12 @@ impl<'a> Decoder<'a> {
                 self.append(format!("if (span.size() < {trailing_size}) return std::nullopt;",));
                 // Extract the payload span.
                 self.append(format!(
-                    "pdl::packet::slice payload_span = span.take(span.size() - {trailing_size});"
+                    "auto payload_span = span.take(span.size() - {trailing_size});"
                 ));
                 // Create a new scope to allow shadowing the input span and
                 // payload size fields.
                 self.append("{".to_owned());
-                self.append("pdl::packet::slice span = payload_span;".to_owned());
+                self.append("auto span = payload_span;".to_owned());
                 // Parse the fields of the child packet.
                 self.decode(children[0], &children[1..]);
                 // Generate a check for trailing bytes to verify that all payload
@@ -1782,14 +1778,14 @@ fn generate_packet_view(
 
         match &field.desc {
             ast::FieldDesc::Payload { .. } => {
-                field_members.push("pdl::packet::slice payload_;".to_string());
+                field_members.push("pdl::packet::weak_slice payload_;".to_string());
                 field_accessors.push(indent(
-                    "pdl::packet::slice GetPayload() const {\n    return payload_;\n}\n",
+                    "pdl::packet::weak_slice GetPayload() const {\n    return payload_;\n}\n",
                     1,
                 ));
             }
             ast::FieldDesc::Array { id, type_id, width, size, .. } => {
-                field_members.push(format!("pdl::packet::slice {id}_;"));
+                field_members.push(format!("pdl::packet::weak_slice {id}_;"));
                 let accessor_name = id.to_upper_camel_case();
                 let element_type = type_id
                     .as_deref()
@@ -1806,7 +1802,7 @@ fn generate_packet_view(
                     analyzer::ElementSize::Dynamic
                 );
                 let mut accessor_code = Vec::new();
-                accessor_code.push(format!("pdl::packet::slice span = {id}_;"));
+                accessor_code.push(format!("auto span = {id}_;"));
                 if let Some(s) = size {
                     accessor_code.push(format!("{array_type} elements;"));
                     accessor_code.push(format!("for (int n = 0; n < {s}; n++) {{"));
@@ -2030,7 +2026,7 @@ fn generate_packet_view(
 
     if trailing_size_check {
         let span = if parent_id.is_some() { "parent.payload_" } else { "output.bytes_" };
-        field_parsers.push(format!("pdl::packet::slice span = {span};"));
+        field_parsers.push(format!("pdl::packet::weak_slice span({span});"));
     }
 
     if decl.fields().next().is_some() {
@@ -2067,7 +2063,7 @@ public:
 {field_accessors}
     std::string ToString() const {{ return ""; }}
 
-    pdl::packet::slice bytes() const {{
+    pdl::packet::weak_slice bytes() const {{
         return bytes_;
     }}
 
@@ -2102,7 +2098,7 @@ public:
 {field_accessors}
     std::string ToString() const {{ return ""; }}
 
-    pdl::packet::slice bytes() const {{
+    pdl::packet::weak_slice bytes() const {{
         return bytes_;
     }}
 
@@ -2376,8 +2372,8 @@ public:
     // Decode the struct from the input span.
     // Returns std::nullopt if the struct is invalid, otherwise the input
     // span is updated to the remaining bytes.
-    static std::optional<{id}> Decode(pdl::packet::slice& parent_span) {{
-        pdl::packet::slice span = parent_span;
+    static std::optional<{id}> Decode(pdl::packet::weak_slice& parent_span) {{
+        auto span = parent_span;
         {id} output;
 {field_parsers}
         parent_span = span;

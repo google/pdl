@@ -24,50 +24,61 @@
 
 namespace pdl::packet {
 
-/// Representation of a raw packet slice.
-/// The slice contains a shared pointer to the source packet bytes, and points
-/// to a subrange within this byte buffer.
+/// Representation of raw packet data.
+/// The slice keeps an owning reference to the source data.
 class slice {
  public:
-  slice() = default;
+  slice(std::shared_ptr<const std::vector<uint8_t>> packet)
+      : packet_(std::move(packet)), offset_(0), size_(packet_->size()) {}
+  slice(std::shared_ptr<const std::vector<uint8_t>> packet, size_t offset,
+        size_t size)
+      : packet_(std::move(packet)), offset_(offset), size_(size) {
+    assert(offset_ < packet_->size());
+    assert(size_ <= packet_->size());
+    assert(offset_ + size_ <= packet_->size());
+  }
+
+ private:
+  std::shared_ptr<const std::vector<uint8_t>> packet_;
+  size_t offset_{0};
+  size_t size_{0};
+
+  friend class weak_slice;
+};
+
+/// Representation of raw packet data.
+/// The weak slice only keeps a non owning reference to the source data
+/// and cannot outlive its input data.
+class weak_slice {
+ public:
+  weak_slice() = default;
   // The move operations are declared explicitly: the declaration of the
   // copy constructor would otherwise suppress the implicit move constructor,
   // and moving a slice would copy the shared pointer to the packet bytes.
-  slice(slice const&) = default;
-  slice(slice&&) = default;
-  slice& operator=(slice const&) = default;
-  slice& operator=(slice&&) = default;
-  slice(std::shared_ptr<const std::vector<uint8_t>> packet)
-      : packet_(std::move(packet)), offset_(0), size_(packet_->size()) {}
+  weak_slice(uint8_t const* data, size_t offset, size_t size)
+      : data_(data), offset_(offset), size_(size) {}
+  weak_slice(slice const& slice)
+      : weak_slice(slice.packet_->data(), slice.offset_, slice.size_) {}
+  weak_slice(weak_slice const&) = default;
+  weak_slice& operator=(weak_slice const&) = default;
 
-  slice(std::shared_ptr<const std::vector<uint8_t>> packet, size_t offset,
-        size_t size)
-      : packet_(std::move(packet)), offset_(offset), size_(size) {}
+  using const_iterator = uint8_t const*;
 
-  using iterator = typename std::vector<uint8_t>::iterator;
-  using const_iterator = typename std::vector<uint8_t>::const_iterator;
-
-  const_iterator begin() const noexcept { return packet_->begin() + offset_; }
-  const_iterator end() const noexcept {
-    return packet_->begin() + offset_ + size_;
-  }
-  const_iterator cbegin() const noexcept { return packet_->cbegin() + offset_; }
-  const_iterator cend() const noexcept {
-    return packet_->cbegin() + offset_ + size_;
-  }
+  const_iterator cbegin() const noexcept { return data_ + offset_; }
+  const_iterator cend() const noexcept { return data_ + offset_ + size_; }
 
   /// Return a new slice that contains the selected subrange within the
   /// current slice. The range ['offset', 'offset' + 'slice') must be
   /// contained within the bonuds of the current slice.
-  slice subrange(size_t offset, size_t size) const {
+  weak_slice subrange(size_t offset, size_t size) const {
     assert((offset + size) <= size_);
-    return slice(packet_, offset_ + offset, size);
+    return weak_slice(data_, offset_ + offset, size);
   }
 
   /// Return a new slice that contains the first N bytes of the slice.
-  slice take(size_t size) {
+  weak_slice take(size_t size) {
     assert(size <= size_);
-    slice out(packet_, offset_, size);
+    weak_slice out(data_, offset_, size);
     offset_ += size;
     size_ -= size;
     return out;
@@ -82,7 +93,7 @@ class slice {
     static_assert(N <= sizeof(T));
     assert(N <= size_);
     T value = 0;
-    auto const* ptr = packet_->data() + offset_;
+    auto const* ptr = data_ + offset_;
     for (size_t n = 0; n < N; n++) {
       value |= (T)ptr[n] << (8 * n);
     }
@@ -100,7 +111,7 @@ class slice {
     static_assert(N <= sizeof(T));
     assert(N <= size_);
     T value = 0;
-    auto const* ptr = packet_->data() + offset_;
+    auto const* ptr = data_ + offset_;
     for (size_t n = 0; n < N; n++) {
       value = (value << 8) | (T)ptr[n];
     }
@@ -125,16 +136,15 @@ class slice {
 
   /// Return the contents of the slice as a byte vector.
   std::vector<uint8_t> bytes() const {
-    return std::vector<uint8_t>(packet_->cbegin() + offset_,
-                                packet_->cbegin() + offset_ + size_);
+    return std::vector<uint8_t>(cbegin(), cend());
   }
 
-  bool operator==(slice const& other) const {
-    return size_ == other.size_ && std::equal(begin(), end(), other.begin());
+  bool operator==(weak_slice const& other) const {
+    return size_ == other.size_ && std::equal(cbegin(), cend(), other.cbegin());
   }
 
  private:
-  std::shared_ptr<const std::vector<uint8_t>> packet_;
+  uint8_t const* data_{nullptr};
   size_t offset_{0};
   size_t size_{0};
 };
