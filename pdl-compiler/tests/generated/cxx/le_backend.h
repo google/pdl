@@ -2396,6 +2396,12 @@ public:
             return std::nullopt;
         }
         output.array_ = span.take(8);
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                if (!IsValidEnum16(span.read_le<uint16_t, 2>())) return std::nullopt;
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2471,6 +2477,12 @@ public:
             return std::nullopt;
         }
         output.array_ = span.take(array_size_);
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                if (!IsValidEnum16(span.read_le<uint16_t, 2>())) return std::nullopt;
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2548,6 +2560,12 @@ public:
             return std::nullopt;
         }
         output.array_ = span.take(2 * output.array_count_);
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                if (!IsValidEnum16(span.read_le<uint16_t, 2>())) return std::nullopt;
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2621,6 +2639,12 @@ public:
         }
         output.array_ = span;
         span.clear();
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                if (!IsValidEnum16(span.read_le<uint16_t, 2>())) return std::nullopt;
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2688,6 +2712,18 @@ public:
             return std::nullopt;
         }
         output.array_ = span.take(4);
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                {
+                    if (span.size() < 1) {
+                        return std::nullopt;
+                    }
+                    uint8_t chunk0 = span.read_le<uint8_t, 1>();
+                    (void)chunk0;
+                }
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2765,6 +2801,18 @@ public:
             return std::nullopt;
         }
         output.array_ = span.take(array_size_);
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                {
+                    if (span.size() < 1) {
+                        return std::nullopt;
+                    }
+                    uint8_t chunk0 = span.read_le<uint8_t, 1>();
+                    (void)chunk0;
+                }
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2846,6 +2894,18 @@ public:
             return std::nullopt;
         }
         output.array_ = span.take(1 * output.array_count_);
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                {
+                    if (span.size() < 1) {
+                        return std::nullopt;
+                    }
+                    uint8_t chunk0 = span.read_le<uint8_t, 1>();
+                    (void)chunk0;
+                }
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2923,6 +2983,18 @@ public:
         }
         output.array_ = span;
         span.clear();
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                {
+                    if (span.size() < 1) {
+                        return std::nullopt;
+                    }
+                    uint8_t chunk0 = span.read_le<uint8_t, 1>();
+                    (void)chunk0;
+                }
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -2992,8 +3064,21 @@ public:
         pdl::packet::weak_slice span(output.bytes_);
         output.array_ = span;
         for (size_t n = 0; n < 4; n++) {
-            if (!UnsizedStruct::Decode(span).has_value()) {
-                return std::nullopt;
+            {
+                if (span.size() < 1) {
+                    return std::nullopt;
+                }
+                uint8_t chunk0 = span.read_le<uint8_t, 1>();
+                (void)chunk0;
+                size_t array_size_ = (chunk0 >> 0) & 0x3;
+                pdl::packet::weak_slice array_;
+                if (span.size() < array_size_) {
+                    return std::nullopt;
+                }
+                if ((array_size_ % 1) != 0) {
+                    return std::nullopt;
+                }
+                array_ = span.take(array_size_);
             }
         }
         output.array_ = output.array_.subrange(0, output.array_.size() - span.size());
@@ -3071,6 +3156,27 @@ public:
             return std::nullopt;
         }
         output.array_ = span.take(array_size_);
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                {
+                    if (span.size() < 1) {
+                        return std::nullopt;
+                    }
+                    uint8_t chunk0 = span.read_le<uint8_t, 1>();
+                    (void)chunk0;
+                    size_t array_size_ = (chunk0 >> 0) & 0x3;
+                    pdl::packet::weak_slice array_;
+                    if (span.size() < array_size_) {
+                        return std::nullopt;
+                    }
+                    if ((array_size_ % 1) != 0) {
+                        return std::nullopt;
+                    }
+                    array_ = span.take(array_size_);
+                }
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -3153,8 +3259,21 @@ public:
         output.array_count_ = (chunk0 >> 0) & 0xf;
         output.array_ = span;
         for (size_t n = 0; n < output.array_count_; n++) {
-            if (!UnsizedStruct::Decode(span).has_value()) {
-                return std::nullopt;
+            {
+                if (span.size() < 1) {
+                    return std::nullopt;
+                }
+                uint8_t chunk0 = span.read_le<uint8_t, 1>();
+                (void)chunk0;
+                size_t array_size_ = (chunk0 >> 0) & 0x3;
+                pdl::packet::weak_slice array_;
+                if (span.size() < array_size_) {
+                    return std::nullopt;
+                }
+                if ((array_size_ % 1) != 0) {
+                    return std::nullopt;
+                }
+                array_ = span.take(array_size_);
             }
         }
         output.array_ = output.array_.subrange(0, output.array_.size() - span.size());
@@ -3232,8 +3351,21 @@ public:
         pdl::packet::weak_slice span(output.bytes_);
         output.array_ = span;
         while (span.size() > 0) {
-            if (!UnsizedStruct::Decode(span).has_value()) {
-                return std::nullopt;
+            {
+                if (span.size() < 1) {
+                    return std::nullopt;
+                }
+                uint8_t chunk0 = span.read_le<uint8_t, 1>();
+                (void)chunk0;
+                size_t array_size_ = (chunk0 >> 0) & 0x3;
+                pdl::packet::weak_slice array_;
+                if (span.size() < array_size_) {
+                    return std::nullopt;
+                }
+                if ((array_size_ % 1) != 0) {
+                    return std::nullopt;
+                }
+                array_ = span.take(array_size_);
             }
         }
         output.array_ = output.array_.subrange(0, output.array_.size() - span.size());
@@ -3314,6 +3446,27 @@ public:
             return std::nullopt;
         }
         output.array_ = span.take(array_size_);
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                {
+                    if (span.size() < 1) {
+                        return std::nullopt;
+                    }
+                    uint8_t chunk0 = span.read_le<uint8_t, 1>();
+                    (void)chunk0;
+                    size_t array_size_ = (chunk0 >> 0) & 0x3;
+                    pdl::packet::weak_slice array_;
+                    if (span.size() < array_size_) {
+                        return std::nullopt;
+                    }
+                    if ((array_size_ % 1) != 0) {
+                        return std::nullopt;
+                    }
+                    array_ = span.take(array_size_);
+                }
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -3489,8 +3642,21 @@ public:
         size_t array_start_size = span.size();
         output.array_ = span;
         for (size_t n = 0; n < output.array_count_; n++) {
-            if (!UnsizedStruct::Decode(span).has_value()) {
-                return std::nullopt;
+            {
+                if (span.size() < 1) {
+                    return std::nullopt;
+                }
+                uint8_t chunk0 = span.read_le<uint8_t, 1>();
+                (void)chunk0;
+                size_t array_size_ = (chunk0 >> 0) & 0x3;
+                pdl::packet::weak_slice array_;
+                if (span.size() < array_size_) {
+                    return std::nullopt;
+                }
+                if ((array_size_ % 1) != 0) {
+                    return std::nullopt;
+                }
+                array_ = span.take(array_size_);
             }
         }
         output.array_ = output.array_.subrange(0, output.array_.size() - span.size());
@@ -3589,6 +3755,24 @@ public:
             return std::nullopt;
         }
         output.array_ = span.take(output.array_element_size_ * 4);
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                auto element_span = span.take(output.array_element_size_);
+                {
+                    auto& span = element_span;
+                    {
+                        pdl::packet::weak_slice array_;
+                        if ((span.size() % 1) != 0) {
+                            return std::nullopt;
+                        }
+                        array_ = span;
+                        span.clear();
+                    }
+                    if (span.size() != 0) return std::nullopt;
+                }
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }
@@ -3680,6 +3864,24 @@ public:
             return std::nullopt;
         }
         output.array_ = span.take(array_size_);
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                auto element_span = span.take(output.array_element_size_);
+                {
+                    auto& span = element_span;
+                    {
+                        pdl::packet::weak_slice array_;
+                        if ((span.size() % 1) != 0) {
+                            return std::nullopt;
+                        }
+                        array_ = span;
+                        span.clear();
+                    }
+                    if (span.size() != 0) return std::nullopt;
+                }
+            }
+        }
         if ((span.size() % 1) != 0) {
             return std::nullopt;
         }
@@ -3800,6 +4002,24 @@ public:
             return std::nullopt;
         }
         output.array_ = span.take(output.array_element_size_ * output.array_count_);
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                auto element_span = span.take(output.array_element_size_);
+                {
+                    auto& span = element_span;
+                    {
+                        pdl::packet::weak_slice array_;
+                        if ((span.size() % 1) != 0) {
+                            return std::nullopt;
+                        }
+                        array_ = span;
+                        span.clear();
+                    }
+                    if (span.size() != 0) return std::nullopt;
+                }
+            }
+        }
         if ((span.size() % 1) != 0) {
             return std::nullopt;
         }
@@ -3913,6 +4133,24 @@ public:
         }
         output.array_ = span;
         span.clear();
+        {
+            pdl::packet::weak_slice span = output.array_;
+            while (span.size() > 0) {
+                auto element_span = span.take(output.array_element_size_);
+                {
+                    auto& span = element_span;
+                    {
+                        pdl::packet::weak_slice array_;
+                        if ((span.size() % 1) != 0) {
+                            return std::nullopt;
+                        }
+                        array_ = span;
+                        span.clear();
+                    }
+                    if (span.size() != 0) return std::nullopt;
+                }
+            }
+        }
         if (span.size() > 0) {
             return std::nullopt;
         }

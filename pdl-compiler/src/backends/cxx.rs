@@ -404,17 +404,27 @@ fn constraint_violation(children: &[&ast::Decl], field: &ast::Field, v: &str) ->
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum DecodeMode {
+    View,
+    Struct,
+    /// When used, the fields are validated but not stored: the generated
+    /// code only checks the input bytes, without constructing any value.
+    /// Used to validate array elements inline.
+    Check,
+}
+
 struct Decoder<'a> {
     scope: &'a analyzer::Scope<'a>,
     schema: &'a analyzer::Schema,
     endianness: ast::EndiannessValue,
+    mode: DecodeMode,
     offset: usize,
     shift: usize,
     chunk: Vec<(usize, usize, &'a ast::Field)>,
     chunk_nr: usize,
     unchecked_code: Vec<String>,
     code: Vec<String>,
-    extract_arrays: bool,
 }
 
 impl<'a> Decoder<'a> {
@@ -422,20 +432,104 @@ impl<'a> Decoder<'a> {
         scope: &'a analyzer::Scope<'a>,
         schema: &'a analyzer::Schema,
         endianness: ast::EndiannessValue,
-        extract_arrays: bool,
+        mode: DecodeMode,
     ) -> Self {
         Self {
             scope,
             schema,
             endianness,
+            mode,
             offset: 0,
             shift: 0,
             chunk: Vec::new(),
             chunk_nr: 0,
             unchecked_code: Vec::new(),
             code: Vec::new(),
-            extract_arrays,
         }
+    }
+
+    /// Return the statements validating an instance of the struct `type_id`
+    /// read from `span`, without constructing the struct. The validation is
+    /// generated inline; recursive declarations fall back to calling
+    /// `{type_id}::Decode(span)`.
+    fn check_struct(&self, decl: &'a ast::Decl) -> Vec<String> {
+        let mut chain = self.scope.iter_parents_and_self(decl).collect::<Vec<_>>();
+        chain.reverse();
+        let mut decoder = Decoder::new(self.scope, self.schema, self.endianness, DecodeMode::Check);
+        decoder.decode(chain[0], &chain[1..]);
+        decoder.code
+    }
+
+    /// Return the statements validating one element of the array `field`
+    /// read from `span`, without storing it, or None if the elements do not
+    /// require validation (scalars and open enums).
+    fn check_array_element(&self, field: &ast::Field) -> Option<Vec<String>> {
+        let byteorder = match self.endianness {
+            ast::EndiannessValue::LittleEndian => "le",
+            ast::EndiannessValue::BigEndian => "be",
+        };
+        let ast::FieldDesc::Array { type_id: Some(type_id), .. } = &field.desc else {
+            return None;
+        };
+        let type_decl = self.scope.typedef.get(type_id).unwrap();
+        match &type_decl.desc {
+            ast::DeclDesc::Enum { width, tags, .. } => {
+                if common::is_open_enum(tags) || common::is_complete_enum(tags, scalar_max(*width))
+                {
+                    return None;
+                }
+                let ty = get_cxx_scalar_type(*width);
+                let size = width / 8;
+                Some(vec![format!(
+                    "if (!IsValid{type_id}(span.read_{byteorder}<{ty}, {size}>())) return std::nullopt;"
+                )])
+            }
+            ast::DeclDesc::Struct { .. } => {
+                let mut code = vec!["{".to_owned()];
+                code.extend(self.check_struct(type_decl).into_iter().map(|l| format!("    {l}")));
+                code.push("}".to_owned());
+                Some(code)
+            }
+            _ => Some(vec![format!(
+                "if (!{type_id}::Decode(span).has_value()) return std::nullopt;"
+            )]),
+        }
+    }
+
+    /// Generate a loop validating the elements of the array `field`, read
+    /// from `slice`. When `element_size` is set, each element is read from a
+    /// sub-slice of this size, which the element must fill exactly.
+    fn check_array_elements(
+        &mut self,
+        field: &ast::Field,
+        slice: &str,
+        element_size: Option<&str>,
+    ) {
+        let Some(check) = self.check_array_element(field) else {
+            return;
+        };
+        self.append("{".to_owned());
+        self.append(format!("    pdl::packet::weak_slice span = {slice};"));
+        self.append("    while (span.size() > 0) {".to_owned());
+        match element_size {
+            Some(element_size) => {
+                self.append(format!("        auto element_span = span.take({element_size});"));
+                self.append("        {".to_owned());
+                self.append("            auto& span = element_span;".to_owned());
+                for line in check {
+                    self.append(format!("            {line}"));
+                }
+                self.append("            if (span.size() != 0) return std::nullopt;".to_owned());
+                self.append("        }".to_owned());
+            }
+            None => {
+                for line in check {
+                    self.append(format!("        {line}"));
+                }
+            }
+        }
+        self.append("    }".to_owned());
+        self.append("}".to_owned());
     }
 
     fn unchecked_append(&mut self, line: String) {
@@ -497,11 +591,16 @@ impl<'a> Decoder<'a> {
             return;
         }
 
-        let value = if self.chunk.len() > 1 {
+        // In check mode the chunk is always read into a named value, which
+        // might be left unused when none of the fields need validation.
+        let value = if self.chunk.len() > 1 || self.mode == DecodeMode::Check {
             let v = format!("chunk{}", self.chunk_nr);
             self.unchecked_append(format!(
                 "{backing_type} {v} = span.read_{byteorder}<{backing_type}, {size}>();",
             ));
+            if self.mode == DecodeMode::Check {
+                self.unchecked_append(format!("(void){v};"));
+            }
             self.chunk_nr += 1;
             v
         } else {
@@ -510,7 +609,7 @@ impl<'a> Decoder<'a> {
 
         let chunk = std::mem::take(&mut self.chunk);
         for (shift, width, field) in chunk.iter() {
-            let v = if chunk.len() == 1 && *shift == 0 {
+            let v = if chunk.len() == 1 && *shift == 0 && self.mode != DecodeMode::Check {
                 value.clone()
             } else {
                 format!("({value} >> {shift}) & {}", mask(*width))
@@ -526,6 +625,7 @@ impl<'a> Decoder<'a> {
             }
 
             match &field.desc {
+                ast::FieldDesc::Scalar { .. } if self.mode == DecodeMode::Check => {}
                 ast::FieldDesc::Scalar { id, .. } => {
                     self.unchecked_append(format!("output.{id}_ = {v};"));
                 }
@@ -550,7 +650,9 @@ impl<'a> Decoder<'a> {
                             if common::is_open_enum(tags)
                                 || common::is_complete_enum(tags, scalar_max(*width)) =>
                         {
-                            self.unchecked_append(format!("output.{id}_ = {type_id}({v});"));
+                            if self.mode != DecodeMode::Check {
+                                self.unchecked_append(format!("output.{id}_ = {type_id}({v});"));
+                            }
                         }
                         ast::DeclDesc::Enum { .. } => {
                             // The raw value is named after the field: multiple enum
@@ -559,8 +661,13 @@ impl<'a> Decoder<'a> {
                             self.unchecked_append(format!("if (!IsValid{type_id}(raw_{id})) {{"));
                             self.unchecked_append("   return std::nullopt;".to_string());
                             self.unchecked_append("}".to_string());
-                            self.unchecked_append(format!("output.{id}_ = {type_id}(raw_{id});"));
+                            if self.mode != DecodeMode::Check {
+                                self.unchecked_append(format!(
+                                    "output.{id}_ = {type_id}(raw_{id});"
+                                ));
+                            }
                         }
+                        _ if self.mode == DecodeMode::Check => {}
                         _ => {
                             self.unchecked_append(format!("output.{id}_ = {v};"));
                         }
@@ -570,13 +677,13 @@ impl<'a> Decoder<'a> {
                     let field_name = if field_id == "_payload_" { "payload" } else { field_id };
                     self.unchecked_append(format!("size_t {field_name}_size_ = {v};"));
                 }
-                ast::FieldDesc::Count { field_id, .. } if self.extract_arrays => {
+                ast::FieldDesc::Count { field_id, .. } if self.mode != DecodeMode::View => {
                     self.unchecked_append(format!("size_t {field_id}_count_ = {v};"));
                 }
                 ast::FieldDesc::Count { field_id, .. } => {
                     self.unchecked_append(format!("output.{field_id}_count_ = {v};"));
                 }
-                ast::FieldDesc::ElementSize { field_id, .. } if self.extract_arrays => {
+                ast::FieldDesc::ElementSize { field_id, .. } if self.mode != DecodeMode::View => {
                     self.unchecked_append(format!("size_t {field_id}_element_size_ = {v};"));
                 }
                 ast::FieldDesc::ElementSize { field_id, .. } => {
@@ -606,6 +713,11 @@ impl<'a> Decoder<'a> {
         }
 
         self.check_code();
+
+        if self.mode == DecodeMode::Check {
+            self.check_typedef_field(decl, field, id, type_id);
+            return;
+        }
 
         let field_size = self.schema.field_size(field.key);
         if let analyzer::Size::Unknown = field_size {
@@ -638,6 +750,46 @@ impl<'a> Decoder<'a> {
         }
     }
 
+    /// Validate a struct or custom typedef field, without storing it.
+    fn check_typedef_field(
+        &mut self,
+        decl: &'a ast::Decl,
+        field: &'a ast::Field,
+        id: &str,
+        type_id: &str,
+    ) {
+        let type_decl = self.scope.typedef.get(type_id).unwrap();
+        let check = match &type_decl.desc {
+            ast::DeclDesc::Struct { .. } => self.check_struct(type_decl),
+            _ => vec![format!("if (!{type_id}::Decode(span).has_value()) return std::nullopt;")],
+        };
+        let trailing_size = match self.schema.field_size(field.key) {
+            analyzer::Size::Unknown => self.get_trailing_size(decl, field).unwrap_or(0),
+            _ => 0,
+        };
+        if trailing_size > 0 {
+            let trailing_size = trailing_size / 8;
+            self.append(format!("if (span.size() < {trailing_size}) return std::nullopt;"));
+            self.append(format!("size_t {id}_size = span.size() - {trailing_size};"));
+            self.append(format!("auto {id}_span = span.subrange(0, {id}_size);"));
+            self.append("{".to_owned());
+            self.append(format!("    auto& span = {id}_span;"));
+            for line in check {
+                self.append(format!("    {line}"));
+            }
+            self.append("}".to_owned());
+            // The bytes remaining after validating the typedef field are
+            // added back to the input span.
+            self.append(format!("span.skip({id}_size - {id}_span.size());"));
+        } else {
+            self.append("{".to_owned());
+            for line in check {
+                self.append(format!("    {line}"));
+            }
+            self.append("}".to_owned());
+        }
+    }
+
     fn decode_optional_field(&mut self, field: &'a ast::Field) {
         self.check_code();
         let cond = field.cond.as_ref().unwrap();
@@ -645,6 +797,11 @@ impl<'a> Decoder<'a> {
             ast::EndiannessValue::LittleEndian => "le",
             ast::EndiannessValue::BigEndian => "be",
         };
+
+        if self.mode == DecodeMode::Check {
+            self.check_optional_field(field);
+            return;
+        }
 
         match &field.desc {
             ast::FieldDesc::Scalar { id, width } => {
@@ -702,15 +859,69 @@ impl<'a> Decoder<'a> {
         }
     }
 
+    /// Validate an optional field, without storing it.
+    fn check_optional_field(&mut self, field: &'a ast::Field) {
+        let cond = field.cond.as_ref().unwrap();
+        let cond_value = cond.value.unwrap();
+        let byteorder = match self.endianness {
+            ast::EndiannessValue::LittleEndian => "le",
+            ast::EndiannessValue::BigEndian => "be",
+        };
+        let check = match &field.desc {
+            ast::FieldDesc::Scalar { width, .. } => {
+                vec![
+                    format!("if (span.size() < {}) return std::nullopt;", width / 8),
+                    format!("span.skip({});", width / 8),
+                ]
+            }
+            ast::FieldDesc::Typedef { type_id, .. } => {
+                let type_decl = self.scope.typedef.get(type_id).unwrap();
+                match &type_decl.desc {
+                    ast::DeclDesc::Enum { width, tags, .. } => {
+                        let size = width / 8;
+                        let ty = get_cxx_scalar_type(*width);
+                        let mut check =
+                            vec![format!("if (span.size() < {size}) return std::nullopt;")];
+                        if common::is_open_enum(tags) {
+                            check.push(format!("span.skip({size});"));
+                        } else {
+                            check.push(format!(
+                                "if (!IsValid{type_id}(span.read_{byteorder}<{ty}, {size}>())) return std::nullopt;"
+                            ));
+                        }
+                        check
+                    }
+                    ast::DeclDesc::Struct { .. } => self.check_struct(type_decl),
+                    _ => vec![format!(
+                        "if (!{type_id}::Decode(span).has_value()) return std::nullopt;"
+                    )],
+                }
+            }
+            _ => panic!("Unsupported optional field type"),
+        };
+        self.append(format!("if ({} == {cond_value}) {{", cond.id));
+        for line in check {
+            self.append(format!("    {line}"));
+        }
+        self.append("}".to_owned());
+    }
+
     fn decode_array_field_lite(
         &mut self,
         decl: &'a ast::Decl,
         field: &'a ast::Field,
         id: &str,
-        type_id: Option<&str>,
+        _type_id: Option<&str>,
         size_modifier: Option<&str>,
     ) {
         self.check_code();
+
+        // In check mode the array slice is stored in a local variable, and
+        // the count and element size were parsed into local variables.
+        let p = if self.mode == DecodeMode::Check { "" } else { "output." };
+        if self.mode == DecodeMode::Check {
+            self.append(format!("pdl::packet::weak_slice {id}_;"));
+        }
 
         let element_size = analyzer::element_size(self.scope, self.schema, decl, field);
         let array_size = analyzer::array_size(decl, field);
@@ -720,20 +931,21 @@ impl<'a> Decoder<'a> {
             self.append(format!("{id}_size_ = {id}_size_ - {size_modifier};"));
         }
 
-        // TODO element validation
+        // The array elements are validated inline after extracting the
+        // array slice.
         use analyzer::{ArraySize, ElementSize};
         match (element_size, array_size) {
             (ElementSize::Static(element_size), ArraySize::StaticCount(count)) => {
                 let total_size = element_size * count;
                 self.check_size(&format!("{total_size}"));
-                self.append(format!("output.{id}_ = span.take({total_size});"));
+                self.append(format!("{p}{id}_ = span.take({total_size});"));
+                self.check_array_elements(field, &format!("{p}{id}_"), None);
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicCount) => {
-                self.check_size(&format!("{element_size} * output.{id}_count_"));
-                self.append(format!(
-                    "output.{id}_ = span.take({element_size} * output.{id}_count_);"
-                ));
+                self.check_size(&format!("{element_size} * {p}{id}_count_"));
+                self.append(format!("{p}{id}_ = span.take({element_size} * {p}{id}_count_);"));
+                self.check_array_elements(field, &format!("{p}{id}_"), None);
             }
 
             (ElementSize::Static(element_size), ArraySize::DynamicSize) => {
@@ -741,101 +953,116 @@ impl<'a> Decoder<'a> {
                 self.append(format!("if (({id}_size_ % {element_size}) != 0) {{"));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("output.{id}_ = span.take({id}_size_);"));
+                self.append(format!("{p}{id}_ = span.take({id}_size_);"));
+                self.check_array_elements(field, &format!("{p}{id}_"), None);
             }
 
             (ElementSize::Static(element_size), ArraySize::Unknown) => {
                 self.append(format!("if ((span.size() % {element_size}) != 0) {{"));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("output.{id}_ = span;"));
+                self.append(format!("{p}{id}_ = span;"));
                 self.append("span.clear();".to_string());
+                self.check_array_elements(field, &format!("{p}{id}_"), None);
             }
 
             (ElementSize::Dynamic, ArraySize::StaticCount(count)) => {
-                self.append(format!("if (output.{id}_element_size_ == 0) {{"));
+                self.append(format!("if ({p}{id}_element_size_ == 0) {{"));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.check_size(&format!("output.{id}_element_size_ * {count}"));
-                self.append(format!(
-                    "output.{id}_ = span.take(output.{id}_element_size_ * {count});"
-                ));
+                self.check_size(&format!("{p}{id}_element_size_ * {count}"));
+                self.append(format!("{p}{id}_ = span.take({p}{id}_element_size_ * {count});"));
+                self.check_array_elements(
+                    field,
+                    &format!("{p}{id}_"),
+                    Some(&format!("{p}{id}_element_size_")),
+                );
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicCount) => {
-                self.append(format!("if (output.{id}_element_size_ == 0) {{"));
+                self.append(format!("if ({p}{id}_element_size_ == 0) {{"));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.check_size(&format!("output.{id}_element_size_ * output.{id}_count_"));
+                self.check_size(&format!("{p}{id}_element_size_ * {p}{id}_count_"));
                 self.append(format!(
-                    "output.{id}_ = span.take(output.{id}_element_size_ * output.{id}_count_);"
+                    "{p}{id}_ = span.take({p}{id}_element_size_ * {p}{id}_count_);"
                 ));
+                self.check_array_elements(
+                    field,
+                    &format!("{p}{id}_"),
+                    Some(&format!("{p}{id}_element_size_")),
+                );
             }
 
             (ElementSize::Dynamic, ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
                 self.append(format!(
-                    "if (output.{id}_element_size_ == 0 || ({id}_size_ % output.{id}_element_size_) != 0) {{"
+                    "if ({p}{id}_element_size_ == 0 || ({id}_size_ % {p}{id}_element_size_) != 0) {{"
                 ));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("output.{id}_ = span.take({id}_size_);"));
+                self.append(format!("{p}{id}_ = span.take({id}_size_);"));
+                self.check_array_elements(
+                    field,
+                    &format!("{p}{id}_"),
+                    Some(&format!("{p}{id}_element_size_")),
+                );
             }
 
             (ElementSize::Dynamic, ArraySize::Unknown) => {
                 self.append(format!(
-                    "if (output.{id}_element_size_ == 0 || (span.size() % output.{id}_element_size_) != 0) {{"
+                    "if ({p}{id}_element_size_ == 0 || (span.size() % {p}{id}_element_size_) != 0) {{"
                 ));
                 self.append("    return std::nullopt;".to_string());
                 self.append("}".to_string());
-                self.append(format!("output.{id}_ = span;"));
+                self.append(format!("{p}{id}_ = span;"));
                 self.append("span.clear();".to_string());
+                self.check_array_elements(
+                    field,
+                    &format!("{p}{id}_"),
+                    Some(&format!("{p}{id}_element_size_")),
+                );
             }
 
             (ElementSize::Unknown, ArraySize::StaticCount(count)) => {
-                let tid = type_id.unwrap();
-                self.append(format!("output.{id}_ = span;"));
+                self.append(format!("{p}{id}_ = span;"));
                 self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
-                let decode = format!("{tid}::Decode(span)");
-                self.append(format!("    if (!{decode}.has_value()) {{"));
-                self.append("        return std::nullopt;".to_string());
-                self.append("    }".to_string());
+                for line in self.check_array_element(field).unwrap() {
+                    self.append(format!("    {line}"));
+                }
                 self.append("}".to_string());
                 self.append(format!(
-                    "output.{id}_ = output.{id}_.subrange(0, output.{id}_.size() - span.size());"
+                    "{p}{id}_ = {p}{id}_.subrange(0, {p}{id}_.size() - span.size());"
                 ));
             }
 
             (ElementSize::Unknown, ArraySize::DynamicCount) => {
-                let tid = type_id.unwrap();
-                self.append(format!("output.{id}_ = span;"));
-                self.append(format!("for (size_t n = 0; n < output.{id}_count_; n++) {{"));
-                let decode = format!("{tid}::Decode(span)");
-                self.append(format!("    if (!{decode}.has_value()) {{"));
-                self.append("        return std::nullopt;".to_string());
-                self.append("    }".to_string());
+                self.append(format!("{p}{id}_ = span;"));
+                self.append(format!("for (size_t n = 0; n < {p}{id}_count_; n++) {{"));
+                for line in self.check_array_element(field).unwrap() {
+                    self.append(format!("    {line}"));
+                }
                 self.append("}".to_string());
                 self.append(format!(
-                    "output.{id}_ = output.{id}_.subrange(0, output.{id}_.size() - span.size());"
+                    "{p}{id}_ = {p}{id}_.subrange(0, {p}{id}_.size() - span.size());"
                 ));
             }
 
             (ElementSize::Unknown, ArraySize::DynamicSize) => {
                 self.check_size(&format!("{id}_size_"));
-                self.append(format!("output.{id}_ = span.take({id}_size_);"));
+                self.append(format!("{p}{id}_ = span.take({id}_size_);"));
+                self.check_array_elements(field, &format!("{p}{id}_"), None);
             }
 
             (ElementSize::Unknown, ArraySize::Unknown) => {
-                let tid = type_id.unwrap();
-                self.append(format!("output.{id}_ = span;"));
+                self.append(format!("{p}{id}_ = span;"));
                 self.append("while (span.size() > 0) {".to_string());
-                let decode = format!("{tid}::Decode(span)");
-                self.append(format!("    if (!{decode}.has_value()) {{"));
-                self.append("        return std::nullopt;".to_string());
-                self.append("    }".to_string());
+                for line in self.check_array_element(field).unwrap() {
+                    self.append(format!("    {line}"));
+                }
                 self.append("}".to_string());
                 self.append(format!(
-                    "output.{id}_ = output.{id}_.subrange(0, output.{id}_.size() - span.size());"
+                    "{p}{id}_ = {p}{id}_.subrange(0, {p}{id}_.size() - span.size());"
                 ));
             }
         }
@@ -887,10 +1114,14 @@ impl<'a> Decoder<'a> {
 
             if children.is_empty() {
                 // Arrived at a leaf packet. Save the payload to the output.
-                self.append(format!(
-                    "output.payload_ = span.take(payload_size_){};",
-                    if self.extract_arrays { ".bytes()" } else { "" }
-                ));
+                if self.mode == DecodeMode::Check {
+                    self.append("span.skip(payload_size_);".to_owned());
+                } else {
+                    self.append(format!(
+                        "output.payload_ = span.take(payload_size_){};",
+                        if self.mode == DecodeMode::Struct { ".bytes()" } else { "" }
+                    ));
+                }
             } else {
                 // Extract the payload span.
                 self.append("auto payload_span = span.take(payload_size_);".to_owned());
@@ -914,20 +1145,26 @@ impl<'a> Decoder<'a> {
 
             if trailing_size == 0 && children.is_empty() {
                 // No trailing fields and leaf packet; consume everything.
-                self.append(format!(
-                    "output.payload_ = span{};",
-                    if self.extract_arrays { ".bytes()" } else { "" }
-                ));
+                if self.mode != DecodeMode::Check {
+                    self.append(format!(
+                        "output.payload_ = span{};",
+                        if self.mode == DecodeMode::Struct { ".bytes()" } else { "" }
+                    ));
+                }
                 self.append("span.clear();".to_owned());
             } else if children.is_empty() {
                 // Trailing fields and leaf packet; check that the span contains
                 // enough bytes to parse the remaiing fields.
                 self.append(format!("if (span.size() < {trailing_size}) return std::nullopt;",));
                 // Consume everything _but_ the space reserved for the trailing fields.
-                self.append(format!(
-                    "output.payload_ = span.take(span.size() - {trailing_size}){};",
-                    if self.extract_arrays { ".bytes()" } else { "" }
-                ));
+                if self.mode == DecodeMode::Check {
+                    self.append(format!("span.skip(span.size() - {trailing_size});"));
+                } else {
+                    self.append(format!(
+                        "output.payload_ = span.take(span.size() - {trailing_size}){};",
+                        if self.mode == DecodeMode::Struct { ".bytes()" } else { "" }
+                    ));
+                }
             } else if trailing_size == 0 {
                 // No trailing fields. Continue parsing fields from the child packet
                 // without creating a new scope. There is no risk of name shadowing.
@@ -1020,6 +1257,7 @@ impl<'a> Decoder<'a> {
                 self.append(format!("for (size_t n = 0; n < {count}; n++) {{"));
                 self.append(format!("    auto element_span = span.subrange(n * {id}_element_size_, {id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
+                self.append("    if (element_span.size() != 0) return std::nullopt;".to_string());
                 self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
                 self.append(format!("span.skip({id}_element_size_ * {count});"));
@@ -1030,6 +1268,7 @@ impl<'a> Decoder<'a> {
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 self.append(format!("    auto element_span = span.subrange(n * {id}_element_size_, {id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
+                self.append("    if (element_span.size() != 0) return std::nullopt;".to_string());
                 self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
                 self.append(format!("span.skip({id}_element_size_ * {id}_count_);"));
@@ -1046,6 +1285,7 @@ impl<'a> Decoder<'a> {
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 self.append(format!("    auto element_span = span.subrange(n * {id}_element_size_, {id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
+                self.append("    if (element_span.size() != 0) return std::nullopt;".to_string());
                 self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
                 self.append(format!("span.skip({id}_size_);"));
@@ -1061,6 +1301,7 @@ impl<'a> Decoder<'a> {
                 self.append(format!("for (size_t n = 0; n < {id}_count_; n++) {{"));
                 self.append(format!("    auto element_span = span.subrange(n * {id}_element_size_, {id}_element_size_);"));
                 let out = self.decode_array_element(field, "element_span".to_string());
+                self.append("    if (element_span.size() != 0) return std::nullopt;".to_string());
                 self.append(format!("    output.{id}_[n] = {out};"));
                 self.append("}".to_string());
                 self.append("span.clear();".to_string());
@@ -1171,7 +1412,7 @@ impl<'a> Decoder<'a> {
                 if padded_size.is_some() {
                     self.append(format!("size_t {id}_start_size = span.size();"));
                 }
-                if self.extract_arrays {
+                if self.mode == DecodeMode::Struct {
                     self.decode_array_field_full(
                         decl,
                         field,
@@ -2030,7 +2271,7 @@ fn generate_packet_view(
     }
 
     if decl.fields().next().is_some() {
-        let mut decoder = Decoder::new(scope, schema, endianness, false);
+        let mut decoder = Decoder::new(scope, schema, endianness, DecodeMode::View);
         decoder.decode(decl, &[]);
         field_parsers.extend(decoder.code);
     }
@@ -2335,7 +2576,8 @@ fn generate_struct_declaration(
     // The struct is decoded from the input span, which is updated to the
     // remaining bytes on success.
     let field_parsers = {
-        let mut decoder = Decoder::new(scope, schema, scope.file.endianness.value, true);
+        let mut decoder =
+            Decoder::new(scope, schema, scope.file.endianness.value, DecodeMode::Struct);
         decoder.decode(all_decls[0], &all_decls[1..]);
         decoder.code
     };
